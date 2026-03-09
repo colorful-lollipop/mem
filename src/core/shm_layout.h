@@ -38,6 +38,7 @@ struct SharedMemoryHeader {
   uint32_t magic = kSharedMemoryMagic;
   uint32_t protocol_version = kProtocolVersion;
   uint64_t session_id = 0;
+  uint32_t session_state = 0;
   uint32_t high_ring_size = 0;
   uint32_t normal_ring_size = 0;
   uint32_t response_ring_size = 0;

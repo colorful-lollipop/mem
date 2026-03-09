@@ -30,6 +30,9 @@ uint32_t MonotonicNowMs() {
       std::chrono::duration_cast<std::chrono::milliseconds>(now).count() & 0xffffffffu);
 }
 
+constexpr auto RESPONSE_RETRY_BUDGET = std::chrono::milliseconds(50);
+constexpr auto EVENT_RETRY_BUDGET = std::chrono::milliseconds(10);
+
 class WorkerPool {
  public:
   void Start(uint32_t thread_count, std::function<void(const RequestRingEntry&)> callback) {
@@ -97,6 +100,30 @@ struct RpcServer::Impl {
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
 
+  StatusCode PushResponseWithRetry(const ResponseRingEntry& response,
+                                   std::chrono::milliseconds retry_budget) {
+    const auto deadline = std::chrono::steady_clock::now() + retry_budget;
+    while (true) {
+      const StatusCode status = session.PushResponse(response);
+      if (status == StatusCode::Ok || status != StatusCode::QueueFull) {
+        return status;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) {
+        return StatusCode::QueueFull;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }
+
+  void MarkSessionBroken() {
+    session.SetState(Session::SessionState::Broken);
+    if (session.handles().resp_event_fd < 0) {
+      return;
+    }
+    const uint64_t signal_value = 1;
+    write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
+  }
+
   void WriteResponse(const RequestRingEntry& request_entry, const RpcServerReply& reply) {
     if (session.header() == nullptr) {
       return;
@@ -117,10 +144,15 @@ struct RpcServer::Impl {
     } else if (response.result_size != 0) {
       std::memcpy(response.payload, reply.payload.data(), response.result_size);
     }
-    if (session.PushResponse(response) == StatusCode::Ok) {
+    const StatusCode status = PushResponseWithRetry(response, RESPONSE_RETRY_BUDGET);
+    if (status == StatusCode::Ok) {
       const uint64_t signal_value = 1;
       write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
+      return;
     }
+    HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
+          static_cast<int>(status), static_cast<unsigned long long>(request_entry.request_id));
+    MarkSessionBroken();
   }
 
   StatusCode PublishEvent(const RpcEvent& event) {
@@ -143,7 +175,7 @@ struct RpcServer::Impl {
       std::memcpy(entry.payload, event.payload.data(), event.payload.size());
     }
 
-    const StatusCode status = session.PushResponse(entry);
+    const StatusCode status = PushResponseWithRetry(entry, EVENT_RETRY_BUDGET);
     if (status != StatusCode::Ok) {
       HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
       return status;

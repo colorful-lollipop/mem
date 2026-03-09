@@ -29,6 +29,53 @@ uint64_t GenerateSessionId() {
   return engine();
 }
 
+int DuplicateFdWithTestHook(int fd, int* remaining_successes_before_failure) {
+  if (remaining_successes_before_failure != nullptr && *remaining_successes_before_failure == 0) {
+    errno = EMFILE;
+    return -1;
+  }
+  if (remaining_successes_before_failure != nullptr && *remaining_successes_before_failure > 0) {
+    --(*remaining_successes_before_failure);
+  }
+  return dup(fd);
+}
+
+bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target,
+                      int* remaining_successes_before_failure) {
+  if (target == nullptr) {
+    return false;
+  }
+  *target = {};
+  target->shm_fd = DuplicateFdWithTestHook(source.shm_fd, remaining_successes_before_failure);
+  if (target->shm_fd < 0) {
+    return false;
+  }
+  target->high_req_event_fd =
+      DuplicateFdWithTestHook(source.high_req_event_fd, remaining_successes_before_failure);
+  if (target->high_req_event_fd < 0) {
+    CloseFd(&target->shm_fd);
+    return false;
+  }
+  target->normal_req_event_fd =
+      DuplicateFdWithTestHook(source.normal_req_event_fd, remaining_successes_before_failure);
+  if (target->normal_req_event_fd < 0) {
+    CloseFd(&target->shm_fd);
+    CloseFd(&target->high_req_event_fd);
+    return false;
+  }
+  target->resp_event_fd =
+      DuplicateFdWithTestHook(source.resp_event_fd, remaining_successes_before_failure);
+  if (target->resp_event_fd < 0) {
+    CloseFd(&target->shm_fd);
+    CloseFd(&target->high_req_event_fd);
+    CloseFd(&target->normal_req_event_fd);
+    return false;
+  }
+  target->protocol_version = source.protocol_version;
+  target->session_id = source.session_id;
+  return true;
+}
+
 bool InitMutex(pthread_mutex_t* mutex) {
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
@@ -48,6 +95,7 @@ struct PosixDemoBootstrapChannel::Impl {
   BootstrapHandles handles{};
   bool initialized = false;
   EngineDeathCallback death_callback;
+  int dup_fail_after_count = -1;
 
   void ResetHandles() {
     CloseFd(&handles.shm_fd);
@@ -129,6 +177,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   header->magic = kSharedMemoryMagic;
   header->protocol_version = kProtocolVersion;
   header->session_id = GenerateSessionId();
+  header->session_state = 0;
   header->high_ring_size = impl_->config.high_ring_size;
   header->normal_ring_size = impl_->config.normal_ring_size;
   header->response_ring_size = impl_->config.response_ring_size;
@@ -173,13 +222,10 @@ StatusCode PosixDemoBootstrapChannel::Connect(BootstrapHandles* handles) {
   if (handles == nullptr || !impl_->initialized) {
     return StatusCode::InvalidArgument;
   }
-
-  handles->shm_fd = dup(impl_->handles.shm_fd);
-  handles->high_req_event_fd = dup(impl_->handles.high_req_event_fd);
-  handles->normal_req_event_fd = dup(impl_->handles.normal_req_event_fd);
-  handles->resp_event_fd = dup(impl_->handles.resp_event_fd);
-  handles->protocol_version = impl_->handles.protocol_version;
-  handles->session_id = impl_->handles.session_id;
+  if (!DuplicateHandles(impl_->handles, handles, &impl_->dup_fail_after_count)) {
+    HLOGE("Connect failed while duplicating bootstrap handles");
+    return StatusCode::EngineInternalError;
+  }
   return StatusCode::Ok;
 }
 
@@ -193,12 +239,9 @@ void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callb
 
 BootstrapHandles PosixDemoBootstrapChannel::server_handles() const {
   BootstrapHandles handles;
-  handles.shm_fd = dup(impl_->handles.shm_fd);
-  handles.high_req_event_fd = dup(impl_->handles.high_req_event_fd);
-  handles.normal_req_event_fd = dup(impl_->handles.normal_req_event_fd);
-  handles.resp_event_fd = dup(impl_->handles.resp_event_fd);
-  handles.protocol_version = impl_->handles.protocol_version;
-  handles.session_id = impl_->handles.session_id;
+  if (!DuplicateHandles(impl_->handles, &handles, &impl_->dup_fail_after_count)) {
+    HLOGE("server_handles failed while duplicating bootstrap handles");
+  }
   return handles;
 }
 
@@ -214,6 +257,10 @@ void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) 
   if (impl_->death_callback) {
     impl_->death_callback(dead_session_id);
   }
+}
+
+void PosixDemoBootstrapChannel::SetDupFailureAfterCountForTest(int count) {
+  impl_->dup_fail_after_count = count;
 }
 
 }  // namespace memrpc

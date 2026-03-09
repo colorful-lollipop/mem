@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
-
 #include "memrpc/client/sa_bootstrap.h"
+#include "memrpc/client/demo_bootstrap.h"
 
 TEST(BootstrapCallbackTest, InvokesEngineDeathCallback) {
   memrpc::SaBootstrapChannel channel;
@@ -89,4 +89,19 @@ TEST(BootstrapCallbackTest, CanDeliverLateDeathForSpecificSessionWithoutDropping
   close(latest_handles.high_req_event_fd);
   close(latest_handles.normal_req_event_fd);
   close(latest_handles.resp_event_fd);
+}
+
+TEST(BootstrapCallbackTest, ConnectFailsWhenHandleDuplicationFails) {
+  memrpc::PosixDemoBootstrapChannel channel;
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
+  channel.SetDupFailureAfterCountForTest(2);
+
+  memrpc::BootstrapHandles handles;
+  const memrpc::StatusCode status = channel.Connect(&handles);
+
+  EXPECT_EQ(status, memrpc::StatusCode::EngineInternalError);
+  EXPECT_EQ(handles.shm_fd, -1);
+  EXPECT_EQ(handles.high_req_event_fd, -1);
+  EXPECT_EQ(handles.normal_req_event_fd, -1);
+  EXPECT_EQ(handles.resp_event_fd, -1);
 }

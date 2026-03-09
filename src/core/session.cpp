@@ -248,6 +248,19 @@ const BootstrapHandles& Session::handles() const {
   return handles_;
 }
 
+Session::SessionState Session::state() const {
+  if (header_ == nullptr) {
+    return SessionState::Broken;
+  }
+  return static_cast<SessionState>(header_->session_state);
+}
+
+void Session::SetState(SessionState state) {
+  if (header_ != nullptr) {
+    header_->session_state = static_cast<uint32_t>(state);
+  }
+}
+
 SlotPayload* Session::slot_payload(uint32_t slot_index) {
   if (header_ == nullptr || slot_index >= header_->slot_count) {
     return nullptr;

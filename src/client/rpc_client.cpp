@@ -90,7 +90,8 @@ struct RpcClient::Impl {
 
   void StopDispatcher() {
     dispatcher_running.store(false);
-    if (dispatcher_thread.joinable()) {
+    if (dispatcher_thread.joinable() &&
+        std::this_thread::get_id() != dispatcher_thread.get_id()) {
       dispatcher_thread.join();
     }
   }
@@ -248,8 +249,16 @@ struct RpcClient::Impl {
     pollfd fd{resp_fd, POLLIN, 0};
     while (dispatcher_running.load()) {
       const int poll_result = poll(&fd, 1, 100);
+      if (session.state() == Session::SessionState::Broken) {
+        HandleEngineDeath(current_session_id);
+        return;
+      }
       if (poll_result <= 0) {
         continue;
+      }
+      if ((fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        HandleEngineDeath(current_session_id);
+        return;
       }
       if ((fd.revents & POLLIN) == 0) {
         continue;
@@ -264,6 +273,10 @@ struct RpcClient::Impl {
           continue;
         }
         CompleteRequest(entry);
+      }
+      if (session.state() == Session::SessionState::Broken) {
+        HandleEngineDeath(current_session_id);
+        return;
       }
     }
   }
@@ -388,6 +401,9 @@ StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
     return StatusCode::InvalidArgument;
   }
   RpcFuture future = InvokeAsync(call);
+  if (call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
+    return future.Wait(reply);
+  }
   const auto wait_budget = std::chrono::milliseconds(
       static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms) +
       1000);

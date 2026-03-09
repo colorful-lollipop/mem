@@ -243,3 +243,88 @@ TEST(RpcClientIntegrationTest, InvokeAsyncRejectsPayloadLargerThanConfiguredRequ
   client.Shutdown();
   server.Stop();
 }
+
+TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSecond) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.queue_timeout_ms = 0;
+  call.exec_timeout_ms = 0;
+  call.payload = std::vector<uint8_t>{0x41, 0x42};
+
+  const auto start = std::chrono::steady_clock::now();
+  memrpc::RpcReply reply;
+  EXPECT_EQ(client.InvokeSync(call, &reply), memrpc::StatusCode::Ok);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+  EXPECT_GE(elapsed.count(), 1100);
+  EXPECT_EQ(reply.payload, call.payload);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 4,
+          .normal_ring_size = 4,
+          .response_ring_size = 1,
+          .slot_count = 4,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [&server](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           memrpc::RpcEvent event;
+                           event.event_domain = 7;
+                           event.event_type = 9;
+                           event.payload = {0x33};
+                           ASSERT_EQ(server.PublishEvent(event), memrpc::StatusCode::Ok);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  std::atomic<int> event_count{0};
+  client.SetEventCallback([&event_count](const memrpc::RpcEvent& event) {
+    EXPECT_EQ(event.event_domain, 7u);
+    EXPECT_EQ(event.event_type, 9u);
+    ++event_count;
+  });
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = std::vector<uint8_t>{0x10, 0x20, 0x30};
+
+  memrpc::RpcReply reply;
+  EXPECT_EQ(client.InvokeSync(call, &reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(reply.payload, call.payload);
+  EXPECT_EQ(event_count.load(), 1);
+
+  client.Shutdown();
+  server.Stop();
+}
