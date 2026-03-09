@@ -1,0 +1,10 @@
+function(ohos_sa_mock_add_test target source)
+  add_executable(${target} ${source})
+  target_link_libraries(${target} PRIVATE ohos_sa_mock GTest::gtest_main)
+  add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
+ohos_sa_mock_add_test(ohos_sa_mock_headers_test ohos_sa_headers_test.cpp)
+ohos_sa_mock_add_test(ohos_sa_mock_remote_object_test ohos_sa_remote_object_test.cpp)
+ohos_sa_mock_add_test(ohos_sa_mock_registry_test ohos_sa_registry_test.cpp)
+ohos_sa_mock_add_test(ohos_sa_mock_load_callback_test ohos_sa_load_callback_test.cpp)

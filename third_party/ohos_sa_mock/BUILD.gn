@@ -1,0 +1,60 @@
+config("ohos_sa_mock_config") {
+  include_dirs = [ "include" ]
+  cflags_cc = [ "-std=c++17" ]
+}
+
+source_set("ohos_sa_mock") {
+  sources = [
+    "src/iremote_object.cpp",
+    "src/system_ability_manager.cpp",
+  ]
+  public = [
+    "include/errors.h",
+    "include/if_system_ability_manager.h",
+    "include/iremote_broker.h",
+    "include/iremote_object.h",
+    "include/iremote_proxy.h",
+    "include/iremote_stub.h",
+    "include/iservice_registry.h",
+    "include/isystem_ability_load_callback.h",
+    "include/refbase.h",
+    "include/system_ability.h",
+    "include/system_ability_definition.h",
+  ]
+  public_configs = [ ":ohos_sa_mock_config" ]
+}
+
+executable("ohos_sa_mock_demo") {
+  sources = [ "demo/sa_mock_demo.cpp" ]
+  deps = [ ":ohos_sa_mock" ]
+}
+
+if (defined(ohos_sa_mock_enable_tests) && ohos_sa_mock_enable_tests) {
+  template("ohos_sa_mock_test") {
+    executable(target_name) {
+      testonly = true
+      sources = invoker.sources
+      deps = [
+        ":ohos_sa_mock",
+        ohos_sa_mock_gtest_main_target,
+      ]
+      configs += [ ":ohos_sa_mock_config" ]
+    }
+  }
+
+  ohos_sa_mock_test("ohos_sa_mock_headers_test") {
+    sources = [ "tests/ohos_sa_headers_test.cpp" ]
+  }
+
+  ohos_sa_mock_test("ohos_sa_mock_remote_object_test") {
+    sources = [ "tests/ohos_sa_remote_object_test.cpp" ]
+  }
+
+  ohos_sa_mock_test("ohos_sa_mock_registry_test") {
+    sources = [ "tests/ohos_sa_registry_test.cpp" ]
+  }
+
+  ohos_sa_mock_test("ohos_sa_mock_load_callback_test") {
+    sources = [ "tests/ohos_sa_load_callback_test.cpp" ]
+  }
+}

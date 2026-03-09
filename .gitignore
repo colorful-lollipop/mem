@@ -2,8 +2,12 @@ build/
 out/
 dist/
 .cache/
+.codex/
 .worktrees/
 worktrees/
+prompt.md
+third_party/*/.git/
+third_party/*/build/
 *.o
 *.a
 *.so
