@@ -203,6 +203,11 @@ uint32_t SlotPool::capacity() const {
   return static_cast<uint32_t>(states_.size());
 }
 
+uint32_t SlotPool::available() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return static_cast<uint32_t>(free_slots_.size());
+}
+
 bool SlotPool::IsValidIndex(uint32_t slot_index) const {
   return slot_index < states_.size();
 }

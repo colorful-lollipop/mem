@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <cstdint>
+#include <sstream>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "core/session.h"
@@ -27,6 +32,28 @@ bool WaitForAtomicAtLeast(const std::atomic<int>& value, int expected, int timeo
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return value.load() >= expected;
+}
+
+bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (condition()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return condition();
+}
+
+uint64_t DrainEventFdCounter(int fd) {
+  uint64_t counter = 0;
+  const ssize_t rc = read(fd, &counter, sizeof(counter));
+  if (rc == static_cast<ssize_t>(sizeof(counter))) {
+    return counter;
+  }
+  EXPECT_TRUE(rc < 0 && errno == EAGAIN);
+  return 0;
 }
 
 class RingTraceRecorder {
@@ -129,7 +156,7 @@ TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequest
 
   std::vector<std::thread> threads;
   std::mutex results_mutex;
-  std::vector<int> mismatches;
+  std::vector<std::string> mismatches;
   constexpr int kRequestCount = 32;
 
   for (int i = 0; i < kRequestCount; ++i) {
@@ -142,7 +169,16 @@ TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequest
       const memrpc::StatusCode status = client.InvokeAsync(call).Wait(&reply);
       std::lock_guard<std::mutex> lock(results_mutex);
       if (status != memrpc::StatusCode::Ok || reply.payload != call.payload) {
-        mismatches.push_back(i);
+        std::ostringstream oss;
+        oss << "request=" << i << " status=" << static_cast<int>(status) << " payload=[";
+        for (size_t index = 0; index < reply.payload.size(); ++index) {
+          if (index != 0) {
+            oss << ",";
+          }
+          oss << static_cast<int>(reply.payload[index]);
+        }
+        oss << "]";
+        mismatches.push_back(oss.str());
       }
     });
   }
@@ -151,7 +187,7 @@ TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequest
     thread.join();
   }
 
-  EXPECT_TRUE(mismatches.empty());
+  EXPECT_TRUE(mismatches.empty()) << ::testing::PrintToString(mismatches);
 
   client.Shutdown();
   server.Stop();
@@ -210,6 +246,92 @@ TEST(RpcClientIntegrationTest, SharedRequestRingsUseSingleProducerAndConsumerThr
 
   client.Shutdown();
   server.Stop();
+}
+
+TEST(RpcClientIntegrationTest, RequestEventFdSignalsOnlyOnEmptyToNonEmptyTransition) {
+  memrpc::DemoBootstrapConfig config;
+  config.normal_ring_size = 4;
+  config.slot_count = 4;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles observer_handles = bootstrap->server_handles();
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(observer_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall first;
+  first.opcode = memrpc::Opcode::ScanFile;
+  first.payload = {1};
+  first.admission_timeout_ms = 10;
+  first.queue_timeout_ms = 10;
+  first.exec_timeout_ms = 10;
+
+  memrpc::RpcCall second = first;
+  second.payload = {2};
+
+  auto first_future = client.InvokeAsync(first);
+  auto second_future = client.InvokeAsync(second);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&observer] { return memrpc::RingCount(observer.header()->normal_ring) == 2; }, 200));
+  EXPECT_EQ(DrainEventFdCounter(observer.handles().normal_req_event_fd), 1u);
+
+  client.Shutdown();
+}
+
+TEST(RpcClientIntegrationTest, SubmitterConsumesManualRequestCreditWakeup) {
+  memrpc::DemoBootstrapConfig config;
+  config.normal_ring_size = 1;
+  config.slot_count = 2;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::Session server_session;
+  ASSERT_EQ(server_session.Attach(bootstrap->server_handles(), memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall first;
+  first.opcode = memrpc::Opcode::ScanFile;
+  first.admission_timeout_ms = 1000;
+  first.queue_timeout_ms = 5000;
+  first.exec_timeout_ms = 5000;
+  first.payload = {0x11};
+  auto first_future = client.InvokeAsync(first);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&server_session] { return memrpc::RingCount(server_session.header()->normal_ring) == 1; },
+      200));
+
+  memrpc::RpcCall second = first;
+  second.payload = {0x22};
+  auto second_future = client.InvokeAsync(second);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&client] { return client.GetRuntimeStats().waiting_for_request_credit; }, 200));
+
+  memrpc::RequestRingEntry entry;
+  ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &entry));
+  const uint64_t signal_value = 1;
+  ASSERT_EQ(write(server_session.handles().req_credit_event_fd, &signal_value,
+                  sizeof(signal_value)),
+            static_cast<ssize_t>(sizeof(signal_value)));
+
+  ASSERT_TRUE(WaitForCondition(
+      [&server_session] { return memrpc::RingCount(server_session.header()->normal_ring) == 1; },
+      200));
+  EXPECT_EQ(DrainEventFdCounter(server_session.handles().req_credit_event_fd), 0u);
+
+  client.Shutdown();
+  memrpc::RpcReply reply;
+  EXPECT_EQ(first_future.Wait(&reply), memrpc::StatusCode::PeerDisconnected);
+  EXPECT_EQ(second_future.Wait(&reply), memrpc::StatusCode::PeerDisconnected);
 }
 
 TEST(RpcClientIntegrationTest, PendingRequestFailsPromptlyAfterEngineDeath) {

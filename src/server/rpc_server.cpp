@@ -36,8 +36,21 @@ uint32_t CurrentWorkerId() {
                                0xffffffffu);
 }
 
+bool RingCountIsOneAfterPush(const RingCursor& cursor) {
+  const uint32_t tail = __atomic_load_n(&cursor.tail, __ATOMIC_ACQUIRE);
+  const uint32_t head = __atomic_load_n(&cursor.head, __ATOMIC_ACQUIRE);
+  return tail - head == 1u;
+}
+
 constexpr auto RESPONSE_RETRY_BUDGET = std::chrono::milliseconds(50);
 constexpr auto EVENT_RETRY_BUDGET = std::chrono::milliseconds(10);
+
+int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
+  const auto remaining =
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now())
+          .count();
+  return remaining > 0 ? remaining : 0;
+}
 
 class WorkerPool {
  public:
@@ -75,6 +88,13 @@ class WorkerPool {
     workers_.clear();
   }
 
+  bool WaitForCapacity(std::chrono::milliseconds timeout) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return cv_.wait_for(lock, timeout, [this] {
+      return !running_ || queue_.size() < queue_capacity_;
+    });
+  }
+
  private:
   void WorkerLoop() {
     while (true) {
@@ -87,6 +107,7 @@ class WorkerPool {
         }
         entry = queue_.front();
         queue_.pop();
+        cv_.notify_all();
       }
       callback_(entry);
     }
@@ -132,9 +153,53 @@ struct RpcServer::Impl {
   uint32_t pending_completion_count = 0;
   std::thread response_writer_thread;
   std::atomic<bool> response_writer_running{false};
+  std::atomic<bool> response_writer_waiting_for_credit{false};
   std::thread dispatcher_thread;
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
+
+  bool WaitForResponseCredit(std::chrono::steady_clock::time_point deadline) {
+    const int fd = session.handles().resp_credit_event_fd;
+    if (fd < 0) {
+      return false;
+    }
+    pollfd poll_fd{fd, POLLIN, 0};
+    response_writer_waiting_for_credit.store(true);
+    while (response_writer_running.load()) {
+      const int64_t remaining_ms = RemainingTimeoutMs(deadline);
+      if (remaining_ms <= 0) {
+        response_writer_waiting_for_credit.store(false);
+        return false;
+      }
+      const int poll_result =
+          poll(&poll_fd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
+      if (!response_writer_running.load()) {
+        response_writer_waiting_for_credit.store(false);
+        return false;
+      }
+      if (poll_result <= 0) {
+        continue;
+      }
+      if ((poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        response_writer_waiting_for_credit.store(false);
+        return false;
+      }
+      if ((poll_fd.revents & POLLIN) == 0) {
+        continue;
+      }
+      uint64_t counter = 0;
+      bool drained = false;
+      while (read(fd, &counter, sizeof(counter)) == sizeof(counter)) {
+        drained = true;
+      }
+      if (drained) {
+        response_writer_waiting_for_credit.store(false);
+        return true;
+      }
+    }
+    response_writer_waiting_for_credit.store(false);
+    return false;
+  }
 
   StatusCode PushResponseWithRetry(const ResponseRingEntry& response,
                                    std::chrono::milliseconds retry_budget) {
@@ -147,7 +212,9 @@ struct RpcServer::Impl {
       if (std::chrono::steady_clock::now() >= deadline) {
         return StatusCode::QueueFull;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (!WaitForResponseCredit(deadline)) {
+        return StatusCode::QueueFull;
+      }
     }
   }
 
@@ -166,7 +233,9 @@ struct RpcServer::Impl {
       if (std::chrono::steady_clock::now() >= deadline) {
         return std::nullopt;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (!WaitForResponseCredit(deadline)) {
+        return std::nullopt;
+      }
     }
   }
 
@@ -204,6 +273,10 @@ struct RpcServer::Impl {
 
   void StopResponseWriter() {
     response_writer_running.store(false);
+    if (session.handles().resp_credit_event_fd >= 0) {
+      const uint64_t signal_value = 1;
+      write(session.handles().resp_credit_event_fd, &signal_value, sizeof(signal_value));
+    }
     completion_cv.notify_all();
     if (response_writer_thread.joinable()) {
       response_writer_thread.join();
@@ -289,15 +362,17 @@ struct RpcServer::Impl {
 
       const StatusCode status = PushResponseWithRetry(item.entry, item.retry_budget);
       if (status == StatusCode::Ok) {
-        const uint64_t signal_value = 1;
-        if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
-            sizeof(signal_value)) {
-          CompleteItem(item.completion, StatusCode::PeerDisconnected);
-          if (item.break_session_on_failure) {
-            HLOGE("eventfd write failed while flushing response queue");
-            MarkSessionBroken();
+        if (RingCountIsOneAfterPush(session.header()->response_ring)) {
+          const uint64_t signal_value = 1;
+          if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
+              sizeof(signal_value)) {
+            CompleteItem(item.completion, StatusCode::PeerDisconnected);
+            if (item.break_session_on_failure) {
+              HLOGE("eventfd write failed while flushing response queue");
+              MarkSessionBroken();
+            }
+            continue;
           }
-          continue;
         }
       } else if (item.break_session_on_failure) {
         SharedSlotPool response_slot_pool(session.response_slot_pool_region());
@@ -453,9 +528,19 @@ struct RpcServer::Impl {
   bool DrainQueue(QueueKind kind, WorkerPool* pool) {
     bool drained = false;
     RequestRingEntry entry;
+    bool request_ring_became_not_full = false;
     while (pool->HasCapacity() && session.PopRequest(kind, &entry)) {
+      const RingCursor& cursor =
+          kind == QueueKind::HighRequest ? session.header()->high_ring : session.header()->normal_ring;
+      if (cursor.capacity != 0 && RingCount(cursor) + 1u == cursor.capacity) {
+        request_ring_became_not_full = true;
+      }
       drained = true;
       pool->Enqueue(entry);
+    }
+    if (request_ring_became_not_full) {
+      const uint64_t signal_value = 1;
+      write(session.handles().req_credit_event_fd, &signal_value, sizeof(signal_value));
     }
     return drained;
   }
@@ -467,9 +552,30 @@ struct RpcServer::Impl {
     };
 
     while (running.load()) {
+      // 有界本地队列可能让共享 request ring 暂时残留任务；当 worker 释放容量后，
+      // 下一轮 dispatcher 需要主动回看 shared ring，而不只依赖新的 eventfd 信号。
+      bool high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
+      if (!high_work) {
+        DrainQueue(QueueKind::NormalRequest, &normal_pool);
+      }
+
+      const bool high_backlogged = session.header() != nullptr &&
+                                   RingCount(session.header()->high_ring) > 0 &&
+                                   !high_pool.HasCapacity();
+      const bool normal_backlogged = session.header() != nullptr &&
+                                     RingCount(session.header()->normal_ring) > 0 &&
+                                     !normal_pool.HasCapacity();
+      if (high_backlogged) {
+        high_pool.WaitForCapacity(std::chrono::milliseconds(100));
+        continue;
+      }
+      if (!high_backlogged && normal_backlogged) {
+        normal_pool.WaitForCapacity(std::chrono::milliseconds(100));
+        continue;
+      }
+
       const int poll_result = poll(fds, 2, 100);
       uint64_t counter = 0;
-      bool high_work = false;
       if (poll_result > 0 && (fds[0].revents & POLLIN) != 0) {
         while (read(fds[0].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
@@ -479,13 +585,6 @@ struct RpcServer::Impl {
         // 高优队列一旦有活，当前轮次优先让它排空，再处理普通队列。
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        DrainQueue(QueueKind::NormalRequest, &normal_pool);
-      }
-
-      // 有界本地队列可能让共享 request ring 暂时残留任务；当 worker 释放容量后，
-      // 下一轮 dispatcher 需要主动回看 shared ring，而不只依赖新的 eventfd 信号。
-      high_work = DrainQueue(QueueKind::HighRequest, &high_pool) || high_work;
-      if (!high_work) {
         DrainQueue(QueueKind::NormalRequest, &normal_pool);
       }
     }
@@ -579,6 +678,8 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
     stats.normal_request_ring_pending = RingCount(impl_->session.header()->normal_ring);
     stats.response_ring_pending = RingCount(impl_->session.header()->response_ring);
   }
+  stats.waiting_for_response_credit =
+      impl_->response_writer_waiting_for_credit.load(std::memory_order_relaxed);
   return stats;
 }
 

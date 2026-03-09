@@ -40,6 +40,7 @@ struct RpcClientRuntimeStats {
   uint32_t high_request_ring_pending = 0;
   uint32_t normal_request_ring_pending = 0;
   uint32_t response_ring_pending = 0;
+  bool waiting_for_request_credit = false;
 };
 
 class RpcFuture {

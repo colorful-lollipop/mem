@@ -279,6 +279,12 @@ void Session::Reset() {
   if (handles_.resp_event_fd >= 0) {
     close(handles_.resp_event_fd);
   }
+  if (handles_.req_credit_event_fd >= 0) {
+    close(handles_.req_credit_event_fd);
+  }
+  if (handles_.resp_credit_event_fd >= 0) {
+    close(handles_.resp_credit_event_fd);
+  }
   mapped_size_ = 0;
   mapped_region_ = nullptr;
   header_ = nullptr;

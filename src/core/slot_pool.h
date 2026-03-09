@@ -65,6 +65,7 @@ class SlotPool {
   bool Release(uint32_t slot_index);
   SlotState GetState(uint32_t slot_index) const;
   uint32_t capacity() const;
+  uint32_t available() const;
 
  private:
   bool IsValidIndex(uint32_t slot_index) const;

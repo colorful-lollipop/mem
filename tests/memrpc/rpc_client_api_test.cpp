@@ -69,3 +69,10 @@ TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
   EXPECT_EQ(call.queue_timeout_ms, 250u);
   EXPECT_EQ(call.exec_timeout_ms, 500u);
 }
+
+TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds) {
+  MemRpc::BootstrapHandles handles;
+
+  EXPECT_EQ(handles.req_credit_event_fd, -1);
+  EXPECT_EQ(handles.resp_credit_event_fd, -1);
+}

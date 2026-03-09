@@ -26,6 +26,8 @@ TEST(BootstrapCallbackTest, InvokesEngineDeathCallback) {
   close(handles.high_req_event_fd);
   close(handles.normal_req_event_fd);
   close(handles.resp_event_fd);
+  close(handles.req_credit_event_fd);
+  close(handles.resp_credit_event_fd);
 }
 
 TEST(BootstrapCallbackTest, RestartProducesNewSessionId) {
@@ -46,10 +48,14 @@ TEST(BootstrapCallbackTest, RestartProducesNewSessionId) {
   close(first_handles.high_req_event_fd);
   close(first_handles.normal_req_event_fd);
   close(first_handles.resp_event_fd);
+  close(first_handles.req_credit_event_fd);
+  close(first_handles.resp_credit_event_fd);
   close(second_handles.shm_fd);
   close(second_handles.high_req_event_fd);
   close(second_handles.normal_req_event_fd);
   close(second_handles.resp_event_fd);
+  close(second_handles.req_credit_event_fd);
+  close(second_handles.resp_credit_event_fd);
 }
 
 TEST(BootstrapCallbackTest, CanDeliverLateDeathForSpecificSessionWithoutDroppingCurrentHandles) {
@@ -81,14 +87,20 @@ TEST(BootstrapCallbackTest, CanDeliverLateDeathForSpecificSessionWithoutDropping
   close(first_handles.high_req_event_fd);
   close(first_handles.normal_req_event_fd);
   close(first_handles.resp_event_fd);
+  close(first_handles.req_credit_event_fd);
+  close(first_handles.resp_credit_event_fd);
   close(second_handles.shm_fd);
   close(second_handles.high_req_event_fd);
   close(second_handles.normal_req_event_fd);
   close(second_handles.resp_event_fd);
+  close(second_handles.req_credit_event_fd);
+  close(second_handles.resp_credit_event_fd);
   close(latest_handles.shm_fd);
   close(latest_handles.high_req_event_fd);
   close(latest_handles.normal_req_event_fd);
   close(latest_handles.resp_event_fd);
+  close(latest_handles.req_credit_event_fd);
+  close(latest_handles.resp_credit_event_fd);
 }
 
 TEST(BootstrapCallbackTest, ConnectFailsWhenHandleDuplicationFails) {
@@ -104,4 +116,6 @@ TEST(BootstrapCallbackTest, ConnectFailsWhenHandleDuplicationFails) {
   EXPECT_EQ(handles.high_req_event_fd, -1);
   EXPECT_EQ(handles.normal_req_event_fd, -1);
   EXPECT_EQ(handles.resp_event_fd, -1);
+  EXPECT_EQ(handles.req_credit_event_fd, -1);
+  EXPECT_EQ(handles.resp_credit_event_fd, -1);
 }

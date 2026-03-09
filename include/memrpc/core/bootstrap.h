@@ -16,6 +16,8 @@ struct BootstrapHandles {
   int high_req_event_fd = -1;
   int normal_req_event_fd = -1;
   int resp_event_fd = -1;
+  int req_credit_event_fd = -1;
+  int resp_credit_event_fd = -1;
   uint32_t protocol_version = 0;
   uint64_t session_id = 0;
 };

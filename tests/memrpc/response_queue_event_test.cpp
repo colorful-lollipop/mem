@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -29,6 +31,28 @@ bool WaitForValue(const std::atomic<int>& value, int expected, int timeout_ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return value.load() == expected;
+}
+
+bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (condition()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return condition();
+}
+
+uint64_t DrainEventFdCounter(int fd) {
+  uint64_t counter = 0;
+  const ssize_t rc = read(fd, &counter, sizeof(counter));
+  if (rc == static_cast<ssize_t>(sizeof(counter))) {
+    return counter;
+  }
+  EXPECT_TRUE(rc < 0 && errno == EAGAIN);
+  return 0;
 }
 
 class RingTraceRecorder {
@@ -102,6 +126,148 @@ TEST(ResponseQueueEventTest, EventDoesNotRequirePendingRequest) {
   EXPECT_EQ(received_payload, event.payload);
 
   client.Shutdown();
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, ResponseEventFdSignalsOnlyOnEmptyToNonEmptyTransition) {
+  memrpc::DemoBootstrapConfig config;
+  config.response_ring_size = 4;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles observer_handles = bootstrap->server_handles();
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(observer_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent first;
+  first.event_domain = 1;
+  first.event_type = 11;
+  first.payload = {1};
+  memrpc::RpcEvent second = first;
+  second.event_type = 12;
+  second.payload = {2};
+
+  ASSERT_EQ(server.PublishEvent(first), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.PublishEvent(second), memrpc::StatusCode::Ok);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&observer] { return memrpc::RingCount(observer.header()->response_ring) == 2; }, 200));
+  EXPECT_EQ(DrainEventFdCounter(observer.handles().resp_event_fd), 1u);
+
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, ClientSignalsResponseCreditWhenFullResponseQueueStartsDraining) {
+  memrpc::DemoBootstrapConfig config;
+  config.response_ring_size = 2;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(bootstrap->server_handles(), memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent first;
+  first.event_domain = 9;
+  first.event_type = 1;
+  first.payload = {0x11};
+  memrpc::RpcEvent second = first;
+  second.event_type = 2;
+  second.payload = {0x22};
+
+  ASSERT_EQ(server.PublishEvent(first), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.PublishEvent(second), memrpc::StatusCode::Ok);
+  ASSERT_TRUE(WaitForCondition(
+      [&observer] { return memrpc::RingCount(observer.header()->response_ring) == 2; }, 200));
+
+  memrpc::RpcClient client(bootstrap);
+  std::atomic<int> event_count{0};
+  client.SetEventCallback([&](const memrpc::RpcEvent&) { event_count.fetch_add(1); });
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  ASSERT_TRUE(WaitForValue(event_count, 2, 500));
+  EXPECT_EQ(DrainEventFdCounter(observer.handles().resp_credit_event_fd), 1u);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, ResponseWriterConsumesManualResponseCreditWakeup) {
+  memrpc::DemoBootstrapConfig config;
+  config.response_ring_size = 1;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::Session client_session;
+  memrpc::BootstrapHandles client_handles;
+  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent first;
+  first.event_domain = 3;
+  first.event_type = 1;
+  first.payload = {0x41};
+  memrpc::RpcEvent second = first;
+  second.event_type = 2;
+  second.payload = {0x42};
+
+  ASSERT_EQ(server.PublishEvent(first), memrpc::StatusCode::Ok);
+
+  std::atomic<bool> second_done{false};
+  std::thread publisher([&] {
+    EXPECT_EQ(server.PublishEvent(second), memrpc::StatusCode::Ok);
+    second_done.store(true);
+  });
+
+  ASSERT_TRUE(WaitForCondition(
+      [&server] { return server.GetRuntimeStats().waiting_for_response_credit; }, 200));
+
+  memrpc::ResponseRingEntry entry;
+  ASSERT_TRUE(client_session.PopResponse(&entry));
+  memrpc::SharedSlotPool response_slot_pool(client_session.response_slot_pool_region());
+  ASSERT_TRUE(response_slot_pool.valid());
+  ASSERT_TRUE(response_slot_pool.Release(entry.slot_index));
+
+  const uint64_t signal_value = 1;
+  ASSERT_EQ(write(client_session.handles().resp_credit_event_fd, &signal_value,
+                  sizeof(signal_value)),
+            static_cast<ssize_t>(sizeof(signal_value)));
+
+  ASSERT_TRUE(WaitForCondition([&second_done] { return second_done.load(); }, 200));
+  publisher.join();
+
+  EXPECT_EQ(DrainEventFdCounter(client_session.handles().resp_credit_event_fd), 0u);
+
   server.Stop();
 }
 

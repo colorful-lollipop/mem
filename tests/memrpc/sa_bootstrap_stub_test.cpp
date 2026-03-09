@@ -23,6 +23,8 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsAfterStartEngine) {
   EXPECT_GE(handles.high_req_event_fd, 0);
   EXPECT_GE(handles.normal_req_event_fd, 0);
   EXPECT_GE(handles.resp_event_fd, 0);
+  EXPECT_GE(handles.req_credit_event_fd, 0);
+  EXPECT_GE(handles.resp_credit_event_fd, 0);
   EXPECT_EQ(handles.protocol_version, memrpc::kProtocolVersion);
   EXPECT_EQ(channel.NotifyPeerRestarted(), memrpc::StatusCode::Ok);
 
@@ -30,6 +32,8 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsAfterStartEngine) {
   close(handles.high_req_event_fd);
   close(handles.normal_req_event_fd);
   close(handles.resp_event_fd);
+  close(handles.req_credit_event_fd);
+  close(handles.resp_credit_event_fd);
 }
 
 TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
@@ -41,10 +45,14 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   EXPECT_GE(handles.high_req_event_fd, 0);
   EXPECT_GE(handles.normal_req_event_fd, 0);
   EXPECT_GE(handles.resp_event_fd, 0);
+  EXPECT_GE(handles.req_credit_event_fd, 0);
+  EXPECT_GE(handles.resp_credit_event_fd, 0);
   EXPECT_EQ(handles.protocol_version, memrpc::kProtocolVersion);
 
   close(handles.shm_fd);
   close(handles.high_req_event_fd);
   close(handles.normal_req_event_fd);
   close(handles.resp_event_fd);
+  close(handles.req_credit_event_fd);
+  close(handles.resp_credit_event_fd);
 }

@@ -71,6 +71,25 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target,
     CloseFd(&target->normal_req_event_fd);
     return false;
   }
+  target->req_credit_event_fd =
+      DuplicateFdWithTestHook(source.req_credit_event_fd, remaining_successes_before_failure);
+  if (target->req_credit_event_fd < 0) {
+    CloseFd(&target->shm_fd);
+    CloseFd(&target->high_req_event_fd);
+    CloseFd(&target->normal_req_event_fd);
+    CloseFd(&target->resp_event_fd);
+    return false;
+  }
+  target->resp_credit_event_fd =
+      DuplicateFdWithTestHook(source.resp_credit_event_fd, remaining_successes_before_failure);
+  if (target->resp_credit_event_fd < 0) {
+    CloseFd(&target->shm_fd);
+    CloseFd(&target->high_req_event_fd);
+    CloseFd(&target->normal_req_event_fd);
+    CloseFd(&target->resp_event_fd);
+    CloseFd(&target->req_credit_event_fd);
+    return false;
+  }
   target->protocol_version = source.protocol_version;
   target->session_id = source.session_id;
   return true;
@@ -102,6 +121,8 @@ struct PosixDemoBootstrapChannel::Impl {
     CloseFd(&handles.high_req_event_fd);
     CloseFd(&handles.normal_req_event_fd);
     CloseFd(&handles.resp_event_fd);
+    CloseFd(&handles.req_credit_event_fd);
+    CloseFd(&handles.resp_credit_event_fd);
     handles.protocol_version = 0;
     handles.session_id = 0;
     initialized = false;
@@ -208,11 +229,15 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   impl_->handles.high_req_event_fd = eventfd(0, EFD_NONBLOCK);
   impl_->handles.normal_req_event_fd = eventfd(0, EFD_NONBLOCK);
   impl_->handles.resp_event_fd = eventfd(0, EFD_NONBLOCK);
+  impl_->handles.req_credit_event_fd = eventfd(0, EFD_NONBLOCK);
+  impl_->handles.resp_credit_event_fd = eventfd(0, EFD_NONBLOCK);
   impl_->handles.protocol_version = kProtocolVersion;
   impl_->handles.session_id = session_id;
   impl_->initialized = impl_->handles.high_req_event_fd >= 0 &&
                        impl_->handles.normal_req_event_fd >= 0 &&
-                       impl_->handles.resp_event_fd >= 0;
+                       impl_->handles.resp_event_fd >= 0 &&
+                       impl_->handles.req_credit_event_fd >= 0 &&
+                       impl_->handles.resp_credit_event_fd >= 0;
   if (!impl_->initialized) {
     HLOGE("eventfd initialization failed");
     impl_->ResetHandles();

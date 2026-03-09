@@ -48,6 +48,8 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   close(corrupt_handles.high_req_event_fd);
   close(corrupt_handles.normal_req_event_fd);
   close(corrupt_handles.resp_event_fd);
+  close(corrupt_handles.req_credit_event_fd);
+  close(corrupt_handles.resp_credit_event_fd);
 
   memrpc::BootstrapHandles attach_handles;
   ASSERT_EQ(bootstrap->Connect(&attach_handles), memrpc::StatusCode::Ok);
@@ -244,4 +246,25 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   ASSERT_NE(response_slot, nullptr);
   EXPECT_EQ(response_slot->runtime.request_id, 0u);
   EXPECT_EQ(response_slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
+}
+
+TEST(SessionTest, AttachPreservesCreditEventFds) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles client_handles;
+  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles server_handles;
+  ASSERT_EQ(bootstrap->Connect(&server_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session client_session;
+  ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
+  memrpc::Session server_session;
+  ASSERT_EQ(server_session.Attach(server_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  EXPECT_GE(client_session.handles().req_credit_event_fd, 0);
+  EXPECT_GE(client_session.handles().resp_credit_event_fd, 0);
+  EXPECT_GE(server_session.handles().req_credit_event_fd, 0);
+  EXPECT_GE(server_session.handles().resp_credit_event_fd, 0);
 }

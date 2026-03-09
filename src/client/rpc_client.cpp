@@ -32,6 +32,34 @@ bool AdmissionTimedOut(std::chrono::steady_clock::time_point deadline) {
   return std::chrono::steady_clock::now() >= deadline;
 }
 
+bool RingCountIsOneAfterPush(const RingCursor& cursor) {
+  const uint32_t tail = __atomic_load_n(&cursor.tail, __ATOMIC_ACQUIRE);
+  const uint32_t head = __atomic_load_n(&cursor.head, __ATOMIC_ACQUIRE);
+  return tail - head == 1u;
+}
+
+int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
+  const auto remaining =
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now())
+          .count();
+  return remaining > 0 ? remaining : 0;
+}
+
+bool ResponseRingBecameNotFull(const SharedMemoryHeader* header) {
+  if (header == nullptr || header->response_ring.capacity == 0) {
+    return false;
+  }
+  return RingCount(header->response_ring) + 1u == header->response_ring.capacity;
+}
+
+void SignalEventFdIfNeeded(int fd, bool should_signal) {
+  if (!should_signal || fd < 0) {
+    return;
+  }
+  const uint64_t signal_value = 1;
+  write(fd, &signal_value, sizeof(signal_value));
+}
+
 }  // namespace
 
 struct RpcFuture::State {
@@ -102,6 +130,7 @@ struct RpcClient::Impl {
   std::deque<PendingSubmit> submit_queue;
   std::thread submit_thread;
   std::atomic<bool> submit_running{false};
+  std::atomic<bool> submitter_waiting_for_credit{false};
   std::thread dispatcher_thread;
   std::atomic<bool> dispatcher_running{false};
   std::atomic<bool> shutting_down{false};
@@ -144,6 +173,7 @@ struct RpcClient::Impl {
 
   void StopSubmitter() {
     submit_running.store(false);
+    SignalEventFdIfNeeded(session.handles().req_credit_event_fd, true);
     submit_cv.notify_all();
     if (submit_thread.joinable() && std::this_thread::get_id() != submit_thread.get_id()) {
       submit_thread.join();
@@ -262,6 +292,49 @@ struct RpcClient::Impl {
     return session_dead || current_session_id == 0 || current_session_id != pending_submit.session_id;
   }
 
+  bool WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
+    const int fd = session.handles().req_credit_event_fd;
+    if (fd < 0) {
+      return false;
+    }
+    pollfd poll_fd{fd, POLLIN, 0};
+    submitter_waiting_for_credit.store(true);
+    while (submit_running.load() && !shutting_down.load()) {
+      const int64_t remaining_ms = RemainingTimeoutMs(deadline);
+      if (remaining_ms <= 0) {
+        submitter_waiting_for_credit.store(false);
+        return false;
+      }
+      const int poll_result =
+          poll(&poll_fd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
+      if (!submit_running.load() || shutting_down.load()) {
+        submitter_waiting_for_credit.store(false);
+        return false;
+      }
+      if (poll_result <= 0) {
+        continue;
+      }
+      if ((poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        submitter_waiting_for_credit.store(false);
+        return false;
+      }
+      if ((poll_fd.revents & POLLIN) == 0) {
+        continue;
+      }
+      uint64_t counter = 0;
+      bool drained = false;
+      while (read(fd, &counter, sizeof(counter)) == sizeof(counter)) {
+        drained = true;
+      }
+      if (drained) {
+        submitter_waiting_for_credit.store(false);
+        return true;
+      }
+    }
+    submitter_waiting_for_credit.store(false);
+    return false;
+  }
+
   void SubmitLoop() {
     while (submit_running.load()) {
       PendingSubmit pending_submit;
@@ -304,6 +377,7 @@ struct RpcClient::Impl {
       }
 
       bool should_retry_admission = false;
+      bool should_wait_for_request_credit = false;
       StatusCode retry_status = StatusCode::QueueFull;
       {
         std::lock_guard<std::mutex> session_lock(session_mutex);
@@ -313,6 +387,7 @@ struct RpcClient::Impl {
           const auto slot = slot_pool->Reserve(pending_submit.call.priority);
           if (!slot.has_value()) {
             should_retry_admission = true;
+            should_wait_for_request_credit = true;
           } else {
             SlotPayload* payload = session.slot_payload(*slot);
             uint8_t* request_payload = session.slot_request_bytes(*slot);
@@ -365,6 +440,7 @@ struct RpcClient::Impl {
               slot_pool->Release(*slot);
               if (queue_status == StatusCode::QueueFull) {
                 should_retry_admission = true;
+                should_wait_for_request_credit = true;
                 retry_status = queue_status;
               } else if (queue_status == StatusCode::PeerDisconnected) {
                 should_retry_admission = true;
@@ -373,14 +449,18 @@ struct RpcClient::Impl {
                 return;
               }
             } else {
-              const uint64_t signal_value = 1;
-              const int req_fd = high_priority ? session.handles().high_req_event_fd
-                                               : session.handles().normal_req_event_fd;
-              if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
-                std::lock_guard<std::mutex> pending_lock(pending_mutex);
-                pending_calls.erase(pending_submit.request_id);
-                slot_pool->Release(*slot);
-                ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+              const RingCursor& cursor =
+                  high_priority ? session.header()->high_ring : session.header()->normal_ring;
+              if (RingCountIsOneAfterPush(cursor)) {
+                const uint64_t signal_value = 1;
+                const int req_fd = high_priority ? session.handles().high_req_event_fd
+                                                 : session.handles().normal_req_event_fd;
+                if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
+                  std::lock_guard<std::mutex> pending_lock(pending_mutex);
+                  pending_calls.erase(pending_submit.request_id);
+                  slot_pool->Release(*slot);
+                  ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+                }
               }
               return;
             }
@@ -396,13 +476,16 @@ struct RpcClient::Impl {
         ResolveFuture(pending_submit.future, retry_status);
         return;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (should_wait_for_request_credit && !WaitForRequestCredit(admission_deadline)) {
+        ResolveFuture(pending_submit.future, retry_status);
+        return;
+      }
     }
 
     ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
   }
 
-  void CompleteRequest(const ResponseRingEntry& entry) {
+  void CompleteRequest(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
     if (slot_pool == nullptr) {
       return;
     }
@@ -447,15 +530,20 @@ struct RpcClient::Impl {
       if (request_slot != nullptr) {
         std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
       }
+      const bool request_slot_became_available = slot_pool->available() == 0;
       slot_pool->Release(response_slot->response.request_slot_index);
+      SignalEventFdIfNeeded(session.handles().req_credit_event_fd, request_slot_became_available);
       std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     }
+    const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(entry.slot_index);
+    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+                          response_ring_became_not_full || response_slot_became_available);
     std::lock_guard<std::mutex> lock(pending_mutex);
     pending_calls.erase(entry.request_id);
   }
 
-  void DeliverEvent(const ResponseRingEntry& entry) {
+  void DeliverEvent(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
     SharedSlotPool response_slot_pool(session.response_slot_pool_region());
     RpcEvent event;
     event.event_domain = entry.event_domain;
@@ -466,7 +554,10 @@ struct RpcClient::Impl {
     if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
         entry.result_size > session.header()->max_response_bytes) {
       HLOGW("drop invalid event, size=%{public}u", entry.result_size);
+      const bool response_slot_became_available = response_slot_pool.available() == 0;
       response_slot_pool.Release(entry.slot_index);
+      SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+                            response_ring_became_not_full || response_slot_became_available);
       return;
     }
     event.payload.assign(response_bytes, response_bytes + entry.result_size);
@@ -482,7 +573,10 @@ struct RpcClient::Impl {
     response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
     response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
+    const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(entry.slot_index);
+    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+                          response_ring_became_not_full || response_slot_became_available);
   }
 
   void ResponseLoop() {
@@ -512,12 +606,13 @@ struct RpcClient::Impl {
       }
       ResponseRingEntry entry;
       while (session.PopResponse(&entry)) {
+        const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
         // 同一条 response ring 同时承载 reply 和 event，通过 message_kind 分流。
         if (entry.message_kind == ResponseMessageKind::Event) {
-          DeliverEvent(entry);
+          DeliverEvent(entry, response_ring_became_not_full);
           continue;
         }
-        CompleteRequest(entry);
+        CompleteRequest(entry, response_ring_became_not_full);
       }
       if (session.state() == Session::SessionState::Broken) {
         HandleEngineDeath(current_session_id);
@@ -629,6 +724,8 @@ RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
       stats.response_ring_pending = RingCount(impl_->session.header()->response_ring);
     }
   }
+  stats.waiting_for_request_credit =
+      impl_->submitter_waiting_for_credit.load(std::memory_order_relaxed);
   return stats;
 }
 
