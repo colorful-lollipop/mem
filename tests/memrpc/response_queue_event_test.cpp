@@ -142,3 +142,49 @@ TEST(ResponseQueueEventTest, EventRespectsConfiguredResponseLimit) {
   client.Shutdown();
   server.Stop();
 }
+
+TEST(ResponseQueueEventTest, InterleavedRepliesAndEventsPreserveBothCounts) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [&server](const memrpc::RpcServerCall& call,
+                                   memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           memrpc::RpcEvent event;
+                           event.event_domain = 9;
+                           event.event_type = static_cast<uint32_t>(call.payload.front());
+                           event.payload = call.payload;
+                           ASSERT_EQ(server.PublishEvent(event), memrpc::StatusCode::Ok);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  std::atomic<int> event_count{0};
+  client.SetEventCallback([&](const memrpc::RpcEvent& event) {
+    EXPECT_EQ(event.event_domain, 9u);
+    ++event_count;
+  });
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  constexpr int kRequestCount = 16;
+  for (int i = 0; i < kRequestCount; ++i) {
+    memrpc::RpcCall call;
+    call.opcode = memrpc::Opcode::ScanFile;
+    call.payload = {static_cast<uint8_t>(i)};
+
+    memrpc::RpcReply reply;
+    ASSERT_EQ(client.InvokeAsync(call).Wait(&reply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(reply.payload, call.payload);
+  }
+
+  ASSERT_TRUE(WaitForValue(event_count, kRequestCount, 500));
+
+  client.Shutdown();
+  server.Stop();
+}

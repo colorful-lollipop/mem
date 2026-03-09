@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -50,6 +51,54 @@ TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
   EXPECT_EQ(sync_reply.payload, call.payload);
   EXPECT_EQ(sync_reply.engine_code, 7);
   EXPECT_EQ(sync_reply.detail_code, 9);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequests) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  std::vector<std::thread> threads;
+  std::mutex results_mutex;
+  std::vector<int> mismatches;
+  constexpr int kRequestCount = 32;
+
+  for (int i = 0; i < kRequestCount; ++i) {
+    threads.emplace_back([&client, &results_mutex, &mismatches, i] {
+      memrpc::RpcCall call;
+      call.opcode = memrpc::Opcode::ScanFile;
+      call.payload = {static_cast<uint8_t>(i), static_cast<uint8_t>(i + 1)};
+
+      memrpc::RpcReply reply;
+      const memrpc::StatusCode status = client.InvokeAsync(call).Wait(&reply);
+      std::lock_guard<std::mutex> lock(results_mutex);
+      if (status != memrpc::StatusCode::Ok || reply.payload != call.payload) {
+        mismatches.push_back(i);
+      }
+    });
+  }
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  EXPECT_TRUE(mismatches.empty());
 
   client.Shutdown();
   server.Stop();
