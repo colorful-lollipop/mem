@@ -284,8 +284,6 @@ struct RpcServer::Impl {
         const uint64_t signal_value = 1;
         if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
             sizeof(signal_value)) {
-          SharedSlotPool response_slot_pool(session.response_slot_pool_region());
-          response_slot_pool.Release(*response_slot_index);
           CompleteItem(item.completion, StatusCode::PeerDisconnected);
           if (item.break_session_on_failure) {
             HLOGE("eventfd write failed while flushing response queue");

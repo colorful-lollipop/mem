@@ -2,10 +2,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "core/session.h"
@@ -339,5 +341,61 @@ TEST(ResponseQueueEventTest, EventCallbackSeesReadyResponseSlotBeforeRelease) {
   publisher.join();
 
   client.Shutdown();
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, PublishedEventKeepsResponseSlotOwnedWhenNotifyWriteFails) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 2,
+          .normal_ring_size = 2,
+          .response_ring_size = 2,
+          .slot_count = 2,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles fill_handles = bootstrap->server_handles();
+  const uint64_t saturated_counter = UINT64_MAX - 1;
+  ASSERT_EQ(write(fill_handles.resp_event_fd, &saturated_counter, sizeof(saturated_counter)),
+            static_cast<ssize_t>(sizeof(saturated_counter)));
+
+  memrpc::RpcEvent event;
+  event.event_domain = 55;
+  event.event_type = 66;
+  event.payload = {0x41, 0x42, 0x43};
+  EXPECT_EQ(server.PublishEvent(event), memrpc::StatusCode::PeerDisconnected);
+
+  memrpc::BootstrapHandles observer_handles = bootstrap->server_handles();
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(observer_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::SharedSlotPool response_slot_pool(observer.response_slot_pool_region());
+  ASSERT_TRUE(response_slot_pool.valid());
+  EXPECT_EQ(response_slot_pool.available(), observer.header()->response_ring_size - 1);
+
+  memrpc::ResponseRingEntry entry;
+  ASSERT_TRUE(observer.PopResponse(&entry));
+  const memrpc::ResponseSlotPayload* slot = observer.response_slot_payload(entry.slot_index);
+  ASSERT_NE(slot, nullptr);
+  EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Ready);
+  EXPECT_EQ(slot->response.payload_size, event.payload.size());
+
+  close(fill_handles.shm_fd);
+  close(fill_handles.high_req_event_fd);
+  close(fill_handles.normal_req_event_fd);
+  close(fill_handles.resp_event_fd);
+
   server.Stop();
 }
