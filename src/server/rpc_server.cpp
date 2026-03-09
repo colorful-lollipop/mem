@@ -1,4 +1,4 @@
-#include "memrpc/rpc_server.h"
+#include "memrpc/server/rpc_server.h"
 
 #include <algorithm>
 #include <poll.h>

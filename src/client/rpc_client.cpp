@@ -1,4 +1,4 @@
-#include "memrpc/rpc_client.h"
+#include "memrpc/client/rpc_client.h"
 
 #include <poll.h>
 #include <unistd.h>

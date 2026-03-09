@@ -1,4 +1,4 @@
-#include "memrpc/demo_bootstrap.h"
+#include "memrpc/client/demo_bootstrap.h"
 
 #include <fcntl.h>
 #include <sys/eventfd.h>

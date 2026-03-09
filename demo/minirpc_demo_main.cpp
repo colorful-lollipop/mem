@@ -8,8 +8,8 @@
 
 #include "apps/minirpc/child/minirpc_service.h"
 #include "apps/minirpc/parent/minirpc_client.h"
-#include "memrpc/demo_bootstrap.h"
-#include "memrpc/rpc_server.h"
+#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 namespace OHOS::Security::VirusProtectionService {
 namespace {

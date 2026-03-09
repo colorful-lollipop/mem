@@ -10,7 +10,7 @@
 #include <thread>
 
 #include "core/session.h"
-#include "memrpc/demo_bootstrap.h"
+#include "memrpc/client/demo_bootstrap.h"
 
 namespace {
 

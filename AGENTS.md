@@ -29,6 +29,10 @@ Use CMake as the source of truth during active development.
 - Variables, parameters, and members use `lowerCamelCase`: `requestId`, `eventType`
 - Constants and macros use `ALL_CAPS_WITH_UNDERSCORES`: `DEFAULT_TIMEOUT_MS`
 - Place new code under `OHOS::Security::VirusProtectionService`; framework code should live under `...::MemRpc`
+- For framework headers, only use layered public include paths:
+  - `memrpc/core/*`
+  - `memrpc/client/*`
+  - `memrpc/server/*`
 
 New code must follow these rules. Older code may be cleaned up opportunistically when touched.
 

@@ -3,9 +3,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "memrpc/bootstrap.h"
-#include "memrpc/rpc_client.h"
-#include "memrpc/rpc_server.h"
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/core/bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
 

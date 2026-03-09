@@ -115,3 +115,23 @@ TEST(BuildConfigTest, LegacyArchiveHasDedicatedReadme) {
   EXPECT_NE(content.find("legacy"), std::string::npos);
   EXPECT_NE(content.find("不纳入主构建"), std::string::npos);
 }
+
+TEST(BuildConfigTest, TopLevelMemrpcForwardingHeadersAreNotPartOfMainline) {
+  const char* kLegacyHeaders[] = {
+      "/root/code/demo/mem/include/memrpc/bootstrap.h",
+      "/root/code/demo/mem/include/memrpc/types.h",
+      "/root/code/demo/mem/include/memrpc/client.h",
+      "/root/code/demo/mem/include/memrpc/demo_bootstrap.h",
+      "/root/code/demo/mem/include/memrpc/sa_bootstrap.h",
+      "/root/code/demo/mem/include/memrpc/handler.h",
+      "/root/code/demo/mem/include/memrpc/rpc_client.h",
+      "/root/code/demo/mem/include/memrpc/rpc_server.h",
+      "/root/code/demo/mem/include/memrpc/server.h",
+      nullptr,
+  };
+
+  for (const char** path = kLegacyHeaders; *path != nullptr; ++path) {
+    std::ifstream stream(*path);
+    EXPECT_FALSE(stream.is_open()) << *path << " should be removed from mainline";
+  }
+}

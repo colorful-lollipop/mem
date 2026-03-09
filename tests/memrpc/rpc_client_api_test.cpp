@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
-#include "memrpc/bootstrap.h"
-#include "memrpc/rpc_client.h"
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/core/bootstrap.h"
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
 

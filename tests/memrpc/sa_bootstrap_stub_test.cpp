@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include "core/protocol.h"
-#include "memrpc/sa_bootstrap.h"
+#include "memrpc/client/sa_bootstrap.h"
 
 TEST(SaBootstrapStubTest, DefaultConfigIsStable) {
   const memrpc::SaBootstrapConfig config;

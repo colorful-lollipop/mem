@@ -1,8 +1,8 @@
-#include "memrpc/sa_bootstrap.h"
+#include "memrpc/client/sa_bootstrap.h"
 
 #include <utility>
 
-#include "memrpc/demo_bootstrap.h"
+#include "memrpc/client/demo_bootstrap.h"
 
 namespace memrpc {
 

@@ -44,6 +44,12 @@
 - 响应和事件统一走响应队列
 - 单条响应/事件 payload 上限为 `1KB`
 
+框架头文件使用也统一为：
+
+- `memrpc/core/*`
+- `memrpc/client/*`
+- `memrpc/server/*`
+
 ## 当前样板
 
 当前仓库里已经有一个最小样板：

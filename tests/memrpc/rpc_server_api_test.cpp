@@ -3,8 +3,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "memrpc/handler.h"
-#include "memrpc/rpc_server.h"
+#include "memrpc/server/handler.h"
+#include "memrpc/server/rpc_server.h"
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
 

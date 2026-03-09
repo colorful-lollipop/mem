@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "memrpc/types.h"
+#include "memrpc/core/types.h"
 
 TEST(TypesTest, ScanOptionsDefaultsToNormalPriority) {
   const memrpc::ScanOptions options;

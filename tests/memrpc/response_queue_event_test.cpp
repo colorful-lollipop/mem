@@ -6,10 +6,10 @@
 #include <thread>
 #include <vector>
 
-#include "memrpc/rpc_client.h"
-#include "memrpc/rpc_server.h"
-#include "memrpc/demo_bootstrap.h"
-#include "memrpc/sa_bootstrap.h"
+#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/client/sa_bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 namespace {
 

@@ -2,7 +2,7 @@
 
 #include <atomic>
 
-#include "memrpc/sa_bootstrap.h"
+#include "memrpc/client/sa_bootstrap.h"
 
 TEST(BootstrapCallbackTest, InvokesEngineDeathCallback) {
   memrpc::SaBootstrapChannel channel;

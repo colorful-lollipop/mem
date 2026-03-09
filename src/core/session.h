@@ -5,8 +5,8 @@
 
 #include "core/protocol.h"
 #include "core/shm_layout.h"
-#include "memrpc/bootstrap.h"
-#include "memrpc/types.h"
+#include "memrpc/core/bootstrap.h"
+#include "memrpc/core/types.h"
 
 namespace memrpc {
 

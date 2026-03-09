@@ -3,9 +3,9 @@
 #include <memory>
 #include <vector>
 
-#include "memrpc/rpc_client.h"
-#include "memrpc/rpc_server.h"
-#include "memrpc/sa_bootstrap.h"
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/client/sa_bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();

@@ -5,9 +5,7 @@
 
 #include "apps/minirpc/common/minirpc_types.h"
 #include "apps/minirpc/parent/minirpc_client.h"
-#include "memrpc/client.h"
 #include "memrpc/client/rpc_client.h"
-#include "memrpc/server.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
@@ -33,9 +31,4 @@ TEST(FrameworkSplitHeadersTest, MainlineHeadersDoNotDependOnLegacyCompatPaths) {
   std::string minirpcContent((std::istreambuf_iterator<char>(minirpcHeader)),
                              std::istreambuf_iterator<char>());
   EXPECT_EQ(minirpcContent.find("vps_demo"), std::string::npos);
-}
-
-TEST(FrameworkSplitHeadersTest, TopLevelClientAndServerHeadersFollowMainlineTypes) {
-  EXPECT_TRUE((std::is_same_v<MemRpc::RpcClient, ::memrpc::RpcClient>));
-  EXPECT_TRUE((std::is_same_v<MemRpc::RpcServer, ::memrpc::RpcServer>));
 }
