@@ -14,8 +14,11 @@ enum class Priority {
 };
 
 struct ScanOptions {
+  // priority 决定请求进入高优或普通请求队列。
   Priority priority = Priority::Normal;
+  // queue_timeout_ms 是请求在服务端排队阶段允许等待的最长时间。
   uint32_t queue_timeout_ms = 1000;
+  // exec_timeout_ms 是 handler 实际执行阶段允许消耗的最长时间。
   uint32_t exec_timeout_ms = 30000;
   uint32_t flags = 0;
 };
@@ -65,6 +68,7 @@ struct ScanBehaviorResult {
 };
 
 struct RpcEvent {
+  // event_domain/event_type 用于应用层自行划分事件命名空间。
   uint32_t event_domain = 0;
   uint32_t event_type = 0;
   uint32_t flags = 0;

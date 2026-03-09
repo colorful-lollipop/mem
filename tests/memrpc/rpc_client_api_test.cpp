@@ -49,9 +49,21 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   MemRpc::RpcReply reply;
   EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
   EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
+  EXPECT_EQ(call.admission_timeout_ms, 1000u);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
 
   auto future = client.InvokeAsync(call);
   EXPECT_TRUE(future.IsReady());
   EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+}
+
+TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
+  MemRpc::RpcCall call;
+  call.admission_timeout_ms = 0;
+  call.queue_timeout_ms = 250;
+  call.exec_timeout_ms = 500;
+
+  EXPECT_EQ(call.admission_timeout_ms, 0u);
+  EXPECT_EQ(call.queue_timeout_ms, 250u);
+  EXPECT_EQ(call.exec_timeout_ms, 500u);
 }

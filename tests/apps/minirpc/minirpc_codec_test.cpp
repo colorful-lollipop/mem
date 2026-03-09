@@ -12,10 +12,10 @@ TEST(MiniRpcCodecTest, EchoRoundTrips) {
   request.text = "hello";
 
   std::vector<uint8_t> bytes;
-  ASSERT_TRUE(EncodeEchoRequest(request, &bytes));
+  ASSERT_TRUE(EncodeMessage<EchoRequest>(request, &bytes));
 
   EchoRequest decoded;
-  ASSERT_TRUE(DecodeEchoRequest(bytes, &decoded));
+  ASSERT_TRUE(DecodeMessage<EchoRequest>(bytes, &decoded));
   EXPECT_EQ(decoded.text, request.text);
 }
 
@@ -25,10 +25,10 @@ TEST(MiniRpcCodecTest, AddRoundTrips) {
   request.rhs = 11;
 
   std::vector<uint8_t> bytes;
-  ASSERT_TRUE(EncodeAddRequest(request, &bytes));
+  ASSERT_TRUE(EncodeMessage<AddRequest>(request, &bytes));
 
   AddRequest decoded;
-  ASSERT_TRUE(DecodeAddRequest(bytes, &decoded));
+  ASSERT_TRUE(DecodeMessage<AddRequest>(bytes, &decoded));
   EXPECT_EQ(decoded.lhs, request.lhs);
   EXPECT_EQ(decoded.rhs, request.rhs);
 }
@@ -38,10 +38,10 @@ TEST(MiniRpcCodecTest, SleepRoundTrips) {
   sleep.delay_ms = 250;
 
   std::vector<uint8_t> sleep_bytes;
-  ASSERT_TRUE(EncodeSleepRequest(sleep, &sleep_bytes));
+  ASSERT_TRUE(EncodeMessage<SleepRequest>(sleep, &sleep_bytes));
 
   SleepRequest decoded_sleep;
-  ASSERT_TRUE(DecodeSleepRequest(sleep_bytes, &decoded_sleep));
+  ASSERT_TRUE(DecodeMessage<SleepRequest>(sleep_bytes, &decoded_sleep));
   EXPECT_EQ(decoded_sleep.delay_ms, sleep.delay_ms);
 }
 

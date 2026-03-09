@@ -36,11 +36,11 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
                               return;
                             }
                             EchoRequest request;
-                            if (!DecodeEchoRequest(call.payload, &request)) {
+                            if (!DecodeMessage<EchoRequest>(call.payload, &request)) {
                               reply->status = MemRpc::StatusCode::ProtocolMismatch;
                               return;
                             }
-                            EncodeEchoReply(Echo(request), &reply->payload);
+                            EncodeMessage<EchoReply>(Echo(request), &reply->payload);
                           });
 
   server->RegisterHandler(MemRpc::Opcode::MiniAdd,
@@ -49,11 +49,11 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
                               return;
                             }
                             AddRequest request;
-                            if (!DecodeAddRequest(call.payload, &request)) {
+                            if (!DecodeMessage<AddRequest>(call.payload, &request)) {
                               reply->status = MemRpc::StatusCode::ProtocolMismatch;
                               return;
                             }
-                            EncodeAddReply(Add(request), &reply->payload);
+                            EncodeMessage<AddReply>(Add(request), &reply->payload);
                           });
 
   server->RegisterHandler(
@@ -63,11 +63,11 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
           return;
         }
         SleepRequest request;
-        if (!DecodeSleepRequest(call.payload, &request)) {
+        if (!DecodeMessage<SleepRequest>(call.payload, &request)) {
           reply->status = MemRpc::StatusCode::ProtocolMismatch;
           return;
         }
-        EncodeSleepReply(Sleep(request), &reply->payload);
+        EncodeMessage<SleepReply>(Sleep(request), &reply->payload);
       });
 
   // Test-only fault injection path for verifying client recovery.

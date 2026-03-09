@@ -29,11 +29,6 @@ class MiniRpcAsyncClient {
   void Shutdown();
 
  private:
-  MemRpc::RpcCall MakeCall(MemRpc::Opcode opcode,
-                           const std::vector<uint8_t>& payload,
-                           MemRpc::Priority priority = MemRpc::Priority::Normal,
-                           uint32_t exec_timeout_ms = 30000) const;
-
   MemRpc::RpcClient client_;
 };
 

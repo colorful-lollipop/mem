@@ -47,7 +47,7 @@ TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
   MemRpc::RpcReply echo_rpc_reply;
   ASSERT_EQ(future.Wait(&echo_rpc_reply), MemRpc::StatusCode::Ok);
   EchoReply echo_reply;
-  ASSERT_TRUE(DecodeEchoReply(echo_rpc_reply.payload, &echo_reply));
+  ASSERT_TRUE(DecodeMessage<EchoReply>(echo_rpc_reply.payload, &echo_reply));
   EXPECT_EQ(echo_reply.text, "ping");
 
   async_client.Shutdown();
@@ -110,7 +110,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   SleepRequest sleep_request;
   sleep_request.delay_ms = 1000;
   std::vector<uint8_t> sleep_payload;
-  ASSERT_TRUE(EncodeSleepRequest(sleep_request, &sleep_payload));
+  ASSERT_TRUE(EncodeMessage<SleepRequest>(sleep_request, &sleep_payload));
 
   MemRpc::RpcCall sleep_call;
   sleep_call.opcode = MemRpc::Opcode::MiniSleep;
@@ -145,7 +145,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   EchoRequest echo_request;
   echo_request.text = "after-restart";
   std::vector<uint8_t> echo_payload;
-  ASSERT_TRUE(EncodeEchoRequest(echo_request, &echo_payload));
+  ASSERT_TRUE(EncodeMessage<EchoRequest>(echo_request, &echo_payload));
 
   MemRpc::RpcCall echo_call;
   echo_call.opcode = MemRpc::Opcode::MiniEcho;
@@ -154,7 +154,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   MemRpc::RpcReply echo_rpc_reply;
   ASSERT_EQ(client.InvokeSync(echo_call, &echo_rpc_reply), MemRpc::StatusCode::Ok);
   EchoReply echo_reply;
-  ASSERT_TRUE(DecodeEchoReply(echo_rpc_reply.payload, &echo_reply));
+  ASSERT_TRUE(DecodeMessage<EchoReply>(echo_rpc_reply.payload, &echo_reply));
   EXPECT_EQ(echo_reply.text, "after-restart");
 
   client.Shutdown();
