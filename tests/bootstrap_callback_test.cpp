@@ -13,10 +13,10 @@ TEST(BootstrapCallbackTest, InvokesEngineDeathCallback) {
     dead_session_id.store(session_id);
     callback_count.fetch_add(1);
   });
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles handles;
-  ASSERT_EQ(channel.Connect(&handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&handles), memrpc::StatusCode::Ok);
 
   channel.SimulateEngineDeathForTest();
   EXPECT_EQ(callback_count.load(), 1);
@@ -30,16 +30,16 @@ TEST(BootstrapCallbackTest, InvokesEngineDeathCallback) {
 
 TEST(BootstrapCallbackTest, RestartProducesNewSessionId) {
   memrpc::SaBootstrapChannel channel;
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles first_handles;
-  ASSERT_EQ(channel.Connect(&first_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&first_handles), memrpc::StatusCode::Ok);
 
   channel.SimulateEngineDeathForTest();
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles second_handles;
-  ASSERT_EQ(channel.Connect(&second_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&second_handles), memrpc::StatusCode::Ok);
   EXPECT_NE(first_handles.session_id, second_handles.session_id);
 
   close(first_handles.shm_fd);
@@ -58,15 +58,15 @@ TEST(BootstrapCallbackTest, CanDeliverLateDeathForSpecificSessionWithoutDropping
 
   channel.SetEngineDeathCallback(
       [&](uint64_t session_id) { dead_session_id.store(session_id); });
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles first_handles;
-  ASSERT_EQ(channel.Connect(&first_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&first_handles), memrpc::StatusCode::Ok);
   channel.SimulateEngineDeathForTest();
 
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
   memrpc::BootstrapHandles second_handles;
-  ASSERT_EQ(channel.Connect(&second_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&second_handles), memrpc::StatusCode::Ok);
   ASSERT_NE(first_handles.session_id, second_handles.session_id);
 
   dead_session_id.store(0);
@@ -74,7 +74,7 @@ TEST(BootstrapCallbackTest, CanDeliverLateDeathForSpecificSessionWithoutDropping
   EXPECT_EQ(dead_session_id.load(), first_handles.session_id);
 
   memrpc::BootstrapHandles latest_handles;
-  ASSERT_EQ(channel.Connect(&latest_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.Connect(&latest_handles), memrpc::StatusCode::Ok);
   EXPECT_EQ(latest_handles.session_id, second_handles.session_id);
 
   close(first_handles.shm_fd);

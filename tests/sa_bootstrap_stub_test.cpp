@@ -16,15 +16,15 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsAfterStartEngine) {
   memrpc::SaBootstrapChannel channel;
   memrpc::BootstrapHandles handles;
 
-  EXPECT_EQ(channel.Connect(&handles), memrpc::StatusCode::kInvalidArgument);
-  EXPECT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
-  EXPECT_EQ(channel.Connect(&handles), memrpc::StatusCode::kOk);
+  EXPECT_EQ(channel.Connect(&handles), memrpc::StatusCode::InvalidArgument);
+  EXPECT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
+  EXPECT_EQ(channel.Connect(&handles), memrpc::StatusCode::Ok);
   EXPECT_GE(handles.shm_fd, 0);
   EXPECT_GE(handles.high_req_event_fd, 0);
   EXPECT_GE(handles.normal_req_event_fd, 0);
   EXPECT_GE(handles.resp_event_fd, 0);
   EXPECT_EQ(handles.protocol_version, memrpc::kProtocolVersion);
-  EXPECT_EQ(channel.NotifyPeerRestarted(), memrpc::StatusCode::kOk);
+  EXPECT_EQ(channel.NotifyPeerRestarted(), memrpc::StatusCode::Ok);
 
   close(handles.shm_fd);
   close(handles.high_req_event_fd);
@@ -34,7 +34,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsAfterStartEngine) {
 
 TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   memrpc::SaBootstrapChannel channel;
-  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(channel.StartEngine(), memrpc::StatusCode::Ok);
 
   const memrpc::BootstrapHandles handles = channel.server_handles();
   EXPECT_GE(handles.shm_fd, 0);

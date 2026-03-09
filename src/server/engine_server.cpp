@@ -115,7 +115,7 @@ struct EngineServer::Impl {
     response.status_code = static_cast<uint32_t>(result.status);
     response.result_size = payload->message_length;
     response.engine_errno = result.engine_code;
-    if (session.PushResponse(response) == StatusCode::kOk) {
+    if (session.PushResponse(response) == StatusCode::Ok) {
       const uint64_t signal_value = 1;
       write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
     }
@@ -131,8 +131,8 @@ struct EngineServer::Impl {
     const uint32_t now_ms = MonotonicNowMs();
     if (payload->queue_timeout_ms > 0 &&
         now_ms - request_entry.enqueue_mono_ms > payload->queue_timeout_ms) {
-      result.status = StatusCode::kQueueTimeout;
-      result.verdict = ScanVerdict::kError;
+      result.status = StatusCode::QueueTimeout;
+      result.verdict = ScanVerdict::Error;
       result.message = "queue timeout";
       WriteResponse(request_entry, result);
       return;
@@ -140,16 +140,16 @@ struct EngineServer::Impl {
 
     ScanRequest request;
     if (payload->file_path_length >= kMaxFilePathSize) {
-      result.status = StatusCode::kProtocolMismatch;
-      result.verdict = ScanVerdict::kError;
+      result.status = StatusCode::ProtocolMismatch;
+      result.verdict = ScanVerdict::Error;
       result.message = "invalid request payload";
       WriteResponse(request_entry, result);
       return;
     }
     request.file_path.assign(payload->file_path, payload->file_path_length);
     request.options.priority =
-        payload->priority == static_cast<uint32_t>(Priority::kHigh) ? Priority::kHigh
-                                                                    : Priority::kNormal;
+        payload->priority == static_cast<uint32_t>(Priority::High) ? Priority::High
+                                                                    : Priority::Normal;
     request.options.queue_timeout_ms = payload->queue_timeout_ms;
     request.options.exec_timeout_ms = payload->exec_timeout_ms;
     request.options.flags = payload->flags;
@@ -161,8 +161,8 @@ struct EngineServer::Impl {
                              .count();
     if (payload->exec_timeout_ms > 0 &&
         elapsed > static_cast<long long>(payload->exec_timeout_ms)) {
-      result.status = StatusCode::kExecTimeout;
-      result.verdict = ScanVerdict::kError;
+      result.status = StatusCode::ExecTimeout;
+      result.verdict = ScanVerdict::Error;
       if (result.message.empty()) {
         result.message = "execution timeout";
       }
@@ -197,12 +197,12 @@ struct EngineServer::Impl {
       if ((fds[0].revents & POLLIN) != 0) {
         while (read(fds[0].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        high_work = DrainQueue(QueueKind::kHighRequest, &high_pool);
+        high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
       }
       if (!high_work && (fds[1].revents & POLLIN) != 0) {
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        DrainQueue(QueueKind::kNormalRequest, &normal_pool);
+        DrainQueue(QueueKind::NormalRequest, &normal_pool);
       }
     }
   }
@@ -237,10 +237,10 @@ void EngineServer::SetOptions(ServerOptions options) {
 
 StatusCode EngineServer::Start() {
   if (impl_->handler == nullptr) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
   const StatusCode attach_status = impl_->session.Attach(impl_->handles);
-  if (attach_status != StatusCode::kOk) {
+  if (attach_status != StatusCode::Ok) {
     return attach_status;
   }
   impl_->running.store(true);
@@ -253,12 +253,12 @@ StatusCode EngineServer::Start() {
                              impl_->ProcessEntry(entry);
                            });
   impl_->dispatcher_thread = std::thread([this] { impl_->DispatcherLoop(); });
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 void EngineServer::Run() {
   if (!impl_->running.load()) {
-    if (Start() != StatusCode::kOk) {
+    if (Start() != StatusCode::Ok) {
       return;
     }
   }

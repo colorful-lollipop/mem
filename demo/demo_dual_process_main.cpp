@@ -22,10 +22,10 @@ class DemoHandler : public memrpc::IScanHandler {
     }
 
     memrpc::ScanResult result;
-    result.status = memrpc::StatusCode::kOk;
+    result.status = memrpc::StatusCode::Ok;
     result.verdict = request.file_path.find("virus") != std::string::npos
-                         ? memrpc::ScanVerdict::kInfected
-                         : memrpc::ScanVerdict::kClean;
+                         ? memrpc::ScanVerdict::Infected
+                         : memrpc::ScanVerdict::Clean;
     result.message = request.file_path;
     return result;
   }
@@ -34,7 +34,7 @@ class DemoHandler : public memrpc::IScanHandler {
 void RunServer(memrpc::BootstrapHandles handles) {
   auto handler = std::make_shared<DemoHandler>();
   memrpc::EngineServer server(handles, handler);
-  if (server.Start() != memrpc::StatusCode::kOk) {
+  if (server.Start() != memrpc::StatusCode::Ok) {
     std::cerr << "server start failed" << std::endl;
     std::_Exit(1);
   }
@@ -51,7 +51,7 @@ void PrintResult(const char* label, const memrpc::ScanResult& result) {
 
 int main() {
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-  if (bootstrap->StartEngine() != memrpc::StatusCode::kOk) {
+  if (bootstrap->StartEngine() != memrpc::StatusCode::Ok) {
     std::cerr << "bootstrap start failed" << std::endl;
     return 1;
   }
@@ -68,7 +68,7 @@ int main() {
   }
 
   memrpc::EngineClient client(bootstrap);
-  if (client.Init() != memrpc::StatusCode::kOk) {
+  if (client.Init() != memrpc::StatusCode::Ok) {
     std::cerr << "client init failed" << std::endl;
     kill(child, SIGTERM);
     waitpid(child, nullptr, 0);
@@ -83,7 +83,7 @@ int main() {
 
   memrpc::ScanRequest high;
   high.file_path = "/tmp/high-virus";
-  high.options.priority = memrpc::Priority::kHigh;
+  high.options.priority = memrpc::Priority::High;
   memrpc::ScanResult high_result;
   client.Scan(high, &high_result);
   PrintResult("high", high_result);

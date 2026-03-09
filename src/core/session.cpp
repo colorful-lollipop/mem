@@ -17,12 +17,12 @@ constexpr uint32_t kMaxSlotCount = 1u << 20;
 
 StatusCode LockRingMutex(pthread_mutex_t* mutex) {
   if (mutex == nullptr) {
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   timespec deadline {};
   if (clock_gettime(CLOCK_REALTIME, &deadline) != 0) {
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
   deadline.tv_nsec += 100 * 1000 * 1000;
   if (deadline.tv_nsec >= 1000 * 1000 * 1000) {
@@ -32,20 +32,20 @@ StatusCode LockRingMutex(pthread_mutex_t* mutex) {
 
   const int rc = pthread_mutex_timedlock(mutex, &deadline);
   if (rc == 0) {
-    return StatusCode::kOk;
+    return StatusCode::Ok;
   }
   if (rc == EOWNERDEAD) {
     pthread_mutex_consistent(mutex);
     pthread_mutex_unlock(mutex);
-    return StatusCode::kPeerDisconnected;
+    return StatusCode::PeerDisconnected;
   }
   if (rc == ETIMEDOUT) {
-    return StatusCode::kPeerDisconnected;
+    return StatusCode::PeerDisconnected;
   }
   if (rc == ENOTRECOVERABLE) {
-    return StatusCode::kPeerDisconnected;
+    return StatusCode::PeerDisconnected;
   }
-  return StatusCode::kEngineInternalError;
+  return StatusCode::EngineInternalError;
 }
 
 bool ValidateRingCursor(const RingCursor& cursor, uint32_t expected_capacity) {
@@ -91,22 +91,22 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
 template <typename EntryType>
 StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry) {
   if (access.cursor == nullptr || access.mutex == nullptr || access.entries == nullptr) {
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
   const StatusCode lock_status = LockRingMutex(access.mutex);
-  if (lock_status != StatusCode::kOk) {
+  if (lock_status != StatusCode::Ok) {
     return lock_status;
   }
   if (access.cursor->size == access.cursor->capacity) {
     pthread_mutex_unlock(access.mutex);
-    return StatusCode::kQueueFull;
+    return StatusCode::QueueFull;
   }
   auto* entries = static_cast<EntryType*>(access.entries);
   entries[access.cursor->tail] = entry;
   access.cursor->tail = (access.cursor->tail + 1u) % access.cursor->capacity;
   ++access.cursor->size;
   pthread_mutex_unlock(access.mutex);
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 template <typename EntryType>
@@ -115,7 +115,7 @@ bool PopRingEntry(Session::RingAccess access, EntryType* entry) {
       access.entries == nullptr) {
     return false;
   }
-  if (LockRingMutex(access.mutex) != StatusCode::kOk) {
+  if (LockRingMutex(access.mutex) != StatusCode::Ok) {
     return false;
   }
   if (access.cursor->size == 0u) {
@@ -141,7 +141,7 @@ Session::~Session() {
 StatusCode Session::Attach(const BootstrapHandles& handles) {
   Reset();
   if (handles.shm_fd < 0) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
 
   LayoutConfig config;
@@ -157,19 +157,19 @@ StatusCode Session::Attach(const BootstrapHandles& handles) {
       mmap(nullptr, default_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, handles.shm_fd, 0);
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
   if (header_->magic != kSharedMemoryMagic || header_->protocol_version != kProtocolVersion) {
     Reset();
-    return StatusCode::kProtocolMismatch;
+    return StatusCode::ProtocolMismatch;
   }
 
   struct stat file_stat {};
   if (fstat(handles.shm_fd, &file_stat) != 0) {
     Reset();
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   config.high_ring_size = header_->high_ring_size;
@@ -182,7 +182,7 @@ StatusCode Session::Attach(const BootstrapHandles& handles) {
       !ValidateRingCursor(header_->normal_ring, config.normal_ring_size) ||
       !ValidateRingCursor(header_->response_ring, config.response_ring_size)) {
     Reset();
-    return StatusCode::kProtocolMismatch;
+    return StatusCode::ProtocolMismatch;
   }
   Layout actual_layout = ComputeLayout(config);
   munmap(mapped_region_, default_layout.total_size);
@@ -192,13 +192,13 @@ StatusCode Session::Attach(const BootstrapHandles& handles) {
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
     header_ = nullptr;
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   mapped_size_ = actual_layout.total_size;
   header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
   handles_ = handles;
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 void Session::Reset() {
@@ -263,11 +263,11 @@ bool Session::PopRequest(QueueKind queue, RequestRingEntry* entry) {
 }
 
 StatusCode Session::PushResponse(const ResponseRingEntry& entry) {
-  return PushRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::kResponse), entry);
+  return PushRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 
 bool Session::PopResponse(ResponseRingEntry* entry) {
-  return PopRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::kResponse), entry);
+  return PopRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 
 Session::RingAccess Session::ResolveRing(QueueKind queue) {
@@ -282,13 +282,13 @@ Session::RingAccess Session::ResolveRing(QueueKind queue) {
   Layout layout = ComputeLayout(config);
   auto* base = static_cast<std::byte*>(mapped_region_);
   switch (queue) {
-    case QueueKind::kHighRequest:
+    case QueueKind::HighRequest:
       return {&header_->high_ring, &header_->high_ring_mutex,
               base + layout.high_ring_offset};
-    case QueueKind::kNormalRequest:
+    case QueueKind::NormalRequest:
       return {&header_->normal_ring, &header_->normal_ring_mutex,
               base + layout.normal_ring_offset};
-    case QueueKind::kResponse:
+    case QueueKind::Response:
       return {&header_->response_ring, &header_->response_ring_mutex,
               base + layout.response_ring_offset};
   }

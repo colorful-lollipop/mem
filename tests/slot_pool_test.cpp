@@ -8,15 +8,15 @@ TEST(SlotPoolTest, ReserveTransitionAndReleaseLifecycle) {
   const auto first = pool.Reserve();
   ASSERT_TRUE(first.has_value());
   EXPECT_EQ(*first, 0u);
-  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::kReserved);
+  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::Reserved);
 
-  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::kQueuedNormal));
-  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::kQueuedNormal);
-  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::kDispatched));
-  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::kProcessing));
-  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::kResponded));
+  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::QueuedNormal));
+  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::QueuedNormal);
+  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::Dispatched));
+  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::Processing));
+  EXPECT_TRUE(pool.Transition(*first, memrpc::SlotState::Responded));
   EXPECT_TRUE(pool.Release(*first));
-  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::kFree);
+  EXPECT_EQ(pool.GetState(*first), memrpc::SlotState::Free);
 }
 
 TEST(SlotPoolTest, ReserveFailsWhenExhausted) {
@@ -35,7 +35,7 @@ TEST(SlotPoolTest, InvalidTransitionsAndInvalidReleaseAreRejected) {
 
   const auto slot = pool.Reserve();
   ASSERT_TRUE(slot.has_value());
-  EXPECT_FALSE(pool.Transition(*slot, memrpc::SlotState::kProcessing));
+  EXPECT_FALSE(pool.Transition(*slot, memrpc::SlotState::Processing));
   EXPECT_FALSE(pool.Release(99u));
   EXPECT_TRUE(pool.Release(*slot));
 }

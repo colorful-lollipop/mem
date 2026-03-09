@@ -78,7 +78,7 @@ PosixDemoBootstrapChannel::~PosixDemoBootstrapChannel() = default;
 
 StatusCode PosixDemoBootstrapChannel::StartEngine() {
   if (impl_->initialized) {
-    return StatusCode::kOk;
+    return StatusCode::Ok;
   }
 
   impl_->ResetHandles();
@@ -86,7 +86,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   const int shm_fd =
       shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
   if (shm_fd < 0) {
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   const LayoutConfig layout_config{impl_->config.high_ring_size,
@@ -98,7 +98,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
 
   void* region =
@@ -106,7 +106,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   if (region == MAP_FAILED) {
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
   std::memset(region, 0, layout.total_size);
   auto* header = static_cast<SharedMemoryHeader*>(region);
@@ -127,7 +127,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
     munmap(region, layout.total_size);
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
   munmap(region, layout.total_size);
 
@@ -143,14 +143,14 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   if (!impl_->initialized) {
     impl_->ResetHandles();
     shm_unlink(impl_->config.shm_name.c_str());
-    return StatusCode::kEngineInternalError;
+    return StatusCode::EngineInternalError;
   }
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 StatusCode PosixDemoBootstrapChannel::Connect(BootstrapHandles* handles) {
   if (handles == nullptr || !impl_->initialized) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
 
   handles->shm_fd = dup(impl_->handles.shm_fd);
@@ -159,11 +159,11 @@ StatusCode PosixDemoBootstrapChannel::Connect(BootstrapHandles* handles) {
   handles->resp_event_fd = dup(impl_->handles.resp_event_fd);
   handles->protocol_version = impl_->handles.protocol_version;
   handles->session_id = impl_->handles.session_id;
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 StatusCode PosixDemoBootstrapChannel::NotifyPeerRestarted() {
-  return StatusCode::kOk;
+  return StatusCode::Ok;
 }
 
 void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {

@@ -48,17 +48,17 @@ This keeps the runtime simpler and aligns with HarmonyOS SA control flow where t
 
 Each pending request gets a local publish state:
 
-- `kNew`
-- `kQueuedLocal`
-- `kRingPushed`
-- `kSignaled`
-- `kCompleted`
-- `kFailed`
+- `New`
+- `QueuedLocal`
+- `RingPushed`
+- `Signaled`
+- `Completed`
+- `Failed`
 
 Retry policy:
 
-- `kNew` and `kQueuedLocal`: may be retried once after recovery
-- `kRingPushed` and beyond: never retried automatically
+- `New` and `QueuedLocal`: may be retried once after recovery
+- `RingPushed` and beyond: never retried automatically
 
 Rationale:
 
@@ -93,7 +93,7 @@ Behavior:
 
 - if no valid session exists, `Scan()` performs lazy recovery
 - if recovery succeeds before the request is published, the request continues on the new session
-- if the death callback arrives after publish, that request completes with `kPeerDisconnected`
+- if the death callback arrives after publish, that request completes with `PeerDisconnected`
 
 ## Fake SA Behavior
 

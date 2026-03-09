@@ -41,7 +41,7 @@
 当前代码已经实现的恢复语义是：
 
 - 子进程死亡回调到来后，当前 `session` 会立即失效
-- 旧 `session` 上等待中的请求立即返回 `kPeerDisconnected`
+- 旧 `session` 上等待中的请求立即返回 `PeerDisconnected`
 - 下一次 `Scan()` 会在内部自动调用 `StartEngine()` + `Connect()`，懒切换到新 `session`
 - 已经发布到旧共享内存队列的请求不会自动重放
 - 上层仍然负责最终的重启策略和是否重新扫描

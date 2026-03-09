@@ -15,9 +15,9 @@ cmake --build build
 
 预期会看到三类输出：
 
-- 普通请求返回 `kClean`
-- 高优请求返回 `kInfected`
-- 慢请求返回 `kExecTimeout`
+- 普通请求返回 `Clean`
+- 高优请求返回 `Infected`
+- 慢请求返回 `ExecTimeout`
 
 ## 说明
 

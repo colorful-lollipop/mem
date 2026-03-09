@@ -11,13 +11,13 @@ inline constexpr uint32_t kMaxFilePathSize = 1024u;
 inline constexpr uint32_t kMaxMessageSize = 512u;
 
 enum class Opcode : uint16_t {
-  kScanFile = 1,
+  ScanFile = 1,
 };
 
 struct RequestRingEntry {
   uint64_t request_id = 0;
   uint32_t slot_index = 0;
-  uint16_t opcode = static_cast<uint16_t>(Opcode::kScanFile);
+  uint16_t opcode = static_cast<uint16_t>(Opcode::ScanFile);
   uint16_t flags = 0;
   uint32_t enqueue_mono_ms = 0;
   uint32_t payload_size = 0;

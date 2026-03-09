@@ -11,9 +11,9 @@
 namespace memrpc {
 
 enum class QueueKind {
-  kHighRequest,
-  kNormalRequest,
-  kResponse,
+  HighRequest,
+  NormalRequest,
+  Response,
 };
 
 class Session {

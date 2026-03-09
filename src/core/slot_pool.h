@@ -10,13 +10,13 @@
 namespace memrpc {
 
 enum class SlotState {
-  kFree = 0,
-  kReserved,
-  kQueuedHigh,
-  kQueuedNormal,
-  kDispatched,
-  kProcessing,
-  kResponded,
+  Free = 0,
+  Reserved,
+  QueuedHigh,
+  QueuedNormal,
+  Dispatched,
+  Processing,
+  Responded,
 };
 
 class SlotPool {

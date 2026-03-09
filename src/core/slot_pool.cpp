@@ -5,12 +5,12 @@ namespace memrpc {
 namespace {
 
 bool IsQueuedState(SlotState state) {
-  return state == SlotState::kQueuedHigh || state == SlotState::kQueuedNormal;
+  return state == SlotState::QueuedHigh || state == SlotState::QueuedNormal;
 }
 
 }  // namespace
 
-SlotPool::SlotPool(uint32_t slot_count) : states_(slot_count, SlotState::kFree) {
+SlotPool::SlotPool(uint32_t slot_count) : states_(slot_count, SlotState::Free) {
   for (uint32_t i = 0; i < slot_count; ++i) {
     free_slots_.push(i);
   }
@@ -24,7 +24,7 @@ std::optional<uint32_t> SlotPool::Reserve() {
 
   const uint32_t slot_index = free_slots_.front();
   free_slots_.pop();
-  states_[slot_index] = SlotState::kReserved;
+  states_[slot_index] = SlotState::Reserved;
   return slot_index;
 }
 
@@ -49,11 +49,11 @@ bool SlotPool::Release(uint32_t slot_index) {
     return false;
   }
 
-  if (states_[slot_index] == SlotState::kFree) {
+  if (states_[slot_index] == SlotState::Free) {
     return false;
   }
 
-  states_[slot_index] = SlotState::kFree;
+  states_[slot_index] = SlotState::Free;
   free_slots_.push(slot_index);
   return true;
 }
@@ -61,7 +61,7 @@ bool SlotPool::Release(uint32_t slot_index) {
 SlotState SlotPool::GetState(uint32_t slot_index) const {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!IsValidIndex(slot_index)) {
-    return SlotState::kFree;
+    return SlotState::Free;
   }
   return states_[slot_index];
 }
@@ -77,18 +77,18 @@ bool SlotPool::IsValidIndex(uint32_t slot_index) const {
 
 bool SlotPool::CanTransition(SlotState current, SlotState next) const {
   switch (current) {
-    case SlotState::kFree:
+    case SlotState::Free:
       return false;
-    case SlotState::kReserved:
+    case SlotState::Reserved:
       return IsQueuedState(next);
-    case SlotState::kQueuedHigh:
-    case SlotState::kQueuedNormal:
-      return next == SlotState::kDispatched;
-    case SlotState::kDispatched:
-      return next == SlotState::kProcessing;
-    case SlotState::kProcessing:
-      return next == SlotState::kResponded;
-    case SlotState::kResponded:
+    case SlotState::QueuedHigh:
+    case SlotState::QueuedNormal:
+      return next == SlotState::Dispatched;
+    case SlotState::Dispatched:
+      return next == SlotState::Processing;
+    case SlotState::Processing:
+      return next == SlotState::Responded;
+    case SlotState::Responded:
       return false;
   }
   return false;

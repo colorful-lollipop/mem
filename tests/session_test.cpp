@@ -31,10 +31,10 @@ bool WaitForExit(pid_t pid, int timeout_ms, int* status) {
 
 TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles corrupt_handles;
-  ASSERT_EQ(bootstrap->Connect(&corrupt_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(bootstrap->Connect(&corrupt_handles), memrpc::StatusCode::Ok);
 
   struct stat file_stat {};
   ASSERT_EQ(fstat(corrupt_handles.shm_fd, &file_stat), 0);
@@ -50,25 +50,25 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   close(corrupt_handles.resp_event_fd);
 
   memrpc::BootstrapHandles attach_handles;
-  ASSERT_EQ(bootstrap->Connect(&attach_handles), memrpc::StatusCode::kOk);
+  ASSERT_EQ(bootstrap->Connect(&attach_handles), memrpc::StatusCode::Ok);
 
   memrpc::Session session;
-  EXPECT_EQ(session.Attach(attach_handles), memrpc::StatusCode::kProtocolMismatch);
+  EXPECT_EQ(session.Attach(attach_handles), memrpc::StatusCode::ProtocolMismatch);
 }
 
 TEST(SessionTest, OwnerDeathDoesNotHangRingOperations) {
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::kOk);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
 
   const pid_t locker_pid = fork();
   ASSERT_GE(locker_pid, 0);
   if (locker_pid == 0) {
     memrpc::BootstrapHandles locker_handles;
-    if (bootstrap->Connect(&locker_handles) != memrpc::StatusCode::kOk) {
+    if (bootstrap->Connect(&locker_handles) != memrpc::StatusCode::Ok) {
       _exit(2);
     }
     memrpc::Session session;
-    if (session.Attach(locker_handles) != memrpc::StatusCode::kOk) {
+    if (session.Attach(locker_handles) != memrpc::StatusCode::Ok) {
       _exit(3);
     }
     if (pthread_mutex_lock(&session.mutable_header()->high_ring_mutex) != 0) {
@@ -86,19 +86,19 @@ TEST(SessionTest, OwnerDeathDoesNotHangRingOperations) {
   ASSERT_GE(probe_pid, 0);
   if (probe_pid == 0) {
     memrpc::BootstrapHandles probe_handles;
-    if (bootstrap->Connect(&probe_handles) != memrpc::StatusCode::kOk) {
+    if (bootstrap->Connect(&probe_handles) != memrpc::StatusCode::Ok) {
       _exit(5);
     }
     memrpc::Session session;
-    if (session.Attach(probe_handles) != memrpc::StatusCode::kOk) {
+    if (session.Attach(probe_handles) != memrpc::StatusCode::Ok) {
       _exit(6);
     }
     memrpc::RequestRingEntry entry;
     entry.request_id = 1;
     entry.slot_index = 0;
     const memrpc::StatusCode status =
-        session.PushRequest(memrpc::QueueKind::kHighRequest, entry);
-    _exit(status == memrpc::StatusCode::kPeerDisconnected ? 0 : 7);
+        session.PushRequest(memrpc::QueueKind::HighRequest, entry);
+    _exit(status == memrpc::StatusCode::PeerDisconnected ? 0 : 7);
   }
 
   int probe_status = 0;

@@ -78,7 +78,7 @@ struct EngineClient::Impl {
     for (auto& [_, pending] : pending_calls) {
       std::lock_guard<std::mutex> lock(pending->mutex);
       pending->result.status = status_code;
-      pending->result.verdict = ScanVerdict::kError;
+      pending->result.verdict = ScanVerdict::Error;
       pending->result.message = "peer disconnected";
       pending->ready = true;
       pending->cv.notify_one();
@@ -104,7 +104,7 @@ struct EngineClient::Impl {
       session.Reset();
       slot_pool.reset();
     }
-    FailAllPending(StatusCode::kPeerDisconnected);
+    FailAllPending(StatusCode::PeerDisconnected);
   }
 
   StatusCode EnsureLiveSession() {
@@ -112,21 +112,21 @@ struct EngineClient::Impl {
     {
       std::lock_guard<std::mutex> lock(session_mutex);
       if (!session_dead && session.valid() && slot_pool != nullptr) {
-        return StatusCode::kOk;
+        return StatusCode::Ok;
       }
     }
 
     if (bootstrap == nullptr) {
-      return StatusCode::kInvalidArgument;
+      return StatusCode::InvalidArgument;
     }
     const StatusCode start_status = bootstrap->StartEngine();
-    if (start_status != StatusCode::kOk) {
+    if (start_status != StatusCode::Ok) {
       return start_status;
     }
 
     BootstrapHandles handles;
     const StatusCode connect_status = bootstrap->Connect(&handles);
-    if (connect_status != StatusCode::kOk) {
+    if (connect_status != StatusCode::Ok) {
       return connect_status;
     }
 
@@ -138,14 +138,14 @@ struct EngineClient::Impl {
     slot_pool.reset();
 
     const StatusCode attach_status = session.Attach(handles);
-    if (attach_status != StatusCode::kOk) {
+    if (attach_status != StatusCode::Ok) {
       return attach_status;
     }
     slot_pool = std::make_unique<SlotPool>(session.header()->slot_count);
     current_session_id = handles.session_id;
     session_dead = false;
     StartDispatcher();
-    return StatusCode::kOk;
+    return StatusCode::Ok;
   }
 
   void CompleteRequest(const ResponseRingEntry& entry) {
@@ -224,7 +224,7 @@ void EngineClient::SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootst
 
 StatusCode EngineClient::Init() {
   if (impl_->bootstrap == nullptr) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
   impl_->bootstrap->SetEngineDeathCallback(
       [this](uint64_t session_id) { impl_->HandleEngineDeath(session_id); });
@@ -233,15 +233,15 @@ StatusCode EngineClient::Init() {
 
 StatusCode EngineClient::Scan(const ScanRequest& request, ScanResult* result) {
   if (result == nullptr) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
   if (request.file_path.empty() || request.file_path.size() >= kMaxFilePathSize) {
-    return StatusCode::kInvalidArgument;
+    return StatusCode::InvalidArgument;
   }
 
   for (int attempt = 0; attempt < 2; ++attempt) {
     const StatusCode ensure_status = impl_->EnsureLiveSession();
-    if (ensure_status != StatusCode::kOk) {
+    if (ensure_status != StatusCode::Ok) {
       return ensure_status;
     }
 
@@ -254,12 +254,12 @@ StatusCode EngineClient::Scan(const ScanRequest& request, ScanResult* result) {
 
       const auto slot = impl_->slot_pool->Reserve();
       if (!slot.has_value()) {
-        return StatusCode::kQueueFull;
+        return StatusCode::QueueFull;
       }
       SlotPayload* payload = impl_->session.slot_payload(*slot);
       if (payload == nullptr) {
         impl_->slot_pool->Release(*slot);
-        return StatusCode::kEngineInternalError;
+        return StatusCode::EngineInternalError;
       }
 
       std::memset(payload, 0, sizeof(SlotPayload));
@@ -283,18 +283,18 @@ StatusCode EngineClient::Scan(const ScanRequest& request, ScanResult* result) {
         impl_->pending_calls.emplace(request_id, pending);
       }
 
-      const bool high_priority = request.options.priority == Priority::kHigh;
+      const bool high_priority = request.options.priority == Priority::High;
       impl_->slot_pool->Transition(
-          *slot, high_priority ? SlotState::kQueuedHigh : SlotState::kQueuedNormal);
+          *slot, high_priority ? SlotState::QueuedHigh : SlotState::QueuedNormal);
       const StatusCode queue_status =
-          impl_->session.PushRequest(high_priority ? QueueKind::kHighRequest
-                                                   : QueueKind::kNormalRequest,
+          impl_->session.PushRequest(high_priority ? QueueKind::HighRequest
+                                                   : QueueKind::NormalRequest,
                                      entry);
-      if (queue_status != StatusCode::kOk) {
+      if (queue_status != StatusCode::Ok) {
         std::lock_guard<std::mutex> pending_lock(impl_->pending_mutex);
         impl_->pending_calls.erase(request_id);
         impl_->slot_pool->Release(*slot);
-        if (queue_status == StatusCode::kPeerDisconnected && attempt == 0) {
+        if (queue_status == StatusCode::PeerDisconnected && attempt == 0) {
           continue;
         }
         return queue_status;
@@ -307,7 +307,7 @@ StatusCode EngineClient::Scan(const ScanRequest& request, ScanResult* result) {
         std::lock_guard<std::mutex> pending_lock(impl_->pending_mutex);
         impl_->pending_calls.erase(request_id);
         impl_->slot_pool->Release(*slot);
-        return StatusCode::kPeerDisconnected;
+        return StatusCode::PeerDisconnected;
       }
     }
 
@@ -317,14 +317,14 @@ StatusCode EngineClient::Scan(const ScanRequest& request, ScanResult* result) {
     std::unique_lock<std::mutex> wait_lock(pending->mutex);
     if (!pending->cv.wait_for(wait_lock, wait_budget, [&pending] { return pending->ready; })) {
       pending->abandoned = true;
-      return StatusCode::kPeerDisconnected;
+      return StatusCode::PeerDisconnected;
     }
 
     *result = pending->result;
     return result->status;
   }
 
-  return StatusCode::kPeerDisconnected;
+  return StatusCode::PeerDisconnected;
 }
 
 void EngineClient::Shutdown() {
@@ -340,7 +340,7 @@ void EngineClient::Shutdown() {
     impl_->session.Reset();
     impl_->slot_pool.reset();
   }
-  impl_->FailAllPending(StatusCode::kPeerDisconnected);
+  impl_->FailAllPending(StatusCode::PeerDisconnected);
 }
 
 }  // namespace memrpc

@@ -52,7 +52,7 @@ Expected: PASS for configure/build.
 Add tests that assert:
 
 - default `ScanOptions` uses normal priority
-- `ScanResult` defaults to `kOk`/`kUnknown`
+- `ScanResult` defaults to `Ok`/`Unknown`
 - status enum values needed by the design exist
 
 **Step 2: Run test to verify it fails**

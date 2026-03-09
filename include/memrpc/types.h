@@ -7,12 +7,12 @@
 namespace memrpc {
 
 enum class Priority {
-  kNormal = 0,
-  kHigh = 1,
+  Normal = 0,
+  High = 1,
 };
 
 struct ScanOptions {
-  Priority priority = Priority::kNormal;
+  Priority priority = Priority::Normal;
   uint32_t queue_timeout_ms = 1000;
   uint32_t exec_timeout_ms = 30000;
   uint32_t flags = 0;
@@ -24,26 +24,26 @@ struct ScanRequest {
 };
 
 enum class ScanVerdict {
-  kClean = 0,
-  kInfected = 1,
-  kUnknown = 2,
-  kError = 3,
+  Clean = 0,
+  Infected = 1,
+  Unknown = 2,
+  Error = 3,
 };
 
 enum class StatusCode {
-  kOk = 0,
-  kQueueFull,
-  kQueueTimeout,
-  kExecTimeout,
-  kPeerDisconnected,
-  kProtocolMismatch,
-  kEngineInternalError,
-  kInvalidArgument,
+  Ok = 0,
+  QueueFull,
+  QueueTimeout,
+  ExecTimeout,
+  PeerDisconnected,
+  ProtocolMismatch,
+  EngineInternalError,
+  InvalidArgument,
 };
 
 struct ScanResult {
-  StatusCode status = StatusCode::kOk;
-  ScanVerdict verdict = ScanVerdict::kUnknown;
+  StatusCode status = StatusCode::Ok;
+  ScanVerdict verdict = ScanVerdict::Unknown;
   int32_t engine_code = 0;
   int32_t detail_code = 0;
   std::string message;
