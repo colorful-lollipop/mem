@@ -2,45 +2,105 @@
 
 ## 目标
 
-这套框架的目标是尽量保持旧业务层调用方式不变，把原来进程内的同步调用迁移成跨进程共享内存调用。
+框架层只提供通用跨进程 RPC 能力：
 
-旧代码通常类似：
+- 发请求
+- 收响应
+- 接收无头事件
+- 会话恢复
 
-```cpp
-ScanResult result = engine->Scan(request);
-```
+应用层自己兼容自己的旧接口。
 
-迁移后通常变成：
+这意味着后续像 VPS 这类复杂业务，不应该再要求 `memrpc` 内置专用 `EngineClient/EngineServer`。更合理的做法是：
 
-```cpp
-memrpc::EngineClient client(bootstrap);
-client.Init();
+- 应用层实现异步 client
+- 应用层再包一层同步 facade
 
-memrpc::ScanResult result;
-client.Scan(request, &result);
-```
+## 推荐迁移结构
 
-## 建议迁移方式
+建议应用层按这个形态组织：
 
-- 业务侧尽量保留原有请求/结果结构
-- 在兼容层把旧结构转换成 `memrpc::ScanRequest`
-- 引擎侧把原来的扫描实现挂到 `IScanHandler`
-- 进程拉起、重启、系统能力接入都放在 bootstrap/上层控制，不要混进业务扫描逻辑
+- `apps/<app>/common`
+  - 请求/响应类型
+  - codec
+- `apps/<app>/parent`
+  - 异步 client
+  - 同步兼容 facade
+- `apps/<app>/child`
+  - service
+  - handler 注册
 
-## 当前恢复行为
+框架层只保留：
 
-当前实现中：
+- `RpcClient`
+- `RpcFuture`
+- `RpcServer`
+- `BootstrapHandles`
+- session / ring / shared memory / recovery
 
-- 如果 SA/bootstap 报告子进程死亡，旧会话上的等待请求会立即失败
-- 后续新的 `Scan()` 会自动尝试重建会话
-- 可能已经被旧引擎看到的请求不会自动重放
+## 当前样板
 
-所以业务上仍然应该保留“失败后是否重扫”的最终决策权。
+当前仓库里已经有一个最小样板：
 
-## Linux 与鸿蒙的差异
+- `apps/minirpc`
 
-- Linux 开发态可以直接使用 demo 或 fake SA
-- HarmonyOS 正式环境中，进程应由 `init` 拉起
-- 客户端通过 `GetSystemAbility` / `LoadSystemAbility` 获得服务和句柄
+它展示了两层写法：
 
-也就是说，迁移到鸿蒙时重点是补平台适配层，而不是重写通信框架。
+- 内部异步层：`MiniRpcAsyncClient`
+- 对外同步层：`MiniRpcClient`
+
+如果后续迁移 VPS，建议直接照这个模式组织，而不是把 VPS 业务细节塞回框架层。
+
+## 事件模型
+
+如果应用层需要额外通知，不需要再单独发明一条通知通道。
+
+当前框架已经支持：
+
+- 单响应队列
+- 单 `resp_eventfd`
+- `Reply/Event` 双消息类型
+
+应用层可以：
+
+- 用普通 RPC 做请求-响应
+- 用 `RpcServer::PublishEvent()` 发无头事件
+- 在客户端用 `RpcClient::SetEventCallback()` 接收
+- 再在应用层本地做 listener 分发
+
+框架不会把事件绑定到具体请求，也不会管理应用层 listener 对象。
+
+## 新增一个 RPC 的最小改动
+
+在当前结构下，新增一个函数时，目标只改这些地方：
+
+- 定义 request/response 类型
+- 手写 codec
+- 应用层异步 client 增一个薄方法
+- 子进程 service 注册一个 handler
+- 如果旧接口需要同步语义，再包一层 facade
+
+不需要再改：
+
+- 共享内存布局主干
+- 请求/响应队列主干
+- 优先级调度
+- 会话恢复逻辑
+
+## 恢复语义
+
+当前恢复策略保持保守：
+
+- 子进程死亡回调到来时，旧 session 上的等待请求立即失败
+- 下一次调用自动尝试重建 session
+- 框架不会自动重放可能已经被旧子进程看到的请求
+
+所以应用层仍应保留最终业务决策权，例如是否重扫、是否重建更高层状态。
+
+## Linux 与鸿蒙
+
+- Linux 开发态可以用 demo bootstrap 或 fake SA
+- HarmonyOS 正式环境中，应由 `init` 拉起子进程
+- 客户端通过 `GetSystemAbility` / `LoadSystemAbility` 获取服务和句柄
+
+也就是说，迁移到鸿蒙时重点是平台 bootstrap 适配，而不是重写 `MemRpc` 通信核心。

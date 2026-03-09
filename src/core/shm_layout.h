@@ -14,7 +14,9 @@ struct LayoutConfig {
   uint32_t normal_ring_size = 0;
   uint32_t response_ring_size = 0;
   uint32_t slot_count = 0;
-  uint32_t slot_size = sizeof(SlotPayload);
+  uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
+  uint32_t max_request_bytes = kDefaultMaxRequestBytes;
+  uint32_t max_response_bytes = kDefaultMaxResponseBytes;
 };
 
 struct Layout {
@@ -40,7 +42,9 @@ struct SharedMemoryHeader {
   uint32_t normal_ring_size = 0;
   uint32_t response_ring_size = 0;
   uint32_t slot_count = 0;
-  uint32_t slot_size = sizeof(SlotPayload);
+  uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
+  uint32_t max_request_bytes = kDefaultMaxRequestBytes;
+  uint32_t max_response_bytes = kDefaultMaxResponseBytes;
   RingCursor high_ring{};
   RingCursor normal_ring{};
   RingCursor response_ring{};

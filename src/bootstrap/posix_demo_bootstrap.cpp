@@ -10,6 +10,7 @@
 #include <random>
 
 #include "core/shm_layout.h"
+#include "virus_protection_service_log.h"
 
 namespace memrpc {
 
@@ -86,6 +87,8 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   const int shm_fd =
       shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
   if (shm_fd < 0) {
+    HLOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shm_name.c_str(),
+          errno);
     return StatusCode::EngineInternalError;
   }
 
@@ -93,9 +96,13 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
                                    impl_->config.normal_ring_size,
                                    impl_->config.response_ring_size,
                                    impl_->config.slot_count,
-                                   sizeof(SlotPayload)};
+                                   ComputeSlotSize(impl_->config.max_request_bytes,
+                                                   impl_->config.max_response_bytes),
+                                   impl_->config.max_request_bytes,
+                                   impl_->config.max_response_bytes};
   const Layout layout = ComputeLayout(layout_config);
   if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
+    HLOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
     return StatusCode::EngineInternalError;
@@ -104,6 +111,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   void* region =
       mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (region == MAP_FAILED) {
+    HLOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
     return StatusCode::EngineInternalError;
@@ -117,13 +125,17 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   header->normal_ring_size = impl_->config.normal_ring_size;
   header->response_ring_size = impl_->config.response_ring_size;
   header->slot_count = impl_->config.slot_count;
-  header->slot_size = sizeof(SlotPayload);
+  header->slot_size =
+      ComputeSlotSize(impl_->config.max_request_bytes, impl_->config.max_response_bytes);
+  header->max_request_bytes = impl_->config.max_request_bytes;
+  header->max_response_bytes = impl_->config.max_response_bytes;
   header->high_ring.capacity = impl_->config.high_ring_size;
   header->normal_ring.capacity = impl_->config.normal_ring_size;
   header->response_ring.capacity = impl_->config.response_ring_size;
   const uint64_t session_id = header->session_id;
   if (!InitMutex(&header->high_ring_mutex) || !InitMutex(&header->normal_ring_mutex) ||
       !InitMutex(&header->response_ring_mutex)) {
+    HLOGE("InitMutex failed");
     munmap(region, layout.total_size);
     close(shm_fd);
     shm_unlink(impl_->config.shm_name.c_str());
@@ -141,6 +153,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
                        impl_->handles.normal_req_event_fd >= 0 &&
                        impl_->handles.resp_event_fd >= 0;
   if (!impl_->initialized) {
+    HLOGE("eventfd initialization failed");
     impl_->ResetHandles();
     shm_unlink(impl_->config.shm_name.c_str());
     return StatusCode::EngineInternalError;

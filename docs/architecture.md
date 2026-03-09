@@ -1,58 +1,171 @@
 # MemRPC 架构说明
 
-`memrpc` 是一套基于 C++17 的共享内存调用框架，用来把原来进程内同步调用的引擎接口拆成“框架进程 + 引擎进程”两部分。
+`MemRpc` 是一套基于共享内存和 `eventfd` 的通用跨进程 RPC 框架。当前主线构建只关注两层：
 
-当前实现的核心结构是：
+- 框架层：`memrpc`
+- 最小应用样板：`apps/minirpc`
 
-- 一个共享内存区域对应一个 client/engine 会话
-- 一条高优先级请求队列
-- 一条普通优先级请求队列
+复杂业务层例如 VPS 只保留设计方向，暂不进入主构建。
+
+## 当前主线
+
+当前会话模型包含：
+
+- 一块共享内存
+- 一条高优请求队列
+- 一条普通请求队列
 - 一条响应队列
-- 固定大小的 slot 池，用来承载请求体和结果体
-- 双向 `eventfd` 通知
-- 对外保持同步 `Scan()` 接口
+- 三个 `eventfd`
+  - `high_req_eventfd`
+  - `normal_req_eventfd`
+  - `resp_eventfd`
 
-## 客户端工作方式
+请求和响应共用一套固定 slot 区：
 
-业务侧仍然按同步方式调用：
+- `RpcRequestHeader + request bytes`
+- `RpcResponseHeader + response bytes`
 
-1. 申请 slot
-2. 写入扫描请求
-3. 按优先级写入对应 ring
-4. 通过 `eventfd` 通知服务端
-5. 阻塞等待结果
+默认 session 配置：
 
-因此旧代码迁移时，主要改动集中在 bootstrap 和请求结构转换层，不需要把业务层全面改成异步。
+- request 上限：`16KB`
+- response 上限：`1KB`
 
-## 服务端工作方式
+## 响应队列模型
 
-引擎进程侧当前实现为：
+响应队列现在统一承载两类消息：
 
-1. dispatcher 优先消费高优先级队列
-2. 高优和普通请求分别投递到各自线程池
-3. 调用 `IScanHandler`
-4. 把结果写回共享内存
-5. 通过响应 `eventfd` 唤醒客户端
+- `Reply`
+- `Event`
 
-设计上允许高优请求长期压制普通请求，这和当前需求一致。
+二者共用同一个 `resp_eventfd`。框架不会再维护独立的 notify ring 或额外通知 fd。
 
-## 故障恢复语义
+`Reply` 用于普通 RPC 回包：
 
-当前代码已经实现的恢复语义是：
+- 通过 `request_id` 命中 pending request
+- 唤醒对应等待者
 
-- 子进程死亡回调到来后，当前 `session` 会立即失效
-- 旧 `session` 上等待中的请求立即返回 `PeerDisconnected`
-- 下一次 `Scan()` 会在内部自动调用 `StartEngine()` + `Connect()`，懒切换到新 `session`
-- 已经发布到旧共享内存队列的请求不会自动重放
-- 上层仍然负责最终的重启策略和是否重新扫描
+`Event` 用于无头广播事件：
 
-这个实现偏保守，目标是先保证边界清晰和稳定性，而不是做激进重试。
+- 不依赖 `request_id`
+- 带 `event_domain`、`event_type`、`flags`
+- 客户端分发线程收到后直接交给应用层事件回调
+
+这样做的目标是：
+
+- 保持底层通道简单
+- 避免轮询额外事件 fd
+- 同时给应用层保留异步事件能力
+
+## 框架接口
+
+框架只提供通用能力，不再自带业务兼容层。
+
+客户端公共接口：
+
+- `RpcClient::Init()`
+- `RpcClient::InvokeAsync()`
+- `RpcClient::InvokeSync()`
+- `RpcClient::SetEventCallback()`
+
+服务端公共接口：
+
+- `RpcServer::RegisterHandler()`
+- `RpcServer::PublishEvent()`
+- `RpcServer::Start()`
+- `RpcServer::Stop()`
+
+框架层不再内置 `EngineClient/EngineServer` 这类业务兼容接口。应用如果需要兼容旧同步调用，应在自己的目录下实现同步 facade。
+
+## 调度与并发
+
+服务端当前模型：
+
+- dispatcher 优先消费高优请求队列
+- 高优和普通请求分别投递到独立线程池
+- 高优请求允许长期压制普通请求
+
+客户端当前模型：
+
+- 内部以异步事务为底层模型
+- 同步调用只是 `InvokeAsync + Wait` 的薄包装
+- 一个 `RpcClient` 对应一条响应分发线程
+
+需要注意：
+
+- 当前框架支持一个客户端实例内的多并发请求
+- 不支持多个 `RpcClient` 实例共享同一个响应队列并同时消费同一会话
+
+## 日志规范
+
+框架层当前提供一个很薄的日志门面：
+
+- 头文件固定为 `virus_protection_service_log.h`
+- 宏风格为 `HLOGD/HLOGI/HLOGW/HLOGE`
+- 同时兼容 `HILOGD/HILOGI/HILOGW/HILOGE` 别名
+- 支持 `%{public}` / `%{private}` 这类鸿蒙风格格式串
+
+当前实现只做最小兼容：先剥掉可见性前缀，再按普通 `printf` 风格格式化。
+
+日志只建议打在必要路径：
+
+- bootstrap 初始化失败
+- session 死亡与恢复
+- 协议异常
+- 事件发布失败
+
+不要在高频正常路径里铺满日志，避免影响核心通信层的开销和可读性。
+
+## 事件边界
+
+事件是可选能力，不是主线调用方式。
+
+框架只负责：
+
+- 传输 `event_domain/event_type/flags/payload`
+- 在客户端把事件交给回调
+
+框架不负责：
+
+- 解释业务事件内容
+- 将事件绑定到某次具体 RPC
+- 管理应用层 listener 生命周期
+
+这些都留给应用层处理。
+
+## MiniRpc 样板
+
+`MiniRpc` 是最小应用样板，用来验证框架本身的泛用性。
+
+当前只保留三个基础 RPC：
+
+- `Echo`
+- `Add`
+- `Sleep`
+
+它的作用是：
+
+- 验证 request/response 主路径
+- 验证同步 facade 和异步 client 的组合方式
+- 验证优先级和超时语义
+
+`MiniRpc` 不承担复杂业务兼容职责，也不强依赖事件模型。
+
+## 恢复语义
+
+当前恢复策略保持保守：
+
+- 子进程死亡回调到来时，当前 session 立即失效
+- 旧 session 上等待中的请求立即返回 `PeerDisconnected`
+- 后续新的调用会自动尝试 `StartEngine() + Connect()`
+- 可能已经被旧子进程看到的请求不会自动重放
+
+这条边界是刻意保守的，目的是先保证正确性和可控性。
 
 ## 平台分层
 
-传输层和平台拉起逻辑是分开的：
+传输层和平台拉起解耦：
 
-- Linux 开发态：可以使用 `fork()` demo 或 fake SA 适配层
-- HarmonyOS 正式环境：应由 `init` 拉起子进程，并通过 `GetSystemAbility` / `LoadSystemAbility` 完成 bootstrap
+- Linux 开发态：`fork()` demo 或 fake SA bootstrap
+- HarmonyOS 正式环境：`init` 拉起进程，`GetSystemAbility` / `LoadSystemAbility` 完成句柄交换
 
-因此后续接入鸿蒙时，主要替换的是 bootstrap 层，不需要推翻共享内存通信核心。
+迁移到鸿蒙时，主要替换 bootstrap 层，不需要推翻共享内存通信核心。
