@@ -1,0 +1,10 @@
+function(minirpc_add_test target source)
+  add_executable(${target} ${source})
+  target_link_libraries(${target} PRIVATE minirpc_demo GTest::gtest_main)
+  add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
+minirpc_add_test(memrpc_minirpc_headers_test minirpc_headers_test.cpp)
+minirpc_add_test(memrpc_minirpc_codec_test minirpc_codec_test.cpp)
+minirpc_add_test(memrpc_minirpc_service_test minirpc_service_test.cpp)
+minirpc_add_test(memrpc_minirpc_client_test minirpc_client_test.cpp)
