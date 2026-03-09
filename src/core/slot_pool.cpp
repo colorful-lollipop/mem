@@ -55,8 +55,11 @@ bool InitializeSharedSlotPool(void* region, uint32_t slot_count) {
 
   auto* free_slots =
       reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader));
+  auto* in_use_slots = reinterpret_cast<uint8_t*>(
+      static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count);
   for (uint32_t i = 0; i < slot_count; ++i) {
     free_slots[i] = slot_count - i - 1;
+    in_use_slots[i] = 0;
   }
   return true;
 }
@@ -68,6 +71,9 @@ SharedSlotPool::SharedSlotPool(void* region) {
   header_ = static_cast<SharedSlotPoolHeader*>(region);
   free_slots_ =
       reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader));
+  in_use_slots_ = reinterpret_cast<uint8_t*>(
+      static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader) +
+      sizeof(uint32_t) * header_->capacity);
 }
 
 std::optional<uint32_t> SharedSlotPool::Reserve() {
@@ -84,6 +90,11 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
   }
 
   const uint32_t slot_index = free_slots_[header_->available_count - 1];
+  if (!IsValidIndex(slot_index) || in_use_slots_[slot_index] != 0) {
+    pthread_mutex_unlock(&header_->mutex);
+    return std::nullopt;
+  }
+  in_use_slots_[slot_index] = 1;
   --header_->available_count;
   pthread_mutex_unlock(&header_->mutex);
   return slot_index;
@@ -97,10 +108,12 @@ bool SharedSlotPool::Release(uint32_t slot_index) {
   if (!LockSharedMutex(&header_->mutex)) {
     return false;
   }
-  if (!IsValidIndex(slot_index) || header_->available_count >= header_->capacity) {
+  if (!IsValidIndex(slot_index) || header_->available_count >= header_->capacity ||
+      in_use_slots_[slot_index] == 0) {
     pthread_mutex_unlock(&header_->mutex);
     return false;
   }
+  in_use_slots_[slot_index] = 0;
   free_slots_[header_->available_count] = slot_index;
   ++header_->available_count;
   pthread_mutex_unlock(&header_->mutex);
@@ -116,7 +129,8 @@ uint32_t SharedSlotPool::available() const {
 }
 
 bool SharedSlotPool::valid() const {
-  return header_ != nullptr && free_slots_ != nullptr && header_->capacity != 0;
+  return header_ != nullptr && free_slots_ != nullptr && in_use_slots_ != nullptr &&
+         header_->capacity != 0;
 }
 
 bool SharedSlotPool::IsValidIndex(uint32_t slot_index) const {

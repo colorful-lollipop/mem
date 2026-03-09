@@ -72,7 +72,8 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
   }
   std::unique_lock<std::mutex> lock(state_->mutex);
   if (!state_->cv.wait_for(lock, timeout, [this] { return state_->ready; })) {
-    return StatusCode::PeerDisconnected;
+    reply->status = StatusCode::QueueTimeout;
+    return reply->status;
   }
   *reply = state_->reply;
   return reply->status;
@@ -593,10 +594,11 @@ StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
     return StatusCode::InvalidArgument;
   }
   RpcFuture future = InvokeAsync(call);
-  if (call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
+  if (call.admission_timeout_ms == 0 && call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
     return future.Wait(reply);
   }
   const auto wait_budget = std::chrono::milliseconds(
+      static_cast<int64_t>(call.admission_timeout_ms) +
       static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms) +
       1000);
   return future.WaitFor(reply, wait_budget);

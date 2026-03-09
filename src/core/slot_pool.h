@@ -31,7 +31,8 @@ struct SharedSlotPoolHeader {
 };
 
 inline std::size_t ComputeSharedSlotPoolBytes(uint32_t slot_count) {
-  return sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count;
+  return sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count +
+         sizeof(uint8_t) * slot_count;
 }
 
 bool InitializeSharedSlotPool(void* region, uint32_t slot_count);
@@ -51,6 +52,7 @@ class SharedSlotPool {
 
   SharedSlotPoolHeader* header_ = nullptr;
   uint32_t* free_slots_ = nullptr;
+  uint8_t* in_use_slots_ = nullptr;
 };
 
 class SlotPool {

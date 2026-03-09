@@ -61,6 +61,34 @@ TEST(SlotPoolTest, SharedSlotPoolSharesFreeListAcrossViews) {
   EXPECT_EQ(*recycled, *first);
 }
 
+TEST(SlotPoolTest, SharedSlotPoolRejectsReleaseOfNeverReservedSlot) {
+  std::vector<uint8_t> region(memrpc::ComputeSharedSlotPoolBytes(2), 0);
+  ASSERT_TRUE(memrpc::InitializeSharedSlotPool(region.data(), 2));
+
+  memrpc::SharedSlotPool pool(region.data());
+  const auto reserved = pool.Reserve();
+  ASSERT_TRUE(reserved.has_value());
+
+  const uint32_t other_slot = *reserved == 0 ? 1u : 0u;
+  EXPECT_FALSE(pool.Release(other_slot));
+  EXPECT_EQ(pool.available(), 1u);
+}
+
+TEST(SlotPoolTest, SharedSlotPoolRejectsDuplicateReleaseBeforeCapacityIsFull) {
+  std::vector<uint8_t> region(memrpc::ComputeSharedSlotPoolBytes(2), 0);
+  ASSERT_TRUE(memrpc::InitializeSharedSlotPool(region.data(), 2));
+
+  memrpc::SharedSlotPool pool(region.data());
+  const auto first = pool.Reserve();
+  const auto second = pool.Reserve();
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(second.has_value());
+
+  ASSERT_TRUE(pool.Release(*first));
+  EXPECT_FALSE(pool.Release(*first));
+  EXPECT_EQ(pool.available(), 1u);
+}
+
 TEST(SlotPoolTest, NormalReservePreservesHighReservedSlots) {
   memrpc::SlotPool pool(3, 1);
 

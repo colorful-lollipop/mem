@@ -388,6 +388,73 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
   server.Stop();
 }
 
+TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturningPeerDisconnected) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 1,
+          .normal_ring_size = 1,
+          .response_ring_size = 2,
+          .slot_count = 1,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  std::atomic<int> started{0};
+  std::atomic<bool> release{false};
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [&started, &release](const memrpc::RpcServerCall& call,
+                                              memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           started.fetch_add(1);
+                           while (!release.load()) {
+                             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                           }
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall first_call;
+  first_call.opcode = memrpc::Opcode::ScanFile;
+  first_call.admission_timeout_ms = 1000;
+  first_call.queue_timeout_ms = 5000;
+  first_call.exec_timeout_ms = 5000;
+  first_call.payload = {0x31};
+  auto first_future = client.InvokeAsync(first_call);
+  ASSERT_TRUE(WaitForAtomicAtLeast(started, 1, 200));
+
+  memrpc::RpcCall second_call;
+  second_call.opcode = memrpc::Opcode::ScanFile;
+  second_call.admission_timeout_ms = 1800;
+  second_call.queue_timeout_ms = 10;
+  second_call.exec_timeout_ms = 10;
+  second_call.payload = {0x32};
+
+  memrpc::StatusCode second_status = memrpc::StatusCode::EngineInternalError;
+  memrpc::RpcReply second_reply;
+  const auto start = std::chrono::steady_clock::now();
+  std::thread sync_thread([&] { second_status = client.InvokeSync(second_call, &second_reply); });
+
+  sync_thread.join();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+  EXPECT_EQ(second_status, memrpc::StatusCode::QueueFull);
+  EXPECT_GE(elapsed.count(), 1700);
+
+  release.store(true);
+  memrpc::RpcReply first_reply;
+  EXPECT_EQ(first_future.Wait(&first_reply), memrpc::StatusCode::Ok);
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
   auto bootstrap =
       std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
