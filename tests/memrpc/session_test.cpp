@@ -118,3 +118,31 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
   EXPECT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::InvalidArgument);
 }
+
+TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
+  memrpc::DemoBootstrapConfig config;
+  config.high_ring_size = 1;
+  config.normal_ring_size = 1;
+  config.response_ring_size = 1;
+  config.slot_count = 1;
+
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles handles;
+  ASSERT_EQ(bootstrap->Connect(&handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session session;
+  ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
+
+  memrpc::RequestRingEntry first;
+  first.request_id = 1;
+  first.slot_index = 0;
+  EXPECT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, first), memrpc::StatusCode::Ok);
+
+  memrpc::RequestRingEntry second;
+  second.request_id = 2;
+  second.slot_index = 0;
+  EXPECT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, second),
+            memrpc::StatusCode::QueueFull);
+}

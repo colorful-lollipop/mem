@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 
+#include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/client/sa_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
@@ -157,4 +158,39 @@ TEST(RpcClientIntegrationTest, InvokeSyncReconnectsAfterEngineRestart) {
 
   client.Shutdown();
   second_server.Stop();
+}
+
+TEST(RpcClientIntegrationTest, InvokeAsyncRejectsPayloadLargerThanConfiguredRequestLimit) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 4,
+          .normal_ring_size = 4,
+          .response_ring_size = 4,
+          .slot_count = 2,
+          .max_request_bytes = 8,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = std::vector<uint8_t>(9, 0x7f);
+
+  memrpc::RpcReply reply;
+  EXPECT_EQ(client.InvokeAsync(call).Wait(&reply), memrpc::StatusCode::InvalidArgument);
+
+  client.Shutdown();
+  server.Stop();
 }
