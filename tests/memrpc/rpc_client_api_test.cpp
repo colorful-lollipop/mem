@@ -47,7 +47,9 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   call.payload = std::vector<uint8_t>{1, 2, 3};
 
   MemRpc::RpcReply reply;
+  MemRpc::RpcClientRuntimeStats stats;
   EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
+  EXPECT_EQ(stats.pending_calls, 0u);
   EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
   EXPECT_EQ(call.admission_timeout_ms, 1000u);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);

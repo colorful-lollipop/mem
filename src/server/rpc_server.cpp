@@ -563,6 +563,25 @@ void RpcServer::Run() {
   }
 }
 
+RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
+  RpcServerRuntimeStats stats;
+  if (impl_ == nullptr) {
+    return stats;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(impl_->completion_mutex);
+    stats.completion_backlog = impl_->pending_completion_count;
+    stats.completion_backlog_capacity = impl_->completion_queue_capacity;
+  }
+  if (impl_->session.header() != nullptr) {
+    stats.high_request_ring_pending = RingCount(impl_->session.header()->high_ring);
+    stats.normal_request_ring_pending = RingCount(impl_->session.header()->normal_ring);
+    stats.response_ring_pending = RingCount(impl_->session.header()->response_ring);
+  }
+  return stats;
+}
+
 void RpcServer::Stop() {
   impl_->running.store(false);
   if (impl_->dispatcher_thread.joinable()) {

@@ -445,6 +445,10 @@ TEST(ResponseQueueEventTest, PublishEventFailsFastWhenCompletionBacklogIsFull) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2));
 
+  const memrpc::RpcServerRuntimeStats stats = server.GetRuntimeStats();
+  EXPECT_EQ(stats.completion_backlog, 1u);
+  EXPECT_EQ(stats.completion_backlog_capacity, 1u);
+
   memrpc::RpcEvent overflow_event;
   overflow_event.event_domain = 3;
   overflow_event.event_type = 3;

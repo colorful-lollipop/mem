@@ -17,6 +17,14 @@ struct ServerOptions {
   uint32_t completion_queue_capacity = 0;
 };
 
+struct RpcServerRuntimeStats {
+  uint32_t completion_backlog = 0;
+  uint32_t completion_backlog_capacity = 0;
+  uint32_t high_request_ring_pending = 0;
+  uint32_t normal_request_ring_pending = 0;
+  uint32_t response_ring_pending = 0;
+};
+
 class RpcServer {
  public:
   RpcServer();
@@ -38,6 +46,7 @@ class RpcServer {
   StatusCode Start();
   // Run 用于 demo/守护式场景，内部会保持 server 存活直到 Stop。
   void Run();
+  RpcServerRuntimeStats GetRuntimeStats() const;
   void Stop();
 
  private:

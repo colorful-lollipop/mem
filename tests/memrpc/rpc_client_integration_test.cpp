@@ -551,6 +551,10 @@ TEST(RpcClientIntegrationTest, BusyServerLeavesSharedRequestQueueBackedUp) {
 
   ASSERT_TRUE(WaitForAtomicAtLeast(started, 1, 200));
 
+  const memrpc::RpcClientRuntimeStats stats = client.GetRuntimeStats();
+  EXPECT_GE(stats.pending_calls, 1u);
+  EXPECT_GT(stats.request_slot_capacity, 0u);
+
   memrpc::Session observer;
   ASSERT_EQ(observer.Attach(bootstrap->server_handles(), memrpc::Session::AttachRole::Server),
             memrpc::StatusCode::Ok);

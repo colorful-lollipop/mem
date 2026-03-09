@@ -604,6 +604,34 @@ StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
   return future.WaitFor(reply, wait_budget);
 }
 
+RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
+  RpcClientRuntimeStats stats;
+  if (impl_ == nullptr) {
+    return stats;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(impl_->submit_mutex);
+    stats.queued_submissions = static_cast<uint32_t>(impl_->submit_queue.size());
+  }
+  {
+    std::lock_guard<std::mutex> lock(impl_->pending_mutex);
+    stats.pending_calls = static_cast<uint32_t>(impl_->pending_calls.size());
+  }
+  {
+    std::lock_guard<std::mutex> lock(impl_->session_mutex);
+    if (impl_->slot_pool != nullptr) {
+      stats.request_slot_capacity = impl_->slot_pool->capacity();
+    }
+    if (impl_->session.header() != nullptr) {
+      stats.high_request_ring_pending = RingCount(impl_->session.header()->high_ring);
+      stats.normal_request_ring_pending = RingCount(impl_->session.header()->normal_ring);
+      stats.response_ring_pending = RingCount(impl_->session.header()->response_ring);
+    }
+  }
+  return stats;
+}
+
 void RpcClient::Shutdown() {
   impl_->shutting_down.store(true);
   if (impl_->bootstrap != nullptr) {

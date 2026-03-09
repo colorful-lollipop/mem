@@ -13,6 +13,8 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
   MemRpc::ServerOptions options;
   options.high_worker_threads = 2;
   options.normal_worker_threads = 3;
+  options.completion_queue_capacity = 4;
+  MemRpc::RpcServerRuntimeStats stats;
   server.SetOptions(options);
   server.RegisterHandler(MemRpc::Opcode::ScanFile,
                          [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
@@ -26,5 +28,6 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
   event.payload = {1, 2, 3};
 
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);
+  EXPECT_EQ(stats.completion_backlog, 0u);
   EXPECT_EQ(server.PublishEvent(event), MemRpc::StatusCode::EngineInternalError);
 }

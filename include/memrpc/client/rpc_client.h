@@ -33,6 +33,15 @@ struct RpcReply {
   std::vector<uint8_t> payload;
 };
 
+struct RpcClientRuntimeStats {
+  uint32_t queued_submissions = 0;
+  uint32_t pending_calls = 0;
+  uint32_t request_slot_capacity = 0;
+  uint32_t high_request_ring_pending = 0;
+  uint32_t normal_request_ring_pending = 0;
+  uint32_t response_ring_pending = 0;
+};
+
 class RpcFuture {
  public:
   RpcFuture();
@@ -77,6 +86,7 @@ class RpcClient {
   RpcFuture InvokeAsync(const RpcCall& call);
   // InvokeSync 只是 InvokeAsync + deadline wait 的兼容包装，不做 1ms busy wait。
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
+  RpcClientRuntimeStats GetRuntimeStats() const;
   void Shutdown();
 
  private:
