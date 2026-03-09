@@ -1,15 +1,23 @@
 #include <gtest/gtest.h>
 
+#include <poll.h>
+#include <unistd.h>
+
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <memory>
 #include <thread>
 #include <vector>
 
+#include "core/protocol.h"
+#include "core/session.h"
 #include "memrpc/client.h"
 #include "memrpc/demo_bootstrap.h"
 #include "memrpc/sa_bootstrap.h"
 #include "memrpc/server.h"
+#include "memrpc/compat/scan_behavior_codec.h"
+#include "memrpc/compat/scan_codec.h"
 
 namespace {
 
@@ -219,6 +227,126 @@ TEST(IntegrationEndToEndTest, ConcurrentScansSucceed) {
   server.Stop();
 }
 
+TEST(IntegrationEndToEndTest, UnknownOpcodeReturnsInvalidArgument) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  auto handler = std::make_shared<FakeHandler>();
+  memrpc::EngineServer server(bootstrap->server_handles(), handler);
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles handles;
+  ASSERT_EQ(bootstrap->Connect(&handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session session;
+  ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
+  ASSERT_NE(session.header(), nullptr);
+
+  auto* payload = session.slot_payload(0);
+  ASSERT_NE(payload, nullptr);
+  std::memset(payload, 0, session.header()->slot_size);
+  payload->request.priority = static_cast<uint32_t>(memrpc::Priority::Normal);
+  payload->request.opcode = 999u;
+
+  memrpc::RequestRingEntry entry;
+  entry.request_id = 1u;
+  entry.slot_index = 0u;
+  entry.opcode = 999u;
+  ASSERT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, entry),
+            memrpc::StatusCode::Ok);
+
+  const uint64_t signal_value = 1u;
+  ASSERT_EQ(write(session.handles().normal_req_event_fd, &signal_value, sizeof(signal_value)),
+            static_cast<ssize_t>(sizeof(signal_value)));
+
+  pollfd fd{session.handles().resp_event_fd, POLLIN, 0};
+  ASSERT_EQ(poll(&fd, 1, 500), 1);
+
+  uint64_t counter = 0;
+  while (read(session.handles().resp_event_fd, &counter, sizeof(counter)) == sizeof(counter)) {
+  }
+
+  memrpc::ResponseRingEntry response;
+  ASSERT_TRUE(session.PopResponse(&response));
+  EXPECT_EQ(static_cast<memrpc::StatusCode>(response.status_code),
+            memrpc::StatusCode::InvalidArgument);
+
+  server.Stop();
+}
+
+TEST(IntegrationEndToEndTest, RegisteredRpcHandlerCanServeScanOpcode) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::EngineServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(
+      memrpc::Opcode::ScanFile,
+      [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+        ASSERT_NE(reply, nullptr);
+        memrpc::ScanRequest request;
+        ASSERT_TRUE(memrpc::DecodeScanRequest(call.payload, &request));
+        memrpc::ScanResult result;
+        result.status = memrpc::StatusCode::Ok;
+        result.verdict = memrpc::ScanVerdict::Clean;
+        result.message = request.file_path;
+        ASSERT_TRUE(memrpc::EncodeScanResult(result, &reply->payload));
+        reply->status = result.status;
+        reply->verdict = result.verdict;
+      });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::EngineClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::ScanRequest request;
+  request.file_path = "/tmp/registered-handler";
+  memrpc::ScanResult result;
+  EXPECT_EQ(client.Scan(request, &result), memrpc::StatusCode::Ok);
+  EXPECT_EQ(result.message, request.file_path);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(IntegrationEndToEndTest, ScanBehaviorUsesSecondRpcPath) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::EngineServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(
+      memrpc::Opcode::ScanBehavior,
+      [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+        ASSERT_NE(reply, nullptr);
+        memrpc::ScanBehaviorRequest request;
+        ASSERT_TRUE(memrpc::DecodeScanBehaviorRequest(call.payload, &request));
+        memrpc::ScanBehaviorResult result;
+        result.status = memrpc::StatusCode::Ok;
+        result.verdict = request.behavior_text.find("startup") != std::string::npos
+                             ? memrpc::ScanVerdict::Infected
+                             : memrpc::ScanVerdict::Clean;
+        result.message = request.behavior_text;
+        ASSERT_TRUE(memrpc::EncodeScanBehaviorResult(result, &reply->payload));
+        reply->status = result.status;
+        reply->verdict = result.verdict;
+      });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::EngineClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::ScanBehaviorRequest request;
+  request.behavior_text = "child process writes startup registry";
+  memrpc::ScanBehaviorResult result;
+  EXPECT_EQ(client.ScanBehavior(request, &result), memrpc::StatusCode::Ok);
+  EXPECT_EQ(result.verdict, memrpc::ScanVerdict::Infected);
+  EXPECT_EQ(result.message, request.behavior_text);
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(IntegrationEndToEndTest, EngineDeathFailsPendingRequestImmediately) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
@@ -295,6 +423,7 @@ TEST(IntegrationEndToEndTest, NextScanRecoversOntoNewSessionAfterEngineDeath) {
   close(dead_handles.high_req_event_fd);
   close(dead_handles.normal_req_event_fd);
   close(dead_handles.resp_event_fd);
+  close(dead_handles.notify_event_fd);
 
   client.Shutdown();
   second_server.Stop();
