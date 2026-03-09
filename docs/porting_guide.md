@@ -38,6 +38,12 @@
 - `BootstrapHandles`
 - session / ring / shared memory / recovery
 
+当前响应模型也已经固定为：
+
+- 请求写入共享内存 slot
+- 响应和事件统一走响应队列
+- 单条响应/事件 payload 上限为 `1KB`
+
 ## 当前样板
 
 当前仓库里已经有一个最小样板：

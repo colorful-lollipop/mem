@@ -39,7 +39,6 @@ class Session {
   const BootstrapHandles& handles() const;
   SlotPayload* slot_payload(uint32_t slot_index);
   uint8_t* slot_request_bytes(uint32_t slot_index);
-  uint8_t* slot_response_bytes(uint32_t slot_index);
 
   StatusCode PushRequest(QueueKind queue, const RequestRingEntry& entry);
   bool PopRequest(QueueKind queue, RequestRingEntry* entry);

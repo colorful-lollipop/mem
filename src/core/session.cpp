@@ -77,7 +77,8 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
   if (config.slot_count == 0 || config.slot_count > kMaxSlotCount) {
     return false;
   }
-  if (config.max_request_bytes == 0 || config.max_response_bytes == 0) {
+  if (config.max_request_bytes == 0 || config.max_response_bytes == 0 ||
+      config.max_response_bytes > kDefaultMaxResponseBytes) {
     return false;
   }
   if (config.slot_size != ComputeSlotSize(config.max_request_bytes, config.max_response_bytes)) {
@@ -271,15 +272,6 @@ uint8_t* Session::slot_request_bytes(uint32_t slot_index) {
   }
   auto* base = reinterpret_cast<uint8_t*>(payload);
   return base + sizeof(SlotPayload);
-}
-
-uint8_t* Session::slot_response_bytes(uint32_t slot_index) {
-  SlotPayload* payload = slot_payload(slot_index);
-  if (payload == nullptr || header_ == nullptr) {
-    return nullptr;
-  }
-  auto* base = reinterpret_cast<uint8_t*>(payload);
-  return base + sizeof(SlotPayload) + header_->max_request_bytes;
 }
 
 StatusCode Session::PushRequest(QueueKind queue, const RequestRingEntry& entry) {

@@ -184,20 +184,18 @@ struct RpcClient::Impl {
   }
 
   void CompleteRequest(const ResponseRingEntry& entry) {
-    SlotPayload* payload = session.slot_payload(entry.slot_index);
-    uint8_t* response_bytes = session.slot_response_bytes(entry.slot_index);
-    if (payload == nullptr || response_bytes == nullptr || slot_pool == nullptr) {
+    if (slot_pool == nullptr) {
       return;
     }
 
     RpcReply reply;
-    reply.status = static_cast<StatusCode>(payload->response.status_code);
-    reply.engine_code = payload->response.engine_code;
-    reply.detail_code = payload->response.detail_code;
-    if (payload->response.payload_size > session.header()->max_response_bytes) {
+    reply.status = static_cast<StatusCode>(entry.status_code);
+    reply.engine_code = entry.engine_errno;
+    reply.detail_code = entry.detail_code;
+    if (session.header() == nullptr || entry.result_size > session.header()->max_response_bytes) {
       reply.status = StatusCode::ProtocolMismatch;
     } else {
-      reply.payload.assign(response_bytes, response_bytes + payload->response.payload_size);
+      reply.payload.assign(entry.payload, entry.payload + entry.result_size);
     }
 
     std::shared_ptr<RpcFuture::State> pending;
@@ -230,7 +228,7 @@ struct RpcClient::Impl {
       HLOGW("drop invalid event, size=%{public}u", entry.result_size);
       return;
     }
-    event.payload.assign(entry.event_payload, entry.event_payload + entry.result_size);
+    event.payload.assign(entry.payload, entry.payload + entry.result_size);
 
     RpcEventCallback callback;
     {

@@ -27,6 +27,8 @@ cmake --build build
 - 共享内存 + `eventfd` 的基础通信
 - 高优请求队列 / 普通请求队列
 - 单响应队列 + 单 `resp_eventfd`
+- 请求 slot 只承载请求内容
+- 响应在响应队列中以内联 `1KB` payload 返回
 - `Reply/Event` 共用响应队列的协议基础
 - `RpcClient` / `RpcServer` 公共接口
 - `MiniRpcAsyncClient` / `MiniRpcClient` 应用层写法

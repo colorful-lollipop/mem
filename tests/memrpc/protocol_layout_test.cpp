@@ -9,14 +9,14 @@ TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
   EXPECT_EQ(memrpc::kDefaultMaxRequestBytes, 16u * 1024u);
   EXPECT_EQ(memrpc::kDefaultMaxResponseBytes, 1024u);
   EXPECT_EQ(sizeof(memrpc::RequestRingEntry), 32u);
-  EXPECT_GE(sizeof(memrpc::ResponseRingEntry), 24u);
+  EXPECT_LE(sizeof(memrpc::ResponseRingEntry), 1152u);
 }
 
-TEST(ProtocolLayoutTest, GenericSlotPayloadCarriesRequestAndResponseAreas) {
+TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {
   EXPECT_EQ(memrpc::ComputeSlotSize(memrpc::kDefaultMaxRequestBytes,
                                     memrpc::kDefaultMaxResponseBytes),
-            sizeof(memrpc::SlotPayload) + memrpc::kDefaultMaxRequestBytes +
-                memrpc::kDefaultMaxResponseBytes);
+            sizeof(memrpc::SlotPayload) + memrpc::kDefaultMaxRequestBytes);
+  EXPECT_EQ(memrpc::ComputeSlotSize(4096u, 256u), memrpc::ComputeSlotSize(4096u, 1024u));
 }
 
 TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {
@@ -40,13 +40,22 @@ TEST(ProtocolLayoutTest, ResponseRingEntryDistinguishesReplyAndEventMessages) {
   memrpc::ResponseRingEntry reply;
   reply.message_kind = memrpc::ResponseMessageKind::Reply;
   reply.request_id = 123;
+  reply.result_size = 3;
+  reply.payload[0] = 1;
+  reply.payload[1] = 2;
+  reply.payload[2] = 3;
 
   memrpc::ResponseRingEntry event;
   event.message_kind = memrpc::ResponseMessageKind::Event;
   event.event_domain = 7;
   event.event_type = 9;
   event.flags = 11;
+  event.result_size = 2;
+  event.payload[0] = 4;
+  event.payload[1] = 5;
 
   EXPECT_NE(reply.message_kind, event.message_kind);
   EXPECT_EQ(event.request_id, 0u);
+  EXPECT_EQ(reply.payload[1], 2u);
+  EXPECT_EQ(event.payload[0], 4u);
 }

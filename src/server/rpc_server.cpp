@@ -98,34 +98,25 @@ struct RpcServer::Impl {
   std::unordered_map<uint16_t, RpcHandler> handlers;
 
   void WriteResponse(const RequestRingEntry& request_entry, const RpcServerReply& reply) {
-    SlotPayload* payload = session.slot_payload(request_entry.slot_index);
-    uint8_t* response_bytes = session.slot_response_bytes(request_entry.slot_index);
-    if (payload == nullptr || response_bytes == nullptr || session.header() == nullptr) {
+    if (session.header() == nullptr) {
       return;
     }
-    uint32_t payload_size = static_cast<uint32_t>(reply.payload.size());
-    if (payload_size > session.header()->max_response_bytes) {
-      payload_size = 0;
-      payload->response.status_code = static_cast<uint32_t>(StatusCode::EngineInternalError);
-      payload->response.engine_code = 0;
-      payload->response.detail_code = 0;
-    } else {
-      payload->response.status_code = static_cast<uint32_t>(reply.status);
-      payload->response.engine_code = reply.engine_code;
-      payload->response.detail_code = reply.detail_code;
-    }
-    std::memset(response_bytes, 0, session.header()->max_response_bytes);
-    if (payload_size != 0) {
-      std::memcpy(response_bytes, reply.payload.data(), payload_size);
-    }
-    payload->response.payload_size = payload_size;
 
     ResponseRingEntry response;
     response.request_id = request_entry.request_id;
     response.slot_index = request_entry.slot_index;
-    response.status_code = payload->response.status_code;
-    response.result_size = payload->response.payload_size;
+    response.status_code = static_cast<uint32_t>(reply.status);
     response.engine_errno = reply.engine_code;
+    response.detail_code = reply.detail_code;
+    response.result_size = static_cast<uint32_t>(reply.payload.size());
+    if (response.result_size > session.header()->max_response_bytes) {
+      response.status_code = static_cast<uint32_t>(StatusCode::EngineInternalError);
+      response.engine_errno = 0;
+      response.detail_code = 0;
+      response.result_size = 0;
+    } else if (response.result_size != 0) {
+      std::memcpy(response.payload, reply.payload.data(), response.result_size);
+    }
     if (session.PushResponse(response) == StatusCode::Ok) {
       const uint64_t signal_value = 1;
       write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
@@ -149,7 +140,7 @@ struct RpcServer::Impl {
     entry.flags = event.flags;
     entry.result_size = static_cast<uint32_t>(event.payload.size());
     if (!event.payload.empty()) {
-      std::memcpy(entry.event_payload, event.payload.data(), event.payload.size());
+      std::memcpy(entry.payload, event.payload.data(), event.payload.size());
     }
 
     const StatusCode status = session.PushResponse(entry);

@@ -50,11 +50,12 @@ struct ResponseRingEntry {
   uint16_t reserved = 0;
   uint32_t status_code = 0;
   int32_t engine_errno = 0;
+  int32_t detail_code = 0;
   uint32_t event_domain = 0;
   uint32_t event_type = 0;
   uint32_t flags = 0;
   uint32_t result_size = 0;
-  uint8_t event_payload[kDefaultMaxResponseBytes]{};
+  uint8_t payload[kDefaultMaxResponseBytes]{};
 };
 
 static_assert(sizeof(RequestRingEntry) == 32u, "RequestRingEntry size must stay fixed");
@@ -69,21 +70,14 @@ struct RpcRequestHeader {
   uint32_t payload_size = 0;
 };
 
-struct RpcResponseHeader {
-  uint32_t status_code = 0;
-  int32_t engine_code = 0;
-  int32_t detail_code = 0;
-  uint32_t payload_size = 0;
-};
-
 struct SlotPayload {
   RpcRequestHeader request{};
-  RpcResponseHeader response{};
 };
 
 inline constexpr uint32_t ComputeSlotSize(uint32_t max_request_bytes,
                                           uint32_t max_response_bytes) {
-  return sizeof(SlotPayload) + max_request_bytes + max_response_bytes;
+  static_cast<void>(max_response_bytes);
+  return sizeof(SlotPayload) + max_request_bytes;
 }
 
 struct ScanFileRequestPayload {

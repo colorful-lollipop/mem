@@ -20,15 +20,18 @@
   - `normal_req_eventfd`
   - `resp_eventfd`
 
-请求和响应共用一套固定 slot 区：
+共享内存里的 slot 现在只承载请求：
 
 - `RpcRequestHeader + request bytes`
-- `RpcResponseHeader + response bytes`
+
+响应统一走响应队列，不再在 slot 中预留响应区。
 
 默认 session 配置：
 
 - request 上限：`16KB`
 - response 上限：`1KB`
+  - 该上限固定用于响应队列 entry 的内联 payload
+  - 运行时配置不能超过这个值
 
 ## 响应队列模型
 
@@ -42,12 +45,14 @@
 `Reply` 用于普通 RPC 回包：
 
 - 通过 `request_id` 命中 pending request
+- 直接携带状态码和最多 `1KB` 的响应 payload
 - 唤醒对应等待者
 
 `Event` 用于无头广播事件：
 
 - 不依赖 `request_id`
 - 带 `event_domain`、`event_type`、`flags`
+- 同样直接携带最多 `1KB` 的事件 payload
 - 客户端分发线程收到后直接交给应用层事件回调
 
 这样做的目标是：

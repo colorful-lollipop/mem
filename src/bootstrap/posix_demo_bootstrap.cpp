@@ -82,6 +82,14 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
     return StatusCode::Ok;
   }
 
+  if (impl_->config.max_request_bytes == 0 ||
+      impl_->config.max_response_bytes == 0 ||
+      impl_->config.max_response_bytes > kDefaultMaxResponseBytes) {
+    HLOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
+          impl_->config.max_request_bytes, impl_->config.max_response_bytes);
+    return StatusCode::InvalidArgument;
+  }
+
   impl_->ResetHandles();
 
   const int shm_fd =

@@ -110,3 +110,11 @@ TEST(SessionTest, OwnerDeathDoesNotHangRingOperations) {
   ASSERT_TRUE(WIFEXITED(probe_status));
   EXPECT_EQ(WEXITSTATUS(probe_status), 0);
 }
+
+TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
+  memrpc::DemoBootstrapConfig config;
+  config.max_response_bytes = memrpc::kDefaultMaxResponseBytes + 1;
+
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  EXPECT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::InvalidArgument);
+}
