@@ -399,3 +399,68 @@ TEST(ResponseQueueEventTest, PublishedEventKeepsResponseSlotOwnedWhenNotifyWrite
 
   server.Stop();
 }
+
+TEST(ResponseQueueEventTest, PublishEventFailsFastWhenCompletionBacklogIsFull) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 1,
+          .normal_ring_size = 1,
+          .response_ring_size = 1,
+          .slot_count = 1,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1, .completion_queue_capacity = 1});
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent first_event;
+  first_event.event_domain = 1;
+  first_event.event_type = 1;
+  first_event.payload = {0x11};
+  ASSERT_EQ(server.PublishEvent(first_event), memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent queued_event;
+  queued_event.event_domain = 2;
+  queued_event.event_type = 2;
+  queued_event.payload = {0x22};
+
+  memrpc::StatusCode slow_status = memrpc::StatusCode::Ok;
+  auto slow_elapsed = std::chrono::milliseconds::zero();
+  std::thread blocked_publisher([&] {
+    const auto start = std::chrono::steady_clock::now();
+    slow_status = server.PublishEvent(queued_event);
+    slow_elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                              start);
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+
+  memrpc::RpcEvent overflow_event;
+  overflow_event.event_domain = 3;
+  overflow_event.event_type = 3;
+  overflow_event.payload = {0x33};
+
+  const auto fast_start = std::chrono::steady_clock::now();
+  const memrpc::StatusCode fast_status = server.PublishEvent(overflow_event);
+  const auto fast_elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                            fast_start);
+
+  blocked_publisher.join();
+  EXPECT_EQ(slow_status, memrpc::StatusCode::QueueFull);
+  EXPECT_EQ(fast_status, memrpc::StatusCode::QueueFull);
+  EXPECT_GE(slow_elapsed.count(), 8);
+  EXPECT_LT(fast_elapsed.count(), 8);
+
+  server.Stop();
+}

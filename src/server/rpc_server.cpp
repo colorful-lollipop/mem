@@ -128,6 +128,8 @@ struct RpcServer::Impl {
   std::mutex completion_mutex;
   std::condition_variable completion_cv;
   std::queue<CompletionItem> completion_queue;
+  uint32_t completion_queue_capacity = 0;
+  uint32_t pending_completion_count = 0;
   std::thread response_writer_thread;
   std::atomic<bool> response_writer_running{false};
   std::thread dispatcher_thread;
@@ -192,6 +194,7 @@ struct RpcServer::Impl {
     {
       std::lock_guard<std::mutex> lock(completion_mutex);
       queued.swap(completion_queue);
+      pending_completion_count = 0;
     }
     while (!queued.empty()) {
       CompleteItem(queued.front().completion, status);
@@ -213,12 +216,17 @@ struct RpcServer::Impl {
     response_writer_thread = std::thread([this] { ResponseWriterLoop(); });
   }
 
-  void EnqueueCompletion(CompletionItem item) {
+  bool EnqueueCompletion(CompletionItem item) {
     {
       std::lock_guard<std::mutex> lock(completion_mutex);
+      if (completion_queue_capacity != 0 && pending_completion_count >= completion_queue_capacity) {
+        return false;
+      }
+      ++pending_completion_count;
       completion_queue.push(std::move(item));
     }
     completion_cv.notify_one();
+    return true;
   }
 
   void ResponseWriterLoop() {
@@ -305,6 +313,12 @@ struct RpcServer::Impl {
       }
 
       CompleteItem(item.completion, status);
+      {
+        std::lock_guard<std::mutex> lock(completion_mutex);
+        if (pending_completion_count > 0) {
+          --pending_completion_count;
+        }
+      }
     }
   }
 
@@ -339,7 +353,11 @@ struct RpcServer::Impl {
     }
     item.retry_budget = RESPONSE_RETRY_BUDGET;
     item.break_session_on_failure = true;
-    EnqueueCompletion(std::move(item));
+    if (!EnqueueCompletion(std::move(item))) {
+      HLOGE("completion backlog full while enqueueing rpc reply, request_id=%{public}llu",
+            static_cast<unsigned long long>(request_entry.request_id));
+      MarkSessionBroken();
+    }
   }
 
   StatusCode PublishEvent(const RpcEvent& event) {
@@ -364,7 +382,9 @@ struct RpcServer::Impl {
     item.payload = event.payload;
     item.retry_budget = EVENT_RETRY_BUDGET;
     item.completion = completion;
-    EnqueueCompletion(std::move(item));
+    if (!EnqueueCompletion(std::move(item))) {
+      return StatusCode::QueueFull;
+    }
 
     std::unique_lock<std::mutex> lock(completion->mutex);
     completion->cv.wait(lock, [&completion] { return completion->ready; });
@@ -514,6 +534,11 @@ StatusCode RpcServer::Start() {
     return attach_status;
   }
   impl_->running.store(true);
+  impl_->completion_queue_capacity =
+      impl_->options.completion_queue_capacity == 0
+          ? std::max(1u, impl_->session.header()->response_ring_size)
+          : impl_->options.completion_queue_capacity;
+  impl_->pending_completion_count = 0;
   impl_->StartResponseWriter();
   impl_->high_pool.Start(std::max(1u, impl_->options.high_worker_threads),
                          [this](const RequestRingEntry& entry) {

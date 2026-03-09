@@ -13,6 +13,8 @@ struct ServerOptions {
   // 高优与普通请求各自拥有独立 worker 池，避免普通队列拖慢高优请求。
   uint32_t high_worker_threads = 1;
   uint32_t normal_worker_threads = 1;
+  // response writer 前允许同时挂起的 completion 数量；0 表示按 response ring 容量取默认值。
+  uint32_t completion_queue_capacity = 0;
 };
 
 class RpcServer {
