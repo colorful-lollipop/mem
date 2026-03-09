@@ -1,0 +1,17 @@
+build/
+out/
+dist/
+.cache/
+.worktrees/
+worktrees/
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.obj
+*.pdb
+*.log
+compile_commands.json
