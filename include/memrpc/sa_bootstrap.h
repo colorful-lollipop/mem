@@ -27,10 +27,12 @@ class SaBootstrapChannel : public IBootstrapChannel {
   const SaBootstrapConfig& config() const;
   const std::string& last_error() const;
   BootstrapHandles server_handles() const;
+  void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
   StatusCode StartEngine() override;
   StatusCode Connect(BootstrapHandles* handles) override;
   StatusCode NotifyPeerRestarted() override;
+  void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
  private:
   struct Impl;

@@ -36,6 +36,12 @@ BootstrapHandles SaBootstrapChannel::server_handles() const {
   return impl_->fallback->server_handles();
 }
 
+void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
+  if (impl_->fallback != nullptr) {
+    impl_->fallback->SimulateEngineDeathForTest(session_id);
+  }
+}
+
 StatusCode SaBootstrapChannel::StartEngine() {
   if (impl_->fallback == nullptr) {
     impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
@@ -77,6 +83,12 @@ StatusCode SaBootstrapChannel::NotifyPeerRestarted() {
     return StatusCode::kEngineInternalError;
   }
   return impl_->fallback->NotifyPeerRestarted();
+}
+
+void SaBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
+  if (impl_->fallback != nullptr) {
+    impl_->fallback->SetEngineDeathCallback(std::move(callback));
+  }
 }
 
 }  // namespace memrpc

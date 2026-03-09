@@ -2,10 +2,13 @@
 #define MEMRPC_BOOTSTRAP_H_
 
 #include <cstdint>
+#include <functional>
 
 #include "memrpc/types.h"
 
 namespace memrpc {
+
+using EngineDeathCallback = std::function<void(uint64_t)>;
 
 struct BootstrapHandles {
   int shm_fd = -1;
@@ -23,6 +26,7 @@ class IBootstrapChannel {
   virtual StatusCode StartEngine() = 0;
   virtual StatusCode Connect(BootstrapHandles* handles) = 0;
   virtual StatusCode NotifyPeerRestarted() = 0;
+  virtual void SetEngineDeathCallback(EngineDeathCallback callback) = 0;
 };
 
 }  // namespace memrpc

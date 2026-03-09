@@ -24,6 +24,8 @@ Migration guidance:
 - let the transport return explicit status codes like `kQueueTimeout`, `kExecTimeout`, and `kPeerDisconnected`
 - on Linux, you can use the fake SA adapter or the `fork()` demo path during development
 - on HarmonyOS, replace only the bootstrap implementation so process startup comes from `init` and service lookup comes from `GetSystemAbility` / `LoadSystemAbility`
+- when SA reports engine death, the current `Scan()` calls waiting on the old session fail immediately with `kPeerDisconnected`
+- the next `Scan()` lazily recreates the session through bootstrap and continues on the new shared-memory handles
 
 Recommended wrapper pattern:
 

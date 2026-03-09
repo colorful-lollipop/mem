@@ -28,6 +28,7 @@ Suggested HarmonyOS mapping:
 1. client side calls `GetSystemAbility` to obtain the service proxy
 2. client side calls `LoadSystemAbility` when the engine service must be started or reloaded
 3. the SA layer exchanges `BootstrapHandles`
-4. `EngineClient` and `EngineServer` attach to the shared-memory session with those handles
+4. the SA layer reports engine death through the bootstrap death callback
+5. `EngineClient` lazily reconnects on the next `Scan()` by calling `StartEngine()` + `Connect()` again
 
 This repository currently includes `memrpc::SaBootstrapChannel` as a Linux fake-SA adapter for development. It is intentionally shaped so that a real HarmonyOS implementation can replace only the bootstrap internals without changing the transport core or business-facing client/server APIs.

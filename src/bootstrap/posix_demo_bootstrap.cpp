@@ -15,6 +15,13 @@ namespace memrpc {
 
 namespace {
 
+void CloseFd(int* fd) {
+  if (fd != nullptr && *fd >= 0) {
+    close(*fd);
+    *fd = -1;
+  }
+}
+
 uint64_t GenerateSessionId() {
   std::random_device device;
   std::mt19937_64 engine(device());
@@ -39,20 +46,20 @@ struct PosixDemoBootstrapChannel::Impl {
   DemoBootstrapConfig config;
   BootstrapHandles handles{};
   bool initialized = false;
+  EngineDeathCallback death_callback;
+
+  void ResetHandles() {
+    CloseFd(&handles.shm_fd);
+    CloseFd(&handles.high_req_event_fd);
+    CloseFd(&handles.normal_req_event_fd);
+    CloseFd(&handles.resp_event_fd);
+    handles.protocol_version = 0;
+    handles.session_id = 0;
+    initialized = false;
+  }
 
   ~Impl() {
-    if (handles.shm_fd >= 0) {
-      close(handles.shm_fd);
-    }
-    if (handles.high_req_event_fd >= 0) {
-      close(handles.high_req_event_fd);
-    }
-    if (handles.normal_req_event_fd >= 0) {
-      close(handles.normal_req_event_fd);
-    }
-    if (handles.resp_event_fd >= 0) {
-      close(handles.resp_event_fd);
-    }
+    ResetHandles();
     if (!config.shm_name.empty()) {
       shm_unlink(config.shm_name.c_str());
     }
@@ -73,6 +80,8 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   if (impl_->initialized) {
     return StatusCode::kOk;
   }
+
+  impl_->ResetHandles();
 
   const int shm_fd =
       shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
@@ -152,6 +161,10 @@ StatusCode PosixDemoBootstrapChannel::NotifyPeerRestarted() {
   return StatusCode::kOk;
 }
 
+void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
+  impl_->death_callback = std::move(callback);
+}
+
 BootstrapHandles PosixDemoBootstrapChannel::server_handles() const {
   BootstrapHandles handles;
   handles.shm_fd = dup(impl_->handles.shm_fd);
@@ -161,6 +174,20 @@ BootstrapHandles PosixDemoBootstrapChannel::server_handles() const {
   handles.protocol_version = impl_->handles.protocol_version;
   handles.session_id = impl_->handles.session_id;
   return handles;
+}
+
+void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
+  const uint64_t dead_session_id =
+      session_id == 0 ? impl_->handles.session_id : session_id;
+  if (session_id == 0 || session_id == impl_->handles.session_id) {
+    impl_->ResetHandles();
+    if (!impl_->config.shm_name.empty()) {
+      shm_unlink(impl_->config.shm_name.c_str());
+    }
+  }
+  if (impl_->death_callback) {
+    impl_->death_callback(dead_session_id);
+  }
 }
 
 }  // namespace memrpc

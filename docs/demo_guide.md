@@ -7,6 +7,8 @@ cmake -S . -B build
 cmake --build build
 ```
 
+The configure step exports `build/compile_commands.json` and refreshes a source-root symlink at `compile_commands.json` for `clangd`.
+
 Run the dual-process demo:
 
 ```bash

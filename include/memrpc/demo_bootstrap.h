@@ -24,8 +24,10 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
   StatusCode StartEngine() override;
   StatusCode Connect(BootstrapHandles* handles) override;
   StatusCode NotifyPeerRestarted() override;
+  void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
   BootstrapHandles server_handles() const;
+  void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
  private:
   struct Impl;

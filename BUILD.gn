@@ -76,6 +76,14 @@ if (memrpc_enable_tests) {
     sources = [ "tests/session_test.cpp" ]
   }
 
+  memrpc_test("memrpc_build_config_test") {
+    sources = [ "tests/build_config_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_bootstrap_callback_test") {
+    sources = [ "tests/bootstrap_callback_test.cpp" ]
+  }
+
   memrpc_test("memrpc_integration_end_to_end_test") {
     sources = [ "tests/integration_end_to_end_test.cpp" ]
   }

@@ -33,7 +33,10 @@ This layout keeps transport-specific bootstrap logic outside the core runtime. H
 Current scope:
 
 - robust shared-memory mutexes recover owner death as `kPeerDisconnected`
-- no transparent reconnect or request replay is implemented yet
-- upper layers are still responsible for process restart and resubmission policy
+- engine death callbacks invalidate the current session immediately
+- the next `Scan()` lazily calls `StartEngine()` + `Connect()` to attach a fresh session
+- requests already published to the old shared-memory ring are failed as `kPeerDisconnected`
+- requests not yet published stay local and are retried by the new `Scan()` attempt
+- upper layers are still responsible for final restart policy and any re-scan of requests that may already have reached the old engine
 - Linux demo and fake-SA development mode can use `fork()` to stand up the engine side quickly
 - HarmonyOS production mode is expected to use `init` + `GetSystemAbility` / `LoadSystemAbility`, with the same shared-memory transport underneath

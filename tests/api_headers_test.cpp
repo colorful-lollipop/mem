@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <type_traits>
+#include <utility>
 
 #include "memrpc/bootstrap.h"
 #include "memrpc/client.h"
@@ -25,6 +26,13 @@ class FakeBootstrapChannel : public memrpc::IBootstrapChannel {
   memrpc::StatusCode NotifyPeerRestarted() override {
     return memrpc::StatusCode::kOk;
   }
+
+  void SetEngineDeathCallback(memrpc::EngineDeathCallback callback) override {
+    callback_ = std::move(callback);
+  }
+
+ private:
+  memrpc::EngineDeathCallback callback_;
 };
 
 class FakeHandler : public memrpc::IScanHandler {
