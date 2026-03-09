@@ -1,0 +1,86 @@
+config("memrpc_config") {
+  include_dirs = [ "include", "src" ]
+  cflags_cc = [ "-std=c++17" ]
+}
+
+config("memrpc_test_config") {
+  include_dirs = [ "include", "src" ]
+  cflags_cc = [ "-std=c++17" ]
+}
+
+source_set("memrpc") {
+  sources = [
+    "src/bootstrap/posix_demo_bootstrap.cpp",
+    "src/bootstrap/sa_bootstrap.cpp",
+    "src/client/engine_client.cpp",
+    "src/core/ring_buffer.cpp",
+    "src/core/session.cpp",
+    "src/core/slot_pool.cpp",
+    "src/server/engine_server.cpp",
+  ]
+  public = [
+    "include/memrpc/bootstrap.h",
+    "include/memrpc/client.h",
+    "include/memrpc/demo_bootstrap.h",
+    "include/memrpc/handler.h",
+    "include/memrpc/sa_bootstrap.h",
+    "include/memrpc/server.h",
+    "include/memrpc/types.h",
+  ]
+  public_configs = [ ":memrpc_config" ]
+}
+
+executable("memrpc_demo_dual_process") {
+  sources = [ "demo/demo_dual_process_main.cpp" ]
+  deps = [ ":memrpc" ]
+}
+
+if (memrpc_enable_tests) {
+  template("memrpc_test") {
+    executable(target_name) {
+      testonly = true
+      sources = invoker.sources
+      deps = [
+        ":memrpc",
+        memrpc_gtest_main_target,
+      ]
+      configs += [ ":memrpc_test_config" ]
+    }
+  }
+
+  memrpc_test("memrpc_smoke_test") {
+    sources = [ "tests/smoke_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_types_test") {
+    sources = [ "tests/types_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_api_headers_test") {
+    sources = [ "tests/api_headers_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_protocol_layout_test") {
+    sources = [ "tests/protocol_layout_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_ring_buffer_test") {
+    sources = [ "tests/ring_buffer_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_slot_pool_test") {
+    sources = [ "tests/slot_pool_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_session_test") {
+    sources = [ "tests/session_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_integration_end_to_end_test") {
+    sources = [ "tests/integration_end_to_end_test.cpp" ]
+  }
+
+  memrpc_test("memrpc_sa_bootstrap_stub_test") {
+    sources = [ "tests/sa_bootstrap_stub_test.cpp" ]
+  }
+}

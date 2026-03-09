@@ -1,0 +1,4 @@
+declare_args() {
+  memrpc_enable_tests = true
+  memrpc_gtest_main_target = "//third_party/googletest:gtest_main"
+}

@@ -1,0 +1,2 @@
+add_executable(memrpc_demo_dual_process demo_dual_process_main.cpp)
+target_link_libraries(memrpc_demo_dual_process PRIVATE memrpc)
