@@ -128,7 +128,7 @@ struct RpcServer::Impl {
       HLOGE("PublishEvent failed, session is not ready");
       return StatusCode::EngineInternalError;
     }
-    if (event.payload.size() > kDefaultMaxResponseBytes) {
+    if (event.payload.size() > session.header()->max_response_bytes) {
       HLOGW("PublishEvent payload too large, size=%{public}zu", event.payload.size());
       return StatusCode::InvalidArgument;
     }

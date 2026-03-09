@@ -224,7 +224,7 @@ struct RpcClient::Impl {
     event.event_domain = entry.event_domain;
     event.event_type = entry.event_type;
     event.flags = entry.flags;
-    if (entry.result_size > kDefaultMaxResponseBytes) {
+    if (session.header() == nullptr || entry.result_size > session.header()->max_response_bytes) {
       HLOGW("drop invalid event, size=%{public}u", entry.result_size);
       return;
     }

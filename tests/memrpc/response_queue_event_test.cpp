@@ -8,6 +8,7 @@
 
 #include "memrpc/rpc_client.h"
 #include "memrpc/rpc_server.h"
+#include "memrpc/demo_bootstrap.h"
 #include "memrpc/sa_bootstrap.h"
 
 namespace {
@@ -108,6 +109,35 @@ TEST(ResponseQueueEventTest, ReplyAndEventCanShareOneResponseQueue) {
   EXPECT_EQ(reply.engine_code, 12);
   EXPECT_EQ(reply.detail_code, 34);
   ASSERT_TRUE(WaitForValue(event_count, 1, 200));
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, EventRespectsConfiguredResponseLimit) {
+  memrpc::DemoBootstrapConfig config;
+  config.max_response_bytes = 64;
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcEvent event;
+  event.event_domain = 3;
+  event.event_type = 4;
+  event.payload.assign(65, 0x2a);
+  EXPECT_EQ(server.PublishEvent(event), memrpc::StatusCode::InvalidArgument);
 
   client.Shutdown();
   server.Stop();
