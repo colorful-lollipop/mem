@@ -56,59 +56,99 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   EXPECT_EQ(session.Attach(attach_handles), memrpc::StatusCode::ProtocolMismatch);
 }
 
-TEST(SessionTest, OwnerDeathDoesNotHangRingOperations) {
-  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
+  memrpc::DemoBootstrapConfig config;
+  config.high_ring_size = 2;
+  config.normal_ring_size = 2;
+  config.response_ring_size = 2;
+  config.slot_count = 2;
+
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
   ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
 
-  const pid_t locker_pid = fork();
-  ASSERT_GE(locker_pid, 0);
-  if (locker_pid == 0) {
-    memrpc::BootstrapHandles locker_handles;
-    if (bootstrap->Connect(&locker_handles) != memrpc::StatusCode::Ok) {
-      _exit(2);
-    }
-    memrpc::Session session;
-    if (session.Attach(locker_handles) != memrpc::StatusCode::Ok) {
-      _exit(3);
-    }
-    if (pthread_mutex_lock(&session.mutable_header()->high_ring_mutex) != 0) {
-      _exit(4);
-    }
-    _exit(0);
-  }
+  memrpc::BootstrapHandles client_handles;
+  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles server_handles;
+  ASSERT_EQ(bootstrap->Connect(&server_handles), memrpc::StatusCode::Ok);
 
-  int locker_status = 0;
-  ASSERT_EQ(waitpid(locker_pid, &locker_status, 0), locker_pid);
-  ASSERT_TRUE(WIFEXITED(locker_status));
-  ASSERT_EQ(WEXITSTATUS(locker_status), 0);
+  memrpc::Session client_session;
+  ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
+  memrpc::Session server_session;
+  ASSERT_EQ(server_session.Attach(server_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
 
-  const pid_t probe_pid = fork();
-  ASSERT_GE(probe_pid, 0);
-  if (probe_pid == 0) {
-    memrpc::BootstrapHandles probe_handles;
-    if (bootstrap->Connect(&probe_handles) != memrpc::StatusCode::Ok) {
-      _exit(5);
-    }
-    memrpc::Session session;
-    if (session.Attach(probe_handles) != memrpc::StatusCode::Ok) {
-      _exit(6);
-    }
-    memrpc::RequestRingEntry entry;
-    entry.request_id = 1;
-    entry.slot_index = 0;
-    const memrpc::StatusCode status =
-        session.PushRequest(memrpc::QueueKind::HighRequest, entry);
-    _exit(status == memrpc::StatusCode::PeerDisconnected ? 0 : 7);
-  }
+  memrpc::RequestRingEntry first;
+  first.request_id = 1;
+  first.slot_index = 0;
+  memrpc::RequestRingEntry second;
+  second.request_id = 2;
+  second.slot_index = 1;
+  memrpc::RequestRingEntry third;
+  third.request_id = 3;
+  third.slot_index = 0;
 
-  int probe_status = 0;
-  if (!WaitForExit(probe_pid, 1000, &probe_status)) {
-    kill(probe_pid, SIGKILL);
-    waitpid(probe_pid, &probe_status, 0);
-    FAIL() << "PushRequest hung after mutex owner death";
-  }
-  ASSERT_TRUE(WIFEXITED(probe_status));
-  EXPECT_EQ(WEXITSTATUS(probe_status), 0);
+  ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, first),
+            memrpc::StatusCode::Ok);
+  ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, second),
+            memrpc::StatusCode::Ok);
+  EXPECT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, third),
+            memrpc::StatusCode::QueueFull);
+
+  memrpc::RequestRingEntry observed;
+  ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
+  EXPECT_EQ(observed.request_id, 1u);
+
+  ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, third),
+            memrpc::StatusCode::Ok);
+  ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
+  EXPECT_EQ(observed.request_id, 2u);
+  ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
+  EXPECT_EQ(observed.request_id, 3u);
+  EXPECT_FALSE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
+}
+
+TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
+  memrpc::DemoBootstrapConfig config;
+  config.high_ring_size = 2;
+  config.normal_ring_size = 2;
+  config.response_ring_size = 2;
+  config.slot_count = 2;
+
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles client_handles;
+  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles server_handles;
+  ASSERT_EQ(bootstrap->Connect(&server_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session client_session;
+  ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
+  memrpc::Session server_session;
+  ASSERT_EQ(server_session.Attach(server_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::ResponseRingEntry first;
+  first.request_id = 11;
+  memrpc::ResponseRingEntry second;
+  second.request_id = 12;
+  memrpc::ResponseRingEntry third;
+  third.request_id = 13;
+
+  ASSERT_EQ(server_session.PushResponse(first), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server_session.PushResponse(second), memrpc::StatusCode::Ok);
+  EXPECT_EQ(server_session.PushResponse(third), memrpc::StatusCode::QueueFull);
+
+  memrpc::ResponseRingEntry observed;
+  ASSERT_TRUE(client_session.PopResponse(&observed));
+  EXPECT_EQ(observed.request_id, 11u);
+
+  ASSERT_EQ(server_session.PushResponse(third), memrpc::StatusCode::Ok);
+  ASSERT_TRUE(client_session.PopResponse(&observed));
+  EXPECT_EQ(observed.request_id, 12u);
+  ASSERT_TRUE(client_session.PopResponse(&observed));
+  EXPECT_EQ(observed.request_id, 13u);
+  EXPECT_FALSE(client_session.PopResponse(&observed));
 }
 
 TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
@@ -145,4 +185,63 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
   second.slot_index = 0;
   EXPECT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, second),
             memrpc::StatusCode::QueueFull);
+}
+
+TEST(SessionTest, RejectsSecondClientAttachToSameSession) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles first_handles;
+  ASSERT_EQ(bootstrap->Connect(&first_handles), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles second_handles;
+  ASSERT_EQ(bootstrap->Connect(&second_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session first_session;
+  ASSERT_EQ(first_session.Attach(first_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session second_session;
+  EXPECT_EQ(second_session.Attach(second_handles), memrpc::StatusCode::InvalidArgument);
+}
+
+TEST(SessionTest, AllowsNextClientAttachAfterReset) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles first_handles;
+  ASSERT_EQ(bootstrap->Connect(&first_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session first_session;
+  ASSERT_EQ(first_session.Attach(first_handles), memrpc::StatusCode::Ok);
+  first_session.Reset();
+
+  memrpc::BootstrapHandles second_handles;
+  ASSERT_EQ(bootstrap->Connect(&second_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session second_session;
+  EXPECT_EQ(second_session.Attach(second_handles), memrpc::StatusCode::Ok);
+}
+
+TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles handles;
+  ASSERT_EQ(bootstrap->Connect(&handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session session;
+  ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
+
+  const memrpc::SlotPayload* slot = session.slot_payload(0);
+  ASSERT_NE(slot, nullptr);
+  EXPECT_EQ(slot->runtime.request_id, 0u);
+  EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
+  EXPECT_EQ(slot->runtime.worker_id, 0u);
+  EXPECT_EQ(slot->runtime.enqueue_mono_ms, 0u);
+  EXPECT_EQ(slot->runtime.start_exec_mono_ms, 0u);
+  EXPECT_EQ(slot->runtime.last_heartbeat_mono_ms, 0u);
+
+  const memrpc::ResponseSlotPayload* response_slot = session.response_slot_payload(0);
+  ASSERT_NE(response_slot, nullptr);
+  EXPECT_EQ(response_slot->runtime.request_id, 0u);
+  EXPECT_EQ(response_slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
 }

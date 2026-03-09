@@ -10,6 +10,7 @@
 namespace memrpc {
 
 struct ServerOptions {
+  // 高优与普通请求各自拥有独立 worker 池，避免普通队列拖慢高优请求。
   uint32_t high_worker_threads = 1;
   uint32_t normal_worker_threads = 1;
 };
@@ -26,10 +27,14 @@ class RpcServer {
   RpcServer& operator=(RpcServer&&) noexcept = default;
 
   void SetBootstrapHandles(BootstrapHandles handles);
+  // 重复注册同一 opcode 会覆盖旧 handler；传入空 handler 等价于注销。
   void RegisterHandler(Opcode opcode, RpcHandler handler);
   void SetOptions(ServerOptions options);
+  // PublishEvent 复用 response ring + response slot，把异步事件发给客户端。
   StatusCode PublishEvent(const RpcEvent& event);
+  // Start 负责 attach session、拉起 worker 池和请求分发线程。
   StatusCode Start();
+  // Run 用于 demo/守护式场景，内部会保持 server 存活直到 Stop。
   void Run();
   void Stop();
 

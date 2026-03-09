@@ -6,6 +6,7 @@
 #include <pthread.h>
 
 #include "core/protocol.h"
+#include "core/slot_pool.h"
 
 namespace memrpc {
 
@@ -17,6 +18,7 @@ struct LayoutConfig {
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
+  uint32_t high_reserved_request_slots = 0;
 };
 
 struct Layout {
@@ -24,34 +26,41 @@ struct Layout {
   std::size_t normal_ring_offset = 0;
   std::size_t response_ring_offset = 0;
   std::size_t slot_pool_offset = 0;
+  std::size_t response_slot_pool_offset = 0;
+  std::size_t response_slots_offset = 0;
   std::size_t total_size = 0;
 };
 
 struct RingCursor {
   uint32_t head = 0;
   uint32_t tail = 0;
-  uint32_t size = 0;
   uint32_t capacity = 0;
+  uint32_t reserved = 0;
 };
+
+inline uint32_t RingCount(const RingCursor& cursor) {
+  return cursor.tail - cursor.head;
+}
 
 struct SharedMemoryHeader {
   uint32_t magic = kSharedMemoryMagic;
   uint32_t protocol_version = kProtocolVersion;
   uint64_t session_id = 0;
   uint32_t session_state = 0;
+  uint32_t client_attached = 0;
+  uint32_t active_client_pid = 0;
   uint32_t high_ring_size = 0;
   uint32_t normal_ring_size = 0;
   uint32_t response_ring_size = 0;
   uint32_t slot_count = 0;
+  uint32_t high_reserved_request_slots = 0;
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
   RingCursor high_ring{};
   RingCursor normal_ring{};
   RingCursor response_ring{};
-  pthread_mutex_t high_ring_mutex{};
-  pthread_mutex_t normal_ring_mutex{};
-  pthread_mutex_t response_ring_mutex{};
+  pthread_mutex_t client_state_mutex{};
 };
 
 inline Layout ComputeLayout(const LayoutConfig& config) {
@@ -63,8 +72,13 @@ inline Layout ComputeLayout(const LayoutConfig& config) {
       layout.normal_ring_offset + sizeof(RequestRingEntry) * config.normal_ring_size;
   layout.slot_pool_offset =
       layout.response_ring_offset + sizeof(ResponseRingEntry) * config.response_ring_size;
-  layout.total_size = layout.slot_pool_offset +
+  layout.response_slot_pool_offset = layout.slot_pool_offset +
                       static_cast<std::size_t>(config.slot_count) * config.slot_size;
+  layout.response_slots_offset =
+      layout.response_slot_pool_offset + ComputeSharedSlotPoolBytes(config.response_ring_size);
+  layout.total_size = layout.response_slots_offset +
+                      static_cast<std::size_t>(config.response_ring_size) *
+                          ComputeResponseSlotSize(config.max_response_bytes);
   return layout;
 }
 

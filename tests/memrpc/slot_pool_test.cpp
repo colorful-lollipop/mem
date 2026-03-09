@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <vector>
+
 #include "core/slot_pool.h"
 
 TEST(SlotPoolTest, ReserveTransitionAndReleaseLifecycle) {
@@ -38,4 +40,36 @@ TEST(SlotPoolTest, InvalidTransitionsAndInvalidReleaseAreRejected) {
   EXPECT_FALSE(pool.Transition(*slot, memrpc::SlotState::Processing));
   EXPECT_FALSE(pool.Release(99u));
   EXPECT_TRUE(pool.Release(*slot));
+}
+
+TEST(SlotPoolTest, SharedSlotPoolSharesFreeListAcrossViews) {
+  std::vector<uint8_t> region(memrpc::ComputeSharedSlotPoolBytes(2), 0);
+  ASSERT_TRUE(memrpc::InitializeSharedSlotPool(region.data(), 2));
+
+  memrpc::SharedSlotPool producer(region.data());
+  memrpc::SharedSlotPool consumer(region.data());
+
+  const auto first = producer.Reserve();
+  const auto second = producer.Reserve();
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(second.has_value());
+  EXPECT_FALSE(producer.Reserve().has_value());
+
+  EXPECT_TRUE(consumer.Release(*first));
+  const auto recycled = producer.Reserve();
+  ASSERT_TRUE(recycled.has_value());
+  EXPECT_EQ(*recycled, *first);
+}
+
+TEST(SlotPoolTest, NormalReservePreservesHighReservedSlots) {
+  memrpc::SlotPool pool(3, 1);
+
+  const auto first_normal = pool.Reserve(memrpc::Priority::Normal);
+  const auto second_normal = pool.Reserve(memrpc::Priority::Normal);
+  ASSERT_TRUE(first_normal.has_value());
+  ASSERT_TRUE(second_normal.has_value());
+  EXPECT_FALSE(pool.Reserve(memrpc::Priority::Normal).has_value());
+
+  const auto high = pool.Reserve(memrpc::Priority::High);
+  ASSERT_TRUE(high.has_value());
 }

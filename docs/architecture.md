@@ -28,22 +28,27 @@
   - `normal_req_eventfd`
   - `resp_eventfd`
 
-共享内存里的 slot 现在只承载请求：
+共享内存里的 slot 现在分成两类：
 
-- `RpcRequestHeader + request bytes`
+- `request slot pool`
+- `response slot pool`
 
-响应统一走响应队列，不再在 slot 中预留响应区。
+请求和响应都采用 `ring + slot`：
+
+- request ring 只放 `request_id/slot_index/opcode/...`
+- response ring 只放 `request_id/slot_index/message_kind/...`
+- 正文分别放在 request/response slot 中
 
 默认 session 配置：
 
 - request 上限：`16KB`
 - response 上限：`1KB`
-  - 该上限固定用于响应队列 entry 的内联 payload
+  - 该上限固定用于 response slot payload
   - 运行时配置不能超过这个值
 
-## 响应队列模型
+## 响应路径模型
 
-响应队列现在统一承载两类消息：
+response ring 统一承载两类消息：
 
 - `Reply`
 - `Event`
@@ -53,14 +58,15 @@
 `Reply` 用于普通 RPC 回包：
 
 - 通过 `request_id` 命中 pending request
-- 直接携带状态码和最多 `1KB` 的响应 payload
+- ring entry 只携带状态码和 `response_slot_index`
+- 正文在 `response slot` 中
 - 唤醒对应等待者
 
 `Event` 用于无头广播事件：
 
 - 不依赖 `request_id`
 - 带 `event_domain`、`event_type`、`flags`
-- 同样直接携带最多 `1KB` 的事件 payload
+- 同样通过 `response slot` 携带 payload
 - 客户端分发线程收到后直接交给应用层事件回调
 
 这样做的目标是：
@@ -95,12 +101,15 @@
 
 - dispatcher 优先消费高优请求队列
 - 高优和普通请求分别投递到独立线程池
+- worker 只产生 completion，不直接写共享 response ring
+- response writer 线程统一写共享 response ring
 - 高优请求允许长期压制普通请求
 
 客户端当前模型：
 
 - 内部以异步事务为底层模型
-- 同步调用只是 `InvokeAsync + Wait` 的薄包装
+- request 先进入本地提交队列，再由 tx thread 写共享 request ring
+- 同步调用只是 `InvokeAsync + deadline wait` 的薄包装
 - 一个 `RpcClient` 对应一条响应分发线程
 
 需要注意：
@@ -172,7 +181,7 @@
 - 后续新的调用会自动尝试 `StartEngine() + Connect()`
 - 可能已经被旧子进程看到的请求不会自动重放
 
-这条边界是刻意保守的，目的是先保证正确性和可控性。
+这条边界是刻意保守的，目的是先保证正确性和可控性。进程 death / owner death / session 失效感知由 bootstrap 层负责，shared ring 本身不再依赖 robust ring mutex 做恢复。
 
 ## 平台分层
 

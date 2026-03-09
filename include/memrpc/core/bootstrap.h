@@ -11,6 +11,7 @@ namespace memrpc {
 using EngineDeathCallback = std::function<void(uint64_t)>;
 
 struct BootstrapHandles {
+  // 这些 fd/元数据描述了一次共享内存 RPC session 的连接入口。
   int shm_fd = -1;
   int high_req_event_fd = -1;
   int normal_req_event_fd = -1;
@@ -23,9 +24,13 @@ class IBootstrapChannel {
  public:
   virtual ~IBootstrapChannel() = default;
 
+  // 确保对端进程已启动；若已存活，应保持幂等。
   virtual StatusCode StartEngine() = 0;
+  // 返回当前可用 session 的句柄集合；进程 death/session 失效感知由 bootstrap 层负责。
   virtual StatusCode Connect(BootstrapHandles* handles) = 0;
+  // 通知 bootstrap 层：客户端已经切换到新的 peer session。
   virtual StatusCode NotifyPeerRestarted() = 0;
+  // 用于将“子进程死亡”从 bootstrap 层回传给 client。
   virtual void SetEngineDeathCallback(EngineDeathCallback callback) = 0;
 };
 

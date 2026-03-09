@@ -18,6 +18,7 @@
 
 #include "core/protocol.h"
 #include "core/session.h"
+#include "core/slot_pool.h"
 #include "virus_protection_service_log.h"
 
 namespace memrpc {
@@ -30,6 +31,11 @@ uint32_t MonotonicNowMs() {
       std::chrono::duration_cast<std::chrono::milliseconds>(now).count() & 0xffffffffu);
 }
 
+uint32_t CurrentWorkerId() {
+  return static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()) &
+                               0xffffffffu);
+}
+
 constexpr auto RESPONSE_RETRY_BUDGET = std::chrono::milliseconds(50);
 constexpr auto EVENT_RETRY_BUDGET = std::chrono::milliseconds(10);
 
@@ -38,9 +44,15 @@ class WorkerPool {
   void Start(uint32_t thread_count, std::function<void(const RequestRingEntry&)> callback) {
     callback_ = std::move(callback);
     running_ = true;
+    queue_capacity_ = std::max(1u, thread_count);
     for (uint32_t i = 0; i < thread_count; ++i) {
       workers_.emplace_back([this] { WorkerLoop(); });
     }
+  }
+
+  bool HasCapacity() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queue_.size() < queue_capacity_;
   }
 
   void Enqueue(const RequestRingEntry& entry) {
@@ -86,16 +98,38 @@ class WorkerPool {
   std::vector<std::thread> workers_;
   std::function<void(const RequestRingEntry&)> callback_;
   bool running_ = false;
+  uint32_t queue_capacity_ = 1;
 };
 
 }  // namespace
 
 struct RpcServer::Impl {
+  struct CompletionState {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool ready = false;
+    StatusCode status = StatusCode::EngineInternalError;
+  };
+
+  struct CompletionItem {
+    ResponseRingEntry entry;
+    uint32_t request_slot_index = 0;
+    std::vector<uint8_t> payload;
+    std::chrono::milliseconds retry_budget{0};
+    bool break_session_on_failure = false;
+    std::shared_ptr<CompletionState> completion;
+  };
+
   BootstrapHandles handles{};
   ServerOptions options{};
   Session session;
   WorkerPool high_pool;
   WorkerPool normal_pool;
+  std::mutex completion_mutex;
+  std::condition_variable completion_cv;
+  std::queue<CompletionItem> completion_queue;
+  std::thread response_writer_thread;
+  std::atomic<bool> response_writer_running{false};
   std::thread dispatcher_thread;
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
@@ -115,6 +149,25 @@ struct RpcServer::Impl {
     }
   }
 
+  std::optional<uint32_t> ReserveResponseSlotWithRetry(std::chrono::milliseconds retry_budget) {
+    SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+    if (!response_slot_pool.valid()) {
+      return std::nullopt;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + retry_budget;
+    while (true) {
+      const auto slot = response_slot_pool.Reserve();
+      if (slot.has_value()) {
+        return slot;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) {
+        return std::nullopt;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }
+
   void MarkSessionBroken() {
     session.SetState(Session::SessionState::Broken);
     if (session.handles().resp_event_fd < 0) {
@@ -124,35 +177,171 @@ struct RpcServer::Impl {
     write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
   }
 
+  void CompleteItem(const std::shared_ptr<CompletionState>& completion, StatusCode status) {
+    if (completion == nullptr) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(completion->mutex);
+    completion->status = status;
+    completion->ready = true;
+    completion->cv.notify_one();
+  }
+
+  void FailPendingCompletionItems(StatusCode status) {
+    std::queue<CompletionItem> queued;
+    {
+      std::lock_guard<std::mutex> lock(completion_mutex);
+      queued.swap(completion_queue);
+    }
+    while (!queued.empty()) {
+      CompleteItem(queued.front().completion, status);
+      queued.pop();
+    }
+  }
+
+  void StopResponseWriter() {
+    response_writer_running.store(false);
+    completion_cv.notify_all();
+    if (response_writer_thread.joinable()) {
+      response_writer_thread.join();
+    }
+    FailPendingCompletionItems(StatusCode::PeerDisconnected);
+  }
+
+  void StartResponseWriter() {
+    response_writer_running.store(true);
+    response_writer_thread = std::thread([this] { ResponseWriterLoop(); });
+  }
+
+  void EnqueueCompletion(CompletionItem item) {
+    {
+      std::lock_guard<std::mutex> lock(completion_mutex);
+      completion_queue.push(std::move(item));
+    }
+    completion_cv.notify_one();
+  }
+
+  void ResponseWriterLoop() {
+    while (response_writer_running.load()) {
+      CompletionItem item;
+      {
+        std::unique_lock<std::mutex> lock(completion_mutex);
+        completion_cv.wait(lock, [this] {
+          return !response_writer_running.load(std::memory_order_relaxed) ||
+                 !completion_queue.empty();
+        });
+        if (!response_writer_running.load() && completion_queue.empty()) {
+          break;
+      }
+        item = std::move(completion_queue.front());
+        completion_queue.pop();
+      }
+
+      const auto response_slot_index = ReserveResponseSlotWithRetry(item.retry_budget);
+      if (!response_slot_index.has_value()) {
+        CompleteItem(item.completion, StatusCode::QueueFull);
+        if (item.break_session_on_failure) {
+          HLOGE("failed to reserve response slot, request_id=%{public}llu",
+                static_cast<unsigned long long>(item.entry.request_id));
+          MarkSessionBroken();
+        } else {
+          HLOGW("failed to reserve response slot for event");
+        }
+        continue;
+      }
+
+      ResponseSlotPayload* response_slot = session.response_slot_payload(*response_slot_index);
+      uint8_t* response_bytes = session.response_slot_bytes(*response_slot_index);
+      if (response_slot == nullptr || response_bytes == nullptr ||
+          item.payload.size() > session.header()->max_response_bytes) {
+        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+        response_slot_pool.Release(*response_slot_index);
+        CompleteItem(item.completion, StatusCode::ProtocolMismatch);
+        if (item.break_session_on_failure) {
+          MarkSessionBroken();
+        }
+        continue;
+      }
+
+      std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
+      response_slot->runtime.request_id = item.entry.request_id;
+      response_slot->runtime.state = SlotRuntimeStateCode::Responding;
+      response_slot->runtime.request_slot_index = item.request_slot_index;
+      response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
+      response_slot->response.request_slot_index = item.request_slot_index;
+      response_slot->response.payload_size = static_cast<uint32_t>(item.payload.size());
+      if (!item.payload.empty()) {
+        std::memcpy(response_bytes, item.payload.data(), item.payload.size());
+      }
+      response_slot->runtime.state = SlotRuntimeStateCode::Ready;
+      response_slot->runtime.publish_mono_ms = MonotonicNowMs();
+      response_slot->runtime.last_update_mono_ms = response_slot->runtime.publish_mono_ms;
+      item.entry.slot_index = *response_slot_index;
+      item.entry.result_size = static_cast<uint32_t>(item.payload.size());
+
+      const StatusCode status = PushResponseWithRetry(item.entry, item.retry_budget);
+      if (status == StatusCode::Ok) {
+        const uint64_t signal_value = 1;
+        if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
+            sizeof(signal_value)) {
+          SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+          response_slot_pool.Release(*response_slot_index);
+          CompleteItem(item.completion, StatusCode::PeerDisconnected);
+          if (item.break_session_on_failure) {
+            HLOGE("eventfd write failed while flushing response queue");
+            MarkSessionBroken();
+          }
+          continue;
+        }
+      } else if (item.break_session_on_failure) {
+        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+        response_slot_pool.Release(*response_slot_index);
+        HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
+              static_cast<int>(status),
+              static_cast<unsigned long long>(item.entry.request_id));
+        MarkSessionBroken();
+      } else {
+        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+        response_slot_pool.Release(*response_slot_index);
+        HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
+      }
+
+      CompleteItem(item.completion, status);
+    }
+  }
+
   void WriteResponse(const RequestRingEntry& request_entry, const RpcServerReply& reply) {
     if (session.header() == nullptr) {
       return;
     }
 
+    SlotPayload* request_slot = session.slot_payload(request_entry.slot_index);
+    if (request_slot != nullptr) {
+      request_slot->runtime.state = SlotRuntimeStateCode::Responding;
+      request_slot->runtime.last_heartbeat_mono_ms = MonotonicNowMs();
+    }
+
     ResponseRingEntry response;
     response.request_id = request_entry.request_id;
-    response.slot_index = request_entry.slot_index;
     response.status_code = static_cast<uint32_t>(reply.status);
     response.engine_errno = reply.engine_code;
     response.detail_code = reply.detail_code;
-    response.result_size = static_cast<uint32_t>(reply.payload.size());
-    if (response.result_size > session.header()->max_response_bytes) {
+    if (reply.payload.size() > session.header()->max_response_bytes) {
       response.status_code = static_cast<uint32_t>(StatusCode::EngineInternalError);
       response.engine_errno = 0;
       response.detail_code = 0;
-      response.result_size = 0;
-    } else if (response.result_size != 0) {
-      std::memcpy(response.payload, reply.payload.data(), response.result_size);
     }
-    const StatusCode status = PushResponseWithRetry(response, RESPONSE_RETRY_BUDGET);
-    if (status == StatusCode::Ok) {
-      const uint64_t signal_value = 1;
-      write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
-      return;
+    CompletionItem item;
+    item.entry = response;
+    item.request_slot_index = request_entry.slot_index;
+    if (response.status_code == static_cast<uint32_t>(StatusCode::EngineInternalError)) {
+      item.payload.clear();
+    } else {
+      item.payload = reply.payload;
     }
-    HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
-          static_cast<int>(status), static_cast<unsigned long long>(request_entry.request_id));
-    MarkSessionBroken();
+    item.retry_budget = RESPONSE_RETRY_BUDGET;
+    item.break_session_on_failure = true;
+    EnqueueCompletion(std::move(item));
   }
 
   StatusCode PublishEvent(const RpcEvent& event) {
@@ -170,24 +359,18 @@ struct RpcServer::Impl {
     entry.event_domain = event.event_domain;
     entry.event_type = event.event_type;
     entry.flags = event.flags;
-    entry.result_size = static_cast<uint32_t>(event.payload.size());
-    if (!event.payload.empty()) {
-      std::memcpy(entry.payload, event.payload.data(), event.payload.size());
-    }
 
-    const StatusCode status = PushResponseWithRetry(entry, EVENT_RETRY_BUDGET);
-    if (status != StatusCode::Ok) {
-      HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
-      return status;
-    }
+    auto completion = std::make_shared<CompletionState>();
+    CompletionItem item;
+    item.entry = entry;
+    item.payload = event.payload;
+    item.retry_budget = EVENT_RETRY_BUDGET;
+    item.completion = completion;
+    EnqueueCompletion(std::move(item));
 
-    const uint64_t signal_value = 1;
-    if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
-        sizeof(signal_value)) {
-      HLOGE("eventfd write failed while publishing event");
-      return StatusCode::PeerDisconnected;
-    }
-    return StatusCode::Ok;
+    std::unique_lock<std::mutex> lock(completion->mutex);
+    completion->cv.wait(lock, [&completion] { return completion->ready; });
+    return completion->status;
   }
 
   void ProcessEntry(const RequestRingEntry& request_entry) {
@@ -197,8 +380,15 @@ struct RpcServer::Impl {
       return;
     }
 
+    payload->runtime.request_id = request_entry.request_id;
+    payload->runtime.state = SlotRuntimeStateCode::Executing;
+    payload->runtime.worker_id = CurrentWorkerId();
+    payload->runtime.start_exec_mono_ms = MonotonicNowMs();
+    payload->runtime.last_heartbeat_mono_ms = payload->runtime.start_exec_mono_ms;
+
     RpcServerReply reply;
     const uint32_t now_ms = MonotonicNowMs();
+    // queue_timeout 只覆盖“进入 worker 前”的排队时长，不包含 handler 执行时间。
     if (payload->request.queue_timeout_ms > 0 &&
         now_ms - request_entry.enqueue_mono_ms > payload->request.queue_timeout_ms) {
       reply.status = StatusCode::QueueTimeout;
@@ -236,6 +426,7 @@ struct RpcServer::Impl {
                              .count();
     if (payload->request.exec_timeout_ms > 0 &&
         elapsed > static_cast<long long>(payload->request.exec_timeout_ms)) {
+      // 当前模型不强杀 handler，只在完成后把结果折叠为 ExecTimeout。
       reply.status = StatusCode::ExecTimeout;
     }
     WriteResponse(request_entry, reply);
@@ -244,7 +435,7 @@ struct RpcServer::Impl {
   bool DrainQueue(QueueKind kind, WorkerPool* pool) {
     bool drained = false;
     RequestRingEntry entry;
-    while (session.PopRequest(kind, &entry)) {
+    while (pool->HasCapacity() && session.PopRequest(kind, &entry)) {
       drained = true;
       pool->Enqueue(entry);
     }
@@ -259,20 +450,24 @@ struct RpcServer::Impl {
 
     while (running.load()) {
       const int poll_result = poll(fds, 2, 100);
-      if (poll_result <= 0) {
-        continue;
-      }
-
       uint64_t counter = 0;
       bool high_work = false;
-      if ((fds[0].revents & POLLIN) != 0) {
+      if (poll_result > 0 && (fds[0].revents & POLLIN) != 0) {
         while (read(fds[0].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
         high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
       }
-      if (!high_work && (fds[1].revents & POLLIN) != 0) {
+      if (poll_result > 0 && !high_work && (fds[1].revents & POLLIN) != 0) {
+        // 高优队列一旦有活，当前轮次优先让它排空，再处理普通队列。
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
+        DrainQueue(QueueKind::NormalRequest, &normal_pool);
+      }
+
+      // 有界本地队列可能让共享 request ring 暂时残留任务；当 worker 释放容量后，
+      // 下一轮 dispatcher 需要主动回看 shared ring，而不只依赖新的 eventfd 信号。
+      high_work = DrainQueue(QueueKind::HighRequest, &high_pool) || high_work;
+      if (!high_work) {
         DrainQueue(QueueKind::NormalRequest, &normal_pool);
       }
     }
@@ -315,11 +510,13 @@ StatusCode RpcServer::Start() {
   if (impl_->handlers.empty()) {
     return StatusCode::InvalidArgument;
   }
-  const StatusCode attach_status = impl_->session.Attach(impl_->handles);
+  const StatusCode attach_status =
+      impl_->session.Attach(impl_->handles, Session::AttachRole::Server);
   if (attach_status != StatusCode::Ok) {
     return attach_status;
   }
   impl_->running.store(true);
+  impl_->StartResponseWriter();
   impl_->high_pool.Start(std::max(1u, impl_->options.high_worker_threads),
                          [this](const RequestRingEntry& entry) {
                            impl_->ProcessEntry(entry);
@@ -350,6 +547,7 @@ void RpcServer::Stop() {
   }
   impl_->high_pool.Stop();
   impl_->normal_pool.Stop();
+  impl_->StopResponseWriter();
   impl_->session.Reset();
 }
 
