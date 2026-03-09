@@ -26,6 +26,7 @@ enum class Opcode : uint16_t {
   MiniEcho = 200,
   MiniAdd = 201,
   MiniSleep = 202,
+  MiniCrashForTest = 203,
 };
 
 enum class ResponseMessageKind : uint16_t {

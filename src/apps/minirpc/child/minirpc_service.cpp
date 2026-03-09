@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <thread>
+#include <unistd.h>
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 
@@ -68,6 +69,11 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
         }
         EncodeSleepReply(Sleep(request), &reply->payload);
       });
+
+  // Test-only fault injection path for verifying client recovery.
+  server->RegisterHandler(
+      MemRpc::Opcode::MiniCrashForTest,
+      [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
 }
 
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc
