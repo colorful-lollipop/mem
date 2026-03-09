@@ -428,7 +428,7 @@ struct RpcServer::Impl {
     call.queue_timeout_ms = payload->request.queue_timeout_ms;
     call.exec_timeout_ms = payload->request.exec_timeout_ms;
     call.flags = payload->request.flags;
-    call.payload.assign(request_bytes, request_bytes + payload->request.payload_size);
+    call.payload = PayloadView(request_bytes, payload->request.payload_size);
 
     const auto it = handlers.find(request_entry.opcode);
     if (it == handlers.end()) {

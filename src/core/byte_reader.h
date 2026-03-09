@@ -11,6 +11,7 @@ namespace memrpc {
 class ByteReader {
  public:
   explicit ByteReader(const std::vector<uint8_t>& bytes);
+  ByteReader(const uint8_t* bytes, std::size_t size);
 
   bool ReadUint32(uint32_t* value);
   bool ReadInt32(int32_t* value);
@@ -18,7 +19,8 @@ class ByteReader {
   bool ReadString(std::string* value);
 
  private:
-  const std::vector<uint8_t>& bytes_;
+  const uint8_t* bytes_ = nullptr;
+  std::size_t size_ = 0;
   std::size_t offset_ = 0;
 };
 

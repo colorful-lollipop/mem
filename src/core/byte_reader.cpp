@@ -4,7 +4,9 @@
 
 namespace memrpc {
 
-ByteReader::ByteReader(const std::vector<uint8_t>& bytes) : bytes_(bytes) {}
+ByteReader::ByteReader(const std::vector<uint8_t>& bytes) : bytes_(bytes.data()), size_(bytes.size()) {}
+
+ByteReader::ByteReader(const uint8_t* bytes, std::size_t size) : bytes_(bytes), size_(size) {}
 
 bool ByteReader::ReadUint32(uint32_t* value) {
   return ReadBytes(value, sizeof(*value));
@@ -15,10 +17,10 @@ bool ByteReader::ReadInt32(int32_t* value) {
 }
 
 bool ByteReader::ReadBytes(void* data, uint32_t size) {
-  if (data == nullptr || offset_ + size > bytes_.size()) {
+  if (data == nullptr || bytes_ == nullptr || offset_ + size > size_) {
     return false;
   }
-  std::memcpy(data, bytes_.data() + offset_, size);
+  std::memcpy(data, bytes_ + offset_, size);
   offset_ += size;
   return true;
 }
@@ -28,10 +30,10 @@ bool ByteReader::ReadString(std::string* value) {
     return false;
   }
   uint32_t size = 0;
-  if (!ReadUint32(&size) || offset_ + size > bytes_.size()) {
+  if (!ReadUint32(&size) || bytes_ == nullptr || offset_ + size > size_) {
     return false;
   }
-  value->assign(reinterpret_cast<const char*>(bytes_.data() + offset_), size);
+  value->assign(reinterpret_cast<const char*>(bytes_ + offset_), size);
   offset_ += size;
   return true;
 }

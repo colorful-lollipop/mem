@@ -693,6 +693,68 @@ TEST(RpcClientIntegrationTest, SharedMemoryShowsExecutingRequestWhileHandlerRuns
   server.Stop();
 }
 
+TEST(RpcClientIntegrationTest, HandlerPayloadViewCanObserveAndMutateUnderlyingRequestSlotBytes) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  std::atomic<int> started{0};
+  std::atomic<bool> release{false};
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [&started, &release](const memrpc::RpcServerCall& call,
+                                              memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           ASSERT_FALSE(call.payload.empty());
+                           auto* mutable_bytes = const_cast<uint8_t*>(call.payload.data());
+                           mutable_bytes[0] = 0x7a;
+                           started.fetch_add(1);
+                           while (!release.load()) {
+                             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                           }
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = {0x11, 0x22};
+  auto future = client.InvokeAsync(call);
+
+  ASSERT_TRUE(WaitForAtomicAtLeast(started, 1, 200));
+
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(bootstrap->server_handles(), memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  bool saw_mutated_slot = false;
+  for (uint32_t i = 0; i < observer.header()->slot_count; ++i) {
+    const memrpc::SlotPayload* slot = observer.slot_payload(i);
+    const uint8_t* request_bytes = observer.slot_request_bytes(i);
+    ASSERT_NE(slot, nullptr);
+    ASSERT_NE(request_bytes, nullptr);
+    if (slot->runtime.state == memrpc::SlotRuntimeStateCode::Executing) {
+      saw_mutated_slot = true;
+      EXPECT_EQ(request_bytes[0], 0x7a);
+      break;
+    }
+  }
+  EXPECT_TRUE(saw_mutated_slot);
+
+  release.store(true);
+  memrpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(reply.payload, std::vector<uint8_t>({0x7a, 0x22}));
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientIntegrationTest, HighPriorityRequestStillAdmitsWhenNormalTrafficUsesNonReservedSlots) {
   auto bootstrap =
       std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
