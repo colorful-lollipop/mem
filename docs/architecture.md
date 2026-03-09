@@ -1,42 +1,58 @@
-# MemRPC Architecture
+# MemRPC 架构说明
 
-`memrpc` is a C++17 shared-memory RPC layer for splitting an in-process engine API into a client process and an engine process.
+`memrpc` 是一套基于 C++17 的共享内存调用框架，用来把原来进程内同步调用的引擎接口拆成“框架进程 + 引擎进程”两部分。
 
-Core design points:
+当前实现的核心结构是：
 
-- one shared-memory region per client/engine session
-- one high-priority request ring
-- one normal-priority request ring
-- one response ring
-- fixed-size slot payloads for request and response data
-- `eventfd` notification in both directions
-- synchronous client API over an asynchronous transport
+- 一个共享内存区域对应一个 client/engine 会话
+- 一条高优先级请求队列
+- 一条普通优先级请求队列
+- 一条响应队列
+- 固定大小的 slot 池，用来承载请求体和结果体
+- 双向 `eventfd` 通知
+- 对外保持同步 `Scan()` 接口
 
-The client keeps the old blocking `Scan()` shape, but internally:
+## 客户端工作方式
 
-1. reserves a slot
-2. writes the request payload
-3. pushes a request entry into the selected ring
-4. signals the matching request `eventfd`
-5. waits for the dispatcher thread to deliver the response
+业务侧仍然按同步方式调用：
 
-The server process:
+1. 申请 slot
+2. 写入扫描请求
+3. 按优先级写入对应 ring
+4. 通过 `eventfd` 通知服务端
+5. 阻塞等待结果
 
-1. drains high-priority requests first
-2. dispatches high and normal work into separate worker pools
-3. calls the business `IScanHandler`
-4. writes the result back to the slot
-5. pushes a response entry and signals the response `eventfd`
+因此旧代码迁移时，主要改动集中在 bootstrap 和请求结构转换层，不需要把业务层全面改成异步。
 
-This layout keeps transport-specific bootstrap logic outside the core runtime. HarmonyOS SA should only be responsible for process startup, service discovery, and descriptor exchange.
+## 服务端工作方式
 
-Current scope:
+引擎进程侧当前实现为：
 
-- robust shared-memory mutexes recover owner death as `kPeerDisconnected`
-- engine death callbacks invalidate the current session immediately
-- the next `Scan()` lazily calls `StartEngine()` + `Connect()` to attach a fresh session
-- requests already published to the old shared-memory ring are failed as `kPeerDisconnected`
-- requests not yet published stay local and are retried by the new `Scan()` attempt
-- upper layers are still responsible for final restart policy and any re-scan of requests that may already have reached the old engine
-- Linux demo and fake-SA development mode can use `fork()` to stand up the engine side quickly
-- HarmonyOS production mode is expected to use `init` + `GetSystemAbility` / `LoadSystemAbility`, with the same shared-memory transport underneath
+1. dispatcher 优先消费高优先级队列
+2. 高优和普通请求分别投递到各自线程池
+3. 调用 `IScanHandler`
+4. 把结果写回共享内存
+5. 通过响应 `eventfd` 唤醒客户端
+
+设计上允许高优请求长期压制普通请求，这和当前需求一致。
+
+## 故障恢复语义
+
+当前代码已经实现的恢复语义是：
+
+- 子进程死亡回调到来后，当前 `session` 会立即失效
+- 旧 `session` 上等待中的请求立即返回 `kPeerDisconnected`
+- 下一次 `Scan()` 会在内部自动调用 `StartEngine()` + `Connect()`，懒切换到新 `session`
+- 已经发布到旧共享内存队列的请求不会自动重放
+- 上层仍然负责最终的重启策略和是否重新扫描
+
+这个实现偏保守，目标是先保证边界清晰和稳定性，而不是做激进重试。
+
+## 平台分层
+
+传输层和平台拉起逻辑是分开的：
+
+- Linux 开发态：可以使用 `fork()` demo 或 fake SA 适配层
+- HarmonyOS 正式环境：应由 `init` 拉起子进程，并通过 `GetSystemAbility` / `LoadSystemAbility` 完成 bootstrap
+
+因此后续接入鸿蒙时，主要替换的是 bootstrap 层，不需要推翻共享内存通信核心。

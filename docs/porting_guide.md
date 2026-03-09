@@ -1,12 +1,16 @@
-# Porting Guide
+# 迁移说明
 
-Existing in-process code usually looks like:
+## 目标
+
+这套框架的目标是尽量保持旧业务层调用方式不变，把原来进程内的同步调用迁移成跨进程共享内存调用。
+
+旧代码通常类似：
 
 ```cpp
 ScanResult result = engine->Scan(request);
 ```
 
-With `memrpc`, the caller keeps a synchronous shape:
+迁移后通常变成：
 
 ```cpp
 memrpc::EngineClient client(bootstrap);
@@ -16,19 +20,27 @@ memrpc::ScanResult result;
 client.Scan(request, &result);
 ```
 
-Migration guidance:
+## 建议迁移方式
 
-- keep business-facing request/result structs close to the old API
-- move engine implementation behind `IScanHandler`
-- keep process lifecycle and restart policy in the upper layer
-- let the transport return explicit status codes like `kQueueTimeout`, `kExecTimeout`, and `kPeerDisconnected`
-- on Linux, you can use the fake SA adapter or the `fork()` demo path during development
-- on HarmonyOS, replace only the bootstrap implementation so process startup comes from `init` and service lookup comes from `GetSystemAbility` / `LoadSystemAbility`
-- when SA reports engine death, the current `Scan()` calls waiting on the old session fail immediately with `kPeerDisconnected`
-- the next `Scan()` lazily recreates the session through bootstrap and continues on the new shared-memory handles
+- 业务侧尽量保留原有请求/结果结构
+- 在兼容层把旧结构转换成 `memrpc::ScanRequest`
+- 引擎侧把原来的扫描实现挂到 `IScanHandler`
+- 进程拉起、重启、系统能力接入都放在 bootstrap/上层控制，不要混进业务扫描逻辑
 
-Recommended wrapper pattern:
+## 当前恢复行为
 
-- old facade class owns `memrpc::EngineClient`
-- old `Scan()` method translates business request structs into `memrpc::ScanRequest`
-- upper layer decides whether to restart the engine process and whether to resubmit a failed scan
+当前实现中：
+
+- 如果 SA/bootstap 报告子进程死亡，旧会话上的等待请求会立即失败
+- 后续新的 `Scan()` 会自动尝试重建会话
+- 可能已经被旧引擎看到的请求不会自动重放
+
+所以业务上仍然应该保留“失败后是否重扫”的最终决策权。
+
+## Linux 与鸿蒙的差异
+
+- Linux 开发态可以直接使用 demo 或 fake SA
+- HarmonyOS 正式环境中，进程应由 `init` 拉起
+- 客户端通过 `GetSystemAbility` / `LoadSystemAbility` 获得服务和句柄
+
+也就是说，迁移到鸿蒙时重点是补平台适配层，而不是重写通信框架。

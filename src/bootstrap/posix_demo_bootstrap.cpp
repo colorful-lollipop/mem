@@ -140,7 +140,12 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   impl_->initialized = impl_->handles.high_req_event_fd >= 0 &&
                        impl_->handles.normal_req_event_fd >= 0 &&
                        impl_->handles.resp_event_fd >= 0;
-  return impl_->initialized ? StatusCode::kOk : StatusCode::kEngineInternalError;
+  if (!impl_->initialized) {
+    impl_->ResetHandles();
+    shm_unlink(impl_->config.shm_name.c_str());
+    return StatusCode::kEngineInternalError;
+  }
+  return StatusCode::kOk;
 }
 
 StatusCode PosixDemoBootstrapChannel::Connect(BootstrapHandles* handles) {
