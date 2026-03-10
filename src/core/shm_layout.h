@@ -12,10 +12,10 @@
 namespace memrpc {
 
 struct LayoutConfig {
-  uint32_t high_ring_size = 0;
-  uint32_t normal_ring_size = 0;
-  uint32_t response_ring_size = 0;
-  uint32_t slot_count = 0;
+  uint32_t high_ring_size = 32;
+  uint32_t normal_ring_size = 32;
+  uint32_t response_ring_size = 64;
+  uint32_t slot_count = 64;
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
@@ -55,10 +55,10 @@ struct SharedMemoryHeader {
   uint32_t session_state = 0;
   uint32_t client_attached = 0;
   uint32_t active_client_pid = 0;
-  uint32_t high_ring_size = 0;
-  uint32_t normal_ring_size = 0;
-  uint32_t response_ring_size = 0;
-  uint32_t slot_count = 0;
+  uint32_t high_ring_size = 32;
+  uint32_t normal_ring_size = 32;
+  uint32_t response_ring_size = 64;
+  uint32_t slot_count = 64;
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
