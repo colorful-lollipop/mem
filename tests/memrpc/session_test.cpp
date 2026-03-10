@@ -58,6 +58,49 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   EXPECT_EQ(session.Attach(attach_handles), memrpc::StatusCode::ProtocolMismatch);
 }
 
+TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles corrupt_handles;
+  ASSERT_EQ(bootstrap->Connect(&corrupt_handles), memrpc::StatusCode::Ok);
+
+  struct stat file_stat {};
+  ASSERT_EQ(fstat(corrupt_handles.shm_fd, &file_stat), 0);
+  void* region = mmap(nullptr, static_cast<size_t>(file_stat.st_size), PROT_READ | PROT_WRITE,
+                      MAP_SHARED, corrupt_handles.shm_fd, 0);
+  ASSERT_NE(region, MAP_FAILED);
+  auto* header = static_cast<memrpc::SharedMemoryHeader*>(region);
+  header->protocol_version = 0;
+  ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
+  close(corrupt_handles.shm_fd);
+  close(corrupt_handles.high_req_event_fd);
+  close(corrupt_handles.normal_req_event_fd);
+  close(corrupt_handles.resp_event_fd);
+  close(corrupt_handles.req_credit_event_fd);
+  close(corrupt_handles.resp_credit_event_fd);
+
+  memrpc::BootstrapHandles attach_handles;
+  ASSERT_EQ(bootstrap->Connect(&attach_handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session session;
+  EXPECT_EQ(session.Attach(attach_handles), memrpc::StatusCode::ProtocolMismatch);
+}
+
+TEST(SessionTest, DefaultsToFourKilobytePayloadLimits) {
+  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles handles;
+  ASSERT_EQ(bootstrap->Connect(&handles), memrpc::StatusCode::Ok);
+
+  memrpc::Session session;
+  ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
+  ASSERT_NE(session.header(), nullptr);
+  EXPECT_EQ(session.header()->max_request_bytes, 4096u);
+  EXPECT_EQ(session.header()->max_response_bytes, 4096u);
+}
+
 TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
   memrpc::DemoBootstrapConfig config;
   config.high_ring_size = 2;

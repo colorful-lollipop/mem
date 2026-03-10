@@ -7,9 +7,9 @@ namespace memrpc {
 
 // 共享内存头和 ring 布局版本号；双方必须严格一致。
 inline constexpr uint32_t kSharedMemoryMagic = 0x4d454d52u;
-inline constexpr uint32_t kProtocolVersion = 1u;
-inline constexpr uint32_t kDefaultMaxRequestBytes = 16u * 1024u;
-inline constexpr uint32_t kDefaultMaxResponseBytes = 1024u;
+inline constexpr uint32_t kProtocolVersion = 2u;
+inline constexpr uint32_t kDefaultMaxRequestBytes = 4u * 1024u;
+inline constexpr uint32_t kDefaultMaxResponseBytes = 4u * 1024u;
 inline constexpr uint32_t kMaxFilePathSize = 1024u;
 inline constexpr uint32_t kMaxMessageSize = 512u;
 
