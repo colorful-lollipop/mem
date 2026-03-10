@@ -41,3 +41,7 @@ The demo bootstrap defaults and shared memory header currently include `high_res
 ## Validation
 - Run the current unit/integration tests.
 - Focus on request/response ring and backpressure tests to ensure behavior remains stable with smaller defaults.
+
+## Task 2 Scope (2026-03-10)
+This task removes reserved-slot admission from `SlotPool` and its client call sites, and drops the
+reserved-slot behavior test. Shared memory layout updates remain out of scope for this task.
