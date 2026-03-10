@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "apps/minirpc/child/minirpc_service.h"
@@ -19,6 +20,15 @@
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
+
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
 
 struct PerfConfig {
   int threads = 1;
@@ -219,12 +229,16 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  if (bootstrap->StartEngine() != MemRpc::StatusCode::Ok) {
-    for (const auto kind : kinds) {
-      results.push_back({MakeBaselineKey(kind, thread_count), 0.0,
-                         "bootstrap start failed"});
+  {
+    MemRpc::BootstrapHandles unused_handles;
+    if (bootstrap->OpenSession(&unused_handles) != MemRpc::StatusCode::Ok) {
+      for (const auto kind : kinds) {
+        results.push_back({MakeBaselineKey(kind, thread_count), 0.0,
+                           "bootstrap start failed"});
+      }
+      return results;
     }
-    return results;
+    CloseHandles(unused_handles);
   }
 
   MemRpc::RpcServer server;

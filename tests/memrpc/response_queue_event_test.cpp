@@ -90,11 +90,22 @@ class RingTraceRecorder {
   std::set<uint64_t> threads_[static_cast<size_t>(memrpc::RingTraceOperation::Count)]{};
 };
 
+void CloseHandles(memrpc::BootstrapHandles& h) {
+  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
+
 }  // namespace
 
 TEST(ResponseQueueEventTest, EventDoesNotRequirePendingRequest) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -134,7 +145,9 @@ TEST(ResponseQueueEventTest, ResponseEventFdSignalsOnlyOnEmptyToNonEmptyTransiti
   memrpc::DemoBootstrapConfig config;
   config.response_ring_size = 4;
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -173,7 +186,9 @@ TEST(ResponseQueueEventTest, ClientSignalsResponseCreditWhenFullResponseQueueSta
   memrpc::DemoBootstrapConfig config;
   config.response_ring_size = 2;
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -218,7 +233,9 @@ TEST(ResponseQueueEventTest, ResponseWriterConsumesManualResponseCreditWakeup) {
   memrpc::DemoBootstrapConfig config;
   config.response_ring_size = 1;
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -231,7 +248,7 @@ TEST(ResponseQueueEventTest, ResponseWriterConsumesManualResponseCreditWakeup) {
 
   memrpc::Session client_session;
   memrpc::BootstrapHandles client_handles;
-  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(&client_handles), memrpc::StatusCode::Ok);
   ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcEvent first;
@@ -274,7 +291,9 @@ TEST(ResponseQueueEventTest, ResponseWriterConsumesManualResponseCreditWakeup) {
 
 TEST(ResponseQueueEventTest, ReplyAndEventCanShareOneResponseQueue) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -325,7 +344,9 @@ TEST(ResponseQueueEventTest, EventRespectsConfiguredResponseLimit) {
   memrpc::DemoBootstrapConfig config;
   config.max_response_bytes = 64;
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -352,7 +373,9 @@ TEST(ResponseQueueEventTest, EventRespectsConfiguredResponseLimit) {
 
 TEST(ResponseQueueEventTest, InterleavedRepliesAndEventsPreserveBothCounts) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -398,7 +421,9 @@ TEST(ResponseQueueEventTest, InterleavedRepliesAndEventsPreserveBothCounts) {
 
 TEST(ResponseQueueEventTest, ResponseRingUsesSingleProducerAndConsumerThreads) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -453,7 +478,9 @@ TEST(ResponseQueueEventTest, ResponseRingUsesSingleProducerAndConsumerThreads) {
 
 TEST(ResponseQueueEventTest, EventCallbackSeesReadyResponseSlotBeforeRelease) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -521,7 +548,9 @@ TEST(ResponseQueueEventTest, PublishedEventKeepsResponseSlotOwnedWhenNotifyWrite
           .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
           .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
       });
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -577,7 +606,9 @@ TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
           .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
           .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
       });
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -595,7 +626,7 @@ TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
             static_cast<ssize_t>(sizeof(saturated_counter)));
 
   memrpc::BootstrapHandles client_handles;
-  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(&client_handles), memrpc::StatusCode::Ok);
   memrpc::Session client_session;
   ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
 
@@ -665,7 +696,9 @@ TEST(ResponseQueueEventTest, PublishEventFailsFastWhenCompletionBacklogIsFull) {
           .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
           .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
       });
-  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+  memrpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());

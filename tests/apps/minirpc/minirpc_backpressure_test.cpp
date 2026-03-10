@@ -4,6 +4,7 @@
 #include <chrono>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "apps/minirpc/child/minirpc_service.h"
@@ -13,6 +14,15 @@
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
+
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
 
 bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
   const auto deadline =
@@ -37,7 +47,9 @@ TEST(MiniRpcBackpressureTest, SlotExhaustionAndRecovery) {
   config.max_response_bytes = MemRpc::kDefaultMaxResponseBytes;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -104,7 +116,9 @@ TEST(MiniRpcBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
   config.max_response_bytes = MemRpc::kDefaultMaxResponseBytes;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());

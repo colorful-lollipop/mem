@@ -17,6 +17,15 @@
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+    if (h.shm_fd >= 0) close(h.shm_fd);
+    if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+    if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+    if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+    if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+    if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
+
 void RunMiniRpcServerProcess(MemRpc::BootstrapHandles handles) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(handles);
@@ -78,7 +87,9 @@ MemRpc::RpcCall MakeFaultCall(MemRpc::Opcode opcode) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, CrashDuringBatchTracksAllFailures) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles unused_handles;
+    ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+    CloseHandles(unused_handles);
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -116,7 +127,11 @@ TEST(MiniRpcDfxTest, CrashDuringBatchTracksAllFailures) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -144,7 +159,11 @@ TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
     ASSERT_GT(invoker.GetFailedCalls().size(), 0u);
 
     // Restart child.
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child2 = ForkServer(bootstrap);
     ASSERT_GT(child2, 0);
 
@@ -172,7 +191,11 @@ TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -208,7 +231,11 @@ TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
     }
 
     // Restart and replay.
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child2 = ForkServer(bootstrap);
     ASSERT_GT(child2, 0);
 
@@ -227,7 +254,11 @@ TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, HangingChildKilledAndRecovered) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -245,7 +276,11 @@ TEST(MiniRpcDfxTest, HangingChildKilledAndRecovered) {
     EXPECT_EQ(hang_future.Wait(&hang_reply), MemRpc::StatusCode::PeerDisconnected);
 
     // Restart and verify recovery.
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child2 = ForkServer(bootstrap);
     ASSERT_GT(child2, 0);
 
@@ -265,7 +300,11 @@ TEST(MiniRpcDfxTest, HangingChildKilledAndRecovered) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, OomKilledChildRecovery) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -291,7 +330,11 @@ TEST(MiniRpcDfxTest, OomKilledChildRecovery) {
     EXPECT_EQ(oom_future.Wait(&oom_reply), MemRpc::StatusCode::PeerDisconnected);
 
     // Restart and verify recovery.
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child2 = ForkServer(bootstrap);
     ASSERT_GT(child2, 0);
 
@@ -311,7 +354,11 @@ TEST(MiniRpcDfxTest, OomKilledChildRecovery) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, StackOverflowChildRecovery) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -338,7 +385,11 @@ TEST(MiniRpcDfxTest, StackOverflowChildRecovery) {
     EXPECT_EQ(so_future.Wait(&so_reply), MemRpc::StatusCode::PeerDisconnected);
 
     // Restart and verify recovery.
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child2 = ForkServer(bootstrap);
     ASSERT_GT(child2, 0);
 
@@ -358,7 +409,11 @@ TEST(MiniRpcDfxTest, StackOverflowChildRecovery) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, BatchPartialCompletionTracking) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
 
@@ -403,7 +458,11 @@ TEST(MiniRpcDfxTest, BatchPartialCompletionTracking) {
 // ---------------------------------------------------------------------------
 TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
     auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+    {
+        MemRpc::BootstrapHandles unused_handles;
+        ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(unused_handles);
+    }
 
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
@@ -432,7 +491,11 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
             << "cycle " << cycle;
 
         // Restart for next cycle.
-        ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok) << "cycle " << cycle;
+        {
+            MemRpc::BootstrapHandles unused_handles;
+            ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok) << "cycle " << cycle;
+            CloseHandles(unused_handles);
+        }
     }
 
     // Final verification with a fresh child.

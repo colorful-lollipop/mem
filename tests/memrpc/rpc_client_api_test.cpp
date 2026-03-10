@@ -17,16 +17,15 @@ namespace {
 
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
-  MemRpc::StatusCode StartEngine() override { return MemRpc::StatusCode::Ok; }
-
-  MemRpc::StatusCode Connect(MemRpc::BootstrapHandles* handles) override {
+  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles* handles) override {
     if (handles != nullptr) {
+      *handles = MemRpc::BootstrapHandles{};
       handles->protocol_version = MemRpc::kProtocolVersion;
     }
     return MemRpc::StatusCode::Ok;
   }
 
-  MemRpc::StatusCode NotifyPeerRestarted() override { return MemRpc::StatusCode::Ok; }
+  MemRpc::StatusCode CloseSession() override { return MemRpc::StatusCode::Ok; }
 
   void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
     callback_ = std::move(callback);

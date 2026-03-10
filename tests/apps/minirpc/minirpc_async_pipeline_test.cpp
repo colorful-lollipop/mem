@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "apps/minirpc/child/minirpc_service.h"
@@ -15,6 +16,15 @@
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
+
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
 
 int GetEnvInt(const char* name, int default_value) {
   const char* value = std::getenv(name);
@@ -40,7 +50,9 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
   const int warmup_ms = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());

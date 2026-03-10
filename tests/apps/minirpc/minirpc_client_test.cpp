@@ -21,6 +21,15 @@
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
+  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
+  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
+  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
+  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+}
+
 void RunMiniRpcServerProcess(MemRpc::BootstrapHandles handles) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(handles);
@@ -35,7 +44,9 @@ void RunMiniRpcServerProcess(MemRpc::BootstrapHandles handles) {
 
 TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -70,7 +81,9 @@ TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
 
 TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -101,7 +114,9 @@ TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
 
 TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRestart) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   const pid_t first_child = fork();
   ASSERT_GE(first_child, 0);
@@ -140,7 +155,8 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   MemRpc::RpcReply crash_reply;
   EXPECT_EQ(crash_future.Wait(&crash_reply), MemRpc::StatusCode::PeerDisconnected);
 
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
   const pid_t second_child = fork();
   ASSERT_GE(second_child, 0);
   if (second_child == 0) {
@@ -169,7 +185,9 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
 
 TEST(MiniRpcClientTest, TypedThenDecodesReply) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
