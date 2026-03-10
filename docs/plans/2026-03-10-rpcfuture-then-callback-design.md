@@ -79,4 +79,13 @@ unlock
 | `include/memrpc/client/typed_invoker.h` | Add `ThenDecode<T>()` template |
 | Tests (new) | Then callback, already-ready Then, error callback, Then+Wait mutual exclusion |
 
+## Restoration Note (2026-03-10)
+
+For the immediate restoration, we will **match the previously implemented behavior**:
+- No explicit enforcement of Then/Wait mutual exclusion (usage is documented but not guarded).
+- When a callback is present, the completion path invokes it and **does not** notify waiters.
+- Already-ready futures invoke the callback synchronously on the calling thread.
+
+This keeps behavior consistent with the prior implementation and avoids extra changes beyond restoring the missing logic.
+
 Existing callers using Wait/WaitFor/WaitAndTake require **zero changes**.
