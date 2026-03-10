@@ -92,6 +92,18 @@ struct ViewTraits<EchoRequestView> {
 };
 
 template <>
+struct ViewTraits<EchoReplyView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, EchoReplyView* reply)
+  {
+    if (reply == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadStringView(&reply->text);
+  }
+};
+
+template <>
 struct CodecTraits<AddRequest> {
   static bool Encode(const AddRequest& request, std::vector<uint8_t>* bytes)
   {
@@ -101,6 +113,18 @@ struct CodecTraits<AddRequest> {
   }
 
   static bool Decode(const uint8_t* bytes, std::size_t size, AddRequest* request)
+  {
+    if (request == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadInt32(&request->lhs) && reader.ReadInt32(&request->rhs);
+  }
+};
+
+template <>
+struct ViewTraits<AddRequestView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, AddRequestView* request)
   {
     if (request == nullptr) {
       return false;
@@ -129,6 +153,18 @@ struct CodecTraits<AddReply> {
 };
 
 template <>
+struct ViewTraits<AddReplyView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, AddReplyView* reply)
+  {
+    if (reply == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadInt32(&reply->sum);
+  }
+};
+
+template <>
 struct CodecTraits<SleepRequest> {
   static bool Encode(const SleepRequest& request, std::vector<uint8_t>* bytes)
   {
@@ -147,6 +183,18 @@ struct CodecTraits<SleepRequest> {
 };
 
 template <>
+struct ViewTraits<SleepRequestView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, SleepRequestView* request)
+  {
+    if (request == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadUint32(&request->delay_ms);
+  }
+};
+
+template <>
 struct CodecTraits<SleepReply> {
   static bool Encode(const SleepReply& reply, std::vector<uint8_t>* bytes)
   {
@@ -155,6 +203,18 @@ struct CodecTraits<SleepReply> {
   }
 
   static bool Decode(const uint8_t* bytes, std::size_t size, SleepReply* reply)
+  {
+    if (reply == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadInt32(&reply->status);
+  }
+};
+
+template <>
+struct ViewTraits<SleepReplyView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, SleepReplyView* reply)
   {
     if (reply == nullptr) {
       return false;

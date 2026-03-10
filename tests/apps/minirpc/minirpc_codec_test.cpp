@@ -49,5 +49,53 @@ TEST(MiniRpcCodecTest, SleepRoundTrips) {
   EXPECT_EQ(decoded_sleep.delay_ms, sleep.delay_ms);
 }
 
+TEST(MiniRpcCodecTest, AllViewsDecodeRoundTrip) {
+  std::vector<uint8_t> bytes;
+
+  EchoRequest echo_request;
+  echo_request.text = "hello";
+  ASSERT_TRUE(EncodeMessage<EchoRequest>(echo_request, &bytes));
+  EchoRequestView echo_request_view;
+  ASSERT_TRUE(DecodeMessageView<EchoRequestView>(bytes, &echo_request_view));
+  EXPECT_EQ(echo_request_view.text, echo_request.text);
+
+  EchoReply echo_reply;
+  echo_reply.text = "world";
+  ASSERT_TRUE(EncodeMessage<EchoReply>(echo_reply, &bytes));
+  EchoReplyView echo_reply_view;
+  ASSERT_TRUE(DecodeMessageView<EchoReplyView>(bytes, &echo_reply_view));
+  EXPECT_EQ(echo_reply_view.text, echo_reply.text);
+
+  AddRequest add_request;
+  add_request.lhs = 1;
+  add_request.rhs = 2;
+  ASSERT_TRUE(EncodeMessage<AddRequest>(add_request, &bytes));
+  AddRequestView add_request_view;
+  ASSERT_TRUE(DecodeMessageView<AddRequestView>(bytes, &add_request_view));
+  EXPECT_EQ(add_request_view.lhs, add_request.lhs);
+  EXPECT_EQ(add_request_view.rhs, add_request.rhs);
+
+  AddReply add_reply;
+  add_reply.sum = 3;
+  ASSERT_TRUE(EncodeMessage<AddReply>(add_reply, &bytes));
+  AddReplyView add_reply_view;
+  ASSERT_TRUE(DecodeMessageView<AddReplyView>(bytes, &add_reply_view));
+  EXPECT_EQ(add_reply_view.sum, add_reply.sum);
+
+  SleepRequest sleep_request;
+  sleep_request.delay_ms = 250;
+  ASSERT_TRUE(EncodeMessage<SleepRequest>(sleep_request, &bytes));
+  SleepRequestView sleep_request_view;
+  ASSERT_TRUE(DecodeMessageView<SleepRequestView>(bytes, &sleep_request_view));
+  EXPECT_EQ(sleep_request_view.delay_ms, sleep_request.delay_ms);
+
+  SleepReply sleep_reply;
+  sleep_reply.status = 0;
+  ASSERT_TRUE(EncodeMessage<SleepReply>(sleep_reply, &bytes));
+  SleepReplyView sleep_reply_view;
+  ASSERT_TRUE(DecodeMessageView<SleepReplyView>(bytes, &sleep_reply_view));
+  EXPECT_EQ(sleep_reply_view.status, sleep_reply.status);
+}
+
 }  // namespace
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc
