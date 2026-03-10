@@ -126,13 +126,18 @@ TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
   EXPECT_EQ(async_reply.engine_code, 7);
   EXPECT_EQ(async_reply.detail_code, 9);
 
+  client.Shutdown();
+
+  memrpc::RpcSyncClient sync_client(bootstrap);
+  ASSERT_EQ(sync_client.Init(), memrpc::StatusCode::Ok);
+
   memrpc::RpcReply sync_reply;
-  EXPECT_EQ(client.InvokeSync(call, &sync_reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(sync_client.InvokeSync(call, &sync_reply), memrpc::StatusCode::Ok);
   EXPECT_EQ(sync_reply.payload, call.payload);
   EXPECT_EQ(sync_reply.engine_code, 7);
   EXPECT_EQ(sync_reply.detail_code, 9);
 
-  client.Shutdown();
+  sync_client.Shutdown();
   server.Stop();
 }
 
@@ -430,7 +435,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncReconnectsAfterEngineRestart) {
                                });
   ASSERT_EQ(first_server.Start(), memrpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
+  memrpc::RpcSyncClient client(bootstrap);
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::BootstrapHandles first_handles;
@@ -532,7 +537,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
                          });
   ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
+  memrpc::RpcSyncClient client(bootstrap);
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
@@ -569,7 +574,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncUsesExactTimeoutBudgetWithoutPadding) {
                          });
   ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
+  memrpc::RpcSyncClient client(bootstrap);
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
@@ -642,8 +647,14 @@ TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturn
 
   memrpc::StatusCode second_status = memrpc::StatusCode::EngineInternalError;
   memrpc::RpcReply second_reply;
+  const auto wait_budget = std::chrono::milliseconds(
+      static_cast<int64_t>(second_call.admission_timeout_ms) +
+      static_cast<int64_t>(second_call.queue_timeout_ms) +
+      static_cast<int64_t>(second_call.exec_timeout_ms));
   const auto start = std::chrono::steady_clock::now();
-  std::thread sync_thread([&] { second_status = client.InvokeSync(second_call, &second_reply); });
+  std::thread sync_thread([&] {
+    second_status = client.InvokeAsync(second_call).WaitFor(&second_reply, wait_budget);
+  });
 
   sync_thread.join();
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -685,7 +696,7 @@ TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
                          });
   ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
+  memrpc::RpcSyncClient client(bootstrap);
   std::atomic<int> event_count{0};
   client.SetEventCallback([&event_count](const memrpc::RpcEvent& event) {
     EXPECT_EQ(event.event_domain, 7u);

@@ -117,14 +117,34 @@ class RpcClient {
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
   RpcFuture InvokeAsync(const RpcCall& call);
   RpcFuture InvokeAsync(RpcCall&& call);
-  // InvokeSync 只是 InvokeAsync + deadline wait 的兼容包装，不做 1ms busy wait。
-  StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
   RpcClientRuntimeStats GetRuntimeStats() const;
   void Shutdown();
 
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
+};
+
+class RpcSyncClient {
+ public:
+  explicit RpcSyncClient(std::shared_ptr<IBootstrapChannel> bootstrap = nullptr);
+  ~RpcSyncClient();
+
+  RpcSyncClient(const RpcSyncClient&) = delete;
+  RpcSyncClient& operator=(const RpcSyncClient&) = delete;
+  RpcSyncClient(RpcSyncClient&&) noexcept = default;
+  RpcSyncClient& operator=(RpcSyncClient&&) noexcept = default;
+
+  void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
+  void SetEventCallback(RpcEventCallback callback);
+  void SetFailureCallback(RpcFailureCallback callback);
+  StatusCode Init();
+  StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
+  RpcClientRuntimeStats GetRuntimeStats() const;
+  void Shutdown();
+
+ private:
+  RpcClient client_;
 };
 
 }  // namespace memrpc

@@ -295,7 +295,7 @@ TEST(ResponseQueueEventTest, ReplyAndEventCanShareOneResponseQueue) {
                          });
   ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
+  memrpc::RpcSyncClient client(bootstrap);
   std::atomic<int> event_count{0};
   client.SetEventCallback([&](const memrpc::RpcEvent& event) {
     EXPECT_EQ(event.event_domain, 1u);

@@ -47,7 +47,7 @@ class VirusEngineManager {
   std::atomic<bool> reportsEnabled_{false};
 
   std::shared_ptr<memrpc::SaBootstrapChannel> bootstrap_;
-  std::unique_ptr<memrpc::RpcClient> client_;
+  std::unique_ptr<memrpc::RpcSyncClient> client_;
   std::unique_ptr<memrpc::RpcServer> server_;
   std::unique_ptr<VirusEngineService> service_;
 };

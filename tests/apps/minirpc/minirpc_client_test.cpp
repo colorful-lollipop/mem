@@ -152,7 +152,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   echo_call.payload = echo_payload;
 
   MemRpc::RpcReply echo_rpc_reply;
-  ASSERT_EQ(client.InvokeSync(echo_call, &echo_rpc_reply), MemRpc::StatusCode::Ok);
+  ASSERT_EQ(client.InvokeAsync(echo_call).WaitAndTake(&echo_rpc_reply), MemRpc::StatusCode::Ok);
   EchoReply echo_reply;
   ASSERT_TRUE(DecodeMessage<EchoReply>(echo_rpc_reply.payload, &echo_reply));
   EXPECT_EQ(echo_reply.text, "after-restart");

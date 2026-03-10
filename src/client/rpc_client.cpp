@@ -920,20 +920,6 @@ RpcFuture RpcClient::InvokeAsync(RpcCall&& call) {
   return impl_->InvokeAsync(std::move(call));
 }
 
-StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
-  if (reply == nullptr) {
-    return StatusCode::InvalidArgument;
-  }
-  RpcFuture future = InvokeAsync(call);
-  if (call.admission_timeout_ms == 0 && call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
-    return future.Wait(reply);
-  }
-  const auto wait_budget = std::chrono::milliseconds(
-      static_cast<int64_t>(call.admission_timeout_ms) +
-      static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms));
-  return future.WaitFor(reply, wait_budget);
-}
-
 RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
   RpcClientRuntimeStats stats;
   if (impl_ == nullptr) {
@@ -976,6 +962,51 @@ void RpcClient::Shutdown() {
     impl_->slot_pool.reset();
   }
   impl_->FailAllPending(StatusCode::PeerDisconnected);
+}
+
+// --- RpcSyncClient ---
+
+RpcSyncClient::RpcSyncClient(std::shared_ptr<IBootstrapChannel> bootstrap)
+    : client_(std::move(bootstrap)) {}
+
+RpcSyncClient::~RpcSyncClient() = default;
+
+void RpcSyncClient::SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap) {
+  client_.SetBootstrapChannel(std::move(bootstrap));
+}
+
+void RpcSyncClient::SetEventCallback(RpcEventCallback callback) {
+  client_.SetEventCallback(std::move(callback));
+}
+
+void RpcSyncClient::SetFailureCallback(RpcFailureCallback callback) {
+  client_.SetFailureCallback(std::move(callback));
+}
+
+StatusCode RpcSyncClient::Init() {
+  return client_.Init();
+}
+
+StatusCode RpcSyncClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
+  if (reply == nullptr) {
+    return StatusCode::InvalidArgument;
+  }
+  RpcFuture future = client_.InvokeAsync(call);
+  if (call.admission_timeout_ms == 0 && call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
+    return future.Wait(reply);
+  }
+  const auto wait_budget = std::chrono::milliseconds(
+      static_cast<int64_t>(call.admission_timeout_ms) +
+      static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms));
+  return future.WaitFor(reply, wait_budget);
+}
+
+RpcClientRuntimeStats RpcSyncClient::GetRuntimeStats() const {
+  return client_.GetRuntimeStats();
+}
+
+void RpcSyncClient::Shutdown() {
+  client_.Shutdown();
 }
 
 }  // namespace memrpc

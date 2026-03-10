@@ -251,7 +251,7 @@ TEST(MiniRpcDfxTest, HangingChildKilledAndRecovered) {
 
     auto add_call = MakeAddCall(10, 20);
     MemRpc::RpcReply add_reply;
-    ASSERT_EQ(client.InvokeSync(add_call, &add_reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(add_call).WaitAndTake(&add_reply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(DecodeMessage<AddReply>(add_reply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 30);
@@ -297,7 +297,7 @@ TEST(MiniRpcDfxTest, OomKilledChildRecovery) {
 
     auto add_call = MakeAddCall(7, 8);
     MemRpc::RpcReply add_reply;
-    ASSERT_EQ(client.InvokeSync(add_call, &add_reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(add_call).WaitAndTake(&add_reply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(DecodeMessage<AddReply>(add_reply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 15);
@@ -344,7 +344,7 @@ TEST(MiniRpcDfxTest, StackOverflowChildRecovery) {
 
     auto add_call = MakeAddCall(3, 4);
     MemRpc::RpcReply add_reply;
-    ASSERT_EQ(client.InvokeSync(add_call, &add_reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(add_call).WaitAndTake(&add_reply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(DecodeMessage<AddReply>(add_reply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 7);
@@ -415,7 +415,7 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
         // Verify Add works.
         auto add_call = MakeAddCall(cycle, 10);
         MemRpc::RpcReply add_reply;
-        ASSERT_EQ(client.InvokeSync(add_call, &add_reply), MemRpc::StatusCode::Ok)
+        ASSERT_EQ(client.InvokeAsync(add_call).WaitAndTake(&add_reply), MemRpc::StatusCode::Ok)
             << "cycle " << cycle;
         AddReply decoded;
         ASSERT_TRUE(DecodeMessage<AddReply>(add_reply.payload, &decoded));
@@ -441,7 +441,7 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
 
     auto add_call = MakeAddCall(99, 1);
     MemRpc::RpcReply add_reply;
-    ASSERT_EQ(client.InvokeSync(add_call, &add_reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(add_call).WaitAndTake(&add_reply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(DecodeMessage<AddReply>(add_reply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 100);

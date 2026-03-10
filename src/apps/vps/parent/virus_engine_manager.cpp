@@ -51,7 +51,7 @@ int32_t VirusEngineManager::EnsureRuntime() {
     return FAILED;
   }
 
-  client_ = std::make_unique<memrpc::RpcClient>(bootstrap_);
+  client_ = std::make_unique<memrpc::RpcSyncClient>(bootstrap_);
   if (client_->Init() != memrpc::StatusCode::Ok) {
     return FAILED;
   }
