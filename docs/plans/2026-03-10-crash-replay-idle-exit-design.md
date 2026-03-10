@@ -1,6 +1,6 @@
 # Crash Replay Classification And Idle Exit Design
 
-**Goal:** After server crash, classify each pending request as safe-to-replay vs maybe-executed (“poison”), and provide framework-level idle auto-exit that is configurable but optional.
+**Goal:** After server crash, classify each pending request as safe-to-replay vs maybe-executed (“poison”), add client-side async timeout detection, and provide client-side idle reminders so applications can decide when to close sessions.
 
 **Context:**
 - Server crash is expected; client must not crash but must be able to decide replay/skip per request.
@@ -14,7 +14,8 @@
   - **SafeToReplay:** known not executed (client can auto-replay if app allows).
   - **MaybeExecuted:** could have executed (poison); app must decide.
 - Avoid adding new IPC channels unless absolutely necessary.
-- Provide idle auto-exit at framework level, with runtime config; default disabled.
+- Provide async timeout detection in the client using existing timeout fields.
+- Provide idle detection in the client as a reminder callback (no automatic exit).
 - Preserve simple bootstrap model: `OpenSession()`/`CloseSession()` only.
 
 ## Non-Goals
@@ -52,33 +53,43 @@ Framework still fails all pending futures, but app receives the classification.
 Extend failure info so the app can decide:
 - `last_runtime_state` (from shm snapshot)
 - `replay_hint` (SafeToReplay / MaybeExecuted)
+- `stage = Timeout` for async timeout watchdog events
 
 No default auto-replay in framework; app decides per request.
 
-### 4) Session Lifecycle
+### 4) Async Timeout Watchdog (Client)
+Client adds a lightweight watchdog thread to cover server-side timeouts for async calls:
+- **Admission** timeout is still enforced by the submitter (waiting for slot/ring).
+- Watchdog covers **server phase** only, using:
+  - `queue_timeout_ms` with `enqueue_mono_ms`
+  - `exec_timeout_ms` with `start_exec_mono_ms` (fallback to `enqueue_mono_ms` if unset)
+- When timeout fires:
+  - Emit `RpcFailureCallback` with `FailureStage::Timeout`
+  - Use runtime state to pick `StatusCode::QueueTimeout` vs `StatusCode::ExecTimeout`
+  - Release request slot and clear pending state
+  - Late responses are discarded via `request_id` mismatch checks (response slot still released)
+
+### 5) Session Lifecycle
 - Crash → session invalid, client fails pending, application decides replay.
 - Restart uses new `OpenSession()` (new shm/session_id allowed).
 
 ---
 
-## Idle Auto-Exit (Framework Level)
+## Idle Reminder (Client Level)
 
-**Why framework-level:** It controls session lifetime, shm/eventfd ownership, and interacts with crash/recovery.
+**Why client-level:** Only the client can decide whether to close a session; server cannot know app policy.
 
-### Config (server-side)
-Add to server config:
-- `idle_timeout_ms` (0 = disabled)
-- `idle_check_interval_ms` (default 500–1000ms)
-- `exit_on_close_session` (true by default)
+### Config (client-side)
+Idle timeout and notify interval are **compile-time constants** (default 0 = disabled).
 
 ### Behavior
-- Maintain `inflight_count` and `last_activity_mono_ms`.
-- When `inflight_count == 0` and `now - last_activity >= idle_timeout_ms`, server transitions to `Closing` and exits cleanly.
-- `CloseSession()` sets `session_state = Closing` to request an early exit.
+- Client watchdog tracks last activity (submit, reply, or session attach).
+- When idle time exceeds threshold, fire `IdleCallback` periodically.
+- Application decides to call `CloseSession()` when appropriate.
 
 ### Semantics
-- Idle exit is best-effort; app can disable or override by keeping `idle_timeout_ms = 0`.
-- Exit decision is independent from crash handling.
+- Idle reminder is best-effort; app can disable by compiling with timeout = 0.
+- Reminder does not change session state automatically.
 
 ---
 
@@ -92,7 +103,8 @@ Add to server config:
 ## Testing Strategy
 - Unit: crash classification for each runtime state.
 - Integration: crash mid-queue vs mid-exec; verify SafeToReplay vs MaybeExecuted.
-- Idle exit: no requests for X seconds triggers shutdown; `CloseSession()` triggers shutdown.
+- Async timeout: verify watchdog triggers QueueTimeout/ExecTimeout with FailureStage::Timeout.
+- Idle reminder: no requests for X seconds triggers callback; callback repeats per interval.
 
 ---
 
@@ -105,4 +117,3 @@ Add to server config:
 ## Open Questions
 - Do we need to expose `idle_exit_reason` to app diagnostics?
 - Should we allow per-opcode default replay policy (e.g., via registry)?
-
