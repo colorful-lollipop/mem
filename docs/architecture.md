@@ -43,9 +43,9 @@
 
 默认 session 配置：
 
-- request 上限：`16KB`
-- response 上限：`1KB`
-  - 该上限固定用于 response slot payload
+- request 上限：`4KB`
+- response 上限：`4KB`
+  - 该上限固定用于 request/response slot payload
   - 运行时配置不能超过这个值
 
 ## 响应路径模型
@@ -76,6 +76,17 @@ response ring 统一承载两类消息：
 - 保持底层通道简单
 - 避免轮询额外事件 fd
 - 同时给应用层保留异步事件能力
+
+## 响应 slot 生命周期
+
+response slot 的生命周期必须有确定性语义：
+
+- server 写入 payload 后才会发布 response ring entry
+- client 只有在成功读到 ring entry 后才会消费对应 slot
+- client 校验 ring entry 与 slot 内 `request_id` 一致，不一致视为 `ProtocolMismatch`
+- `resp_eventfd` 通知失败时，slot 不能被提前复用，视为会话异常并触发 session 终止/清理
+
+这保证了“写入 ring 成功但通知失败”的路径不会产生悬空或重复释放。
 
 ## 唤醒模型
 
@@ -114,6 +125,20 @@ credit fd 采用“资源重新可写”语义：
 - 去掉 request/response 两侧的 `1ms` 轮询重试
 - 在小 payload 高频场景下减少 `eventfd write/read + poll` 的固定 syscall 开销
 
+## 超时语义
+
+同步调用采用三段式超时模型，所有阶段共享一个总 deadline：
+
+- admission queue wait：等待 request ring/slot 资源恢复
+- execution：服务端 handler 实际执行
+- response wait：等待 response ring/slot 可写 + client 收到 reply
+
+具体语义：
+
+- admission timeout 返回 `QueueTimeout`
+- execution timeout 由 `exec_timeout_ms` 控制
+- response wait 使用剩余时间，不再叠加额外 padding
+
 ## 框架接口
 
 框架只提供通用能力，不再自带业务兼容层。
@@ -144,6 +169,7 @@ credit fd 采用“资源重新可写”语义：
 - worker 只产生 completion，不直接写共享 response ring
 - response writer 线程统一写共享 response ring
 - response writer 在 response ring/slot 资源不足时等待 `resp_credit_eventfd`
+- credit 等待为单次 `poll`，使用完整剩余时间，不做固定间隔轮询
 - 高优请求允许长期压制普通请求
 
 客户端当前模型：
