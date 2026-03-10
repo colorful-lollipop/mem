@@ -3,11 +3,16 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 
 struct EchoRequest {
   std::string text;
+};
+
+struct EchoRequestView {
+  std::string_view text;
 };
 
 struct EchoReply {

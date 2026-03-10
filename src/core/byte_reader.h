@@ -4,9 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace memrpc {
+
+using ByteView = std::basic_string_view<uint8_t>;
 
 class ByteReader {
  public:
@@ -16,7 +19,9 @@ class ByteReader {
   bool ReadUint32(uint32_t* value);
   bool ReadInt32(int32_t* value);
   bool ReadBytes(void* data, uint32_t size);
+  bool ReadBytesView(uint32_t size, ByteView* value);
   bool ReadString(std::string* value);
+  bool ReadStringView(std::string_view* value);
 
  private:
   const uint8_t* bytes_ = nullptr;

@@ -59,13 +59,14 @@ int32_t VirusEngineManager::EnsureRuntime() {
 }
 
 int32_t VirusEngineManager::InvokeInt32(memrpc::Opcode opcode,
-                                        const std::vector<uint8_t>& requestBytes,
+                                        std::vector<uint8_t> requestBytes,
                                         int32_t* resultCode) {
   if (resultCode == nullptr || EnsureRuntime() != SUCCESS) {
     return FAILED;
   }
   memrpc::RpcReply reply;
-  if (client_->InvokeSync(MakeCall(opcode, requestBytes), &reply) != memrpc::StatusCode::Ok ||
+  if (client_->InvokeSync(MakeCall(opcode, std::move(requestBytes)), &reply) !=
+          memrpc::StatusCode::Ok ||
       !DecodeInt32Result(reply.payload, resultCode)) {
     return FAILED;
   }
@@ -82,7 +83,7 @@ int32_t VirusEngineManager::InvokeScanFile(const ScanTask& task, ScanResult* res
   }
 
   memrpc::RpcReply reply;
-  if (client_->InvokeSync(MakeCall(memrpc::Opcode::VpsScanFile, requestBytes), &reply) !=
+  if (client_->InvokeSync(MakeCall(memrpc::Opcode::VpsScanFile, std::move(requestBytes)), &reply) !=
       memrpc::StatusCode::Ok) {
     return FAILED;
   }
@@ -128,7 +129,7 @@ int32_t VirusEngineManager::ScanBehavior(uint32_t accessToken,
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeScanBehaviorRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsScanBehavior, requestBytes, &resultCode)
+             ? InvokeInt32(memrpc::Opcode::VpsScanBehavior, std::move(requestBytes), &resultCode)
              : FAILED;
 }
 
@@ -137,7 +138,8 @@ int32_t VirusEngineManager::IsExistAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsIsExistAnalysisEngine, requestBytes, &resultCode)
+             ? InvokeInt32(memrpc::Opcode::VpsIsExistAnalysisEngine, std::move(requestBytes),
+                           &resultCode)
              : FAILED;
 }
 
@@ -146,7 +148,8 @@ int32_t VirusEngineManager::CreateAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsCreateAnalysisEngine, requestBytes, &resultCode)
+             ? InvokeInt32(memrpc::Opcode::VpsCreateAnalysisEngine, std::move(requestBytes),
+                           &resultCode)
              : FAILED;
 }
 
@@ -155,7 +158,8 @@ int32_t VirusEngineManager::DestroyAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsDestroyAnalysisEngine, requestBytes, &resultCode)
+             ? InvokeInt32(memrpc::Opcode::VpsDestroyAnalysisEngine, std::move(requestBytes),
+                           &resultCode)
              : FAILED;
 }
 

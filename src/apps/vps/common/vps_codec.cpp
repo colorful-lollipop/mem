@@ -65,6 +65,11 @@ bool ReadEnum(ByteReader* reader, EnumType* value) {
   return true;
 }
 
+bool EncodeFileInfos(const std::vector<std::shared_ptr<BasicFileInfo>>& infos, ByteWriter* writer);
+bool DecodeFileInfos(ByteReader* reader, std::vector<std::shared_ptr<BasicFileInfo>>* infos);
+bool EncodeEngineResults(const std::vector<EngineResult>& results, ByteWriter* writer);
+bool DecodeEngineResults(ByteReader* reader, std::vector<EngineResult>* results);
+
 bool EncodeBundleInfoInternal(const std::shared_ptr<BundleInfo>& info, ByteWriter* writer) {
   if (writer == nullptr) {
     return false;
@@ -140,6 +145,48 @@ bool DecodeEngineResultInternal(ByteReader* reader, EngineResult* result) {
          reader->ReadInt32(&result->errorCode) && ReadEnum(reader, &result->level);
 }
 
+bool EncodeBehaviorScanResultInternal(const BehaviorScanResult& result, ByteWriter* writer) {
+  return writer != nullptr && writer->WriteString(result.eventId) && writer->WriteString(result.time) &&
+         writer->WriteString(result.ruleName) && writer->WriteString(result.bundleName);
+}
+
+bool DecodeBehaviorScanResultInternal(ByteReader* reader, BehaviorScanResult* result) {
+  return reader != nullptr && result != nullptr && reader->ReadString(&result->eventId) &&
+         reader->ReadString(&result->time) && reader->ReadString(&result->ruleName) &&
+         reader->ReadString(&result->bundleName);
+}
+
+bool EncodeScanTaskInternal(const ScanTask& task, ByteWriter* writer) {
+  return writer != nullptr && writer->WriteString(task.bundleName) &&
+         EncodeBundleInfoInternal(task.bundleInfo, writer) &&
+         EncodeFileInfos(task.fileInfos, writer) && WriteEnum(writer, task.scanTaskType) &&
+         writer->WriteInt32(task.accountId);
+}
+
+bool DecodeScanTaskInternal(ByteReader* reader, ScanTask* task) {
+  return reader != nullptr && task != nullptr && reader->ReadString(&task->bundleName) &&
+         DecodeBundleInfoInternal(reader, &task->bundleInfo) &&
+         DecodeFileInfos(reader, &task->fileInfos) &&
+         ReadEnum(reader, &task->scanTaskType) && reader->ReadInt32(&task->accountId);
+}
+
+bool EncodeScanResultInternal(const ScanResult& result, ByteWriter* writer) {
+  return writer != nullptr && writer->WriteString(result.bundleName) &&
+         EncodeBundleInfoInternal(result.bundleInfo, writer) &&
+         EncodeFileInfos(result.fileInfos, writer) && writer->WriteString(result.bakPath) &&
+         WriteEnum(writer, result.threatLevel) && WriteEnum(writer, result.scanTaskType) &&
+         writer->WriteInt32(result.accountId) && EncodeEngineResults(result.engineResults, writer);
+}
+
+bool DecodeScanResultInternal(ByteReader* reader, ScanResult* result) {
+  return reader != nullptr && result != nullptr && reader->ReadString(&result->bundleName) &&
+         DecodeBundleInfoInternal(reader, &result->bundleInfo) &&
+         DecodeFileInfos(reader, &result->fileInfos) && reader->ReadString(&result->bakPath) &&
+         ReadEnum(reader, &result->threatLevel) && ReadEnum(reader, &result->scanTaskType) &&
+         reader->ReadInt32(&result->accountId) &&
+         DecodeEngineResults(reader, &result->engineResults);
+}
+
 bool EncodeFileInfos(const std::vector<std::shared_ptr<BasicFileInfo>>& infos, ByteWriter* writer) {
   if (writer == nullptr || !writer->WriteUint32(static_cast<uint32_t>(infos.size()))) {
     return false;
@@ -208,26 +255,19 @@ bool EncodeScanTask(const ScanTask& task, std::vector<uint8_t>* bytes) {
     return false;
   }
   ByteWriter writer;
-  const bool ok = writer.WriteString(task.bundleName) &&
-                  EncodeBundleInfoInternal(task.bundleInfo, &writer) &&
-                  EncodeFileInfos(task.fileInfos, &writer) &&
-                  WriteEnum(&writer, task.scanTaskType) && writer.WriteInt32(task.accountId);
-  if (!ok) {
+  if (!EncodeScanTaskInternal(task, &writer)) {
     return false;
   }
   *bytes = writer.bytes();
   return true;
 }
 
-bool DecodeScanTask(const std::vector<uint8_t>& bytes, ScanTask* task) {
+bool DecodeScanTask(const uint8_t* bytes, std::size_t size, ScanTask* task) {
   if (task == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
-  return reader.ReadString(&task->bundleName) &&
-         DecodeBundleInfoInternal(&reader, &task->bundleInfo) &&
-         DecodeFileInfos(&reader, &task->fileInfos) &&
-         ReadEnum(&reader, &task->scanTaskType) && reader.ReadInt32(&task->accountId);
+  ByteReader reader(bytes, size);
+  return DecodeScanTaskInternal(&reader, task);
 }
 
 bool EncodeScanResult(const ScanResult& result, std::vector<uint8_t>* bytes) {
@@ -235,30 +275,19 @@ bool EncodeScanResult(const ScanResult& result, std::vector<uint8_t>* bytes) {
     return false;
   }
   ByteWriter writer;
-  const bool ok = writer.WriteString(result.bundleName) &&
-                  EncodeBundleInfoInternal(result.bundleInfo, &writer) &&
-                  EncodeFileInfos(result.fileInfos, &writer) && writer.WriteString(result.bakPath) &&
-                  WriteEnum(&writer, result.threatLevel) &&
-                  WriteEnum(&writer, result.scanTaskType) && writer.WriteInt32(result.accountId) &&
-                  EncodeEngineResults(result.engineResults, &writer);
-  if (!ok) {
+  if (!EncodeScanResultInternal(result, &writer)) {
     return false;
   }
   *bytes = writer.bytes();
   return true;
 }
 
-bool DecodeScanResult(const std::vector<uint8_t>& bytes, ScanResult* result) {
+bool DecodeScanResult(const uint8_t* bytes, std::size_t size, ScanResult* result) {
   if (result == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
-  return reader.ReadString(&result->bundleName) &&
-         DecodeBundleInfoInternal(&reader, &result->bundleInfo) &&
-         DecodeFileInfos(&reader, &result->fileInfos) && reader.ReadString(&result->bakPath) &&
-         ReadEnum(&reader, &result->threatLevel) && ReadEnum(&reader, &result->scanTaskType) &&
-         reader.ReadInt32(&result->accountId) &&
-         DecodeEngineResults(&reader, &result->engineResults);
+  ByteReader reader(bytes, size);
+  return DecodeScanResultInternal(&reader, result);
 }
 
 bool EncodeBehaviorScanResult(const BehaviorScanResult& result, std::vector<uint8_t>* bytes) {
@@ -266,22 +295,19 @@ bool EncodeBehaviorScanResult(const BehaviorScanResult& result, std::vector<uint
     return false;
   }
   ByteWriter writer;
-  const bool ok = writer.WriteString(result.eventId) && writer.WriteString(result.time) &&
-                  writer.WriteString(result.ruleName) && writer.WriteString(result.bundleName);
-  if (!ok) {
+  if (!EncodeBehaviorScanResultInternal(result, &writer)) {
     return false;
   }
   *bytes = writer.bytes();
   return true;
 }
 
-bool DecodeBehaviorScanResult(const std::vector<uint8_t>& bytes, BehaviorScanResult* result) {
+bool DecodeBehaviorScanResult(const uint8_t* bytes, std::size_t size, BehaviorScanResult* result) {
   if (result == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
-  return reader.ReadString(&result->eventId) && reader.ReadString(&result->time) &&
-         reader.ReadString(&result->ruleName) && reader.ReadString(&result->bundleName);
+  ByteReader reader(bytes, size);
+  return DecodeBehaviorScanResultInternal(&reader, result);
 }
 
 bool EncodeScanBehaviorRequest(const ScanBehaviorRequest& request, std::vector<uint8_t>* bytes) {
@@ -298,11 +324,13 @@ bool EncodeScanBehaviorRequest(const ScanBehaviorRequest& request, std::vector<u
   return true;
 }
 
-bool DecodeScanBehaviorRequest(const std::vector<uint8_t>& bytes, ScanBehaviorRequest* request) {
+bool DecodeScanBehaviorRequest(const uint8_t* bytes,
+                               std::size_t size,
+                               ScanBehaviorRequest* request) {
   if (request == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
+  ByteReader reader(bytes, size);
   return reader.ReadUint32(&request->accessToken) && reader.ReadString(&request->event) &&
          reader.ReadString(&request->bundleName);
 }
@@ -319,8 +347,8 @@ bool EncodeAccessTokenRequest(const AccessTokenRequest& request, std::vector<uin
   return true;
 }
 
-bool DecodeAccessTokenRequest(const std::vector<uint8_t>& bytes, AccessTokenRequest* request) {
-  return request != nullptr && ByteReader(bytes).ReadUint32(&request->accessToken);
+bool DecodeAccessTokenRequest(const uint8_t* bytes, std::size_t size, AccessTokenRequest* request) {
+  return request != nullptr && ByteReader(bytes, size).ReadUint32(&request->accessToken);
 }
 
 bool EncodeInt32Result(int32_t value, std::vector<uint8_t>* bytes) {
@@ -335,8 +363,8 @@ bool EncodeInt32Result(int32_t value, std::vector<uint8_t>* bytes) {
   return true;
 }
 
-bool DecodeInt32Result(const std::vector<uint8_t>& bytes, int32_t* value) {
-  return value != nullptr && ByteReader(bytes).ReadInt32(value);
+bool DecodeInt32Result(const uint8_t* bytes, std::size_t size, int32_t* value) {
+  return value != nullptr && ByteReader(bytes, size).ReadInt32(value);
 }
 
 bool EncodeBoolRequest(bool enabled, std::vector<uint8_t>* bytes) {
@@ -351,11 +379,11 @@ bool EncodeBoolRequest(bool enabled, std::vector<uint8_t>* bytes) {
   return true;
 }
 
-bool DecodeBoolRequest(const std::vector<uint8_t>& bytes, bool* enabled) {
+bool DecodeBoolRequest(const uint8_t* bytes, std::size_t size, bool* enabled) {
   if (enabled == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
+  ByteReader reader(bytes, size);
   return ReadBool(&reader, enabled);
 }
 
@@ -376,16 +404,17 @@ bool EncodePollBehaviorEventReply(const PollBehaviorEventReply& reply, std::vect
   return true;
 }
 
-bool DecodePollBehaviorEventReply(const std::vector<uint8_t>& bytes, PollBehaviorEventReply* reply) {
+bool DecodePollBehaviorEventReply(const uint8_t* bytes,
+                                  std::size_t size,
+                                  PollBehaviorEventReply* reply) {
   if (reply == nullptr) {
     return false;
   }
-  ByteReader reader(bytes);
+  ByteReader reader(bytes, size);
   if (!reader.ReadInt32(&reply->result) || !reader.ReadUint32(&reply->accessToken)) {
     return false;
   }
-  std::vector<uint8_t> event_bytes(bytes.begin() + 8, bytes.end());
-  return DecodeBehaviorScanResult(event_bytes, &reply->scanResult);
+  return DecodeBehaviorScanResultInternal(&reader, &reply->scanResult);
 }
 
 bool EncodeScanFileReply(int32_t resultCode,
@@ -395,28 +424,25 @@ bool EncodeScanFileReply(int32_t resultCode,
     return false;
   }
   ByteWriter writer;
-  std::vector<uint8_t> result_bytes;
-  if (!EncodeScanResult(scanResult, &result_bytes) || !writer.WriteInt32(resultCode) ||
-      !writer.WriteBytes(result_bytes.data(), static_cast<uint32_t>(result_bytes.size()))) {
+  if (!writer.WriteInt32(resultCode) || !EncodeScanResultInternal(scanResult, &writer)) {
     return false;
   }
   *bytes = writer.bytes();
   return true;
 }
 
-bool DecodeScanFileReply(const std::vector<uint8_t>& bytes,
+bool DecodeScanFileReply(const uint8_t* bytes,
+                         std::size_t size,
                          int32_t* resultCode,
                          ScanResult* scanResult) {
-  if (resultCode == nullptr || scanResult == nullptr || bytes.size() < sizeof(int32_t)) {
+  if (resultCode == nullptr || scanResult == nullptr || size < sizeof(int32_t)) {
     return false;
   }
-  ByteReader reader(bytes);
+  ByteReader reader(bytes, size);
   if (!reader.ReadInt32(resultCode)) {
     return false;
   }
-  std::vector<uint8_t> result_bytes(bytes.begin() + static_cast<std::ptrdiff_t>(sizeof(int32_t)),
-                                    bytes.end());
-  return DecodeScanResult(result_bytes, scanResult);
+  return DecodeScanResultInternal(&reader, scanResult);
 }
 
 }  // namespace OHOS::Security::VirusProtectionService

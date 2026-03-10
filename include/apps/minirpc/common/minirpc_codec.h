@@ -35,6 +35,14 @@ bool DecodeMessage(const BytesLike& bytes, Message* value) {
   return CodecTraits<Message>::Decode(bytes.data(), bytes.size(), value);
 }
 
+template <typename T>
+struct ViewTraits;
+
+template <typename View, typename BytesLike>
+bool DecodeMessageView(const BytesLike& bytes, View* value) {
+  return ViewTraits<View>::Decode(bytes.data(), bytes.size(), value);
+}
+
 template <>
 struct CodecTraits<EchoRequest> {
   static bool Encode(const EchoRequest& request, std::vector<uint8_t>* bytes)
@@ -68,6 +76,18 @@ struct CodecTraits<EchoReply> {
     }
     ::memrpc::ByteReader reader(bytes, size);
     return reader.ReadString(&reply->text);
+  }
+};
+
+template <>
+struct ViewTraits<EchoRequestView> {
+  static bool Decode(const uint8_t* bytes, std::size_t size, EchoRequestView* request)
+  {
+    if (request == nullptr) {
+      return false;
+    }
+    ::memrpc::ByteReader reader(bytes, size);
+    return reader.ReadStringView(&request->text);
   }
 };
 

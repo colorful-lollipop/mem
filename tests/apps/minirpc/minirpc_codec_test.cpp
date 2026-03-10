@@ -17,6 +17,10 @@ TEST(MiniRpcCodecTest, EchoRoundTrips) {
   EchoRequest decoded;
   ASSERT_TRUE(DecodeMessage<EchoRequest>(bytes, &decoded));
   EXPECT_EQ(decoded.text, request.text);
+
+  EchoRequestView decoded_view;
+  ASSERT_TRUE(DecodeMessageView<EchoRequestView>(bytes, &decoded_view));
+  EXPECT_EQ(decoded_view.text, request.text);
 }
 
 TEST(MiniRpcCodecTest, AddRoundTrips) {

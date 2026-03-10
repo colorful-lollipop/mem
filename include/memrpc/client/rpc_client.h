@@ -57,6 +57,8 @@ class RpcFuture {
   bool IsReady() const;
   // Wait 会阻塞到 reply 就绪，并返回 reply.status。
   StatusCode Wait(RpcReply* reply);
+  // WaitAndTake 会阻塞到 reply 就绪，并把内部 reply move 给调用方。
+  StatusCode WaitAndTake(RpcReply* reply);
   // WaitFor 在给定 deadline 内等待 reply；仅用于同步兼容路径。
   StatusCode WaitFor(RpcReply* reply, std::chrono::milliseconds timeout);
 
@@ -85,6 +87,7 @@ class RpcClient {
   StatusCode Init();
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
   RpcFuture InvokeAsync(const RpcCall& call);
+  RpcFuture InvokeAsync(RpcCall&& call);
   // InvokeSync 只是 InvokeAsync + deadline wait 的兼容包装，不做 1ms busy wait。
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
   RpcClientRuntimeStats GetRuntimeStats() const;

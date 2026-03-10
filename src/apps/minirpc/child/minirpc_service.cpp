@@ -35,12 +35,14 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
                             if (reply == nullptr) {
                               return;
                             }
-                            EchoRequest request;
-                            if (!DecodeMessage<EchoRequest>(call.payload, &request)) {
+                            EchoRequestView request;
+                            if (!DecodeMessageView<EchoRequestView>(call.payload, &request)) {
                               reply->status = MemRpc::StatusCode::ProtocolMismatch;
                               return;
                             }
-                            EncodeMessage<EchoReply>(Echo(request), &reply->payload);
+                            EchoReply echo_reply;
+                            echo_reply.text.assign(request.text);
+                            EncodeMessage<EchoReply>(echo_reply, &reply->payload);
                           });
 
   server->RegisterHandler(MemRpc::Opcode::MiniAdd,

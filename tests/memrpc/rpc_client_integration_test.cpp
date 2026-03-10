@@ -881,6 +881,35 @@ TEST(RpcClientIntegrationTest, HandlerPayloadViewCanObserveAndMutateUnderlyingRe
   server.Stop();
 }
 
+TEST(RpcClientIntegrationTest, WaitAndTakeMovesReplyPayloadToCaller) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload.assign(call.payload.begin(), call.payload.end());
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = {0x21, 0x22, 0x23};
+
+  memrpc::RpcReply reply;
+  ASSERT_EQ(client.InvokeAsync(std::move(call)).WaitAndTake(&reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(reply.payload, std::vector<uint8_t>({0x21, 0x22, 0x23}));
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientIntegrationTest, HighPriorityRequestStillAdmitsWhenNormalTrafficUsesNonReservedSlots) {
   auto bootstrap =
       std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{

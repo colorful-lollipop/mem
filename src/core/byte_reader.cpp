@@ -25,6 +25,15 @@ bool ByteReader::ReadBytes(void* data, uint32_t size) {
   return true;
 }
 
+bool ByteReader::ReadBytesView(uint32_t size, ByteView* value) {
+  if (value == nullptr || bytes_ == nullptr || offset_ + size > size_) {
+    return false;
+  }
+  *value = ByteView(bytes_ + offset_, size);
+  offset_ += size;
+  return true;
+}
+
 bool ByteReader::ReadString(std::string* value) {
   if (value == nullptr) {
     return false;
@@ -34,6 +43,19 @@ bool ByteReader::ReadString(std::string* value) {
     return false;
   }
   value->assign(reinterpret_cast<const char*>(bytes_ + offset_), size);
+  offset_ += size;
+  return true;
+}
+
+bool ByteReader::ReadStringView(std::string_view* value) {
+  if (value == nullptr) {
+    return false;
+  }
+  uint32_t size = 0;
+  if (!ReadUint32(&size) || bytes_ == nullptr || offset_ + size > size_) {
+    return false;
+  }
+  *value = std::string_view(reinterpret_cast<const char*>(bytes_ + offset_), size);
   offset_ += size;
   return true;
 }

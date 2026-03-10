@@ -57,8 +57,7 @@ TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndMiniRpc) {
         "apps/vps/",
         nullptr}},
       {"/root/code/demo/mem/tests/CMakeLists.txt",
-       {"vps_add_test", "memrpc_vps_", "memrpc_scan_codec_test", "memrpc_scan_behavior_codec_test",
-        "memrpc_integration_end_to_end_test", "memrpc_notify_channel_test",
+       {"memrpc_integration_end_to_end_test", "memrpc_notify_channel_test",
         "memrpc_rpc_notify_integration_test", nullptr}},
       {"/root/code/demo/mem/demo/CMakeLists.txt",
        {"memrpc_demo_dual_process", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
@@ -88,6 +87,7 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
                            std::istreambuf_iterator<char>());
   EXPECT_NE(root_content.find("add_subdirectory(memrpc)"), std::string::npos);
   EXPECT_NE(root_content.find("add_subdirectory(apps/minirpc)"), std::string::npos);
+  EXPECT_NE(root_content.find("add_subdirectory(apps/vps)"), std::string::npos);
 
   std::ifstream memrpc_stream("/root/code/demo/mem/tests/memrpc/CMakeLists.txt");
   ASSERT_TRUE(memrpc_stream.is_open());
@@ -104,6 +104,13 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
                               std::istreambuf_iterator<char>());
   EXPECT_NE(minirpc_content.find("memrpc_minirpc_client_test"), std::string::npos);
   EXPECT_NE(minirpc_content.find("memrpc_minirpc_service_test"), std::string::npos);
+
+  std::ifstream vps_stream("/root/code/demo/mem/tests/apps/vps/CMakeLists.txt");
+  ASSERT_TRUE(vps_stream.is_open());
+
+  std::string vps_content((std::istreambuf_iterator<char>(vps_stream)),
+                          std::istreambuf_iterator<char>());
+  EXPECT_NE(vps_content.find("memrpc_vps_codec_test"), std::string::npos);
 }
 
 TEST(BuildConfigTest, LegacyArchiveHasDedicatedReadme) {

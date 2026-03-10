@@ -59,6 +59,20 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
 }
 
+TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  MemRpc::RpcCall call;
+  call.opcode = MemRpc::Opcode::ScanFile;
+  call.payload = std::vector<uint8_t>{4, 5, 6};
+
+  MemRpc::RpcReply reply;
+  auto future = client.InvokeAsync(std::move(call));
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_NE(future.WaitAndTake(&reply), MemRpc::StatusCode::Ok);
+}
+
 TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
   MemRpc::RpcCall call;
   call.admission_timeout_ms = 0;

@@ -94,6 +94,16 @@ StatusCode RpcFuture::Wait(RpcReply* reply) {
   return reply->status;
 }
 
+StatusCode RpcFuture::WaitAndTake(RpcReply* reply) {
+  if (state_ == nullptr || reply == nullptr) {
+    return StatusCode::InvalidArgument;
+  }
+  std::unique_lock<std::mutex> lock(state_->mutex);
+  state_->cv.wait(lock, [this] { return state_->ready; });
+  *reply = std::move(state_->reply);
+  return reply->status;
+}
+
 StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout) {
   if (state_ == nullptr || reply == nullptr) {
     return StatusCode::InvalidArgument;
@@ -621,7 +631,7 @@ struct RpcClient::Impl {
     }
   }
 
-  RpcFuture InvokeAsync(const RpcCall& call) {
+  RpcFuture InvokeAsync(RpcCall call) {
     StartSubmitter();
     const StatusCode ensure_status = EnsureLiveSession();
     if (ensure_status != StatusCode::Ok) {
@@ -637,7 +647,7 @@ struct RpcClient::Impl {
 
     auto pending = std::make_shared<RpcFuture::State>();
     PendingSubmit submit;
-    submit.call = call;
+    submit.call = std::move(call);
     submit.request_id = next_request_id.fetch_add(1);
     submit.future = pending;
     {
@@ -682,6 +692,10 @@ StatusCode RpcClient::Init() {
 
 RpcFuture RpcClient::InvokeAsync(const RpcCall& call) {
   return impl_->InvokeAsync(call);
+}
+
+RpcFuture RpcClient::InvokeAsync(RpcCall&& call) {
+  return impl_->InvokeAsync(std::move(call));
 }
 
 StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {

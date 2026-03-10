@@ -14,7 +14,7 @@ MemRpc::StatusCode WaitAndDecode(MemRpc::RpcFuture future, Reply* reply) {
   }
 
   MemRpc::RpcReply rpcReply;
-  const MemRpc::StatusCode status = future.Wait(&rpcReply);
+  const MemRpc::StatusCode status = future.WaitAndTake(&rpcReply);
   if (status != MemRpc::StatusCode::Ok) {
     return status;
   }

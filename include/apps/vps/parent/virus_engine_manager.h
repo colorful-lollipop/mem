@@ -35,7 +35,7 @@ class VirusEngineManager {
 
   int32_t EnsureRuntime();
   int32_t InvokeInt32(memrpc::Opcode opcode,
-                      const std::vector<uint8_t>& requestBytes,
+                      std::vector<uint8_t> requestBytes,
                       int32_t* resultCode);
   int32_t InvokeScanFile(const ScanTask& task, ScanResult* result);
 
