@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -89,4 +92,37 @@ TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds) {
 
   EXPECT_EQ(handles.req_credit_event_fd, -1);
   EXPECT_EQ(handles.resp_credit_event_fd, -1);
+}
+
+TEST(RpcClientApiTest, ThenCallbackInvokedImmediatelyOnAlreadyReadyFuture) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  auto future = client.InvokeAsync(MemRpc::RpcCall{});
+  ASSERT_TRUE(future.IsReady());
+
+  bool called = false;
+  MemRpc::StatusCode received_status = MemRpc::StatusCode::Ok;
+  future.Then([&](MemRpc::RpcReply reply) {
+    called = true;
+    received_status = reply.status;
+  });
+
+  EXPECT_TRUE(called);
+  EXPECT_NE(received_status, MemRpc::StatusCode::Ok);
+}
+
+TEST(RpcClientApiTest, ThenWithNullCallbackIsNoOp) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  auto future = client.InvokeAsync(MemRpc::RpcCall{});
+  future.Then(nullptr);  // should not crash
+}
+
+TEST(RpcClientApiTest, ThenOnDefaultConstructedFutureIsNoOp) {
+  MemRpc::RpcFuture future;
+  bool called = false;
+  future.Then([&](MemRpc::RpcReply) { called = true; });
+  EXPECT_FALSE(called);
 }

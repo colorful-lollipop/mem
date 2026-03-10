@@ -136,6 +136,49 @@ TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
   server.Stop();
 }
 
+TEST(RpcClientIntegrationTest, ThenCallbackInvokedByDispatcher) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = std::vector<uint8_t>{10, 20, 30};
+
+  std::atomic<bool> called{false};
+  memrpc::StatusCode received_status = memrpc::StatusCode::EngineInternalError;
+  std::vector<uint8_t> received_payload;
+  std::mutex mu;
+
+  auto future = client.InvokeAsync(call);
+  future.Then([&](memrpc::RpcReply reply) {
+    std::lock_guard<std::mutex> lock(mu);
+    received_status = reply.status;
+    received_payload = std::move(reply.payload);
+    called.store(true);
+  });
+
+  ASSERT_TRUE(WaitForCondition([&] { return called.load(); }, 5000));
+  std::lock_guard<std::mutex> lock(mu);
+  EXPECT_EQ(received_status, memrpc::StatusCode::Ok);
+  EXPECT_EQ(received_payload, call.payload);
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequests) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
