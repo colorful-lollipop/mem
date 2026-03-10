@@ -40,6 +40,8 @@ source_set("memrpc") {
     "include/memrpc/compat/engine_server.h",
     "include/memrpc/demo_bootstrap.h",
     "include/memrpc/core/bootstrap.h",
+    "include/memrpc/core/byte_reader.h",
+    "include/memrpc/core/byte_writer.h",
     "include/memrpc/core/types.h",
     "include/memrpc/handler.h",
     "include/memrpc/rpc_client.h",

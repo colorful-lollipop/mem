@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "core/byte_reader.h"
-#include "core/byte_writer.h"
+#include "memrpc/core/byte_reader.h"
+#include "memrpc/core/byte_writer.h"
 #include "core/protocol.h"
 
 namespace memrpc {

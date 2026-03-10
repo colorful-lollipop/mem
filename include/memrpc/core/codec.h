@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <vector>
 
-#include "core/byte_reader.h"
-#include "core/byte_writer.h"
+#include "memrpc/core/byte_reader.h"
+#include "memrpc/core/byte_writer.h"
 
 namespace memrpc {
 

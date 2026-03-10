@@ -5,8 +5,8 @@
 #include <string_view>
 #include <vector>
 
-#include "core/byte_reader.h"
-#include "core/byte_writer.h"
+#include "memrpc/core/byte_reader.h"
+#include "memrpc/core/byte_writer.h"
 
 TEST(ByteCodecTest, RoundTripsIntegersAndStrings) {
   memrpc::ByteWriter writer;
