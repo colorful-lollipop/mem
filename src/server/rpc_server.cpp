@@ -171,31 +171,30 @@ struct RpcServer::Impl {
         response_writer_waiting_for_credit.store(false);
         return false;
       }
-      const int poll_result =
-          poll(&poll_fd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
+      const int poll_result = poll(&poll_fd, 1, static_cast<int>(remaining_ms));
       if (!response_writer_running.load()) {
         response_writer_waiting_for_credit.store(false);
         return false;
       }
       if (poll_result <= 0) {
-        continue;
+        response_writer_waiting_for_credit.store(false);
+        return false;
       }
       if ((poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
         response_writer_waiting_for_credit.store(false);
         return false;
       }
       if ((poll_fd.revents & POLLIN) == 0) {
-        continue;
+        response_writer_waiting_for_credit.store(false);
+        return false;
       }
       uint64_t counter = 0;
       bool drained = false;
       while (read(fd, &counter, sizeof(counter)) == sizeof(counter)) {
         drained = true;
       }
-      if (drained) {
-        response_writer_waiting_for_credit.store(false);
-        return true;
-      }
+      response_writer_waiting_for_credit.store(false);
+      return drained;
     }
     response_writer_waiting_for_credit.store(false);
     return false;
