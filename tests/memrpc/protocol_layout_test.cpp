@@ -7,9 +7,9 @@
 
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
   EXPECT_EQ(memrpc::kSharedMemoryMagic, 0x4d454d52u);
-  EXPECT_EQ(memrpc::kProtocolVersion, 1u);
-  EXPECT_EQ(memrpc::kDefaultMaxRequestBytes, 16u * 1024u);
-  EXPECT_EQ(memrpc::kDefaultMaxResponseBytes, 1024u);
+  EXPECT_EQ(memrpc::kProtocolVersion, 2u);
+  EXPECT_EQ(memrpc::kDefaultMaxRequestBytes, 4u * 1024u);
+  EXPECT_EQ(memrpc::kDefaultMaxResponseBytes, 4u * 1024u);
   EXPECT_EQ(sizeof(memrpc::RequestRingEntry), 32u);
   EXPECT_EQ(sizeof(memrpc::SlotRuntimeState), 32u);
   EXPECT_LE(sizeof(memrpc::ResponseRingEntry), 64u);
