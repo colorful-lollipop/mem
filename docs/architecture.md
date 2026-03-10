@@ -214,7 +214,8 @@ credit fd 采用“资源重新可写”语义：
 - 验证 request/response 主路径
 - 验证同步 facade 和异步 client 的组合方式
 - 验证优先级和超时语义
-- 验证 `Echo` 这类字符串请求可以直接按 view 解码，不必先 materialize 成 owning request
+- 验证 request/reply 全量 view decode，服务端默认 view，保留 owning 用于对比/兼容
+- 通过吞吐量基线测试持续监控 `Echo/Add/Sleep` 的 ops/sec，回退超过 10% 视为失败
 
 `MiniRpc` 不承担复杂业务兼容职责，也不强依赖事件模型。
 
@@ -232,7 +233,7 @@ credit fd 采用“资源重新可写”语义：
   - `RpcFuture::WaitAndTake()` 可以把 `RpcReply` move 给调用方
 - codec 边界：
   - `ByteReader` 支持 `ReadStringView()` / `ReadBytesView()`
-  - `MiniRpc` 已在 `EchoRequest` 上使用 view decode
+  - `MiniRpc` request/reply 已全量支持 view decode，并保留 owning 模式
   - VPS codec 的外层 envelope 已改成在原始字节流上推进，不再切中间 `vector`
 
 仍然保留的 owning 边界：
@@ -240,6 +241,7 @@ credit fd 采用“资源重新可写”语义：
 - request submitter 仍然要把 payload `memcpy` 到 request slot
 - response loop 仍然要把 response slot materialize 成 `RpcReply.payload`
 - 大对象业务结构默认仍保留 owning decode，view codec 只覆盖热点路径
+- `MiniRpc` handler 仍保留 owning decode 分支，便于兼容和性能对比
 
 ## 恢复语义
 
