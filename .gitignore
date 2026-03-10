@@ -2,6 +2,7 @@ build/
 out/
 dist/
 .cache/
+.claude/
 .codex/
 .worktrees/
 worktrees/
