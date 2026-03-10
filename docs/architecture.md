@@ -23,10 +23,12 @@
 - 一条高优请求队列
 - 一条普通请求队列
 - 一条响应队列
-- 三个 `eventfd`
+- 五个 `eventfd`
   - `high_req_eventfd`
   - `normal_req_eventfd`
   - `resp_eventfd`
+  - `req_credit_eventfd`
+  - `resp_credit_eventfd`
 
 共享内存里的 slot 现在分成两类：
 
@@ -75,6 +77,43 @@ response ring 统一承载两类消息：
 - 避免轮询额外事件 fd
 - 同时给应用层保留异步事件能力
 
+## 唤醒模型
+
+当前 `eventfd` 分成两类：
+
+- 消息到达通知
+  - `high_req_eventfd`
+  - `normal_req_eventfd`
+  - `resp_eventfd`
+- 资源恢复通知
+  - `req_credit_eventfd`
+  - `resp_credit_eventfd`
+
+消息到达 fd 采用边沿语义：
+
+- request ring 只在 `empty -> non-empty` 时通知一次
+- response ring 只在 `empty -> non-empty` 时通知一次
+- 被唤醒的一侧需要主动把 ring 尽量 drain 到空
+
+credit fd 采用“资源重新可写”语义：
+
+- `req_credit_eventfd`
+  - `server dispatcher` 在 request ring 从满变为非满时通知
+  - `client response loop` 在 request slot 从 `0 -> >0` 时通知
+- `resp_credit_eventfd`
+  - `client response loop` 在 response ring 从满变为非满时通知
+  - `client response loop` 在 response slot 从 `0 -> >0` 时通知
+
+这些 fd 都只是 wakeup hint，不是资源计数真相。真正的事实来源仍然是：
+
+- shared ring cursor
+- request/response slot pool 状态
+
+这样做的目的有两点：
+
+- 去掉 request/response 两侧的 `1ms` 轮询重试
+- 在小 payload 高频场景下减少 `eventfd write/read + poll` 的固定 syscall 开销
+
 ## 框架接口
 
 框架只提供通用能力，不再自带业务兼容层。
@@ -103,12 +142,14 @@ response ring 统一承载两类消息：
 - 高优和普通请求分别投递到独立线程池
 - worker 只产生 completion，不直接写共享 response ring
 - response writer 线程统一写共享 response ring
+- response writer 在 response ring/slot 资源不足时等待 `resp_credit_eventfd`
 - 高优请求允许长期压制普通请求
 
 客户端当前模型：
 
 - 内部以异步事务为底层模型
 - request 先进入本地提交队列，再由 tx thread 写共享 request ring
+- submitter 在 request ring/slot 资源不足时等待 `req_credit_eventfd`
 - 同步调用只是 `InvokeAsync + deadline wait` 的薄包装
 - 一个 `RpcClient` 对应一条响应分发线程
 
@@ -116,6 +157,7 @@ response ring 统一承载两类消息：
 
 - 当前框架支持一个客户端实例内的多并发请求
 - 不支持多个 `RpcClient` 实例共享同一个响应队列并同时消费同一会话
+- `RpcClientRuntimeStats` / `RpcServerRuntimeStats` 暴露了当前是否在等待 credit，便于测试和排障
 
 ## 日志规范
 
