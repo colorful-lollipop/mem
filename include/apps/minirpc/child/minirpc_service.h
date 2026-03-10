@@ -8,13 +8,15 @@ namespace OHOS::Security::VirusProtectionService::MiniRpc {
 
 class MiniRpcService {
  public:
+  enum class DecodeMode { Owning, View };
+
   MiniRpcService() = default;
 
   EchoReply Echo(const EchoRequest& request) const;
   AddReply Add(const AddRequest& request) const;
   SleepReply Sleep(const SleepRequest& request) const;
 
-  void RegisterHandlers(MemRpc::RpcServer* server);
+  void RegisterHandlers(MemRpc::RpcServer* server, DecodeMode mode = DecodeMode::View);
 };
 
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc

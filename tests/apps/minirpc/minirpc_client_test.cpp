@@ -63,6 +63,27 @@ TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
   server.Stop();
 }
 
+TEST(MiniRpcClientTest, OwningDecodeHandlersStillWork) {
+  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  MiniRpcService service;
+  service.RegisterHandlers(&server, MiniRpcService::DecodeMode::Owning);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MiniRpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  AddReply reply;
+  EXPECT_EQ(client.Add(1, 2, &reply), MemRpc::StatusCode::Ok);
+  EXPECT_EQ(reply.sum, 3);
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
   ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
