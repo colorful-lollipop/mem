@@ -92,16 +92,3 @@ TEST(SlotPoolTest, SharedSlotPoolRejectsDuplicateReleaseBeforeCapacityIsFull) {
   EXPECT_FALSE(pool.Release(*first));
   EXPECT_EQ(pool.available(), 1u);
 }
-
-TEST(SlotPoolTest, NormalReservePreservesHighReservedSlots) {
-  memrpc::SlotPool pool(3, 1);
-
-  const auto first_normal = pool.Reserve(memrpc::Priority::Normal);
-  const auto second_normal = pool.Reserve(memrpc::Priority::Normal);
-  ASSERT_TRUE(first_normal.has_value());
-  ASSERT_TRUE(second_normal.has_value());
-  EXPECT_FALSE(pool.Reserve(memrpc::Priority::Normal).has_value());
-
-  const auto high = pool.Reserve(memrpc::Priority::High);
-  ASSERT_TRUE(high.has_value());
-}

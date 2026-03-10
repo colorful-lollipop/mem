@@ -143,11 +143,10 @@ bool SharedSlotPool::IsValidIndex(uint32_t slot_index) const {
 
 // --- SlotPool (lock-free Treiber stack) ---
 
-SlotPool::SlotPool(uint32_t slot_count, uint32_t high_reserved_slots)
+SlotPool::SlotPool(uint32_t slot_count)
     : slot_count_(slot_count),
       states_(slot_count),
-      next_free_(slot_count),
-      high_reserved_slots_(high_reserved_slots > slot_count ? slot_count : high_reserved_slots) {
+      next_free_(slot_count) {
   for (uint32_t i = 0; i < slot_count; ++i) {
     states_[i].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
   }
@@ -159,12 +158,9 @@ SlotPool::SlotPool(uint32_t slot_count, uint32_t high_reserved_slots)
   free_count_.store(slot_count, std::memory_order_relaxed);
 }
 
-std::optional<uint32_t> SlotPool::Reserve(Priority priority) {
+std::optional<uint32_t> SlotPool::Reserve() {
   const uint32_t count = free_count_.load(std::memory_order_acquire);
   if (count == 0) {
-    return std::nullopt;
-  }
-  if (priority == Priority::Normal && count <= high_reserved_slots_) {
     return std::nullopt;
   }
 

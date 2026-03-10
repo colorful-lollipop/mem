@@ -60,9 +60,9 @@ class SharedSlotPool {
 // (response thread + submit thread error paths). Implemented as a Treiber stack.
 class SlotPool {
  public:
-  explicit SlotPool(uint32_t slot_count, uint32_t high_reserved_slots = 0);
+  explicit SlotPool(uint32_t slot_count);
 
-  std::optional<uint32_t> Reserve(Priority priority = Priority::Normal);
+  std::optional<uint32_t> Reserve();
   bool Transition(uint32_t slot_index, SlotState next_state);
   bool Release(uint32_t slot_index);
   SlotState GetState(uint32_t slot_index) const;
@@ -79,7 +79,6 @@ class SlotPool {
   std::vector<uint32_t> next_free_;
   std::atomic<uint32_t> free_top_{kEmpty};
   std::atomic<uint32_t> free_count_{0};
-  uint32_t high_reserved_slots_ = 0;
 };
 
 }  // namespace memrpc
