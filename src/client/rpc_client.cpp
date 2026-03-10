@@ -483,11 +483,15 @@ struct RpcClient::Impl {
         return;
       }
       if (!infinite_admission_wait && AdmissionTimedOut(admission_deadline)) {
-        ResolveFuture(pending_submit.future, retry_status);
+        ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
         return;
       }
       if (should_wait_for_request_credit && !WaitForRequestCredit(admission_deadline)) {
-        ResolveFuture(pending_submit.future, retry_status);
+        if (!infinite_admission_wait) {
+          ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
+        } else {
+          ResolveFuture(pending_submit.future, retry_status);
+        }
         return;
       }
     }
@@ -708,8 +712,7 @@ StatusCode RpcClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
   }
   const auto wait_budget = std::chrono::milliseconds(
       static_cast<int64_t>(call.admission_timeout_ms) +
-      static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms) +
-      1000);
+      static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms));
   return future.WaitFor(reply, wait_budget);
 }
 

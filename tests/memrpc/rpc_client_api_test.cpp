@@ -17,7 +17,7 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
 
   MemRpc::StatusCode Connect(MemRpc::BootstrapHandles* handles) override {
     if (handles != nullptr) {
-      handles->protocol_version = 1;
+      handles->protocol_version = MemRpc::kProtocolVersion;
     }
     return MemRpc::StatusCode::Ok;
   }

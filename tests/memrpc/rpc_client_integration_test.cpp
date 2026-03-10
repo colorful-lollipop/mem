@@ -494,6 +494,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
 
   memrpc::RpcCall call;
   call.opcode = memrpc::Opcode::ScanFile;
+  call.admission_timeout_ms = 0;
   call.queue_timeout_ms = 0;
   call.exec_timeout_ms = 0;
   call.payload = std::vector<uint8_t>{0x41, 0x42};
@@ -505,6 +506,43 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
       std::chrono::steady_clock::now() - start);
   EXPECT_GE(elapsed.count(), 1100);
   EXPECT_EQ(reply.payload, call.payload);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientIntegrationTest, InvokeSyncUsesExactTimeoutBudgetWithoutPadding) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           std::this_thread::sleep_for(std::chrono::milliseconds(400));
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.admission_timeout_ms = 200;
+  call.queue_timeout_ms = 0;
+  call.exec_timeout_ms = 0;
+  call.payload = std::vector<uint8_t>{0x11, 0x22};
+
+  const auto start = std::chrono::steady_clock::now();
+  memrpc::RpcReply reply;
+  EXPECT_EQ(client.InvokeSync(call, &reply), memrpc::StatusCode::QueueTimeout);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+  EXPECT_GE(elapsed.count(), 180);
+  EXPECT_LT(elapsed.count(), 350);
 
   client.Shutdown();
   server.Stop();
@@ -567,7 +605,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturn
   sync_thread.join();
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - start);
-  EXPECT_EQ(second_status, memrpc::StatusCode::QueueFull);
+  EXPECT_EQ(second_status, memrpc::StatusCode::QueueTimeout);
   EXPECT_GE(elapsed.count(), 1700);
 
   release.store(true);
@@ -957,7 +995,7 @@ TEST(RpcClientIntegrationTest, HighPriorityRequestStillAdmitsWhenNormalTrafficUs
 
   memrpc::RpcReply blocked_normal_reply;
   const memrpc::StatusCode blocked_normal_status = client.InvokeAsync(normal_call).Wait(&blocked_normal_reply);
-  EXPECT_EQ(blocked_normal_status, memrpc::StatusCode::QueueFull);
+  EXPECT_EQ(blocked_normal_status, memrpc::StatusCode::QueueTimeout);
 
   memrpc::RpcCall high_call = normal_call;
   high_call.priority = memrpc::Priority::High;
