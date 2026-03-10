@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include "memrpc/client/demo_bootstrap.h"
 #include "core/protocol.h"
 #include "core/shm_layout.h"
 
@@ -27,6 +28,14 @@ TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {
   EXPECT_EQ(static_cast<uint32_t>(memrpc::SlotRuntimeStateCode::Responding), 4u);
   EXPECT_EQ(static_cast<uint32_t>(memrpc::SlotRuntimeStateCode::Ready), 5u);
   EXPECT_EQ(static_cast<uint32_t>(memrpc::SlotRuntimeStateCode::Consumed), 6u);
+}
+
+TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {
+  memrpc::DemoBootstrapConfig config;
+  EXPECT_EQ(config.high_ring_size, 32u);
+  EXPECT_EQ(config.normal_ring_size, 32u);
+  EXPECT_EQ(config.response_ring_size, 64u);
+  EXPECT_EQ(config.slot_count, 64u);
 }
 
 TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {

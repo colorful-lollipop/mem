@@ -19,7 +19,6 @@ struct LayoutConfig {
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
-  uint32_t high_reserved_request_slots = 0;
 };
 
 struct Layout {
@@ -60,7 +59,6 @@ struct SharedMemoryHeader {
   uint32_t normal_ring_size = 0;
   uint32_t response_ring_size = 0;
   uint32_t slot_count = 0;
-  uint32_t high_reserved_request_slots = 0;
   uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;

@@ -153,7 +153,6 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
 
   if (impl_->config.max_request_bytes == 0 ||
       impl_->config.max_response_bytes == 0 ||
-      impl_->config.high_reserved_request_slots > impl_->config.slot_count ||
       impl_->config.max_response_bytes > kDefaultMaxResponseBytes) {
     HLOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
           impl_->config.max_request_bytes, impl_->config.max_response_bytes);
@@ -177,8 +176,7 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
                                    ComputeSlotSize(impl_->config.max_request_bytes,
                                                    impl_->config.max_response_bytes),
                                    impl_->config.max_request_bytes,
-                                   impl_->config.max_response_bytes,
-                                   impl_->config.high_reserved_request_slots};
+                                   impl_->config.max_response_bytes};
   const Layout layout = ComputeLayout(layout_config);
   if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
     HLOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
@@ -205,7 +203,6 @@ StatusCode PosixDemoBootstrapChannel::StartEngine() {
   header->normal_ring_size = impl_->config.normal_ring_size;
   header->response_ring_size = impl_->config.response_ring_size;
   header->slot_count = impl_->config.slot_count;
-  header->high_reserved_request_slots = impl_->config.high_reserved_request_slots;
   header->slot_size =
       ComputeSlotSize(impl_->config.max_request_bytes, impl_->config.max_response_bytes);
   header->max_request_bytes = impl_->config.max_request_bytes;

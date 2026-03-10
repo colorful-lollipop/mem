@@ -10,11 +10,10 @@
 namespace memrpc {
 
 struct DemoBootstrapConfig {
-  uint32_t high_ring_size = 64;
-  uint32_t normal_ring_size = 256;
-  uint32_t response_ring_size = 256;
-  uint32_t slot_count = 128;
-  uint32_t high_reserved_request_slots = 0;
+  uint32_t high_ring_size = 32;
+  uint32_t normal_ring_size = 32;
+  uint32_t response_ring_size = 64;
+  uint32_t slot_count = 64;
   uint32_t max_request_bytes = kDefaultMaxRequestBytes;
   uint32_t max_response_bytes = kDefaultMaxResponseBytes;
   std::string shm_name;

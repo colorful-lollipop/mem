@@ -91,9 +91,6 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
   if (config.slot_count == 0 || config.slot_count > kMaxSlotCount) {
     return false;
   }
-  if (config.high_reserved_request_slots > config.slot_count) {
-    return false;
-  }
   if (config.max_request_bytes == 0 || config.max_response_bytes == 0 ||
       config.max_response_bytes > kDefaultMaxResponseBytes) {
     return false;
@@ -170,14 +167,13 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   }
 
   LayoutConfig config;
-  config.high_ring_size = 64;
-  config.normal_ring_size = 256;
-  config.response_ring_size = 256;
-  config.slot_count = 128;
+  config.high_ring_size = 32;
+  config.normal_ring_size = 32;
+  config.response_ring_size = 64;
+  config.slot_count = 64;
   config.slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
   config.max_request_bytes = kDefaultMaxRequestBytes;
   config.max_response_bytes = kDefaultMaxResponseBytes;
-  config.high_reserved_request_slots = 0;
 
   // The creator writes the authoritative values into the header. Map enough
   // memory for a maximum-sized default first, then use the header values.
@@ -208,7 +204,6 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   config.slot_size = header_->slot_size;
   config.max_request_bytes = header_->max_request_bytes;
   config.max_response_bytes = header_->max_response_bytes;
-  config.high_reserved_request_slots = header_->high_reserved_request_slots;
   if (!ValidateLayoutConfig(config, static_cast<std::size_t>(file_stat.st_size)) ||
       !ValidateRingCursor(header_->high_ring, config.high_ring_size) ||
       !ValidateRingCursor(header_->normal_ring, config.normal_ring_size) ||
@@ -332,8 +327,7 @@ SlotPayload* Session::slot_payload(uint32_t slot_index) {
                       header_->slot_count,
                       header_->slot_size,
                       header_->max_request_bytes,
-                      header_->max_response_bytes,
-                      header_->high_reserved_request_slots};
+                      header_->max_response_bytes};
   Layout layout = ComputeLayout(config);
   auto* base = static_cast<std::byte*>(mapped_region_);
   return reinterpret_cast<SlotPayload*>(base + layout.slot_pool_offset +
@@ -359,8 +353,7 @@ ResponseSlotPayload* Session::response_slot_payload(uint32_t slot_index) {
                       header_->slot_count,
                       header_->slot_size,
                       header_->max_request_bytes,
-                      header_->max_response_bytes,
-                      header_->high_reserved_request_slots};
+                      header_->max_response_bytes};
   Layout layout = ComputeLayout(config);
   auto* base = static_cast<std::byte*>(mapped_region_);
   return reinterpret_cast<ResponseSlotPayload*>(
@@ -387,8 +380,7 @@ void* Session::response_slot_pool_region() {
                       header_->slot_count,
                       header_->slot_size,
                       header_->max_request_bytes,
-                      header_->max_response_bytes,
-                      header_->high_reserved_request_slots};
+                      header_->max_response_bytes};
   Layout layout = ComputeLayout(config);
   auto* base = static_cast<std::byte*>(mapped_region_);
   return base + layout.response_slot_pool_offset;
@@ -436,8 +428,7 @@ Session::RingAccess Session::ResolveRing(QueueKind queue) {
                       header_->slot_count,
                       header_->slot_size,
                       header_->max_request_bytes,
-                      header_->max_response_bytes,
-                      header_->high_reserved_request_slots};
+                      header_->max_response_bytes};
   Layout layout = ComputeLayout(config);
   auto* base = static_cast<std::byte*>(mapped_region_);
   switch (queue) {
