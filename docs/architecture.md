@@ -275,7 +275,7 @@ credit fd 采用“资源重新可写”语义：
 
 - 子进程死亡回调到来时，当前 session 立即失效
 - 旧 session 上等待中的请求立即返回 `PeerDisconnected`
-- 后续新的调用会自动尝试 `StartEngine() + Connect()`
+- 后续新的调用会自动尝试 `OpenSession()`
 - 可能已经被旧子进程看到的请求不会自动重放
 
 这条边界是刻意保守的，目的是先保证正确性和可控性。进程 death / owner death / session 失效感知由 bootstrap 层负责，shared ring 本身不再依赖 robust ring mutex 做恢复。

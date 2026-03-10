@@ -50,14 +50,11 @@ Tests use GoogleTest via CMake. Name new tests by feature, for example `response
 
 Avoid broad end-to-end additions unless they protect a real regression.
 
-## Commit & Pull Request Guidelines
+## Commit Guidelines
 
 Follow the existing commit style:
 
 - `feat: ...`
 - `fix: ...`
-- `docs: ...`
-- `style: ...`
-- `chore: ...`
 
 Keep commits scoped. Before opening a PR, run the full build and `ctest`, summarize the behavior change, and note any intentionally excluded directories or follow-up work.
