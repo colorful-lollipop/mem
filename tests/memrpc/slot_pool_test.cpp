@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <type_traits>
 #include <vector>
 
 #include "core/slot_pool.h"
+
+static_assert(!std::is_constructible_v<memrpc::SlotPool, uint32_t, uint32_t>,
+              "SlotPool must not accept reserved-slot constructor");
 
 TEST(SlotPoolTest, ReserveTransitionAndReleaseLifecycle) {
   memrpc::SlotPool pool(2);
