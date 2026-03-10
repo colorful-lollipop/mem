@@ -68,6 +68,7 @@ struct RpcFuture::State {
   bool ready = false;
   bool abandoned = false;
   RpcReply reply;
+  std::function<void(RpcReply)> callback;
 };
 
 RpcFuture::RpcFuture() = default;
@@ -117,6 +118,20 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
   return reply->status;
 }
 
+void RpcFuture::Then(std::function<void(RpcReply)> callback) {
+  if (state_ == nullptr || !callback) {
+    return;
+  }
+  std::unique_lock<std::mutex> lock(state_->mutex);
+  if (state_->ready) {
+    RpcReply reply = std::move(state_->reply);
+    lock.unlock();
+    callback(std::move(reply));
+    return;
+  }
+  state_->callback = std::move(callback);
+}
+
 struct RpcClient::Impl {
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap_channel)
       : bootstrap(std::move(bootstrap_channel)) {}
@@ -161,13 +176,20 @@ struct RpcClient::Impl {
     if (pending == nullptr) {
       return;
     }
-    std::lock_guard<std::mutex> lock(pending->mutex);
+    std::unique_lock<std::mutex> lock(pending->mutex);
     if (pending->ready) {
       return;
     }
     pending->reply.status = status;
     pending->ready = true;
-    pending->cv.notify_one();
+    if (pending->callback) {
+      auto cb = std::move(pending->callback);
+      RpcReply reply = std::move(pending->reply);
+      lock.unlock();
+      cb(std::move(reply));
+    } else {
+      pending->cv.notify_one();
+    }
   }
 
   void FailQueuedSubmissions(StatusCode status) {
@@ -558,11 +580,18 @@ struct RpcClient::Impl {
       response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
     }
     if (pending != nullptr) {
-      std::lock_guard<std::mutex> lock(pending->mutex);
+      std::unique_lock<std::mutex> lock(pending->mutex);
       if (!pending->abandoned) {
         pending->reply = std::move(reply);
         pending->ready = true;
-        pending->cv.notify_one();
+        if (pending->callback) {
+          auto cb = std::move(pending->callback);
+          RpcReply cb_reply = std::move(pending->reply);
+          lock.unlock();
+          cb(std::move(cb_reply));
+        } else {
+          pending->cv.notify_one();
+        }
       }
     }
     if (response_slot != nullptr) {
