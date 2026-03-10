@@ -128,6 +128,39 @@ TEST(RpcClientApiTest, ThenOnDefaultConstructedFutureIsNoOp) {
   EXPECT_FALSE(called);
 }
 
+TEST(RpcClientApiTest, ThenUsesExecutorWhenProvided) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  auto future = client.InvokeAsync(MemRpc::RpcCall{});
+  ASSERT_TRUE(future.IsReady());
+
+  int scheduled = 0;
+  bool called = false;
+  MemRpc::RpcThenExecutor executor = [&](std::function<void()> task) {
+    ++scheduled;
+    task();
+  };
+
+  future.Then([&](MemRpc::RpcReply) { called = true; }, executor);
+
+  EXPECT_EQ(scheduled, 1);
+  EXPECT_TRUE(called);
+}
+
+TEST(RpcClientApiTest, ThenWithoutExecutorRunsInline) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  auto future = client.InvokeAsync(MemRpc::RpcCall{});
+  ASSERT_TRUE(future.IsReady());
+
+  bool called = false;
+  future.Then([&](MemRpc::RpcReply) { called = true; });
+
+  EXPECT_TRUE(called);
+}
+
 TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);

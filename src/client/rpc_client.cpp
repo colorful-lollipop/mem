@@ -70,6 +70,7 @@ struct RpcFuture::State {
   bool abandoned = false;
   RpcReply reply;
   std::function<void(RpcReply)> callback;
+  RpcThenExecutor executor;
 };
 
 RpcFuture::RpcFuture() = default;
@@ -119,7 +120,7 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
   return reply->status;
 }
 
-void RpcFuture::Then(std::function<void(RpcReply)> callback) {
+void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor executor) {
   if (state_ == nullptr || !callback) {
     return;
   }
@@ -127,10 +128,17 @@ void RpcFuture::Then(std::function<void(RpcReply)> callback) {
   if (state_->ready) {
     RpcReply reply = std::move(state_->reply);
     lock.unlock();
-    callback(std::move(reply));
+    if (executor) {
+      executor([cb = std::move(callback), r = std::move(reply)]() mutable {
+        cb(std::move(r));
+      });
+    } else {
+      callback(std::move(reply));
+    }
     return;
   }
   state_->callback = std::move(callback);
+  state_->executor = std::move(executor);
 }
 
 struct RpcClient::Impl {
@@ -239,9 +247,16 @@ struct RpcClient::Impl {
     pending->ready = true;
     if (pending->callback) {
       auto cb = std::move(pending->callback);
+      auto exec = std::move(pending->executor);
       RpcReply reply = std::move(pending->reply);
       lock.unlock();
-      cb(std::move(reply));
+      if (exec) {
+        exec([cb = std::move(cb), reply = std::move(reply)]() mutable {
+          cb(std::move(reply));
+        });
+      } else {
+        cb(std::move(reply));
+      }
     } else {
       pending->cv.notify_one();
     }
@@ -673,9 +688,16 @@ struct RpcClient::Impl {
         pending->ready = true;
         if (pending->callback) {
           auto cb = std::move(pending->callback);
+          auto exec = std::move(pending->executor);
           RpcReply cb_reply = std::move(pending->reply);
           lock.unlock();
-          cb(std::move(cb_reply));
+          if (exec) {
+            exec([cb = std::move(cb), cb_reply = std::move(cb_reply)]() mutable {
+              cb(std::move(cb_reply));
+            });
+          } else {
+            cb(std::move(cb_reply));
+          }
         } else {
           pending->cv.notify_one();
         }
