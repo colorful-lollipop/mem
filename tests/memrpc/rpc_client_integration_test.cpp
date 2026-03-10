@@ -1082,3 +1082,54 @@ TEST(RpcClientIntegrationTest, WaitAndTakeMovesReplyPayloadToCaller) {
   client.Shutdown();
   server.Stop();
 }
+
+TEST(RpcClientIntegrationTest, FailureCallbackFiresOnExecTimeout) {
+  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  std::mutex mutex;
+  memrpc::RpcFailure captured{};
+  std::atomic<int> calls{0};
+  client.SetFailureCallback([&](const memrpc::RpcFailure& failure) {
+    if (failure.status == memrpc::StatusCode::ExecTimeout) {
+      std::lock_guard<std::mutex> lock(mutex);
+      captured = failure;
+      calls.fetch_add(1);
+    }
+  });
+
+  memrpc::RpcCall call2;
+  call2.opcode = memrpc::Opcode::ScanFile;
+  call2.exec_timeout_ms = 1;
+  call2.queue_timeout_ms = 0;
+  call2.payload = std::vector<uint8_t>{1, 2, 3};
+
+  memrpc::RpcReply reply2;
+  const memrpc::StatusCode status = client.InvokeAsync(call2).Wait(&reply2);
+  EXPECT_EQ(status, memrpc::StatusCode::ExecTimeout);
+
+  EXPECT_TRUE(WaitForCondition([&] { return calls.load() > 0; }, 200));
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    EXPECT_EQ(captured.status, memrpc::StatusCode::ExecTimeout);
+    EXPECT_EQ(captured.stage, memrpc::FailureStage::Response);
+    EXPECT_EQ(captured.opcode, call2.opcode);
+  }
+
+  client.Shutdown();
+  server.Stop();
+}

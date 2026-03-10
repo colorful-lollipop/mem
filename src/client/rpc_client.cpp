@@ -10,6 +10,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -143,12 +144,24 @@ struct RpcClient::Impl {
     std::shared_ptr<RpcFuture::State> future;
   };
 
+  struct PendingInfo {
+    Opcode opcode = Opcode::ScanFile;
+    Priority priority = Priority::Normal;
+    uint32_t flags = 0;
+    uint32_t admission_timeout_ms = 0;
+    uint32_t queue_timeout_ms = 0;
+    uint32_t exec_timeout_ms = 0;
+    uint64_t request_id = 0;
+    uint64_t session_id = 0;
+  };
+
   std::shared_ptr<IBootstrapChannel> bootstrap;
   Session session;
   std::unique_ptr<SlotPool> slot_pool;
   std::mutex reconnect_mutex;
   std::mutex session_mutex;
   std::vector<std::shared_ptr<RpcFuture::State>> pending_slots;
+  std::vector<std::optional<PendingInfo>> pending_info_slots;
   std::atomic<uint32_t> pending_count{0};
   std::mutex submit_mutex;
   std::condition_variable submit_cv;
@@ -162,6 +175,8 @@ struct RpcClient::Impl {
   std::atomic<uint64_t> next_request_id{1};
   std::mutex event_mutex;
   RpcEventCallback event_callback;
+  std::mutex failure_mutex;
+  RpcFailureCallback failure_callback;
   std::atomic<uint64_t> current_session_id{0};
   std::atomic<bool> session_dead{true};
 
@@ -170,6 +185,46 @@ struct RpcClient::Impl {
     state->ready = true;
     state->reply.status = status;
     return RpcFuture(std::move(state));
+  }
+
+  PendingInfo MakePendingInfo(const PendingSubmit& submit) {
+    PendingInfo info;
+    info.opcode = submit.call.opcode;
+    info.priority = submit.call.priority;
+    info.flags = submit.call.flags;
+    info.admission_timeout_ms = submit.call.admission_timeout_ms;
+    info.queue_timeout_ms = submit.call.queue_timeout_ms;
+    info.exec_timeout_ms = submit.call.exec_timeout_ms;
+    info.request_id = submit.request_id;
+    info.session_id = submit.session_id;
+    return info;
+  }
+
+  void NotifyFailure(const PendingInfo& info, StatusCode status, FailureStage stage) {
+    if (status == StatusCode::Ok) {
+      return;
+    }
+    RpcFailureCallback callback;
+    {
+      std::lock_guard<std::mutex> lock(failure_mutex);
+      callback = failure_callback;
+    }
+    if (!callback) {
+      return;
+    }
+    RpcFailure failure;
+    failure.status = status;
+    failure.opcode = info.opcode;
+    failure.priority = info.priority;
+    failure.flags = info.flags;
+    failure.admission_timeout_ms = info.admission_timeout_ms;
+    failure.queue_timeout_ms = info.queue_timeout_ms;
+    failure.exec_timeout_ms = info.exec_timeout_ms;
+    failure.request_id = info.request_id;
+    failure.session_id = info.session_id;
+    failure.monotonic_ms = MonotonicNowMs();
+    failure.stage = stage;
+    callback(failure);
   }
 
   void ResolveFuture(const std::shared_ptr<RpcFuture::State>& pending, StatusCode status) {
@@ -199,6 +254,7 @@ struct RpcClient::Impl {
       queued.swap(submit_queue);
     }
     for (auto& pending : queued) {
+      NotifyFailure(MakePendingInfo(pending), status, FailureStage::Session);
       ResolveFuture(pending.future, status);
     }
   }
@@ -233,9 +289,13 @@ struct RpcClient::Impl {
   }
 
   void FailAllPending(StatusCode status_code) {
-    for (auto& entry : pending_slots) {
-      auto pending = std::move(entry);
-      entry.reset();
+    for (size_t i = 0; i < pending_slots.size(); ++i) {
+      auto pending = std::move(pending_slots[i]);
+      pending_slots[i].reset();
+      if (pending != nullptr && i < pending_info_slots.size() && pending_info_slots[i].has_value()) {
+        NotifyFailure(*pending_info_slots[i], status_code, FailureStage::Session);
+        pending_info_slots[i].reset();
+      }
       ResolveFuture(pending, status_code);
     }
     pending_count.store(0, std::memory_order_relaxed);
@@ -308,6 +368,7 @@ struct RpcClient::Impl {
     }
     slot_pool = std::make_unique<SlotPool>(session.header()->slot_count);
     pending_slots.assign(session.header()->slot_count, nullptr);
+    pending_info_slots.assign(session.header()->slot_count, std::nullopt);
     current_session_id = handles.session_id;
     session_dead = false;
     StartDispatcher();
@@ -389,20 +450,24 @@ struct RpcClient::Impl {
     const bool infinite_admission_wait = pending_submit.call.admission_timeout_ms == 0;
     const auto admission_deadline = std::chrono::steady_clock::now() +
                                     std::chrono::milliseconds(pending_submit.call.admission_timeout_ms);
+    const PendingInfo info = MakePendingInfo(pending_submit);
 
     while (submit_running.load() && !shutting_down.load()) {
       if (SubmissionBelongsToDeadSession(pending_submit)) {
+        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
         ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
         return;
       }
 
       const StatusCode ensure_status = EnsureLiveSession();
       if (ensure_status != StatusCode::Ok) {
+        NotifyFailure(info, ensure_status, FailureStage::Admission);
         ResolveFuture(pending_submit.future, ensure_status);
         return;
       }
 
       if (SubmissionBelongsToDeadSession(pending_submit)) {
+        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
         ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
         return;
       }
@@ -439,6 +504,7 @@ struct RpcClient::Impl {
             // session died between checks; retry outer loop
           } else if (payload == nullptr || request_payload == nullptr) {
             slot_pool->Release(*slot);
+            NotifyFailure(info, StatusCode::EngineInternalError, FailureStage::Admission);
             ResolveFuture(pending_submit.future, StatusCode::EngineInternalError);
             return;
           } else {
@@ -470,6 +536,7 @@ struct RpcClient::Impl {
             payload->runtime.state = SlotRuntimeStateCode::Queued;
 
             pending_slots[*slot] = pending_submit.future;
+            pending_info_slots[*slot] = info;
             pending_count.fetch_add(1, std::memory_order_relaxed);
 
             const bool high_priority = pending_submit.call.priority == Priority::High;
@@ -480,6 +547,7 @@ struct RpcClient::Impl {
                                     entry);
             if (queue_status != StatusCode::Ok) {
               pending_slots[*slot].reset();
+              pending_info_slots[*slot].reset();
               pending_count.fetch_sub(1, std::memory_order_relaxed);
               slot_pool->Release(*slot);
               if (queue_status == StatusCode::QueueFull) {
@@ -489,6 +557,7 @@ struct RpcClient::Impl {
               } else if (queue_status == StatusCode::PeerDisconnected) {
                 should_retry_admission = true;
               } else {
+                NotifyFailure(info, queue_status, FailureStage::Admission);
                 ResolveFuture(pending_submit.future, queue_status);
                 return;
               }
@@ -501,8 +570,10 @@ struct RpcClient::Impl {
                                                  : session.handles().normal_req_event_fd;
                 if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
                   pending_slots[*slot].reset();
+                  pending_info_slots[*slot].reset();
                   pending_count.fetch_sub(1, std::memory_order_relaxed);
                   slot_pool->Release(*slot);
+                  NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
                   ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
                 }
               }
@@ -513,23 +584,28 @@ struct RpcClient::Impl {
       }
 
       if (!should_retry_admission) {
+        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
         ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
         return;
       }
       if (!infinite_admission_wait && AdmissionTimedOut(admission_deadline)) {
+        NotifyFailure(info, StatusCode::QueueTimeout, FailureStage::Admission);
         ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
         return;
       }
       if (should_wait_for_request_credit && !WaitForRequestCredit(admission_deadline)) {
         if (!infinite_admission_wait) {
+          NotifyFailure(info, StatusCode::QueueTimeout, FailureStage::Admission);
           ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
         } else {
+          NotifyFailure(info, retry_status, FailureStage::Admission);
           ResolveFuture(pending_submit.future, retry_status);
         }
         return;
       }
     }
 
+    NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
     ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
   }
 
@@ -549,11 +625,16 @@ struct RpcClient::Impl {
     // Look up pending future by request slot index from the response slot.
     uint32_t request_slot_idx = UINT32_MAX;
     std::shared_ptr<RpcFuture::State> pending;
+    std::optional<PendingInfo> slot_info;
     if (response_slot != nullptr) {
       request_slot_idx = response_slot->response.request_slot_index;
       if (request_slot_idx < pending_slots.size()) {
         pending = std::move(pending_slots[request_slot_idx]);
         pending_slots[request_slot_idx].reset();
+        if (request_slot_idx < pending_info_slots.size()) {
+          slot_info = std::move(pending_info_slots[request_slot_idx]);
+          pending_info_slots[request_slot_idx].reset();
+        }
         if (pending != nullptr) {
           pending_count.fetch_sub(1, std::memory_order_relaxed);
         }
@@ -562,6 +643,9 @@ struct RpcClient::Impl {
 
     if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
       reply.status = StatusCode::ProtocolMismatch;
+      if (slot_info.has_value()) {
+        NotifyFailure(*slot_info, reply.status, FailureStage::Response);
+      }
       if (pending != nullptr) {
         ResolveFuture(pending, reply.status);
       }
@@ -578,6 +662,9 @@ struct RpcClient::Impl {
     if (response_slot != nullptr) {
       response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
       response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
+    }
+    if (reply.status != StatusCode::Ok && slot_info.has_value()) {
+      NotifyFailure(*slot_info, reply.status, FailureStage::Response);
     }
     if (pending != nullptr) {
       std::unique_lock<std::mutex> lock(pending->mutex);
@@ -725,14 +812,33 @@ struct RpcClient::Impl {
 
   RpcFuture InvokeAsync(RpcCall call) {
     StartSubmitter();
+    const uint64_t request_id = next_request_id.fetch_add(1);
     const StatusCode ensure_status = EnsureLiveSession();
     if (ensure_status != StatusCode::Ok) {
+      PendingInfo info;
+      info.opcode = call.opcode;
+      info.priority = call.priority;
+      info.flags = call.flags;
+      info.admission_timeout_ms = call.admission_timeout_ms;
+      info.queue_timeout_ms = call.queue_timeout_ms;
+      info.exec_timeout_ms = call.exec_timeout_ms;
+      info.request_id = request_id;
+      NotifyFailure(info, ensure_status, FailureStage::Admission);
       return this->MakeReadyFuture(ensure_status);
     }
 
     {
       std::lock_guard<std::mutex> session_lock(session_mutex);
       if (session.header() != nullptr && call.payload.size() > session.header()->max_request_bytes) {
+        PendingInfo info;
+        info.opcode = call.opcode;
+        info.priority = call.priority;
+        info.flags = call.flags;
+        info.admission_timeout_ms = call.admission_timeout_ms;
+        info.queue_timeout_ms = call.queue_timeout_ms;
+        info.exec_timeout_ms = call.exec_timeout_ms;
+        info.request_id = request_id;
+        NotifyFailure(info, StatusCode::InvalidArgument, FailureStage::Admission);
         return this->MakeReadyFuture(StatusCode::InvalidArgument);
       }
     }
@@ -740,7 +846,7 @@ struct RpcClient::Impl {
     auto pending = std::make_shared<RpcFuture::State>();
     PendingSubmit submit;
     submit.call = std::move(call);
-    submit.request_id = next_request_id.fetch_add(1);
+    submit.request_id = request_id;
     submit.future = pending;
     submit.session_id = current_session_id.load(std::memory_order_relaxed);
     {
@@ -766,6 +872,11 @@ void RpcClient::SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap
 void RpcClient::SetEventCallback(RpcEventCallback callback) {
   std::lock_guard<std::mutex> lock(impl_->event_mutex);
   impl_->event_callback = std::move(callback);
+}
+
+void RpcClient::SetFailureCallback(RpcFailureCallback callback) {
+  std::lock_guard<std::mutex> lock(impl_->failure_mutex);
+  impl_->failure_callback = std::move(callback);
 }
 
 StatusCode RpcClient::Init() {

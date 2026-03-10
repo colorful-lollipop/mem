@@ -8,6 +8,7 @@
 
 #include "apps/minirpc/child/minirpc_service.h"
 #include "apps/minirpc/common/minirpc_codec.h"
+#include "apps/minirpc/parent/minirpc_failure_monitor.h"
 #include "apps/minirpc/parent/minirpc_resilient_invoker.h"
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -447,6 +448,24 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
 
     client.Shutdown();
     KillAndReap(final_child);
+}
+
+TEST(MiniRpcDfxTest, FailureMonitorTriggersAfterExecTimeoutThreshold) {
+    int triggered = 0;
+    FailureMonitor::Options options;
+    options.window_ms = 60000;
+    options.exec_timeout_threshold = 3;
+
+    FailureMonitor monitor(options, [&] { ++triggered; });
+
+    MemRpc::RpcFailure failure;
+    failure.status = MemRpc::StatusCode::ExecTimeout;
+
+    monitor.OnFailure(failure);
+    monitor.OnFailure(failure);
+    EXPECT_EQ(triggered, 0);
+    monitor.OnFailure(failure);
+    EXPECT_EQ(triggered, 1);
 }
 
 }  // namespace

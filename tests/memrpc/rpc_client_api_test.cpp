@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -125,4 +126,41 @@ TEST(RpcClientApiTest, ThenOnDefaultConstructedFutureIsNoOp) {
   bool called = false;
   future.Then([&](MemRpc::RpcReply) { called = true; });
   EXPECT_FALSE(called);
+}
+
+TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
+  auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  std::mutex mutex;
+  MemRpc::RpcFailure captured{};
+  int calls = 0;
+  client.SetFailureCallback([&](const MemRpc::RpcFailure& failure) {
+    std::lock_guard<std::mutex> lock(mutex);
+    captured = failure;
+    ++calls;
+  });
+
+  MemRpc::RpcCall call;
+  call.opcode = MemRpc::Opcode::ScanFile;
+  call.priority = MemRpc::Priority::Normal;
+  call.admission_timeout_ms = 1000;
+  call.queue_timeout_ms = 0;
+  call.exec_timeout_ms = 1000;
+
+  auto future = client.InvokeAsync(call);
+  MemRpc::RpcReply reply;
+  const MemRpc::StatusCode status = future.Wait(&reply);
+
+  std::lock_guard<std::mutex> lock(mutex);
+  EXPECT_EQ(calls, 1);
+  EXPECT_EQ(captured.status, status);
+  EXPECT_EQ(captured.stage, MemRpc::FailureStage::Admission);
+  EXPECT_EQ(captured.opcode, call.opcode);
+  EXPECT_EQ(captured.priority, call.priority);
+  EXPECT_EQ(captured.flags, call.flags);
+  EXPECT_EQ(captured.admission_timeout_ms, call.admission_timeout_ms);
+  EXPECT_EQ(captured.queue_timeout_ms, call.queue_timeout_ms);
+  EXPECT_EQ(captured.exec_timeout_ms, call.exec_timeout_ms);
+  EXPECT_NE(captured.request_id, 0u);
 }

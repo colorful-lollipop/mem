@@ -75,6 +75,28 @@ class RpcFuture {
   friend class RpcClient;
 };
 
+enum class FailureStage {
+  Admission = 0,
+  Response = 1,
+  Session = 2,
+};
+
+struct RpcFailure {
+  StatusCode status = StatusCode::Ok;
+  Opcode opcode = Opcode::ScanFile;
+  Priority priority = Priority::Normal;
+  uint32_t flags = 0;
+  uint32_t admission_timeout_ms = 0;
+  uint32_t queue_timeout_ms = 0;
+  uint32_t exec_timeout_ms = 0;
+  uint64_t request_id = 0;
+  uint64_t session_id = 0;
+  uint32_t monotonic_ms = 0;
+  FailureStage stage = FailureStage::Admission;
+};
+
+using RpcFailureCallback = std::function<void(const RpcFailure&)>;
+
 class RpcClient {
  public:
   explicit RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap = nullptr);
@@ -87,6 +109,7 @@ class RpcClient {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
+  void SetFailureCallback(RpcFailureCallback callback);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
   StatusCode Init();
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
