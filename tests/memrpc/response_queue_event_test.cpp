@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -562,6 +563,94 @@ TEST(ResponseQueueEventTest, PublishedEventKeepsResponseSlotOwnedWhenNotifyWrite
   close(fill_handles.high_req_event_fd);
   close(fill_handles.normal_req_event_fd);
   close(fill_handles.resp_event_fd);
+
+  server.Stop();
+}
+
+TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 2,
+          .normal_ring_size = 2,
+          .response_ring_size = 2,
+          .slot_count = 2,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = {0x11, 0x22};
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::BootstrapHandles fill_handles = bootstrap->server_handles();
+  const uint64_t saturated_counter = UINT64_MAX - 1;
+  ASSERT_EQ(write(fill_handles.resp_event_fd, &saturated_counter, sizeof(saturated_counter)),
+            static_cast<ssize_t>(sizeof(saturated_counter)));
+
+  memrpc::BootstrapHandles client_handles;
+  ASSERT_EQ(bootstrap->Connect(&client_handles), memrpc::StatusCode::Ok);
+  memrpc::Session client_session;
+  ASSERT_EQ(client_session.Attach(client_handles), memrpc::StatusCode::Ok);
+
+  memrpc::SlotPayload* payload = client_session.slot_payload(0);
+  uint8_t* request_bytes = client_session.slot_request_bytes(0);
+  ASSERT_NE(payload, nullptr);
+  ASSERT_NE(request_bytes, nullptr);
+  std::memset(payload, 0, sizeof(memrpc::SlotPayload));
+  payload->runtime.request_id = 1;
+  payload->runtime.state = memrpc::SlotRuntimeStateCode::Queued;
+  payload->request.opcode = static_cast<uint16_t>(memrpc::Opcode::ScanFile);
+  payload->request.queue_timeout_ms = 0;
+  payload->request.exec_timeout_ms = 0;
+  payload->request.payload_size = 1;
+  request_bytes[0] = 0x33;
+
+  memrpc::RequestRingEntry request_entry;
+  request_entry.request_id = 1;
+  request_entry.slot_index = 0;
+  request_entry.opcode = static_cast<uint16_t>(memrpc::Opcode::ScanFile);
+  request_entry.payload_size = 1;
+  ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, request_entry),
+            memrpc::StatusCode::Ok);
+  const uint64_t signal_value = 1;
+  ASSERT_EQ(write(client_session.handles().normal_req_event_fd, &signal_value,
+                  sizeof(signal_value)),
+            static_cast<ssize_t>(sizeof(signal_value)));
+
+  memrpc::BootstrapHandles observer_handles = bootstrap->server_handles();
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(observer_handles, memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+  ASSERT_TRUE(WaitForCondition(
+      [&observer] { return memrpc::RingCount(observer.header()->response_ring) == 1; }, 200));
+
+  memrpc::SharedSlotPool response_slot_pool(observer.response_slot_pool_region());
+  ASSERT_TRUE(response_slot_pool.valid());
+  EXPECT_EQ(response_slot_pool.available(), observer.header()->response_ring_size - 1);
+
+  memrpc::ResponseRingEntry entry;
+  ASSERT_TRUE(observer.PopResponse(&entry));
+  const memrpc::ResponseSlotPayload* slot = observer.response_slot_payload(entry.slot_index);
+  ASSERT_NE(slot, nullptr);
+  EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Ready);
+
+  close(fill_handles.shm_fd);
+  close(fill_handles.high_req_event_fd);
+  close(fill_handles.normal_req_event_fd);
+  close(fill_handles.resp_event_fd);
+  close(client_handles.shm_fd);
+  close(client_handles.high_req_event_fd);
+  close(client_handles.normal_req_event_fd);
+  close(client_handles.resp_event_fd);
+  close(client_handles.req_credit_event_fd);
+  close(client_handles.resp_credit_event_fd);
 
   server.Stop();
 }

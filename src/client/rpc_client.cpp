@@ -511,13 +511,6 @@ struct RpcClient::Impl {
     reply.detail_code = entry.detail_code;
     ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
     uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
-    if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
-        entry.result_size > session.header()->max_response_bytes) {
-      reply.status = StatusCode::ProtocolMismatch;
-    } else {
-      reply.payload.assign(response_bytes, response_bytes + entry.result_size);
-    }
-
     std::shared_ptr<RpcFuture::State> pending;
     {
       std::lock_guard<std::mutex> lock(pending_mutex);
@@ -525,6 +518,21 @@ struct RpcClient::Impl {
       if (it != pending_calls.end()) {
         pending = it->second;
       }
+    }
+    if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
+      reply.status = StatusCode::ProtocolMismatch;
+      if (pending != nullptr) {
+        ResolveFuture(pending, reply.status);
+      }
+      session.SetState(Session::SessionState::Broken);
+      HandleEngineDeath(current_session_id);
+      return;
+    }
+    if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
+        entry.result_size > session.header()->max_response_bytes) {
+      reply.status = StatusCode::ProtocolMismatch;
+    } else {
+      reply.payload.assign(response_bytes, response_bytes + entry.result_size);
     }
     if (response_slot != nullptr) {
       response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
@@ -565,6 +573,14 @@ struct RpcClient::Impl {
     event.flags = entry.flags;
     ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
     uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
+    if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
+      HLOGW("drop mismatched event request_id, expected=%{public}llu slot=%{public}llu",
+            static_cast<unsigned long long>(entry.request_id),
+            static_cast<unsigned long long>(response_slot->runtime.request_id));
+      session.SetState(Session::SessionState::Broken);
+      HandleEngineDeath(current_session_id);
+      return;
+    }
     if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
         entry.result_size > session.header()->max_response_bytes) {
       HLOGW("drop invalid event, size=%{public}u", entry.result_size);

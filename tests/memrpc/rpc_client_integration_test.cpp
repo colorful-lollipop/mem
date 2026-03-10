@@ -664,6 +664,74 @@ TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
   server.Stop();
 }
 
+TEST(RpcClientIntegrationTest, ResponseSlotRequestIdMismatchReturnsProtocolMismatch) {
+  auto bootstrap =
+      std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
+          .high_ring_size = 2,
+          .normal_ring_size = 2,
+          .response_ring_size = 2,
+          .slot_count = 2,
+          .max_request_bytes = memrpc::kDefaultMaxRequestBytes,
+          .max_response_bytes = memrpc::kDefaultMaxResponseBytes,
+      });
+  ASSERT_EQ(bootstrap->StartEngine(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.RegisterHandler(memrpc::Opcode::ScanFile,
+                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           reply->status = memrpc::StatusCode::Ok;
+                           reply->payload = call.payload;
+                         });
+  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+
+  memrpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+
+  memrpc::Session observer;
+  ASSERT_EQ(observer.Attach(bootstrap->server_handles(), memrpc::Session::AttachRole::Server),
+            memrpc::StatusCode::Ok);
+
+  memrpc::ResponseRingEntry dummy;
+  dummy.request_id = 0xdead;
+  dummy.slot_index = 0;
+  dummy.message_kind = memrpc::ResponseMessageKind::Reply;
+  dummy.result_size = 0;
+  ASSERT_EQ(observer.PushResponse(dummy), memrpc::StatusCode::Ok);
+
+  memrpc::RpcCall call;
+  call.opcode = memrpc::Opcode::ScanFile;
+  call.payload = {0x41};
+  auto future = client.InvokeAsync(call);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&observer] { return memrpc::RingCount(observer.header()->response_ring) == 2; }, 200));
+
+  memrpc::ResponseRingEntry discarded;
+  ASSERT_TRUE(observer.PopResponse(&discarded));
+
+  bool corrupted = false;
+  for (uint32_t i = 0; i < observer.header()->response_ring_size; ++i) {
+    memrpc::ResponseSlotPayload* slot = observer.response_slot_payload(i);
+    if (slot != nullptr && slot->runtime.state == memrpc::SlotRuntimeStateCode::Ready) {
+      slot->runtime.request_id = 0;
+      corrupted = true;
+    }
+  }
+  ASSERT_TRUE(corrupted);
+
+  const uint64_t signal_value = 1;
+  ASSERT_EQ(write(observer.handles().resp_event_fd, &signal_value, sizeof(signal_value)),
+            static_cast<ssize_t>(sizeof(signal_value)));
+
+  memrpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::ProtocolMismatch);
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientIntegrationTest, BusyServerLeavesSharedRequestQueueBackedUp) {
   auto bootstrap =
       std::make_shared<memrpc::PosixDemoBootstrapChannel>(memrpc::DemoBootstrapConfig{
