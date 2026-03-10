@@ -126,14 +126,14 @@ StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry,
   if (access.cursor == nullptr || access.entries == nullptr) {
     return StatusCode::EngineInternalError;
   }
-  const uint32_t head = __atomic_load_n(&access.cursor->head, __ATOMIC_ACQUIRE);
-  const uint32_t tail = __atomic_load_n(&access.cursor->tail, __ATOMIC_RELAXED);
+  const uint32_t head = access.cursor->head.load(std::memory_order_acquire);
+  const uint32_t tail = access.cursor->tail.load(std::memory_order_relaxed);
   if (tail - head >= access.cursor->capacity) {
     return StatusCode::QueueFull;
   }
   auto* entries = static_cast<EntryType*>(access.entries);
   entries[tail % access.cursor->capacity] = entry;
-  __atomic_store_n(&access.cursor->tail, tail + 1u, __ATOMIC_RELEASE);
+  access.cursor->tail.store(tail + 1u, std::memory_order_release);
   TraceRingOperation(operation);
   return StatusCode::Ok;
 }
@@ -143,14 +143,14 @@ bool PopRingEntry(Session::RingAccess access, EntryType* entry, RingTraceOperati
   if (entry == nullptr || access.cursor == nullptr || access.entries == nullptr) {
     return false;
   }
-  const uint32_t tail = __atomic_load_n(&access.cursor->tail, __ATOMIC_ACQUIRE);
-  const uint32_t head = __atomic_load_n(&access.cursor->head, __ATOMIC_RELAXED);
+  const uint32_t tail = access.cursor->tail.load(std::memory_order_acquire);
+  const uint32_t head = access.cursor->head.load(std::memory_order_relaxed);
   if (tail == head) {
     return false;
   }
   auto* entries = static_cast<EntryType*>(access.entries);
   *entry = entries[head % access.cursor->capacity];
-  __atomic_store_n(&access.cursor->head, head + 1u, __ATOMIC_RELEASE);
+  access.cursor->head.store(head + 1u, std::memory_order_release);
   TraceRingOperation(operation);
   return true;
 }

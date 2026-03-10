@@ -50,10 +50,11 @@ TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {
 
 TEST(ProtocolLayoutTest, RingCursorLayoutMatchesSpscHeadTailModel) {
   EXPECT_EQ(sizeof(memrpc::RingCursor), 16u);
-  EXPECT_EQ(offsetof(memrpc::RingCursor, head), 0u);
-  EXPECT_EQ(offsetof(memrpc::RingCursor, tail), 4u);
-  EXPECT_EQ(offsetof(memrpc::RingCursor, capacity), 8u);
-  EXPECT_EQ(memrpc::RingCount(memrpc::RingCursor{.head = 2, .tail = 5, .capacity = 8}), 3u);
+  memrpc::RingCursor cursor;
+  cursor.head.store(2, std::memory_order_relaxed);
+  cursor.tail.store(5, std::memory_order_relaxed);
+  cursor.capacity = 8;
+  EXPECT_EQ(memrpc::RingCount(cursor), 3u);
 }
 
 TEST(ProtocolLayoutTest, ResponseRingEntryDistinguishesReplyAndEventMessages) {

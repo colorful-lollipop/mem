@@ -80,13 +80,9 @@ const char* RpcKindName(RpcKind kind) {
   return "unknown";
 }
 
-const char* DecodeModeName(MiniRpcService::DecodeMode mode) {
-  return mode == MiniRpcService::DecodeMode::View ? "view" : "owning";
-}
-
-std::string MakeBaselineKey(RpcKind kind, MiniRpcService::DecodeMode mode, int threads) {
+std::string MakeBaselineKey(RpcKind kind, int threads) {
   std::ostringstream oss;
-  oss << RpcKindName(kind) << "." << DecodeModeName(mode) << ".threads=" << threads;
+  oss << RpcKindName(kind) << ".threads=" << threads;
   return oss.str();
 }
 
@@ -221,48 +217,44 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   std::vector<PerfCaseResult> results;
   const int thread_count = std::max(1, config.threads);
   const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
-  const std::vector<MiniRpcService::DecodeMode> modes = {
-      MiniRpcService::DecodeMode::View, MiniRpcService::DecodeMode::Owning};
 
-  for (const auto mode : modes) {
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
-    if (bootstrap->StartEngine() != MemRpc::StatusCode::Ok) {
-      for (const auto kind : kinds) {
-        results.push_back({MakeBaselineKey(kind, mode, thread_count), 0.0,
-                           "bootstrap start failed"});
-      }
-      continue;
-    }
-
-    MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->server_handles());
-    MemRpc::ServerOptions options;
-    options.high_worker_threads = static_cast<uint32_t>(thread_count);
-    options.normal_worker_threads = static_cast<uint32_t>(thread_count);
-    server.SetOptions(options);
-    MiniRpcService service;
-    service.RegisterHandlers(&server, mode);
-    if (server.Start() != MemRpc::StatusCode::Ok) {
-      for (const auto kind : kinds) {
-        results.push_back(
-            {MakeBaselineKey(kind, mode, thread_count), 0.0, "server start failed"});
-      }
-      continue;
-    }
-
+  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  if (bootstrap->StartEngine() != MemRpc::StatusCode::Ok) {
     for (const auto kind : kinds) {
-      PerfCaseResult result;
-      result.key = MakeBaselineKey(kind, mode, thread_count);
-      if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.ops_per_sec, &result.error)) {
-        if (result.error.empty()) {
-          result.error = "measurement failed";
-        }
-      }
-      results.push_back(result);
+      results.push_back({MakeBaselineKey(kind, thread_count), 0.0,
+                         "bootstrap start failed"});
     }
-
-    server.Stop();
+    return results;
   }
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  MemRpc::ServerOptions options;
+  options.high_worker_threads = static_cast<uint32_t>(thread_count);
+  options.normal_worker_threads = static_cast<uint32_t>(thread_count);
+  server.SetOptions(options);
+  MiniRpcService service;
+  service.RegisterHandlers(&server);
+  if (server.Start() != MemRpc::StatusCode::Ok) {
+    for (const auto kind : kinds) {
+      results.push_back(
+          {MakeBaselineKey(kind, thread_count), 0.0, "server start failed"});
+    }
+    return results;
+  }
+
+  for (const auto kind : kinds) {
+    PerfCaseResult result;
+    result.key = MakeBaselineKey(kind, thread_count);
+    if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.ops_per_sec, &result.error)) {
+      if (result.error.empty()) {
+        result.error = "measurement failed";
+      }
+    }
+    results.push_back(result);
+  }
+
+  server.Stop();
 
   return results;
 }

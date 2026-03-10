@@ -1,6 +1,7 @@
 #ifndef APPS_VPS_PARENT_VIRUS_ENGINE_MANAGER_H_
 #define APPS_VPS_PARENT_VIRUS_ENGINE_MANAGER_H_
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -42,8 +43,8 @@ class VirusEngineManager {
   std::mutex mutex_;
   std::mutex listenerMutex_;
   std::vector<std::shared_ptr<ScanResultListener>> listeners_;
-  bool is_initialized_ = false;
-  bool reportsEnabled_ = false;
+  std::atomic<bool> is_initialized_{false};
+  std::atomic<bool> reportsEnabled_{false};
 
   std::shared_ptr<memrpc::SaBootstrapChannel> bootstrap_;
   std::unique_ptr<memrpc::RpcClient> client_;

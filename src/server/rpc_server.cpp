@@ -37,8 +37,8 @@ uint32_t CurrentWorkerId() {
 }
 
 bool RingCountIsOneAfterPush(const RingCursor& cursor) {
-  const uint32_t tail = __atomic_load_n(&cursor.tail, __ATOMIC_ACQUIRE);
-  const uint32_t head = __atomic_load_n(&cursor.head, __ATOMIC_ACQUIRE);
+  const uint32_t tail = cursor.tail.load(std::memory_order_acquire);
+  const uint32_t head = cursor.head.load(std::memory_order_acquire);
   return tail - head == 1u;
 }
 
@@ -107,7 +107,7 @@ class WorkerPool {
         }
         entry = queue_.front();
         queue_.pop();
-        cv_.notify_all();
+        cv_.notify_one();
       }
       callback_(entry);
     }
@@ -545,14 +545,13 @@ struct RpcServer::Impl {
   }
 
   void DispatcherLoop() {
+    constexpr int kSpinIterations = 256;
     pollfd fds[2] = {
         {session.handles().high_req_event_fd, POLLIN, 0},
         {session.handles().normal_req_event_fd, POLLIN, 0},
     };
 
     while (running.load()) {
-      // 有界本地队列可能让共享 request ring 暂时残留任务；当 worker 释放容量后，
-      // 下一轮 dispatcher 需要主动回看 shared ring，而不只依赖新的 eventfd 信号。
       bool high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
       if (!high_work) {
         DrainQueue(QueueKind::NormalRequest, &normal_pool);
@@ -573,6 +572,25 @@ struct RpcServer::Impl {
         continue;
       }
 
+      // Adaptive spin: check rings before falling back to poll.
+      bool spin_hit = false;
+      for (int i = 0; i < kSpinIterations; ++i) {
+        if (session.header() != nullptr &&
+            (RingCount(session.header()->high_ring) > 0 ||
+             RingCount(session.header()->normal_ring) > 0)) {
+          spin_hit = true;
+          break;
+        }
+#if defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#elif defined(__aarch64__)
+        asm volatile("yield");
+#endif
+      }
+      if (spin_hit) {
+        continue;
+      }
+
       const int poll_result = poll(fds, 2, 100);
       uint64_t counter = 0;
       if (poll_result > 0 && (fds[0].revents & POLLIN) != 0) {
@@ -581,7 +599,6 @@ struct RpcServer::Impl {
         high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
       }
       if (poll_result > 0 && !high_work && (fds[1].revents & POLLIN) != 0) {
-        // 高优队列一旦有活，当前轮次优先让它排空，再处理普通队列。
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
         DrainQueue(QueueKind::NormalRequest, &normal_pool);

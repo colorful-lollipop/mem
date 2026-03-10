@@ -28,6 +28,9 @@ enum class Opcode : uint16_t {
   MiniAdd = 201,
   MiniSleep = 202,
   MiniCrashForTest = 203,
+  MiniHangForTest = 204,
+  MiniOomForTest = 205,
+  MiniStackOverflowForTest = 206,
 };
 
 enum class ResponseMessageKind : uint16_t {

@@ -1,6 +1,7 @@
 #ifndef MEMRPC_CORE_SHM_LAYOUT_H_
 #define MEMRPC_CORE_SHM_LAYOUT_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <pthread.h>
@@ -32,14 +33,20 @@ struct Layout {
 };
 
 struct RingCursor {
-  uint32_t head = 0;
-  uint32_t tail = 0;
+  std::atomic<uint32_t> head{0};
+  std::atomic<uint32_t> tail{0};
   uint32_t capacity = 0;
   uint32_t reserved = 0;
 };
 
+static_assert(std::atomic<uint32_t>::is_always_lock_free,
+              "std::atomic<uint32_t> must be lock-free for SPSC ring correctness");
+static_assert(sizeof(std::atomic<uint32_t>) == sizeof(uint32_t),
+              "std::atomic<uint32_t> must match uint32_t size for shared memory layout");
+
 inline uint32_t RingCount(const RingCursor& cursor) {
-  return cursor.tail - cursor.head;
+  return cursor.tail.load(std::memory_order_relaxed) -
+         cursor.head.load(std::memory_order_relaxed);
 }
 
 struct SharedMemoryHeader {

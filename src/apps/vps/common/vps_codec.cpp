@@ -7,6 +7,8 @@
 
 #include "core/byte_reader.h"
 #include "core/byte_writer.h"
+#include "core/protocol.h"
+#include "virus_protection_service_log.h"
 
 namespace OHOS::Security::VirusProtectionService {
 
@@ -259,6 +261,10 @@ bool EncodeScanTask(const ScanTask& task, std::vector<uint8_t>* bytes) {
     return false;
   }
   *bytes = writer.bytes();
+  if (bytes->size() > memrpc::kDefaultMaxRequestBytes) {
+    HLOGW("ScanTask payload %{public}zu bytes exceeds %{public}u byte slot limit",
+          bytes->size(), memrpc::kDefaultMaxRequestBytes);
+  }
   return true;
 }
 
@@ -428,6 +434,10 @@ bool EncodeScanFileReply(int32_t resultCode,
     return false;
   }
   *bytes = writer.bytes();
+  if (bytes->size() > memrpc::kDefaultMaxResponseBytes) {
+    HLOGW("ScanFileReply payload %{public}zu bytes exceeds %{public}u byte slot limit",
+          bytes->size(), memrpc::kDefaultMaxResponseBytes);
+  }
   return true;
 }
 

@@ -4,50 +4,33 @@
 #include <cstddef>
 #include <vector>
 
+#include "memrpc/core/codec.h"
 #include "apps/minirpc/common/minirpc_types.h"
-#include "core/byte_reader.h"
-#include "core/byte_writer.h"
 
+// Re-export framework codec symbols into the application namespace so that
+// existing call-sites (EncodeMessage<T>, DecodeMessage<T>, etc.) compile
+// without modification.
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
+using ::memrpc::CodecTraits;
+using ::memrpc::EncodeMessage;
+using ::memrpc::DecodeMessage;
+}  // namespace OHOS::Security::VirusProtectionService::MiniRpc
 
-namespace detail {
+// Specializations must live in the same namespace as the primary template.
+namespace memrpc {
 
-inline bool AssignBytes(const ::memrpc::ByteWriter& writer, std::vector<uint8_t>* bytes) {
-  if (bytes == nullptr) {
-    return false;
-  }
-  *bytes = writer.bytes();
-  return true;
-}
-
-}  // namespace detail
-
-template <typename T>
-struct CodecTraits;
-
-template <typename T>
-bool EncodeMessage(const T& value, std::vector<uint8_t>* bytes) {
-  return CodecTraits<T>::Encode(value, bytes);
-}
-
-template <typename Message, typename BytesLike>
-bool DecodeMessage(const BytesLike& bytes, Message* value) {
-  return CodecTraits<Message>::Decode(bytes.data(), bytes.size(), value);
-}
-
-template <typename T>
-struct ViewTraits;
-
-template <typename View, typename BytesLike>
-bool DecodeMessageView(const BytesLike& bytes, View* value) {
-  return ViewTraits<View>::Decode(bytes.data(), bytes.size(), value);
-}
+using OHOS::Security::VirusProtectionService::MiniRpc::EchoRequest;
+using OHOS::Security::VirusProtectionService::MiniRpc::EchoReply;
+using OHOS::Security::VirusProtectionService::MiniRpc::AddRequest;
+using OHOS::Security::VirusProtectionService::MiniRpc::AddReply;
+using OHOS::Security::VirusProtectionService::MiniRpc::SleepRequest;
+using OHOS::Security::VirusProtectionService::MiniRpc::SleepReply;
 
 template <>
 struct CodecTraits<EchoRequest> {
   static bool Encode(const EchoRequest& request, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteString(request.text) && detail::AssignBytes(writer, bytes);
   }
 
@@ -56,7 +39,7 @@ struct CodecTraits<EchoRequest> {
     if (request == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadString(&request->text);
   }
 };
@@ -65,7 +48,7 @@ template <>
 struct CodecTraits<EchoReply> {
   static bool Encode(const EchoReply& reply, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteString(reply.text) && detail::AssignBytes(writer, bytes);
   }
 
@@ -74,32 +57,8 @@ struct CodecTraits<EchoReply> {
     if (reply == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadString(&reply->text);
-  }
-};
-
-template <>
-struct ViewTraits<EchoRequestView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, EchoRequestView* request)
-  {
-    if (request == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadStringView(&request->text);
-  }
-};
-
-template <>
-struct ViewTraits<EchoReplyView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, EchoReplyView* reply)
-  {
-    if (reply == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadStringView(&reply->text);
   }
 };
 
@@ -107,7 +66,7 @@ template <>
 struct CodecTraits<AddRequest> {
   static bool Encode(const AddRequest& request, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteInt32(request.lhs) && writer.WriteInt32(request.rhs) &&
            detail::AssignBytes(writer, bytes);
   }
@@ -117,19 +76,7 @@ struct CodecTraits<AddRequest> {
     if (request == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadInt32(&request->lhs) && reader.ReadInt32(&request->rhs);
-  }
-};
-
-template <>
-struct ViewTraits<AddRequestView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, AddRequestView* request)
-  {
-    if (request == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadInt32(&request->lhs) && reader.ReadInt32(&request->rhs);
   }
 };
@@ -138,7 +85,7 @@ template <>
 struct CodecTraits<AddReply> {
   static bool Encode(const AddReply& reply, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteInt32(reply.sum) && detail::AssignBytes(writer, bytes);
   }
 
@@ -147,19 +94,7 @@ struct CodecTraits<AddReply> {
     if (reply == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadInt32(&reply->sum);
-  }
-};
-
-template <>
-struct ViewTraits<AddReplyView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, AddReplyView* reply)
-  {
-    if (reply == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadInt32(&reply->sum);
   }
 };
@@ -168,7 +103,7 @@ template <>
 struct CodecTraits<SleepRequest> {
   static bool Encode(const SleepRequest& request, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteUint32(request.delay_ms) && detail::AssignBytes(writer, bytes);
   }
 
@@ -177,19 +112,7 @@ struct CodecTraits<SleepRequest> {
     if (request == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadUint32(&request->delay_ms);
-  }
-};
-
-template <>
-struct ViewTraits<SleepRequestView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, SleepRequestView* request)
-  {
-    if (request == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadUint32(&request->delay_ms);
   }
 };
@@ -198,7 +121,7 @@ template <>
 struct CodecTraits<SleepReply> {
   static bool Encode(const SleepReply& reply, std::vector<uint8_t>* bytes)
   {
-    ::memrpc::ByteWriter writer;
+    ByteWriter writer;
     return writer.WriteInt32(reply.status) && detail::AssignBytes(writer, bytes);
   }
 
@@ -207,23 +130,11 @@ struct CodecTraits<SleepReply> {
     if (reply == nullptr) {
       return false;
     }
-    ::memrpc::ByteReader reader(bytes, size);
+    ByteReader reader(bytes, size);
     return reader.ReadInt32(&reply->status);
   }
 };
 
-template <>
-struct ViewTraits<SleepReplyView> {
-  static bool Decode(const uint8_t* bytes, std::size_t size, SleepReplyView* reply)
-  {
-    if (reply == nullptr) {
-      return false;
-    }
-    ::memrpc::ByteReader reader(bytes, size);
-    return reader.ReadInt32(&reply->status);
-  }
-};
-
-}  // namespace OHOS::Security::VirusProtectionService::MiniRpc
+}  // namespace memrpc
 
 #endif  // APPS_MINIRPC_COMMON_MINIRPC_CODEC_H_

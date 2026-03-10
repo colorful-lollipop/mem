@@ -1,19 +1,17 @@
 #ifndef MEMRPC_CORE_SLOT_POOL_H_
 #define MEMRPC_CORE_SLOT_POOL_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <mutex>
 #include <optional>
-#include <pthread.h>
-#include <queue>
 #include <vector>
 
 #include "memrpc/core/types.h"
 
 namespace memrpc {
 
-enum class SlotState {
+enum class SlotState : uint8_t {
   Free = 0,
   Reserved,
   QueuedHigh,
@@ -24,11 +22,13 @@ enum class SlotState {
 };
 
 struct SharedSlotPoolHeader {
-  pthread_mutex_t mutex{};
+  std::atomic<uint64_t> top_tagged{0};  // {top_index:32, version:32} for ABA-safe CAS
   uint32_t capacity = 0;
-  uint32_t available_count = 0;
-  uint32_t reserved[2]{};
+  uint32_t padding = 0;
 };
+
+static_assert(std::atomic<uint64_t>::is_always_lock_free,
+              "std::atomic<uint64_t> must be lock-free for cross-process Treiber stack");
 
 inline std::size_t ComputeSharedSlotPoolBytes(uint32_t slot_count) {
   return sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count +
@@ -55,11 +55,13 @@ class SharedSlotPool {
   uint8_t* in_use_slots_ = nullptr;
 };
 
+// Lock-free slot pool for single-process use.
+// Reserve is single-consumer (submit thread), Release is multi-producer
+// (response thread + submit thread error paths). Implemented as a Treiber stack.
 class SlotPool {
  public:
   explicit SlotPool(uint32_t slot_count, uint32_t high_reserved_slots = 0);
 
-  // Reserve/Transition/Release 负责维护 slot 生命周期，避免请求和回包交叉踩踏。
   std::optional<uint32_t> Reserve(Priority priority = Priority::Normal);
   bool Transition(uint32_t slot_index, SlotState next_state);
   bool Release(uint32_t slot_index);
@@ -68,13 +70,16 @@ class SlotPool {
   uint32_t available() const;
 
  private:
+  static constexpr uint32_t kEmpty = UINT32_MAX;
   bool IsValidIndex(uint32_t slot_index) const;
   bool CanTransition(SlotState current, SlotState next) const;
 
-  std::vector<SlotState> states_;
-  std::queue<uint32_t> free_slots_;
+  uint32_t slot_count_ = 0;
+  std::vector<std::atomic<uint8_t>> states_;
+  std::vector<uint32_t> next_free_;
+  std::atomic<uint32_t> free_top_{kEmpty};
+  std::atomic<uint32_t> free_count_{0};
   uint32_t high_reserved_slots_ = 0;
-  mutable std::mutex mutex_;
 };
 
 }  // namespace memrpc

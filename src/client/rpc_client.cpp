@@ -33,8 +33,8 @@ bool AdmissionTimedOut(std::chrono::steady_clock::time_point deadline) {
 }
 
 bool RingCountIsOneAfterPush(const RingCursor& cursor) {
-  const uint32_t tail = __atomic_load_n(&cursor.tail, __ATOMIC_ACQUIRE);
-  const uint32_t head = __atomic_load_n(&cursor.head, __ATOMIC_ACQUIRE);
+  const uint32_t tail = cursor.tail.load(std::memory_order_acquire);
+  const uint32_t head = cursor.head.load(std::memory_order_acquire);
   return tail - head == 1u;
 }
 
@@ -133,8 +133,8 @@ struct RpcClient::Impl {
   std::unique_ptr<SlotPool> slot_pool;
   std::mutex reconnect_mutex;
   std::mutex session_mutex;
-  std::mutex pending_mutex;
-  std::unordered_map<uint64_t, std::shared_ptr<RpcFuture::State>> pending_calls;
+  std::vector<std::shared_ptr<RpcFuture::State>> pending_slots;
+  std::atomic<uint32_t> pending_count{0};
   std::mutex submit_mutex;
   std::condition_variable submit_cv;
   std::deque<PendingSubmit> submit_queue;
@@ -147,8 +147,8 @@ struct RpcClient::Impl {
   std::atomic<uint64_t> next_request_id{1};
   std::mutex event_mutex;
   RpcEventCallback event_callback;
-  uint64_t current_session_id = 0;
-  bool session_dead = true;
+  std::atomic<uint64_t> current_session_id{0};
+  std::atomic<bool> session_dead{true};
 
   RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
@@ -211,15 +211,12 @@ struct RpcClient::Impl {
   }
 
   void FailAllPending(StatusCode status_code) {
-    std::unordered_map<uint64_t, std::shared_ptr<RpcFuture::State>> pending_calls;
-    {
-      std::lock_guard<std::mutex> lock(pending_mutex);
-      pending_calls.swap(this->pending_calls);
-    }
-
-    for (auto& [_, pending] : pending_calls) {
+    for (auto& entry : pending_slots) {
+      auto pending = std::move(entry);
+      entry.reset();
       ResolveFuture(pending, status_code);
     }
+    pending_count.store(0, std::memory_order_relaxed);
   }
 
   void HandleEngineDeath(uint64_t dead_session_id) {
@@ -229,7 +226,8 @@ struct RpcClient::Impl {
     std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
     {
       std::lock_guard<std::mutex> lock(session_mutex);
-      if (current_session_id == 0 || dead_session_id != current_session_id) {
+      if (current_session_id.load(std::memory_order_relaxed) == 0 ||
+          dead_session_id != current_session_id.load(std::memory_order_relaxed)) {
         return;
       }
     }
@@ -288,6 +286,7 @@ struct RpcClient::Impl {
     }
     slot_pool = std::make_unique<SlotPool>(session.header()->slot_count,
                                            session.header()->high_reserved_request_slots);
+    pending_slots.assign(session.header()->slot_count, nullptr);
     current_session_id = handles.session_id;
     session_dead = false;
     StartDispatcher();
@@ -298,8 +297,9 @@ struct RpcClient::Impl {
     if (pending_submit.session_id == 0) {
       return false;
     }
-    std::lock_guard<std::mutex> lock(session_mutex);
-    return session_dead || current_session_id == 0 || current_session_id != pending_submit.session_id;
+    return session_dead.load(std::memory_order_acquire) ||
+           current_session_id.load(std::memory_order_relaxed) == 0 ||
+           current_session_id.load(std::memory_order_relaxed) != pending_submit.session_id;
   }
 
   bool WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
@@ -389,24 +389,40 @@ struct RpcClient::Impl {
       bool should_retry_admission = false;
       bool should_wait_for_request_credit = false;
       StatusCode retry_status = StatusCode::QueueFull;
-      {
-        std::lock_guard<std::mutex> session_lock(session_mutex);
-        if (session_dead || slot_pool == nullptr || !session.valid()) {
-          should_retry_admission = true;
-        } else {
-          const auto slot = slot_pool->Reserve(pending_submit.call.priority);
-          if (!slot.has_value()) {
-            should_retry_admission = true;
-            should_wait_for_request_credit = true;
-          } else {
-            SlotPayload* payload = session.slot_payload(*slot);
-            uint8_t* request_payload = session.slot_request_bytes(*slot);
-            if (payload == nullptr || request_payload == nullptr) {
-              slot_pool->Release(*slot);
-              ResolveFuture(pending_submit.future, StatusCode::EngineInternalError);
-              return;
-            }
 
+      // Fast-path session liveness check (lock-free).
+      if (session_dead.load(std::memory_order_acquire)) {
+        should_retry_admission = true;
+      } else {
+        // Reserve slot (lock-free Treiber stack).
+        const auto slot = slot_pool != nullptr
+                              ? slot_pool->Reserve(pending_submit.call.priority)
+                              : std::optional<uint32_t>{};
+        if (!slot.has_value()) {
+          should_retry_admission = true;
+          should_wait_for_request_credit = (slot_pool != nullptr);
+        } else {
+          // Brief lock to validate session and get payload pointers.
+          SlotPayload* payload = nullptr;
+          uint8_t* request_payload = nullptr;
+          {
+            std::lock_guard<std::mutex> session_lock(session_mutex);
+            if (session_dead.load(std::memory_order_relaxed) || !session.valid()) {
+              slot_pool->Release(*slot);
+              should_retry_admission = true;
+            } else {
+              payload = session.slot_payload(*slot);
+              request_payload = session.slot_request_bytes(*slot);
+            }
+          }
+          if (should_retry_admission) {
+            // session died between checks; retry outer loop
+          } else if (payload == nullptr || request_payload == nullptr) {
+            slot_pool->Release(*slot);
+            ResolveFuture(pending_submit.future, StatusCode::EngineInternalError);
+            return;
+          } else {
+            // Everything below runs without session_mutex.
             std::memset(payload, 0, sizeof(SlotPayload));
             payload->runtime.request_id = pending_submit.request_id;
             payload->runtime.state = SlotRuntimeStateCode::Admitted;
@@ -433,10 +449,8 @@ struct RpcClient::Impl {
             payload->runtime.last_heartbeat_mono_ms = entry.enqueue_mono_ms;
             payload->runtime.state = SlotRuntimeStateCode::Queued;
 
-            {
-              std::lock_guard<std::mutex> pending_lock(pending_mutex);
-              pending_calls.emplace(pending_submit.request_id, pending_submit.future);
-            }
+            pending_slots[*slot] = pending_submit.future;
+            pending_count.fetch_add(1, std::memory_order_relaxed);
 
             const bool high_priority = pending_submit.call.priority == Priority::High;
             slot_pool->Transition(
@@ -445,8 +459,8 @@ struct RpcClient::Impl {
                 session.PushRequest(high_priority ? QueueKind::HighRequest : QueueKind::NormalRequest,
                                     entry);
             if (queue_status != StatusCode::Ok) {
-              std::lock_guard<std::mutex> pending_lock(pending_mutex);
-              pending_calls.erase(pending_submit.request_id);
+              pending_slots[*slot].reset();
+              pending_count.fetch_sub(1, std::memory_order_relaxed);
               slot_pool->Release(*slot);
               if (queue_status == StatusCode::QueueFull) {
                 should_retry_admission = true;
@@ -466,8 +480,8 @@ struct RpcClient::Impl {
                 const int req_fd = high_priority ? session.handles().high_req_event_fd
                                                  : session.handles().normal_req_event_fd;
                 if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
-                  std::lock_guard<std::mutex> pending_lock(pending_mutex);
-                  pending_calls.erase(pending_submit.request_id);
+                  pending_slots[*slot].reset();
+                  pending_count.fetch_sub(1, std::memory_order_relaxed);
                   slot_pool->Release(*slot);
                   ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
                 }
@@ -511,14 +525,21 @@ struct RpcClient::Impl {
     reply.detail_code = entry.detail_code;
     ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
     uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
+
+    // Look up pending future by request slot index from the response slot.
+    uint32_t request_slot_idx = UINT32_MAX;
     std::shared_ptr<RpcFuture::State> pending;
-    {
-      std::lock_guard<std::mutex> lock(pending_mutex);
-      auto it = pending_calls.find(entry.request_id);
-      if (it != pending_calls.end()) {
-        pending = it->second;
+    if (response_slot != nullptr) {
+      request_slot_idx = response_slot->response.request_slot_index;
+      if (request_slot_idx < pending_slots.size()) {
+        pending = std::move(pending_slots[request_slot_idx]);
+        pending_slots[request_slot_idx].reset();
+        if (pending != nullptr) {
+          pending_count.fetch_sub(1, std::memory_order_relaxed);
+        }
       }
     }
+
     if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
       reply.status = StatusCode::ProtocolMismatch;
       if (pending != nullptr) {
@@ -547,22 +568,21 @@ struct RpcClient::Impl {
       }
     }
     if (response_slot != nullptr) {
-      // request slot 生命周期以“回包落地”为终点；无论业务状态成功或失败，都必须归还 slot。
       SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
       if (request_slot != nullptr) {
         std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
       }
       const bool request_slot_became_available = slot_pool->available() == 0;
       slot_pool->Release(response_slot->response.request_slot_index);
-      SignalEventFdIfNeeded(session.handles().req_credit_event_fd, request_slot_became_available);
+      SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
+                            request_slot_became_available &&
+                                submitter_waiting_for_credit.load(std::memory_order_relaxed));
       std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     }
     const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(entry.slot_index);
     SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
                           response_ring_became_not_full || response_slot_became_available);
-    std::lock_guard<std::mutex> lock(pending_mutex);
-    pending_calls.erase(entry.request_id);
   }
 
   void DeliverEvent(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
@@ -614,13 +634,53 @@ struct RpcClient::Impl {
     if (resp_fd < 0) {
       return;
     }
+    constexpr int kSpinIterations = 256;
     pollfd fd{resp_fd, POLLIN, 0};
     while (dispatcher_running.load()) {
-      const int poll_result = poll(&fd, 1, 100);
       if (session.state() == Session::SessionState::Broken) {
         HandleEngineDeath(current_session_id);
         return;
       }
+
+      // Try to drain the response ring directly (no syscall).
+      ResponseRingEntry entry;
+      bool drained = false;
+      while (session.PopResponse(&entry)) {
+        drained = true;
+        const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
+        if (entry.message_kind == ResponseMessageKind::Event) {
+          DeliverEvent(entry, response_ring_became_not_full);
+          continue;
+        }
+        CompleteRequest(entry, response_ring_became_not_full);
+      }
+      if (drained) {
+        if (session.state() == Session::SessionState::Broken) {
+          HandleEngineDeath(current_session_id);
+          return;
+        }
+        continue;
+      }
+
+      // Ring was empty. Adaptive spin before falling back to poll.
+      bool spin_hit = false;
+      for (int i = 0; i < kSpinIterations; ++i) {
+        if (RingCount(session.header()->response_ring) > 0) {
+          spin_hit = true;
+          break;
+        }
+#if defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#elif defined(__aarch64__)
+        asm volatile("yield");
+#endif
+      }
+      if (spin_hit) {
+        continue;
+      }
+
+      // Fall back to poll (with timeout to detect broken sessions).
+      const int poll_result = poll(&fd, 1, 100);
       if (poll_result <= 0) {
         continue;
       }
@@ -628,25 +688,10 @@ struct RpcClient::Impl {
         HandleEngineDeath(current_session_id);
         return;
       }
-      if ((fd.revents & POLLIN) == 0) {
-        continue;
-      }
-      uint64_t counter = 0;
-      while (read(fd.fd, &counter, sizeof(counter)) == sizeof(counter)) {
-      }
-      ResponseRingEntry entry;
-      while (session.PopResponse(&entry)) {
-        const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
-        // 同一条 response ring 同时承载 reply 和 event，通过 message_kind 分流。
-        if (entry.message_kind == ResponseMessageKind::Event) {
-          DeliverEvent(entry, response_ring_became_not_full);
-          continue;
+      if ((fd.revents & POLLIN) != 0) {
+        uint64_t counter = 0;
+        while (read(fd.fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        CompleteRequest(entry, response_ring_became_not_full);
-      }
-      if (session.state() == Session::SessionState::Broken) {
-        HandleEngineDeath(current_session_id);
-        return;
       }
     }
   }
@@ -670,10 +715,7 @@ struct RpcClient::Impl {
     submit.call = std::move(call);
     submit.request_id = next_request_id.fetch_add(1);
     submit.future = pending;
-    {
-      std::lock_guard<std::mutex> session_lock(session_mutex);
-      submit.session_id = current_session_id;
-    }
+    submit.session_id = current_session_id.load(std::memory_order_relaxed);
     {
       std::lock_guard<std::mutex> lock(submit_mutex);
       submit_queue.push_back(std::move(submit));
@@ -742,10 +784,7 @@ RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
     std::lock_guard<std::mutex> lock(impl_->submit_mutex);
     stats.queued_submissions = static_cast<uint32_t>(impl_->submit_queue.size());
   }
-  {
-    std::lock_guard<std::mutex> lock(impl_->pending_mutex);
-    stats.pending_calls = static_cast<uint32_t>(impl_->pending_calls.size());
-  }
+  stats.pending_calls = impl_->pending_count.load(std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lock(impl_->session_mutex);
     if (impl_->slot_pool != nullptr) {

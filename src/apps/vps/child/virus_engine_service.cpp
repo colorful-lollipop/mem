@@ -114,7 +114,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
 }
 
 int32_t VirusEngineService::Init() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(engine_mutex_);
   if (initialized_) {
     return SUCCESS;
   }
@@ -130,16 +130,22 @@ int32_t VirusEngineService::Init() {
 }
 
 int32_t VirusEngineService::DeInit() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(engine_mutex_);
   for (auto& [_, loader] : engineLoaders_) {
     if (loader != nullptr) {
       loader->DestroyVirusEngine();
     }
   }
   engineLoaders_.clear();
-  analysis_tokens_.clear();
-  while (!behavior_events_.empty()) {
-    behavior_events_.pop();
+  {
+    std::lock_guard<std::mutex> alock(analysis_mutex_);
+    analysis_tokens_.clear();
+  }
+  {
+    std::lock_guard<std::mutex> block(behavior_mutex_);
+    while (!behavior_events_.empty()) {
+      behavior_events_.pop();
+    }
   }
   initialized_ = false;
   return SUCCESS;
@@ -150,7 +156,7 @@ int32_t VirusEngineService::UpdateFeatureLib() {
 }
 
 int32_t VirusEngineService::ScanFile(const ScanTask* scanTask, ScanResult* scanResult) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::shared_lock<std::shared_mutex> lock(engine_mutex_);
   if (!initialized_ || scanTask == nullptr || scanResult == nullptr) {
     return FAILED;
   }
@@ -182,7 +188,7 @@ int32_t VirusEngineService::ScanFile(const ScanTask* scanTask, ScanResult* scanR
 int32_t VirusEngineService::ScanBehavior(uint32_t accessToken,
                                          const std::string& event,
                                          const std::string& bundleName) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::shared_lock<std::shared_mutex> lock(engine_mutex_);
   auto it = engineLoaders_.find(VirusEngine::CSPL_DYNAMIC_ENGINE);
   if (!initialized_ || it == engineLoaders_.end() || it->second == nullptr ||
       it->second->GetVirusEngine() == nullptr) {
@@ -191,6 +197,7 @@ int32_t VirusEngineService::ScanBehavior(uint32_t accessToken,
   if (it->second->GetVirusEngine()->ScanBehavior(accessToken, event, bundleName) != SUCCESS) {
     return FAILED;
   }
+  std::lock_guard<std::mutex> block(behavior_mutex_);
   if (behavior_reports_enabled_ && !event.empty()) {
     PendingBehaviorEvent pending;
     pending.accessToken = accessToken;
@@ -205,29 +212,29 @@ int32_t VirusEngineService::ScanBehavior(uint32_t accessToken,
 }
 
 int32_t VirusEngineService::IsExistAnalysisEngine(uint32_t accessToken) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(analysis_mutex_);
   return analysis_tokens_.count(accessToken) == 0u ? FAILED : SUCCESS;
 }
 
 int32_t VirusEngineService::CreateAnalysisEngine(uint32_t accessToken) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(analysis_mutex_);
   analysis_tokens_.insert(accessToken);
   return SUCCESS;
 }
 
 int32_t VirusEngineService::DestroyAnalysisEngine(uint32_t accessToken) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(analysis_mutex_);
   analysis_tokens_.erase(accessToken);
   return SUCCESS;
 }
 
 void VirusEngineService::SetBehaviorReportEnabled(bool enabled) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(behavior_mutex_);
   behavior_reports_enabled_ = enabled;
 }
 
 PollBehaviorEventReply VirusEngineService::PollBehaviorEvent() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(behavior_mutex_);
   PollBehaviorEventReply reply;
   if (behavior_events_.empty()) {
     return reply;

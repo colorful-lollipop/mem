@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -37,9 +38,11 @@ class VirusEngineService {
     BehaviorScanResult scanResult;
   };
 
-  bool behavior_reports_enabled_ = false;
   bool initialized_ = false;
-  std::mutex mutex_;
+  bool behavior_reports_enabled_ = false;
+  std::shared_mutex engine_mutex_;       // Protects engineLoaders_ and initialized_.
+  std::mutex behavior_mutex_;            // Protects behavior_events_ and behavior_reports_enabled_.
+  std::mutex analysis_mutex_;            // Protects analysis_tokens_.
   std::unordered_map<VirusEngine, std::unique_ptr<LibLoader>> engineLoaders_;
   std::unordered_set<uint32_t> analysis_tokens_;
   std::queue<PendingBehaviorEvent> behavior_events_;

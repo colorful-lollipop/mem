@@ -1,6 +1,5 @@
 #include "core/slot_pool.h"
 
-#include <cerrno>
 #include <cstring>
 
 namespace memrpc {
@@ -11,31 +10,18 @@ bool IsQueuedState(SlotState state) {
   return state == SlotState::QueuedHigh || state == SlotState::QueuedNormal;
 }
 
-bool InitSharedMutex(pthread_mutex_t* mutex) {
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-#ifdef PTHREAD_MUTEX_ROBUST
-  pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST);
-#endif
-  const int rc = pthread_mutex_init(mutex, &attr);
-  pthread_mutexattr_destroy(&attr);
-  return rc == 0;
+constexpr uint32_t kSharedEmpty = UINT32_MAX;
+
+uint64_t PackTagged(uint32_t index, uint32_t version) {
+  return (static_cast<uint64_t>(version) << 32) | index;
 }
 
-bool LockSharedMutex(pthread_mutex_t* mutex) {
-  if (mutex == nullptr) {
-    return false;
-  }
-  const int rc = pthread_mutex_lock(mutex);
-  if (rc == 0) {
-    return true;
-  }
-  if (rc == EOWNERDEAD) {
-    pthread_mutex_consistent(mutex);
-    pthread_mutex_unlock(mutex);
-  }
-  return false;
+uint32_t TaggedIndex(uint64_t tagged) {
+  return static_cast<uint32_t>(tagged & 0xffffffffu);
+}
+
+uint32_t TaggedVersion(uint64_t tagged) {
+  return static_cast<uint32_t>(tagged >> 32);
 }
 
 }  // namespace
@@ -47,20 +33,21 @@ bool InitializeSharedSlotPool(void* region, uint32_t slot_count) {
 
   auto* header = static_cast<SharedSlotPoolHeader*>(region);
   std::memset(region, 0, ComputeSharedSlotPoolBytes(slot_count));
-  if (!InitSharedMutex(&header->mutex)) {
-    return false;
-  }
   header->capacity = slot_count;
-  header->available_count = slot_count;
 
-  auto* free_slots =
+  // free_slots_ array is used as next-pointers for the Treiber stack.
+  auto* next_ptrs =
       reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader));
   auto* in_use_slots = reinterpret_cast<uint8_t*>(
       static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count);
+
+  // Build linked list: 0 → 1 → 2 → ... → (n-1) → kSharedEmpty
   for (uint32_t i = 0; i < slot_count; ++i) {
-    free_slots[i] = slot_count - i - 1;
+    next_ptrs[i] = (i + 1 < slot_count) ? i + 1 : kSharedEmpty;
     in_use_slots[i] = 0;
   }
+  // Stack top = 0, version = 0
+  header->top_tagged.store(PackTagged(0, 0), std::memory_order_release);
   return true;
 }
 
@@ -81,43 +68,48 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
     return std::nullopt;
   }
 
-  if (!LockSharedMutex(&header_->mutex)) {
-    return std::nullopt;
+  uint64_t old_tagged = header_->top_tagged.load(std::memory_order_acquire);
+  while (true) {
+    const uint32_t top = TaggedIndex(old_tagged);
+    if (top == kSharedEmpty) {
+      return std::nullopt;
+    }
+    if (!IsValidIndex(top) || in_use_slots_[top] != 0) {
+      return std::nullopt;
+    }
+    const uint32_t next = free_slots_[top];
+    const uint32_t new_version = TaggedVersion(old_tagged) + 1;
+    const uint64_t new_tagged = PackTagged(next, new_version);
+    if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
+                                                   std::memory_order_acq_rel,
+                                                   std::memory_order_acquire)) {
+      in_use_slots_[top] = 1;
+      return top;
+    }
   }
-  if (header_->available_count == 0) {
-    pthread_mutex_unlock(&header_->mutex);
-    return std::nullopt;
-  }
-
-  const uint32_t slot_index = free_slots_[header_->available_count - 1];
-  if (!IsValidIndex(slot_index) || in_use_slots_[slot_index] != 0) {
-    pthread_mutex_unlock(&header_->mutex);
-    return std::nullopt;
-  }
-  in_use_slots_[slot_index] = 1;
-  --header_->available_count;
-  pthread_mutex_unlock(&header_->mutex);
-  return slot_index;
 }
 
 bool SharedSlotPool::Release(uint32_t slot_index) {
   if (!valid()) {
     return false;
   }
+  if (!IsValidIndex(slot_index) || in_use_slots_[slot_index] == 0) {
+    return false;
+  }
 
-  if (!LockSharedMutex(&header_->mutex)) {
-    return false;
-  }
-  if (!IsValidIndex(slot_index) || header_->available_count >= header_->capacity ||
-      in_use_slots_[slot_index] == 0) {
-    pthread_mutex_unlock(&header_->mutex);
-    return false;
-  }
   in_use_slots_[slot_index] = 0;
-  free_slots_[header_->available_count] = slot_index;
-  ++header_->available_count;
-  pthread_mutex_unlock(&header_->mutex);
-  return true;
+
+  uint64_t old_tagged = header_->top_tagged.load(std::memory_order_relaxed);
+  do {
+    free_slots_[slot_index] = TaggedIndex(old_tagged);
+    const uint32_t new_version = TaggedVersion(old_tagged) + 1;
+    const uint64_t new_tagged = PackTagged(slot_index, new_version);
+    if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
+                                                   std::memory_order_release,
+                                                   std::memory_order_relaxed)) {
+      return true;
+    }
+  } while (true);
 }
 
 uint32_t SharedSlotPool::capacity() const {
@@ -125,7 +117,19 @@ uint32_t SharedSlotPool::capacity() const {
 }
 
 uint32_t SharedSlotPool::available() const {
-  return valid() ? header_->available_count : 0;
+  if (!valid()) {
+    return 0;
+  }
+  // Walk the free list to count available slots.
+  // This is O(n) but only used for stats/credit checks, not hot path.
+  uint64_t tagged = header_->top_tagged.load(std::memory_order_acquire);
+  uint32_t count = 0;
+  uint32_t idx = TaggedIndex(tagged);
+  while (idx != kSharedEmpty && idx < header_->capacity) {
+    ++count;
+    idx = free_slots_[idx];
+  }
+  return count;
 }
 
 bool SharedSlotPool::valid() const {
@@ -137,79 +141,103 @@ bool SharedSlotPool::IsValidIndex(uint32_t slot_index) const {
   return slot_index < header_->capacity;
 }
 
+// --- SlotPool (lock-free Treiber stack) ---
+
 SlotPool::SlotPool(uint32_t slot_count, uint32_t high_reserved_slots)
-    : states_(slot_count, SlotState::Free),
+    : slot_count_(slot_count),
+      states_(slot_count),
+      next_free_(slot_count),
       high_reserved_slots_(high_reserved_slots > slot_count ? slot_count : high_reserved_slots) {
   for (uint32_t i = 0; i < slot_count; ++i) {
-    free_slots_.push(i);
+    states_[i].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
   }
+  // Build the free list as a linked stack: 0 → 1 → 2 → ... → (n-1) → kEmpty
+  for (uint32_t i = 0; i < slot_count; ++i) {
+    next_free_[i] = (i + 1 < slot_count) ? i + 1 : kEmpty;
+  }
+  free_top_.store(slot_count > 0 ? 0 : kEmpty, std::memory_order_relaxed);
+  free_count_.store(slot_count, std::memory_order_relaxed);
 }
 
 std::optional<uint32_t> SlotPool::Reserve(Priority priority) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (free_slots_.empty()) {
+  const uint32_t count = free_count_.load(std::memory_order_acquire);
+  if (count == 0) {
     return std::nullopt;
   }
-  if (priority == Priority::Normal && free_slots_.size() <= high_reserved_slots_) {
+  if (priority == Priority::Normal && count <= high_reserved_slots_) {
     return std::nullopt;
   }
 
-  const uint32_t slot_index = free_slots_.front();
-  free_slots_.pop();
-  states_[slot_index] = SlotState::Reserved;
-  return slot_index;
+  // Pop from the Treiber stack. Single consumer (submit thread), so ABA is not possible.
+  uint32_t top = free_top_.load(std::memory_order_acquire);
+  while (top != kEmpty) {
+    const uint32_t next = next_free_[top];
+    if (free_top_.compare_exchange_weak(top, next,
+                                         std::memory_order_acq_rel,
+                                         std::memory_order_acquire)) {
+      states_[top].store(static_cast<uint8_t>(SlotState::Reserved), std::memory_order_relaxed);
+      free_count_.fetch_sub(1, std::memory_order_release);
+      return top;
+    }
+    // CAS failed — a concurrent Release changed top, retry.
+  }
+  return std::nullopt;
 }
 
 bool SlotPool::Transition(uint32_t slot_index, SlotState next_state) {
-  std::lock_guard<std::mutex> lock(mutex_);
   if (!IsValidIndex(slot_index)) {
     return false;
   }
 
-  const SlotState current = states_[slot_index];
+  const auto current = static_cast<SlotState>(states_[slot_index].load(std::memory_order_relaxed));
   if (!CanTransition(current, next_state)) {
     return false;
   }
 
-  states_[slot_index] = next_state;
+  states_[slot_index].store(static_cast<uint8_t>(next_state), std::memory_order_relaxed);
   return true;
 }
 
 bool SlotPool::Release(uint32_t slot_index) {
-  std::lock_guard<std::mutex> lock(mutex_);
   if (!IsValidIndex(slot_index)) {
     return false;
   }
 
-  if (states_[slot_index] == SlotState::Free) {
+  const auto current = static_cast<SlotState>(states_[slot_index].load(std::memory_order_relaxed));
+  if (current == SlotState::Free) {
     return false;
   }
 
-  states_[slot_index] = SlotState::Free;
-  free_slots_.push(slot_index);
+  states_[slot_index].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
+
+  // Push onto the Treiber stack (lock-free, safe for concurrent pushers).
+  uint32_t top = free_top_.load(std::memory_order_relaxed);
+  do {
+    next_free_[slot_index] = top;
+  } while (!free_top_.compare_exchange_weak(top, slot_index,
+                                             std::memory_order_release,
+                                             std::memory_order_relaxed));
+  free_count_.fetch_add(1, std::memory_order_release);
   return true;
 }
 
 SlotState SlotPool::GetState(uint32_t slot_index) const {
-  std::lock_guard<std::mutex> lock(mutex_);
   if (!IsValidIndex(slot_index)) {
     return SlotState::Free;
   }
-  return states_[slot_index];
+  return static_cast<SlotState>(states_[slot_index].load(std::memory_order_relaxed));
 }
 
 uint32_t SlotPool::capacity() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<uint32_t>(states_.size());
+  return slot_count_;
 }
 
 uint32_t SlotPool::available() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<uint32_t>(free_slots_.size());
+  return free_count_.load(std::memory_order_relaxed);
 }
 
 bool SlotPool::IsValidIndex(uint32_t slot_index) const {
-  return slot_index < states_.size();
+  return slot_index < slot_count_;
 }
 
 bool SlotPool::CanTransition(SlotState current, SlotState next) const {
