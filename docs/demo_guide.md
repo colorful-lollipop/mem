@@ -28,10 +28,11 @@ cmake --build build
 - 高优请求队列 / 普通请求队列
 - 单响应队列 + 单 `resp_eventfd`
 - 请求 slot 只承载请求内容
-- 响应在响应队列中以内联 `1KB` payload 返回
+- 响应通过 response ring + response slot 返回
 - `Reply/Event` 共用响应队列的协议基础
 - `RpcClient` / `RpcServer` 公共接口
 - `MiniRpcAsyncClient` / `MiniRpcClient` 应用层写法
+- move-aware request/reply API 和 `Echo` 的 view-based decode
 
 当前 demo 不再演示独立 notify 通道，也不再承担 VPS 复杂业务兼容验证。
 

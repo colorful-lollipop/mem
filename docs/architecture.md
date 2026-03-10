@@ -5,7 +5,7 @@
 - 框架层：`memrpc`
 - 最小应用样板：`apps/minirpc`
 
-复杂业务层例如 VPS 只保留设计方向，暂不进入主构建。
+复杂业务层例如 VPS 不进入主库构建，但保留独立 codec 和单测，用来验证小 payload 降拷贝路径。
 
 仓库中的 `legacy/` 目录仅保留历史参考实现，不参与当前主线构建和测试。
 
@@ -123,6 +123,7 @@ credit fd 采用“资源重新可写”语义：
 - `RpcClient::Init()`
 - `RpcClient::InvokeAsync()`
 - `RpcClient::InvokeSync()`
+- `RpcFuture::WaitAndTake()`
 - `RpcClient::SetEventCallback()`
 
 服务端公共接口：
@@ -152,6 +153,8 @@ credit fd 采用“资源重新可写”语义：
 - submitter 在 request ring/slot 资源不足时等待 `req_credit_eventfd`
 - 同步调用只是 `InvokeAsync + deadline wait` 的薄包装
 - 一个 `RpcClient` 对应一条响应分发线程
+- `InvokeAsync(RpcCall&&)` 会把编码后的 payload move 进提交队列，避免在 client API 边界再复制一份
+- `RpcFuture::WaitAndTake()` 会把内部 `RpcReply` move 给调用方，避免小包回包在 future 出口再复制一份
 
 需要注意：
 
@@ -211,8 +214,32 @@ credit fd 采用“资源重新可写”语义：
 - 验证 request/response 主路径
 - 验证同步 facade 和异步 client 的组合方式
 - 验证优先级和超时语义
+- 验证 `Echo` 这类字符串请求可以直接按 view 解码，不必先 materialize 成 owning request
 
 `MiniRpc` 不承担复杂业务兼容职责，也不强依赖事件模型。
+
+## 小包降拷贝现状
+
+当前已经收紧到下面这条边界：
+
+- client API 边界：
+  - 编码后的 `std::vector<uint8_t>` 可以 move 进 `RpcCall`
+  - `RpcClient::InvokeAsync(RpcCall&&)` 会继续 move 到 submit queue
+- server handler 边界：
+  - `RpcServerCall.payload` 是 `PayloadView`
+  - handler 可以直接基于共享 request slot 做只读或 view-based decode
+- client 回包边界：
+  - `RpcFuture::WaitAndTake()` 可以把 `RpcReply` move 给调用方
+- codec 边界：
+  - `ByteReader` 支持 `ReadStringView()` / `ReadBytesView()`
+  - `MiniRpc` 已在 `EchoRequest` 上使用 view decode
+  - VPS codec 的外层 envelope 已改成在原始字节流上推进，不再切中间 `vector`
+
+仍然保留的 owning 边界：
+
+- request submitter 仍然要把 payload `memcpy` 到 request slot
+- response loop 仍然要把 response slot materialize 成 `RpcReply.payload`
+- 大对象业务结构默认仍保留 owning decode，view codec 只覆盖热点路径
 
 ## 恢复语义
 
