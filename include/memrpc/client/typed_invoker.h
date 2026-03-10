@@ -46,7 +46,9 @@ StatusCode WaitAndDecode(RpcFuture future, Rep* reply) {
 // Register a callback that decodes the reply payload before invoking.
 // Callback signature: void(StatusCode, Rep).
 template <typename Rep>
-void ThenDecode(RpcFuture future, std::function<void(StatusCode, Rep)> callback) {
+void Then(RpcFuture future,
+          std::function<void(StatusCode, Rep)> callback,
+          RpcThenExecutor executor = {}) {
     future.Then([cb = std::move(callback)](RpcReply rpcReply) {
         if (rpcReply.status != StatusCode::Ok) {
             cb(rpcReply.status, {});
@@ -58,7 +60,7 @@ void ThenDecode(RpcFuture future, std::function<void(StatusCode, Rep)> callback)
             return;
         }
         cb(rpcReply.status, std::move(decoded));
-    });
+    }, std::move(executor));
 }
 
 // Synchronous convenience: encode, invoke, wait, decode — all in one call.

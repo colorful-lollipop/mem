@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <memory>
+#include <mutex>
 #include <signal.h>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 
 #include "apps/minirpc/child/minirpc_service.h"
@@ -11,6 +15,7 @@
 #include "apps/minirpc/parent/minirpc_client.h"
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
+#include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
@@ -160,6 +165,49 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   client.Shutdown();
   kill(second_child, SIGTERM);
   waitpid(second_child, nullptr, 0);
+}
+
+TEST(MiniRpcClientTest, TypedThenDecodesReply) {
+  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  ASSERT_EQ(bootstrap->StartEngine(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->server_handles());
+  MiniRpcService service;
+  service.RegisterHandlers(&server);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  EchoRequest req;
+  req.text = "typed-then";
+
+  std::atomic<bool> called{false};
+  std::mutex mutex;
+  EchoReply received;
+
+  auto future = MemRpc::InvokeTyped(&client, MemRpc::Opcode::MiniEcho, req);
+  MemRpc::Then<EchoReply>(std::move(future),
+      [&](MemRpc::StatusCode status, EchoReply reply) {
+        EXPECT_EQ(status, MemRpc::StatusCode::Ok);
+        std::lock_guard<std::mutex> lock(mutex);
+        received = std::move(reply);
+        called.store(true);
+      });
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!called.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  EXPECT_TRUE(called.load());
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    EXPECT_EQ(received.text, "typed-then");
+  }
+
+  client.Shutdown();
+  server.Stop();
 }
 
 }  // namespace
