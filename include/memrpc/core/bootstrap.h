@@ -26,13 +26,11 @@ class IBootstrapChannel {
  public:
   virtual ~IBootstrapChannel() = default;
 
-  // 确保对端进程已启动；若已存活，应保持幂等。
-  virtual StatusCode StartEngine() = 0;
-  // 返回当前可用 session 的句柄集合；进程 death/session 失效感知由 bootstrap 层负责。
-  virtual StatusCode Connect(BootstrapHandles* handles) = 0;
-  // 通知 bootstrap 层：客户端已经切换到新的 peer session。
-  virtual StatusCode NotifyPeerRestarted() = 0;
-  // 用于将“子进程死亡”从 bootstrap 层回传给 client。
+  // 建立 session：若资源未创建则惰性创建，返回 dup 后的句柄集合。幂等。
+  virtual StatusCode OpenSession(BootstrapHandles* handles) = 0;
+  // 关闭 session：通知 bootstrap 层客户端断开。不销毁 server 侧资源。
+  virtual StatusCode CloseSession() = 0;
+  // 用于将”子进程死亡”从 bootstrap 层回传给 client。
   virtual void SetEngineDeathCallback(EngineDeathCallback callback) = 0;
 };
 

@@ -38,10 +38,17 @@ int main() {
   namespace Mem = ::OHOS::Security::VirusProtectionService::MemRpc;
 
   auto bootstrap = std::make_shared<Mem::PosixDemoBootstrapChannel>();
-  if (bootstrap->StartEngine() != Mem::StatusCode::Ok) {
-    std::cerr << "bootstrap start failed" << std::endl;
+  Mem::BootstrapHandles unused_handles;
+  if (bootstrap->OpenSession(&unused_handles) != Mem::StatusCode::Ok) {
+    std::cerr << "bootstrap open session failed" << std::endl;
     return 1;
   }
+  close(unused_handles.shm_fd);
+  close(unused_handles.high_req_event_fd);
+  close(unused_handles.normal_req_event_fd);
+  close(unused_handles.resp_event_fd);
+  close(unused_handles.req_credit_event_fd);
+  close(unused_handles.resp_credit_event_fd);
 
   const Mem::BootstrapHandles server_handles = bootstrap->server_handles();
   const pid_t child = fork();

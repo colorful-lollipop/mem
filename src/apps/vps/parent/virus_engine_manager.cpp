@@ -1,6 +1,7 @@
 #include "apps/vps/parent/virus_engine_manager.h"
 
 #include <algorithm>
+#include <unistd.h>
 #include <utility>
 
 namespace OHOS::Security::VirusProtectionService {
@@ -40,9 +41,16 @@ int32_t VirusEngineManager::EnsureRuntime() {
   }
 
   bootstrap_ = std::make_shared<memrpc::SaBootstrapChannel>();
-  if (bootstrap_->StartEngine() != memrpc::StatusCode::Ok) {
+  memrpc::BootstrapHandles handles;
+  if (bootstrap_->OpenSession(&handles) != memrpc::StatusCode::Ok) {
     return FAILED;
   }
+  close(handles.shm_fd);
+  close(handles.high_req_event_fd);
+  close(handles.normal_req_event_fd);
+  close(handles.resp_event_fd);
+  close(handles.req_credit_event_fd);
+  close(handles.resp_credit_event_fd);
 
   service_ = std::make_unique<VirusEngineService>();
   server_ = std::make_unique<memrpc::RpcServer>(bootstrap_->server_handles());

@@ -355,17 +355,12 @@ struct RpcClient::Impl {
     if (bootstrap == nullptr) {
       return StatusCode::InvalidArgument;
     }
-    const StatusCode start_status = bootstrap->StartEngine();
-    if (start_status != StatusCode::Ok) {
-      HLOGE("StartEngine failed, status=%{public}d", static_cast<int>(start_status));
-      return start_status;
-    }
 
     BootstrapHandles handles;
-    const StatusCode connect_status = bootstrap->Connect(&handles);
-    if (connect_status != StatusCode::Ok) {
-      HLOGE("Connect failed, status=%{public}d", static_cast<int>(connect_status));
-      return connect_status;
+    const StatusCode open_status = bootstrap->OpenSession(&handles);
+    if (open_status != StatusCode::Ok) {
+      HLOGE("OpenSession failed, status=%{public}d", static_cast<int>(open_status));
+      return open_status;
     }
 
     StopDispatcher();
@@ -962,6 +957,9 @@ void RpcClient::Shutdown() {
     impl_->slot_pool.reset();
   }
   impl_->FailAllPending(StatusCode::PeerDisconnected);
+  if (impl_->bootstrap != nullptr) {
+    impl_->bootstrap->CloseSession();
+  }
 }
 
 // --- RpcSyncClient ---

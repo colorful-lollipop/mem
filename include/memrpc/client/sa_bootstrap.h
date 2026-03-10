@@ -29,9 +29,8 @@ class SaBootstrapChannel : public IBootstrapChannel {
   BootstrapHandles server_handles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
-  StatusCode StartEngine() override;
-  StatusCode Connect(BootstrapHandles* handles) override;
-  StatusCode NotifyPeerRestarted() override;
+  StatusCode OpenSession(BootstrapHandles* handles) override;
+  StatusCode CloseSession() override;
   void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
  private:

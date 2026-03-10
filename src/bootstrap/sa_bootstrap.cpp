@@ -42,21 +42,7 @@ void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
   }
 }
 
-StatusCode SaBootstrapChannel::StartEngine() {
-  if (impl_->fallback == nullptr) {
-    impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
-    return StatusCode::EngineInternalError;
-  }
-  const StatusCode status = impl_->fallback->StartEngine();
-  if (status != StatusCode::Ok) {
-    impl_->last_error = "Fake SA bootstrap failed to initialize POSIX transport.";
-  } else {
-    impl_->last_error.clear();
-  }
-  return status;
-}
-
-StatusCode SaBootstrapChannel::Connect(BootstrapHandles* handles) {
+StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles* handles) {
   if (handles == nullptr) {
     impl_->last_error = "Fake SA bootstrap received a null BootstrapHandles.";
     return StatusCode::InvalidArgument;
@@ -66,23 +52,21 @@ StatusCode SaBootstrapChannel::Connect(BootstrapHandles* handles) {
     impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
     return StatusCode::EngineInternalError;
   }
-  const StatusCode status = impl_->fallback->Connect(handles);
+  const StatusCode status = impl_->fallback->OpenSession(handles);
   if (status != StatusCode::Ok) {
-    impl_->last_error =
-        "Fake SA bootstrap could not connect. Call StartEngine first or "
-        "provide a platform-specific adapter.";
+    impl_->last_error = "Fake SA bootstrap OpenSession failed on POSIX fallback.";
   } else {
     impl_->last_error.clear();
   }
   return status;
 }
 
-StatusCode SaBootstrapChannel::NotifyPeerRestarted() {
+StatusCode SaBootstrapChannel::CloseSession() {
   if (impl_->fallback == nullptr) {
     impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
     return StatusCode::EngineInternalError;
   }
-  return impl_->fallback->NotifyPeerRestarted();
+  return impl_->fallback->CloseSession();
 }
 
 void SaBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
