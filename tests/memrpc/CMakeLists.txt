@@ -26,3 +26,7 @@ target_compile_definitions(memrpc_rpc_client_timeout_watchdog_test PRIVATE
   MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS=20
 )
 memrpc_add_test(memrpc_rpc_client_idle_callback_test rpc_client_idle_callback_test.cpp)
+
+if (MEMRPC_ENABLE_DT_TESTS)
+  # DT stability/perf tests (added in later tasks).
+endif()

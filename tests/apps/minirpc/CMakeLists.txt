@@ -1,5 +1,5 @@
 function(minirpc_add_test target source)
-  add_executable(${target} ${source})
+  add_executable(${target} ${source} ${ARGN})
   target_link_libraries(${target} PRIVATE minirpc_demo GTest::gtest_main)
   add_test(NAME ${target} COMMAND ${target})
 endfunction()
@@ -13,7 +13,14 @@ minirpc_add_test(memrpc_minirpc_baseline_test minirpc_baseline_test.cpp)
 minirpc_add_test(memrpc_minirpc_latency_test minirpc_latency_test.cpp)
 minirpc_add_test(memrpc_minirpc_async_pipeline_test minirpc_async_pipeline_test.cpp)
 minirpc_add_test(memrpc_minirpc_backpressure_test minirpc_backpressure_test.cpp)
-minirpc_add_test(memrpc_minirpc_dfx_test minirpc_dfx_test.cpp)
+minirpc_add_test(memrpc_minirpc_dfx_test
+  minirpc_dfx_test.cpp
+  minirpc_resilient_invoker.cpp
+)
+
+if (MEMRPC_ENABLE_DT_TESTS)
+  # DT stability/perf tests (added in later tasks).
+endif()
 
 if (MEMRPC_ENABLE_STRESS_TESTS)
   add_library(minirpc_stress_config
