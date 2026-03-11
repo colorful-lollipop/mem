@@ -301,6 +301,67 @@ struct RpcServer::Impl {
     return true;
   }
 
+  bool FillResponseSlot(uint32_t response_slot_index, CompletionItem& item) {
+    ResponseSlotPayload* response_slot = session.response_slot_payload(response_slot_index);
+    uint8_t* response_bytes = session.response_slot_bytes(response_slot_index);
+    if (response_slot == nullptr || response_bytes == nullptr ||
+        item.payload.size() > session.header()->max_response_bytes) {
+      SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+      response_slot_pool.Release(response_slot_index);
+      CompleteItem(item.completion, StatusCode::ProtocolMismatch);
+      if (item.break_session_on_failure) {
+        MarkSessionBroken();
+      }
+      return false;
+    }
+    std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
+    response_slot->runtime.request_id = item.entry.request_id;
+    response_slot->runtime.state = SlotRuntimeStateCode::Responding;
+    response_slot->runtime.request_slot_index = item.request_slot_index;
+    response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
+    response_slot->response.request_slot_index = item.request_slot_index;
+    response_slot->response.payload_size = static_cast<uint32_t>(item.payload.size());
+    if (!item.payload.empty()) {
+      std::memcpy(response_bytes, item.payload.data(), item.payload.size());
+    }
+    response_slot->runtime.state = SlotRuntimeStateCode::Ready;
+    response_slot->runtime.publish_mono_ms = MonotonicNowMs();
+    response_slot->runtime.last_update_mono_ms = response_slot->runtime.publish_mono_ms;
+    item.entry.slot_index = response_slot_index;
+    item.entry.result_size = static_cast<uint32_t>(item.payload.size());
+    return true;
+  }
+
+  void PushResponseAndSignal(CompletionItem& item) {
+    const StatusCode status = PushResponseWithRetry(item.entry, item.retry_budget);
+    if (status == StatusCode::Ok) {
+      if (RingCountIsOneAfterPush(session.header()->response_ring)) {
+        const uint64_t signal_value = 1;
+        if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
+            sizeof(signal_value)) {
+          CompleteItem(item.completion, StatusCode::PeerDisconnected);
+          if (item.break_session_on_failure) {
+            HLOGE("eventfd write failed while flushing response queue");
+            MarkSessionBroken();
+          }
+          return;
+        }
+      }
+    } else if (item.break_session_on_failure) {
+      SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+      response_slot_pool.Release(item.entry.slot_index);
+      HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
+            static_cast<int>(status),
+            static_cast<unsigned long long>(item.entry.request_id));
+      MarkSessionBroken();
+    } else {
+      SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+      response_slot_pool.Release(item.entry.slot_index);
+      HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
+    }
+    CompleteItem(item.completion, status);
+  }
+
   void ResponseWriterLoop() {
     while (response_writer_running.load()) {
       CompletionItem item;
@@ -330,63 +391,10 @@ struct RpcServer::Impl {
         continue;
       }
 
-      ResponseSlotPayload* response_slot = session.response_slot_payload(*response_slot_index);
-      uint8_t* response_bytes = session.response_slot_bytes(*response_slot_index);
-      if (response_slot == nullptr || response_bytes == nullptr ||
-          item.payload.size() > session.header()->max_response_bytes) {
-        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
-        response_slot_pool.Release(*response_slot_index);
-        CompleteItem(item.completion, StatusCode::ProtocolMismatch);
-        if (item.break_session_on_failure) {
-          MarkSessionBroken();
-        }
+      if (!FillResponseSlot(*response_slot_index, item)) {
         continue;
       }
-
-      std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
-      response_slot->runtime.request_id = item.entry.request_id;
-      response_slot->runtime.state = SlotRuntimeStateCode::Responding;
-      response_slot->runtime.request_slot_index = item.request_slot_index;
-      response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
-      response_slot->response.request_slot_index = item.request_slot_index;
-      response_slot->response.payload_size = static_cast<uint32_t>(item.payload.size());
-      if (!item.payload.empty()) {
-        std::memcpy(response_bytes, item.payload.data(), item.payload.size());
-      }
-      response_slot->runtime.state = SlotRuntimeStateCode::Ready;
-      response_slot->runtime.publish_mono_ms = MonotonicNowMs();
-      response_slot->runtime.last_update_mono_ms = response_slot->runtime.publish_mono_ms;
-      item.entry.slot_index = *response_slot_index;
-      item.entry.result_size = static_cast<uint32_t>(item.payload.size());
-
-      const StatusCode status = PushResponseWithRetry(item.entry, item.retry_budget);
-      if (status == StatusCode::Ok) {
-        if (RingCountIsOneAfterPush(session.header()->response_ring)) {
-          const uint64_t signal_value = 1;
-          if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
-              sizeof(signal_value)) {
-            CompleteItem(item.completion, StatusCode::PeerDisconnected);
-            if (item.break_session_on_failure) {
-              HLOGE("eventfd write failed while flushing response queue");
-              MarkSessionBroken();
-            }
-            continue;
-          }
-        }
-      } else if (item.break_session_on_failure) {
-        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
-        response_slot_pool.Release(*response_slot_index);
-        HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
-              static_cast<int>(status),
-              static_cast<unsigned long long>(item.entry.request_id));
-        MarkSessionBroken();
-      } else {
-        SharedSlotPool response_slot_pool(session.response_slot_pool_region());
-        response_slot_pool.Release(*response_slot_index);
-        HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
-      }
-
-      CompleteItem(item.completion, status);
+      PushResponseAndSignal(item);
       {
         std::lock_guard<std::mutex> lock(completion_mutex);
         if (pending_completion_count > 0) {
@@ -465,6 +473,42 @@ struct RpcServer::Impl {
     return completion->status;
   }
 
+  RpcServerCall BuildServerCall(const RequestRingEntry& request_entry,
+                                const SlotPayload* payload) {
+    RpcServerCall call;
+    call.opcode = request_entry.opcode;
+    call.priority = payload->request.priority == static_cast<uint32_t>(Priority::High)
+                        ? Priority::High
+                        : Priority::Normal;
+    call.queue_timeout_ms = payload->request.queue_timeout_ms;
+    call.exec_timeout_ms = payload->request.exec_timeout_ms;
+    call.flags = payload->request.flags;
+    call.payload = PayloadView(session.slot_request_bytes(request_entry.slot_index),
+                               payload->request.payload_size);
+    return call;
+  }
+
+  RpcServerReply InvokeHandlerWithTimeout(const RequestRingEntry& request_entry,
+                                           const SlotPayload* payload) {
+    RpcServerReply reply;
+    const auto it = handlers.find(request_entry.opcode);
+    if (it == handlers.end()) {
+      reply.status = StatusCode::InvalidArgument;
+      return reply;
+    }
+    RpcServerCall call = BuildServerCall(request_entry, payload);
+    const auto start = std::chrono::steady_clock::now();
+    it->second(call, &reply);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count();
+    if (payload->request.exec_timeout_ms > 0 &&
+        elapsed > static_cast<long long>(payload->request.exec_timeout_ms)) {
+      reply.status = StatusCode::ExecTimeout;
+    }
+    return reply;
+  }
+
   void ProcessEntry(const RequestRingEntry& request_entry) {
     SlotPayload* payload = session.slot_payload(request_entry.slot_index);
     uint8_t* request_bytes = session.slot_request_bytes(request_entry.slot_index);
@@ -478,49 +522,22 @@ struct RpcServer::Impl {
     payload->runtime.start_exec_mono_ms = MonotonicNowMs();
     payload->runtime.last_heartbeat_mono_ms = payload->runtime.start_exec_mono_ms;
 
-    RpcServerReply reply;
     const uint32_t now_ms = MonotonicNowMs();
-    // queue_timeout 只覆盖“进入 worker 前”的排队时长，不包含 handler 执行时间。
     if (payload->request.queue_timeout_ms > 0 &&
         now_ms - request_entry.enqueue_mono_ms > payload->request.queue_timeout_ms) {
+      RpcServerReply reply;
       reply.status = StatusCode::QueueTimeout;
       WriteResponse(request_entry, reply);
       return;
     }
-
     if (payload->request.payload_size > session.header()->max_request_bytes) {
+      RpcServerReply reply;
       reply.status = StatusCode::ProtocolMismatch;
       WriteResponse(request_entry, reply);
       return;
     }
 
-    RpcServerCall call;
-    call.opcode = request_entry.opcode;
-    call.priority = payload->request.priority == static_cast<uint32_t>(Priority::High)
-                        ? Priority::High
-                        : Priority::Normal;
-    call.queue_timeout_ms = payload->request.queue_timeout_ms;
-    call.exec_timeout_ms = payload->request.exec_timeout_ms;
-    call.flags = payload->request.flags;
-    call.payload = PayloadView(request_bytes, payload->request.payload_size);
-
-    const auto it = handlers.find(request_entry.opcode);
-    if (it == handlers.end()) {
-      reply.status = StatusCode::InvalidArgument;
-      WriteResponse(request_entry, reply);
-      return;
-    }
-
-    const auto start = std::chrono::steady_clock::now();
-    it->second(call, &reply);
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() - start)
-                             .count();
-    if (payload->request.exec_timeout_ms > 0 &&
-        elapsed > static_cast<long long>(payload->request.exec_timeout_ms)) {
-      // 当前模型不强杀 handler，只在完成后把结果折叠为 ExecTimeout。
-      reply.status = StatusCode::ExecTimeout;
-    }
+    RpcServerReply reply = InvokeHandlerWithTimeout(request_entry, payload);
     WriteResponse(request_entry, reply);
   }
 
@@ -544,6 +561,40 @@ struct RpcServer::Impl {
     return drained;
   }
 
+  bool HandleBackloggedQueues() {
+    const bool high_backlogged = session.header() != nullptr &&
+                                 RingCount(session.header()->high_ring) > 0 &&
+                                 !high_pool.HasCapacity();
+    const bool normal_backlogged = session.header() != nullptr &&
+                                   RingCount(session.header()->normal_ring) > 0 &&
+                                   !normal_pool.HasCapacity();
+    if (high_backlogged) {
+      high_pool.WaitForCapacity(std::chrono::milliseconds(100));
+      return true;
+    }
+    if (normal_backlogged) {
+      normal_pool.WaitForCapacity(std::chrono::milliseconds(100));
+      return true;
+    }
+    return false;
+  }
+
+  bool SpinForRingActivity(int iterations) {
+    for (int i = 0; i < iterations; ++i) {
+      if (session.header() != nullptr &&
+          (RingCount(session.header()->high_ring) > 0 ||
+           RingCount(session.header()->normal_ring) > 0)) {
+        return true;
+      }
+#if defined(__x86_64__) || defined(__i386__)
+      __builtin_ia32_pause();
+#elif defined(__aarch64__)
+      asm volatile("yield");
+#endif
+    }
+    return false;
+  }
+
   void DispatcherLoop() {
     constexpr int kSpinIterations = 256;
     pollfd fds[2] = {
@@ -557,37 +608,10 @@ struct RpcServer::Impl {
         DrainQueue(QueueKind::NormalRequest, &normal_pool);
       }
 
-      const bool high_backlogged = session.header() != nullptr &&
-                                   RingCount(session.header()->high_ring) > 0 &&
-                                   !high_pool.HasCapacity();
-      const bool normal_backlogged = session.header() != nullptr &&
-                                     RingCount(session.header()->normal_ring) > 0 &&
-                                     !normal_pool.HasCapacity();
-      if (high_backlogged) {
-        high_pool.WaitForCapacity(std::chrono::milliseconds(100));
+      if (HandleBackloggedQueues()) {
         continue;
       }
-      if (!high_backlogged && normal_backlogged) {
-        normal_pool.WaitForCapacity(std::chrono::milliseconds(100));
-        continue;
-      }
-
-      // Adaptive spin: check rings before falling back to poll.
-      bool spin_hit = false;
-      for (int i = 0; i < kSpinIterations; ++i) {
-        if (session.header() != nullptr &&
-            (RingCount(session.header()->high_ring) > 0 ||
-             RingCount(session.header()->normal_ring) > 0)) {
-          spin_hit = true;
-          break;
-        }
-#if defined(__x86_64__) || defined(__i386__)
-        __builtin_ia32_pause();
-#elif defined(__aarch64__)
-        asm volatile("yield");
-#endif
-      }
-      if (spin_hit) {
+      if (SpinForRingActivity(kSpinIterations)) {
         continue;
       }
 

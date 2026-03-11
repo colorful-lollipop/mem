@@ -46,49 +46,27 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target,
     return false;
   }
   *target = {};
-  target->shm_fd = DuplicateFdWithTestHook(source.shm_fd, remaining_successes_before_failure);
-  if (target->shm_fd < 0) {
-    return false;
-  }
-  target->high_req_event_fd =
-      DuplicateFdWithTestHook(source.high_req_event_fd, remaining_successes_before_failure);
-  if (target->high_req_event_fd < 0) {
-    CloseFd(&target->shm_fd);
-    return false;
-  }
-  target->normal_req_event_fd =
-      DuplicateFdWithTestHook(source.normal_req_event_fd, remaining_successes_before_failure);
-  if (target->normal_req_event_fd < 0) {
-    CloseFd(&target->shm_fd);
-    CloseFd(&target->high_req_event_fd);
-    return false;
-  }
-  target->resp_event_fd =
-      DuplicateFdWithTestHook(source.resp_event_fd, remaining_successes_before_failure);
-  if (target->resp_event_fd < 0) {
-    CloseFd(&target->shm_fd);
-    CloseFd(&target->high_req_event_fd);
-    CloseFd(&target->normal_req_event_fd);
-    return false;
-  }
-  target->req_credit_event_fd =
-      DuplicateFdWithTestHook(source.req_credit_event_fd, remaining_successes_before_failure);
-  if (target->req_credit_event_fd < 0) {
-    CloseFd(&target->shm_fd);
-    CloseFd(&target->high_req_event_fd);
-    CloseFd(&target->normal_req_event_fd);
-    CloseFd(&target->resp_event_fd);
-    return false;
-  }
-  target->resp_credit_event_fd =
-      DuplicateFdWithTestHook(source.resp_credit_event_fd, remaining_successes_before_failure);
-  if (target->resp_credit_event_fd < 0) {
-    CloseFd(&target->shm_fd);
-    CloseFd(&target->high_req_event_fd);
-    CloseFd(&target->normal_req_event_fd);
-    CloseFd(&target->resp_event_fd);
-    CloseFd(&target->req_credit_event_fd);
-    return false;
+
+  using FdField = int BootstrapHandles::*;
+  static constexpr FdField kFdFields[] = {
+      &BootstrapHandles::shm_fd,
+      &BootstrapHandles::high_req_event_fd,
+      &BootstrapHandles::normal_req_event_fd,
+      &BootstrapHandles::resp_event_fd,
+      &BootstrapHandles::req_credit_event_fd,
+      &BootstrapHandles::resp_credit_event_fd,
+  };
+
+  size_t dup_count = 0;
+  for (FdField field : kFdFields) {
+    target->*field = DuplicateFdWithTestHook(source.*field, remaining_successes_before_failure);
+    if (target->*field < 0) {
+      for (size_t j = 0; j < dup_count; ++j) {
+        CloseFd(&(target->*kFdFields[j]));
+      }
+      return false;
+    }
+    ++dup_count;
   }
   target->protocol_version = source.protocol_version;
   target->session_id = source.session_id;
@@ -128,6 +106,68 @@ struct PosixDemoBootstrapChannel::Impl {
     initialized = false;
   }
 
+  StatusCode InitializeSharedMemory(int shm_fd, uint64_t* out_session_id) {
+    const LayoutConfig layout_config{config.high_ring_size,
+                                     config.normal_ring_size,
+                                     config.response_ring_size,
+                                     config.slot_count,
+                                     ComputeSlotSize(config.max_request_bytes,
+                                                     config.max_response_bytes),
+                                     config.max_request_bytes,
+                                     config.max_response_bytes};
+    const Layout layout = ComputeLayout(layout_config);
+    if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
+      HLOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+      return StatusCode::EngineInternalError;
+    }
+
+    void* region =
+        mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (region == MAP_FAILED) {
+      HLOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+      return StatusCode::EngineInternalError;
+    }
+    std::memset(region, 0, layout.total_size);
+    auto* header = static_cast<SharedMemoryHeader*>(region);
+    header->magic = kSharedMemoryMagic;
+    header->protocol_version = kProtocolVersion;
+    header->session_id = GenerateSessionId();
+    header->session_state = 0;
+    header->high_ring_size = config.high_ring_size;
+    header->normal_ring_size = config.normal_ring_size;
+    header->response_ring_size = config.response_ring_size;
+    header->slot_count = config.slot_count;
+    header->slot_size = ComputeSlotSize(config.max_request_bytes, config.max_response_bytes);
+    header->max_request_bytes = config.max_request_bytes;
+    header->max_response_bytes = config.max_response_bytes;
+    header->high_ring.capacity = config.high_ring_size;
+    header->normal_ring.capacity = config.normal_ring_size;
+    header->response_ring.capacity = config.response_ring_size;
+    *out_session_id = header->session_id;
+    if (!InitMutex(&header->client_state_mutex) ||
+        !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.response_slot_pool_offset,
+                                  config.response_ring_size)) {
+      HLOGE("InitMutex failed");
+      munmap(region, layout.total_size);
+      return StatusCode::EngineInternalError;
+    }
+    munmap(region, layout.total_size);
+    return StatusCode::Ok;
+  }
+
+  bool CreateEventFds() {
+    handles.high_req_event_fd = eventfd(0, EFD_NONBLOCK);
+    handles.normal_req_event_fd = eventfd(0, EFD_NONBLOCK);
+    handles.resp_event_fd = eventfd(0, EFD_NONBLOCK);
+    handles.req_credit_event_fd = eventfd(0, EFD_NONBLOCK);
+    handles.resp_credit_event_fd = eventfd(0, EFD_NONBLOCK);
+    return handles.high_req_event_fd >= 0 &&
+           handles.normal_req_event_fd >= 0 &&
+           handles.resp_event_fd >= 0 &&
+           handles.req_credit_event_fd >= 0 &&
+           handles.resp_credit_event_fd >= 0;
+  }
+
   ~Impl() {
     ResetHandles();
     if (!config.shm_name.empty()) {
@@ -151,7 +191,6 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
     return StatusCode::InvalidArgument;
   }
 
-  // Lazy-create resources if not yet initialized.
   if (!impl_->initialized) {
     if (impl_->config.max_request_bytes == 0 ||
         impl_->config.max_response_bytes == 0 ||
@@ -171,72 +210,18 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
       return StatusCode::EngineInternalError;
     }
 
-    const LayoutConfig layout_config{impl_->config.high_ring_size,
-                                     impl_->config.normal_ring_size,
-                                     impl_->config.response_ring_size,
-                                     impl_->config.slot_count,
-                                     ComputeSlotSize(impl_->config.max_request_bytes,
-                                                     impl_->config.max_response_bytes),
-                                     impl_->config.max_request_bytes,
-                                     impl_->config.max_response_bytes};
-    const Layout layout = ComputeLayout(layout_config);
-    if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
-      HLOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+    uint64_t session_id = 0;
+    const StatusCode init_status = impl_->InitializeSharedMemory(shm_fd, &session_id);
+    if (init_status != StatusCode::Ok) {
       close(shm_fd);
       shm_unlink(impl_->config.shm_name.c_str());
-      return StatusCode::EngineInternalError;
+      return init_status;
     }
-
-    void* region =
-        mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (region == MAP_FAILED) {
-      HLOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
-      close(shm_fd);
-      shm_unlink(impl_->config.shm_name.c_str());
-      return StatusCode::EngineInternalError;
-    }
-    std::memset(region, 0, layout.total_size);
-    auto* header = static_cast<SharedMemoryHeader*>(region);
-    header->magic = kSharedMemoryMagic;
-    header->protocol_version = kProtocolVersion;
-    header->session_id = GenerateSessionId();
-    header->session_state = 0;
-    header->high_ring_size = impl_->config.high_ring_size;
-    header->normal_ring_size = impl_->config.normal_ring_size;
-    header->response_ring_size = impl_->config.response_ring_size;
-    header->slot_count = impl_->config.slot_count;
-    header->slot_size =
-        ComputeSlotSize(impl_->config.max_request_bytes, impl_->config.max_response_bytes);
-    header->max_request_bytes = impl_->config.max_request_bytes;
-    header->max_response_bytes = impl_->config.max_response_bytes;
-    header->high_ring.capacity = impl_->config.high_ring_size;
-    header->normal_ring.capacity = impl_->config.normal_ring_size;
-    header->response_ring.capacity = impl_->config.response_ring_size;
-    const uint64_t session_id = header->session_id;
-    if (!InitMutex(&header->client_state_mutex) ||
-        !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.response_slot_pool_offset,
-                                  impl_->config.response_ring_size)) {
-      HLOGE("InitMutex failed");
-      munmap(region, layout.total_size);
-      close(shm_fd);
-      shm_unlink(impl_->config.shm_name.c_str());
-      return StatusCode::EngineInternalError;
-    }
-    munmap(region, layout.total_size);
 
     impl_->handles.shm_fd = shm_fd;
-    impl_->handles.high_req_event_fd = eventfd(0, EFD_NONBLOCK);
-    impl_->handles.normal_req_event_fd = eventfd(0, EFD_NONBLOCK);
-    impl_->handles.resp_event_fd = eventfd(0, EFD_NONBLOCK);
-    impl_->handles.req_credit_event_fd = eventfd(0, EFD_NONBLOCK);
-    impl_->handles.resp_credit_event_fd = eventfd(0, EFD_NONBLOCK);
     impl_->handles.protocol_version = kProtocolVersion;
     impl_->handles.session_id = session_id;
-    impl_->initialized = impl_->handles.high_req_event_fd >= 0 &&
-                         impl_->handles.normal_req_event_fd >= 0 &&
-                         impl_->handles.resp_event_fd >= 0 &&
-                         impl_->handles.req_credit_event_fd >= 0 &&
-                         impl_->handles.resp_credit_event_fd >= 0;
+    impl_->initialized = impl_->CreateEventFds();
     if (!impl_->initialized) {
       HLOGE("eventfd initialization failed");
       impl_->ResetHandles();
@@ -245,7 +230,6 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
     }
   }
 
-  // Duplicate handles for the caller.
   if (!DuplicateHandles(impl_->handles, handles, &impl_->dup_fail_after_count)) {
     HLOGE("OpenSession failed while duplicating bootstrap handles");
     return StatusCode::EngineInternalError;

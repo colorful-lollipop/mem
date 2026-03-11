@@ -25,22 +25,41 @@ ThreatLevel MaxThreat(ThreatLevel left, ThreatLevel right) {
 
 VirusEngineService::VirusEngineService() = default;
 
+void VirusEngineService::RegisterSimpleHandler(memrpc::RpcServer* server, VpsOpcode opcode,
+                                               SimpleMethod method) {
+  server->RegisterHandler(static_cast<memrpc::Opcode>(opcode),
+                          [this, method](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
+                            if (reply != nullptr) {
+                              EncodeInt32Result((this->*method)(), &reply->payload);
+                            }
+                          });
+}
+
+void VirusEngineService::RegisterAccessTokenHandler(memrpc::RpcServer* server, VpsOpcode opcode,
+                                                     AccessTokenMethod method) {
+  server->RegisterHandler(
+      static_cast<memrpc::Opcode>(opcode),
+      [this, method](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+        if (reply == nullptr) {
+          return;
+        }
+        AccessTokenRequest request;
+        if (!DecodeAccessTokenRequest(call.payload, &request)) {
+          reply->status = memrpc::StatusCode::ProtocolMismatch;
+          return;
+        }
+        EncodeInt32Result((this->*method)(request.accessToken), &reply->payload);
+      });
+}
+
 void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
   if (server == nullptr) {
     return;
   }
-  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsInit),
-                          [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-                            if (reply != nullptr) {
-                              EncodeInt32Result(Init(), &reply->payload);
-                            }
-                          });
-  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsDeInit),
-                          [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-                            if (reply != nullptr) {
-                              EncodeInt32Result(DeInit(), &reply->payload);
-                            }
-                          });
+  RegisterSimpleHandler(server, VpsOpcode::VpsInit, &VirusEngineService::Init);
+  RegisterSimpleHandler(server, VpsOpcode::VpsDeInit, &VirusEngineService::DeInit);
+  RegisterSimpleHandler(server, VpsOpcode::VpsUpdateFeatureLib,
+                        &VirusEngineService::UpdateFeatureLib);
   server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanFile),
                           [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                             if (reply == nullptr) {
@@ -68,51 +87,12 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
                                 ScanBehavior(request.accessToken, request.event, request.bundleName),
                                 &reply->payload);
                           });
-  server->RegisterHandler(
-      static_cast<memrpc::Opcode>(VpsOpcode::VpsIsExistAnalysisEngine),
-      [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-        if (reply == nullptr) {
-          return;
-        }
-        AccessTokenRequest request;
-        if (!DecodeAccessTokenRequest(call.payload, &request)) {
-          reply->status = memrpc::StatusCode::ProtocolMismatch;
-          return;
-        }
-        EncodeInt32Result(IsExistAnalysisEngine(request.accessToken), &reply->payload);
-      });
-  server->RegisterHandler(
-      static_cast<memrpc::Opcode>(VpsOpcode::VpsCreateAnalysisEngine),
-      [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-        if (reply == nullptr) {
-          return;
-        }
-        AccessTokenRequest request;
-        if (!DecodeAccessTokenRequest(call.payload, &request)) {
-          reply->status = memrpc::StatusCode::ProtocolMismatch;
-          return;
-        }
-        EncodeInt32Result(CreateAnalysisEngine(request.accessToken), &reply->payload);
-      });
-  server->RegisterHandler(
-      static_cast<memrpc::Opcode>(VpsOpcode::VpsDestroyAnalysisEngine),
-      [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-        if (reply == nullptr) {
-          return;
-        }
-        AccessTokenRequest request;
-        if (!DecodeAccessTokenRequest(call.payload, &request)) {
-          reply->status = memrpc::StatusCode::ProtocolMismatch;
-          return;
-        }
-        EncodeInt32Result(DestroyAnalysisEngine(request.accessToken), &reply->payload);
-      });
-  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsUpdateFeatureLib),
-                          [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-                            if (reply != nullptr) {
-                              EncodeInt32Result(UpdateFeatureLib(), &reply->payload);
-                            }
-                          });
+  RegisterAccessTokenHandler(server, VpsOpcode::VpsIsExistAnalysisEngine,
+                             &VirusEngineService::IsExistAnalysisEngine);
+  RegisterAccessTokenHandler(server, VpsOpcode::VpsCreateAnalysisEngine,
+                             &VirusEngineService::CreateAnalysisEngine);
+  RegisterAccessTokenHandler(server, VpsOpcode::VpsDestroyAnalysisEngine,
+                             &VirusEngineService::DestroyAnalysisEngine);
 }
 
 int32_t VirusEngineService::Init() {

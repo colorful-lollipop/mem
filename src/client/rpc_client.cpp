@@ -256,6 +256,12 @@ struct RpcClient::Impl {
     callback(failure);
   }
 
+  void FailAndResolve(const PendingInfo& info, StatusCode status, FailureStage stage,
+                      const std::shared_ptr<RpcFuture::State>& future) {
+    NotifyFailure(info, status, stage);
+    ResolveFuture(future, status);
+  }
+
   void ResolveFuture(const std::shared_ptr<RpcFuture::State>& pending, StatusCode status) {
     if (pending == nullptr) {
       return;
@@ -387,6 +393,59 @@ struct RpcClient::Impl {
     }
   }
 
+  struct TimeoutCheckResult {
+    bool timed_out = false;
+    StatusCode status = StatusCode::ExecTimeout;
+  };
+
+  TimeoutCheckResult CheckSlotTimeout(const SlotRuntimeState& rt, const PendingInfo& info,
+                                      uint32_t now_ms) {
+    TimeoutCheckResult result;
+    switch (rt.state) {
+      case SlotRuntimeStateCode::Admitted:
+      case SlotRuntimeStateCode::Queued:
+        if (info.queue_timeout_ms > 0 && rt.enqueue_mono_ms > 0 &&
+            now_ms - rt.enqueue_mono_ms >= info.queue_timeout_ms) {
+          result.timed_out = true;
+          result.status = StatusCode::QueueTimeout;
+        }
+        break;
+      case SlotRuntimeStateCode::Executing:
+      case SlotRuntimeStateCode::Responding: {
+        if (info.exec_timeout_ms > 0) {
+          const uint32_t ref_ms =
+              rt.start_exec_mono_ms > 0 ? rt.start_exec_mono_ms : rt.enqueue_mono_ms;
+          if (ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms) {
+            result.timed_out = true;
+            result.status = StatusCode::ExecTimeout;
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    return result;
+  }
+
+  void ExpireTimedOutSlot(size_t slot_index, StatusCode status, const SlotRuntimeState& rt) {
+    PendingInfo timeout_info = *pending_info_slots[slot_index];
+    timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
+    timeout_info.replay_hint = ClassifyReplayHint(rt.state);
+    auto pending = std::move(pending_slots[slot_index]);
+    pending_slots[slot_index].reset();
+    pending_info_slots[slot_index].reset();
+    pending_count.fetch_sub(1, std::memory_order_relaxed);
+    FailAndResolve(timeout_info, status, FailureStage::Timeout, pending);
+    if (slot_pool != nullptr) {
+      SlotPayload* mutable_payload = session.slot_payload(static_cast<uint32_t>(slot_index));
+      if (mutable_payload != nullptr) {
+        std::memset(&mutable_payload->runtime, 0, sizeof(mutable_payload->runtime));
+      }
+      slot_pool->Release(static_cast<uint32_t>(slot_index));
+    }
+  }
+
   void ScanPendingTimeouts() {
     const uint32_t now_ms = MonotonicNowMs();
     for (size_t i = 0; i < pending_slots.size(); ++i) {
@@ -397,57 +456,9 @@ struct RpcClient::Impl {
       if (payload == nullptr) {
         continue;
       }
-      const PendingInfo& info = *pending_info_slots[i];
-      const SlotRuntimeState& rt = payload->runtime;
-      bool timed_out = false;
-      StatusCode timeout_status = StatusCode::ExecTimeout;
-
-      switch (rt.state) {
-        case SlotRuntimeStateCode::Admitted:
-        case SlotRuntimeStateCode::Queued:
-          if (info.queue_timeout_ms > 0 && rt.enqueue_mono_ms > 0 &&
-              now_ms - rt.enqueue_mono_ms >= info.queue_timeout_ms) {
-            timed_out = true;
-            timeout_status = StatusCode::QueueTimeout;
-          }
-          break;
-        case SlotRuntimeStateCode::Executing:
-        case SlotRuntimeStateCode::Responding: {
-          if (info.exec_timeout_ms > 0) {
-            const uint32_t ref_ms = rt.start_exec_mono_ms > 0
-                                        ? rt.start_exec_mono_ms
-                                        : rt.enqueue_mono_ms;
-            if (ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms) {
-              timed_out = true;
-              timeout_status = StatusCode::ExecTimeout;
-            }
-          }
-          break;
-        }
-        default:
-          break;
-      }
-
-      if (!timed_out) {
-        continue;
-      }
-
-      // Timeout fired: snapshot state, fail future, release slot.
-      PendingInfo timeout_info = info;
-      timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
-      timeout_info.replay_hint = ClassifyReplayHint(rt.state);
-      auto pending = std::move(pending_slots[i]);
-      pending_slots[i].reset();
-      pending_info_slots[i].reset();
-      pending_count.fetch_sub(1, std::memory_order_relaxed);
-      NotifyFailure(timeout_info, timeout_status, FailureStage::Timeout);
-      ResolveFuture(pending, timeout_status);
-      if (slot_pool != nullptr) {
-        SlotPayload* mutable_payload = session.slot_payload(static_cast<uint32_t>(i));
-        if (mutable_payload != nullptr) {
-          std::memset(&mutable_payload->runtime, 0, sizeof(mutable_payload->runtime));
-        }
-        slot_pool->Release(static_cast<uint32_t>(i));
+      const auto check = CheckSlotTimeout(payload->runtime, *pending_info_slots[i], now_ms);
+      if (check.timed_out) {
+        ExpireTimedOutSlot(i, check.status, payload->runtime);
       }
     }
   }
@@ -460,7 +471,7 @@ struct RpcClient::Impl {
         NotifyFailure(*pending_info_slots[i], status_code, FailureStage::Session);
         pending_info_slots[i].reset();
       }
-      ResolveFuture(pending, status_code);
+      ResolveFuture(pending, status_code);  // NOLINT(FailAndResolve not used here: info may not exist)
     }
     pending_count.store(0, std::memory_order_relaxed);
   }
@@ -617,6 +628,146 @@ struct RpcClient::Impl {
     FailQueuedSubmissions(StatusCode::PeerDisconnected);
   }
 
+  struct SlotReservation {
+    std::optional<uint32_t> slot;
+    SlotPayload* payload = nullptr;
+    uint8_t* request_bytes = nullptr;
+    bool should_retry = false;
+    bool should_wait_credit = false;
+  };
+
+  SlotReservation ReserveSlotAndPayload() {
+    SlotReservation result;
+    if (session_dead.load(std::memory_order_acquire)) {
+      result.should_retry = true;
+      return result;
+    }
+    result.slot = slot_pool != nullptr ? slot_pool->Reserve() : std::optional<uint32_t>{};
+    if (!result.slot.has_value()) {
+      result.should_retry = true;
+      result.should_wait_credit = (slot_pool != nullptr);
+      return result;
+    }
+    std::lock_guard<std::mutex> session_lock(session_mutex);
+    if (session_dead.load(std::memory_order_relaxed) || !session.valid()) {
+      slot_pool->Release(*result.slot);
+      result.slot.reset();
+      result.should_retry = true;
+      return result;
+    }
+    result.payload = session.slot_payload(*result.slot);
+    result.request_bytes = session.slot_request_bytes(*result.slot);
+    return result;
+  }
+
+  void FillSlotPayload(SlotPayload* payload, uint8_t* request_bytes,
+                        const PendingSubmit& pending_submit) {
+    std::memset(payload, 0, sizeof(SlotPayload));
+    payload->runtime.request_id = pending_submit.request_id;
+    payload->runtime.state = SlotRuntimeStateCode::Admitted;
+    payload->request.queue_timeout_ms = pending_submit.call.queue_timeout_ms;
+    payload->request.exec_timeout_ms = pending_submit.call.exec_timeout_ms;
+    payload->request.flags = pending_submit.call.flags;
+    payload->request.priority = static_cast<uint32_t>(pending_submit.call.priority);
+    payload->request.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
+    payload->request.payload_size = static_cast<uint32_t>(pending_submit.call.payload.size());
+    if (!pending_submit.call.payload.empty()) {
+      std::memcpy(request_bytes, pending_submit.call.payload.data(),
+                  pending_submit.call.payload.size());
+    }
+  }
+
+  RequestRingEntry BuildRingEntry(const PendingSubmit& pending_submit, uint32_t slot,
+                                   SlotPayload* payload) {
+    RequestRingEntry entry;
+    entry.request_id = pending_submit.request_id;
+    entry.slot_index = slot;
+    entry.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
+    entry.flags = static_cast<uint16_t>(pending_submit.call.flags);
+    entry.enqueue_mono_ms = MonotonicNowMs();
+    entry.payload_size = payload->request.payload_size;
+    payload->runtime.enqueue_mono_ms = entry.enqueue_mono_ms;
+    payload->runtime.last_heartbeat_mono_ms = entry.enqueue_mono_ms;
+    payload->runtime.state = SlotRuntimeStateCode::Queued;
+    return entry;
+  }
+
+  enum class PushOutcome { Success, RetryWithCredit, RetryWithoutCredit, FatalError };
+
+  PushOutcome PushAndSignalRequest(const RequestRingEntry& entry, uint32_t slot,
+                                    const PendingSubmit& pending_submit, const PendingInfo& info) {
+    const bool high_priority = pending_submit.call.priority == Priority::High;
+    slot_pool->Transition(slot, high_priority ? SlotState::QueuedHigh : SlotState::QueuedNormal);
+    const StatusCode queue_status =
+        session.PushRequest(high_priority ? QueueKind::HighRequest : QueueKind::NormalRequest,
+                            entry);
+    if (queue_status != StatusCode::Ok) {
+      pending_slots[slot].reset();
+      pending_info_slots[slot].reset();
+      pending_count.fetch_sub(1, std::memory_order_relaxed);
+      slot_pool->Release(slot);
+      if (queue_status == StatusCode::QueueFull) {
+        return PushOutcome::RetryWithCredit;
+      }
+      if (queue_status == StatusCode::PeerDisconnected) {
+        return PushOutcome::RetryWithoutCredit;
+      }
+      FailAndResolve(info, queue_status, FailureStage::Admission, pending_submit.future);
+      return PushOutcome::FatalError;
+    }
+    const RingCursor& cursor =
+        high_priority ? session.header()->high_ring : session.header()->normal_ring;
+    if (RingCountIsOneAfterPush(cursor)) {
+      const uint64_t signal_value = 1;
+      const int req_fd = high_priority ? session.handles().high_req_event_fd
+                                       : session.handles().normal_req_event_fd;
+      if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
+        pending_slots[slot].reset();
+        pending_info_slots[slot].reset();
+        pending_count.fetch_sub(1, std::memory_order_relaxed);
+        slot_pool->Release(slot);
+        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
+                       pending_submit.future);
+        return PushOutcome::FatalError;
+      }
+    }
+    TouchActivity();
+    return PushOutcome::Success;
+  }
+
+  enum class SubmitAttemptResult { Done, Retry, RetryWithCredit };
+
+  SubmitAttemptResult TrySubmitOnce(const PendingSubmit& pending_submit, const PendingInfo& info) {
+    auto reservation = ReserveSlotAndPayload();
+    if (!reservation.should_retry && reservation.slot.has_value()) {
+      if (reservation.payload == nullptr || reservation.request_bytes == nullptr) {
+        slot_pool->Release(*reservation.slot);
+        FailAndResolve(info, StatusCode::EngineInternalError, FailureStage::Admission,
+                       pending_submit.future);
+        return SubmitAttemptResult::Done;
+      }
+      FillSlotPayload(reservation.payload, reservation.request_bytes, pending_submit);
+      auto entry = BuildRingEntry(pending_submit, *reservation.slot, reservation.payload);
+      pending_slots[*reservation.slot] = pending_submit.future;
+      pending_info_slots[*reservation.slot] = info;
+      pending_count.fetch_add(1, std::memory_order_relaxed);
+      const auto outcome =
+          PushAndSignalRequest(entry, *reservation.slot, pending_submit, info);
+      if (outcome == PushOutcome::Success || outcome == PushOutcome::FatalError) {
+        return SubmitAttemptResult::Done;
+      }
+      reservation.should_retry = true;
+      reservation.should_wait_credit = (outcome == PushOutcome::RetryWithCredit);
+    }
+    if (!reservation.should_retry) {
+      FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
+                     pending_submit.future);
+      return SubmitAttemptResult::Done;
+    }
+    return reservation.should_wait_credit ? SubmitAttemptResult::RetryWithCredit
+                                          : SubmitAttemptResult::Retry;
+  }
+
   void SubmitOne(const PendingSubmit& pending_submit) {
     const bool infinite_admission_wait = pending_submit.call.admission_timeout_ms == 0;
     const auto admission_deadline = std::chrono::steady_clock::now() +
@@ -625,160 +776,119 @@ struct RpcClient::Impl {
 
     while (submit_running.load() && !shutting_down.load()) {
       if (SubmissionBelongsToDeadSession(pending_submit)) {
-        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
-        ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
+                       pending_submit.future);
         return;
       }
-
       const StatusCode ensure_status = EnsureLiveSession();
       if (ensure_status != StatusCode::Ok) {
-        NotifyFailure(info, ensure_status, FailureStage::Admission);
-        ResolveFuture(pending_submit.future, ensure_status);
+        FailAndResolve(info, ensure_status, FailureStage::Admission, pending_submit.future);
         return;
       }
-
       if (SubmissionBelongsToDeadSession(pending_submit)) {
-        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
-        ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
+                       pending_submit.future);
         return;
       }
 
-      bool should_retry_admission = false;
-      bool should_wait_for_request_credit = false;
-      StatusCode retry_status = StatusCode::QueueFull;
-
-      // Fast-path session liveness check (lock-free).
-      if (session_dead.load(std::memory_order_acquire)) {
-        should_retry_admission = true;
-      } else {
-        // Reserve slot (lock-free Treiber stack).
-        const auto slot =
-            slot_pool != nullptr ? slot_pool->Reserve() : std::optional<uint32_t>{};
-        if (!slot.has_value()) {
-          should_retry_admission = true;
-          should_wait_for_request_credit = (slot_pool != nullptr);
-        } else {
-          // Brief lock to validate session and get payload pointers.
-          SlotPayload* payload = nullptr;
-          uint8_t* request_payload = nullptr;
-          {
-            std::lock_guard<std::mutex> session_lock(session_mutex);
-            if (session_dead.load(std::memory_order_relaxed) || !session.valid()) {
-              slot_pool->Release(*slot);
-              should_retry_admission = true;
-            } else {
-              payload = session.slot_payload(*slot);
-              request_payload = session.slot_request_bytes(*slot);
-            }
-          }
-          if (should_retry_admission) {
-            // session died between checks; retry outer loop
-          } else if (payload == nullptr || request_payload == nullptr) {
-            slot_pool->Release(*slot);
-            NotifyFailure(info, StatusCode::EngineInternalError, FailureStage::Admission);
-            ResolveFuture(pending_submit.future, StatusCode::EngineInternalError);
-            return;
-          } else {
-            // Everything below runs without session_mutex.
-            std::memset(payload, 0, sizeof(SlotPayload));
-            payload->runtime.request_id = pending_submit.request_id;
-            payload->runtime.state = SlotRuntimeStateCode::Admitted;
-            payload->request.queue_timeout_ms = pending_submit.call.queue_timeout_ms;
-            payload->request.exec_timeout_ms = pending_submit.call.exec_timeout_ms;
-            payload->request.flags = pending_submit.call.flags;
-            payload->request.priority = static_cast<uint32_t>(pending_submit.call.priority);
-            payload->request.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
-            payload->request.payload_size =
-                static_cast<uint32_t>(pending_submit.call.payload.size());
-            if (!pending_submit.call.payload.empty()) {
-              std::memcpy(request_payload, pending_submit.call.payload.data(),
-                          pending_submit.call.payload.size());
-            }
-
-            RequestRingEntry entry;
-            entry.request_id = pending_submit.request_id;
-            entry.slot_index = *slot;
-            entry.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
-            entry.flags = static_cast<uint16_t>(pending_submit.call.flags);
-            entry.enqueue_mono_ms = MonotonicNowMs();
-            entry.payload_size = payload->request.payload_size;
-            payload->runtime.enqueue_mono_ms = entry.enqueue_mono_ms;
-            payload->runtime.last_heartbeat_mono_ms = entry.enqueue_mono_ms;
-            payload->runtime.state = SlotRuntimeStateCode::Queued;
-
-            pending_slots[*slot] = pending_submit.future;
-            pending_info_slots[*slot] = info;
-            pending_count.fetch_add(1, std::memory_order_relaxed);
-
-            const bool high_priority = pending_submit.call.priority == Priority::High;
-            slot_pool->Transition(
-                *slot, high_priority ? SlotState::QueuedHigh : SlotState::QueuedNormal);
-            const StatusCode queue_status =
-                session.PushRequest(high_priority ? QueueKind::HighRequest : QueueKind::NormalRequest,
-                                    entry);
-            if (queue_status != StatusCode::Ok) {
-              pending_slots[*slot].reset();
-              pending_info_slots[*slot].reset();
-              pending_count.fetch_sub(1, std::memory_order_relaxed);
-              slot_pool->Release(*slot);
-              if (queue_status == StatusCode::QueueFull) {
-                should_retry_admission = true;
-                should_wait_for_request_credit = true;
-                retry_status = queue_status;
-              } else if (queue_status == StatusCode::PeerDisconnected) {
-                should_retry_admission = true;
-              } else {
-                NotifyFailure(info, queue_status, FailureStage::Admission);
-                ResolveFuture(pending_submit.future, queue_status);
-                return;
-              }
-            } else {
-              const RingCursor& cursor =
-                  high_priority ? session.header()->high_ring : session.header()->normal_ring;
-              if (RingCountIsOneAfterPush(cursor)) {
-                const uint64_t signal_value = 1;
-                const int req_fd = high_priority ? session.handles().high_req_event_fd
-                                                 : session.handles().normal_req_event_fd;
-                if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
-                  pending_slots[*slot].reset();
-                  pending_info_slots[*slot].reset();
-                  pending_count.fetch_sub(1, std::memory_order_relaxed);
-                  slot_pool->Release(*slot);
-                  NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
-                  ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
-                }
-              }
-              TouchActivity();
-              return;
-            }
-          }
-        }
-      }
-
-      if (!should_retry_admission) {
-        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
-        ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+      const auto attempt = TrySubmitOnce(pending_submit, info);
+      if (attempt == SubmitAttemptResult::Done) {
         return;
       }
       if (!infinite_admission_wait && AdmissionTimedOut(admission_deadline)) {
-        NotifyFailure(info, StatusCode::QueueTimeout, FailureStage::Admission);
-        ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
+        FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission,
+                       pending_submit.future);
         return;
       }
-      if (should_wait_for_request_credit && !WaitForRequestCredit(admission_deadline)) {
-        if (!infinite_admission_wait) {
-          NotifyFailure(info, StatusCode::QueueTimeout, FailureStage::Admission);
-          ResolveFuture(pending_submit.future, StatusCode::QueueTimeout);
-        } else {
-          NotifyFailure(info, retry_status, FailureStage::Admission);
-          ResolveFuture(pending_submit.future, retry_status);
-        }
+      if (attempt == SubmitAttemptResult::RetryWithCredit &&
+          !WaitForRequestCredit(admission_deadline)) {
+        const StatusCode fail_status =
+            infinite_admission_wait ? StatusCode::QueueFull : StatusCode::QueueTimeout;
+        FailAndResolve(info, fail_status, FailureStage::Admission, pending_submit.future);
         return;
       }
     }
+    FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
+                   pending_submit.future);
+  }
 
-    NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Admission);
-    ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
+  struct PendingLookup {
+    uint32_t request_slot_idx = UINT32_MAX;
+    std::shared_ptr<RpcFuture::State> future;
+    std::optional<PendingInfo> info;
+  };
+
+  PendingLookup LookupPendingFuture(const ResponseSlotPayload* response_slot) {
+    PendingLookup result;
+    if (response_slot == nullptr) {
+      return result;
+    }
+    result.request_slot_idx = response_slot->response.request_slot_index;
+    if (result.request_slot_idx >= pending_slots.size()) {
+      return result;
+    }
+    result.future = std::move(pending_slots[result.request_slot_idx]);
+    pending_slots[result.request_slot_idx].reset();
+    if (result.request_slot_idx < pending_info_slots.size()) {
+      result.info = std::move(pending_info_slots[result.request_slot_idx]);
+      pending_info_slots[result.request_slot_idx].reset();
+    }
+    if (result.future != nullptr) {
+      pending_count.fetch_sub(1, std::memory_order_relaxed);
+    }
+    return result;
+  }
+
+  void ResolveCompletedFuture(const std::shared_ptr<RpcFuture::State>& pending, RpcReply reply) {
+    if (pending == nullptr) {
+      return;
+    }
+    std::unique_lock<std::mutex> lock(pending->mutex);
+    if (pending->abandoned) {
+      return;
+    }
+    pending->reply = std::move(reply);
+    pending->ready = true;
+    if (pending->callback) {
+      auto cb = std::move(pending->callback);
+      auto exec = std::move(pending->executor);
+      RpcReply cb_reply = std::move(pending->reply);
+      lock.unlock();
+      if (exec) {
+        exec([cb = std::move(cb), cb_reply = std::move(cb_reply)]() mutable {
+          cb(std::move(cb_reply));
+        });
+      } else {
+        cb(std::move(cb_reply));
+      }
+    } else {
+      pending->cv.notify_one();
+    }
+  }
+
+  void CleanupCompletedSlots(const ResponseSlotPayload* response_slot,
+                             const std::shared_ptr<RpcFuture::State>& pending,
+                             uint32_t response_slot_index,
+                             bool response_ring_became_not_full) {
+    SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+    if (response_slot != nullptr && pending != nullptr) {
+      SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
+      if (request_slot != nullptr) {
+        std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
+      }
+      const bool request_slot_became_available = slot_pool->available() == 0;
+      slot_pool->Release(response_slot->response.request_slot_index);
+      SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
+                            request_slot_became_available &&
+                                submitter_waiting_for_credit.load(std::memory_order_relaxed));
+    }
+    if (response_slot != nullptr) {
+      std::memset(const_cast<ResponseSlotPayload*>(response_slot), 0, sizeof(ResponseSlotPayload));
+    }
+    const bool response_slot_became_available = response_slot_pool.available() == 0;
+    response_slot_pool.Release(response_slot_index);
+    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+                          response_ring_became_not_full || response_slot_became_available);
   }
 
   void CompleteRequest(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
@@ -786,7 +896,6 @@ struct RpcClient::Impl {
       return;
     }
 
-    SharedSlotPool response_slot_pool(session.response_slot_pool_region());
     RpcReply reply;
     reply.status = static_cast<StatusCode>(entry.status_code);
     reply.engine_code = entry.engine_errno;
@@ -794,33 +903,14 @@ struct RpcClient::Impl {
     ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
     uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
 
-    // Look up pending future by request slot index from the response slot.
-    uint32_t request_slot_idx = UINT32_MAX;
-    std::shared_ptr<RpcFuture::State> pending;
-    std::optional<PendingInfo> slot_info;
-    if (response_slot != nullptr) {
-      request_slot_idx = response_slot->response.request_slot_index;
-      if (request_slot_idx < pending_slots.size()) {
-        pending = std::move(pending_slots[request_slot_idx]);
-        pending_slots[request_slot_idx].reset();
-        if (request_slot_idx < pending_info_slots.size()) {
-          slot_info = std::move(pending_info_slots[request_slot_idx]);
-          pending_info_slots[request_slot_idx].reset();
-        }
-        if (pending != nullptr) {
-          pending_count.fetch_sub(1, std::memory_order_relaxed);
-        }
-      }
-    }
+    auto lookup = LookupPendingFuture(response_slot);
 
     if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
       reply.status = StatusCode::ProtocolMismatch;
-      if (slot_info.has_value()) {
-        NotifyFailure(*slot_info, reply.status, FailureStage::Response);
+      if (lookup.info.has_value()) {
+        NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
       }
-      if (pending != nullptr) {
-        ResolveFuture(pending, reply.status);
-      }
+      ResolveFuture(lookup.future, reply.status);
       session.SetState(Session::SessionState::Broken);
       HandleEngineDeath(current_session_id);
       return;
@@ -835,54 +925,15 @@ struct RpcClient::Impl {
       response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
       response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
     }
-    if (reply.status != StatusCode::Ok && slot_info.has_value()) {
-      NotifyFailure(*slot_info, reply.status, FailureStage::Response);
+    if (reply.status != StatusCode::Ok && lookup.info.has_value()) {
+      NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
     }
-    if (pending != nullptr) {
-      std::unique_lock<std::mutex> lock(pending->mutex);
-      if (!pending->abandoned) {
-        pending->reply = std::move(reply);
-        pending->ready = true;
-        if (pending->callback) {
-          auto cb = std::move(pending->callback);
-          auto exec = std::move(pending->executor);
-          RpcReply cb_reply = std::move(pending->reply);
-          lock.unlock();
-          if (exec) {
-            exec([cb = std::move(cb), cb_reply = std::move(cb_reply)]() mutable {
-              cb(std::move(cb_reply));
-            });
-          } else {
-            cb(std::move(cb_reply));
-          }
-        } else {
-          pending->cv.notify_one();
-        }
-      }
-    }
-    if (pending != nullptr) {
+    ResolveCompletedFuture(lookup.future, std::move(reply));
+    if (lookup.future != nullptr) {
       TouchActivity();
     }
-    if (response_slot != nullptr) {
-      // Only release request slot if we actually had a pending future for it.
-      // If pending is null, the watchdog already released this request slot.
-      if (pending != nullptr) {
-        SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
-        if (request_slot != nullptr) {
-          std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
-        }
-        const bool request_slot_became_available = slot_pool->available() == 0;
-        slot_pool->Release(response_slot->response.request_slot_index);
-        SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
-                              request_slot_became_available &&
-                                  submitter_waiting_for_credit.load(std::memory_order_relaxed));
-      }
-      std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
-    }
-    const bool response_slot_became_available = response_slot_pool.available() == 0;
-    response_slot_pool.Release(entry.slot_index);
-    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
-                          response_ring_became_not_full || response_slot_became_available);
+    CleanupCompletedSlots(response_slot, lookup.future, entry.slot_index,
+                          response_ring_became_not_full);
   }
 
   void DeliverEvent(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
@@ -929,6 +980,52 @@ struct RpcClient::Impl {
                           response_ring_became_not_full || response_slot_became_available);
   }
 
+  bool DrainResponseRing() {
+    ResponseRingEntry entry;
+    bool drained = false;
+    while (session.PopResponse(&entry)) {
+      drained = true;
+      const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
+      if (entry.message_kind == ResponseMessageKind::Event) {
+        DeliverEvent(entry, response_ring_became_not_full);
+        continue;
+      }
+      CompleteRequest(entry, response_ring_became_not_full);
+    }
+    return drained;
+  }
+
+  bool SpinForResponseRing(int iterations) {
+    for (int i = 0; i < iterations; ++i) {
+      if (RingCount(session.header()->response_ring) > 0) {
+        return true;
+      }
+#if defined(__x86_64__) || defined(__i386__)
+      __builtin_ia32_pause();
+#elif defined(__aarch64__)
+      asm volatile("yield");
+#endif
+    }
+    return false;
+  }
+
+  bool PollAndDrainEventFd(pollfd* fd) {
+    const int poll_result = poll(fd, 1, 100);
+    if (poll_result <= 0) {
+      return true;
+    }
+    if ((fd->revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+      HandleEngineDeath(current_session_id);
+      return false;
+    }
+    if ((fd->revents & POLLIN) != 0) {
+      uint64_t counter = 0;
+      while (read(fd->fd, &counter, sizeof(counter)) == sizeof(counter)) {
+      }
+    }
+    return true;
+  }
+
   void ResponseLoop() {
     const int resp_fd = session.handles().resp_event_fd;
     if (resp_fd < 0) {
@@ -941,57 +1038,18 @@ struct RpcClient::Impl {
         HandleEngineDeath(current_session_id);
         return;
       }
-
-      // Try to drain the response ring directly (no syscall).
-      ResponseRingEntry entry;
-      bool drained = false;
-      while (session.PopResponse(&entry)) {
-        drained = true;
-        const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
-        if (entry.message_kind == ResponseMessageKind::Event) {
-          DeliverEvent(entry, response_ring_became_not_full);
-          continue;
-        }
-        CompleteRequest(entry, response_ring_became_not_full);
-      }
-      if (drained) {
+      if (DrainResponseRing()) {
         if (session.state() == Session::SessionState::Broken) {
           HandleEngineDeath(current_session_id);
           return;
         }
         continue;
       }
-
-      // Ring was empty. Adaptive spin before falling back to poll.
-      bool spin_hit = false;
-      for (int i = 0; i < kSpinIterations; ++i) {
-        if (RingCount(session.header()->response_ring) > 0) {
-          spin_hit = true;
-          break;
-        }
-#if defined(__x86_64__) || defined(__i386__)
-        __builtin_ia32_pause();
-#elif defined(__aarch64__)
-        asm volatile("yield");
-#endif
-      }
-      if (spin_hit) {
+      if (SpinForResponseRing(kSpinIterations)) {
         continue;
       }
-
-      // Fall back to poll (with timeout to detect broken sessions).
-      const int poll_result = poll(&fd, 1, 100);
-      if (poll_result <= 0) {
-        continue;
-      }
-      if ((fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        HandleEngineDeath(current_session_id);
+      if (!PollAndDrainEventFd(&fd)) {
         return;
-      }
-      if ((fd.revents & POLLIN) != 0) {
-        uint64_t counter = 0;
-        while (read(fd.fd, &counter, sizeof(counter)) == sizeof(counter)) {
-        }
       }
     }
   }

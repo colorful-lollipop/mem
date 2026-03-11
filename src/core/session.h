@@ -64,7 +64,11 @@ class Session {
  private:
   // 根据 queue 类型解析出实际 ring 的 cursor/mutex/entries 指针。
   RingAccess ResolveRing(QueueKind queue);
+  StatusCode MapAndValidateHeader(int shm_fd);
+  StatusCode RemapWithActualLayout(int shm_fd);
+  StatusCode TryAcquireClientSlot();
   std::size_t mapped_size_ = 0;
+  std::size_t initial_mapped_size_ = 0;
   void* mapped_region_ = nullptr;
   BootstrapHandles handles_{};
   SharedMemoryHeader* header_ = nullptr;

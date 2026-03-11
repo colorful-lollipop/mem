@@ -160,12 +160,7 @@ Session::~Session() {
   Reset();
 }
 
-StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
-  Reset();
-  if (handles.shm_fd < 0) {
-    return StatusCode::InvalidArgument;
-  }
-
+StatusCode Session::MapAndValidateHeader(int shm_fd) {
   LayoutConfig config;
   config.high_ring_size = 32;
   config.normal_ring_size = 32;
@@ -175,11 +170,10 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   config.max_request_bytes = kDefaultMaxRequestBytes;
   config.max_response_bytes = kDefaultMaxResponseBytes;
 
-  // The creator writes the authoritative values into the header. Map enough
-  // memory for a maximum-sized default first, then use the header values.
   Layout default_layout = ComputeLayout(config);
+  initial_mapped_size_ = default_layout.total_size;
   mapped_region_ =
-      mmap(nullptr, default_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, handles.shm_fd, 0);
+      mmap(nullptr, default_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
     return StatusCode::EngineInternalError;
@@ -190,13 +184,17 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
     Reset();
     return StatusCode::ProtocolMismatch;
   }
+  return StatusCode::Ok;
+}
 
+StatusCode Session::RemapWithActualLayout(int shm_fd) {
   struct stat file_stat {};
-  if (fstat(handles.shm_fd, &file_stat) != 0) {
+  if (fstat(shm_fd, &file_stat) != 0) {
     Reset();
     return StatusCode::EngineInternalError;
   }
 
+  LayoutConfig config;
   config.high_ring_size = header_->high_ring_size;
   config.normal_ring_size = header_->normal_ring_size;
   config.response_ring_size = header_->response_ring_size;
@@ -212,10 +210,10 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
     return StatusCode::ProtocolMismatch;
   }
   Layout actual_layout = ComputeLayout(config);
-  munmap(mapped_region_, default_layout.total_size);
+  munmap(mapped_region_, initial_mapped_size_);
 
   mapped_region_ =
-      mmap(nullptr, actual_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, handles.shm_fd, 0);
+      mmap(nullptr, actual_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
     header_ = nullptr;
@@ -224,29 +222,56 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
 
   mapped_size_ = actual_layout.total_size;
   header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
+  return StatusCode::Ok;
+}
+
+StatusCode Session::TryAcquireClientSlot() {
+  const StatusCode lock_status = LockSharedMutex(&header_->client_state_mutex);
+  if (lock_status != StatusCode::Ok) {
+    Reset();
+    return lock_status;
+  }
+  if (header_->client_attached != 0) {
+    if (!ProcessIsAlive(header_->active_client_pid)) {
+      header_->client_attached = 0;
+      header_->active_client_pid = 0;
+    } else {
+      pthread_mutex_unlock(&header_->client_state_mutex);
+      Reset();
+      return StatusCode::InvalidArgument;
+    }
+  }
+  header_->client_attached = 1;
+  header_->active_client_pid = static_cast<uint32_t>(getpid());
+  owns_client_slot_ = true;
+  pthread_mutex_unlock(&header_->client_state_mutex);
+  return StatusCode::Ok;
+}
+
+StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
+  Reset();
+  if (handles.shm_fd < 0) {
+    return StatusCode::InvalidArgument;
+  }
+
+  StatusCode status = MapAndValidateHeader(handles.shm_fd);
+  if (status != StatusCode::Ok) {
+    return status;
+  }
+
+  status = RemapWithActualLayout(handles.shm_fd);
+  if (status != StatusCode::Ok) {
+    return status;
+  }
+
   handles_ = handles;
   attach_role_ = role;
   owns_client_slot_ = false;
   if (role == AttachRole::Client) {
-    const StatusCode lock_status = LockSharedMutex(&header_->client_state_mutex);
-    if (lock_status != StatusCode::Ok) {
-      Reset();
-      return lock_status;
+    status = TryAcquireClientSlot();
+    if (status != StatusCode::Ok) {
+      return status;
     }
-    if (header_->client_attached != 0) {
-      if (!ProcessIsAlive(header_->active_client_pid)) {
-        header_->client_attached = 0;
-        header_->active_client_pid = 0;
-      } else {
-        pthread_mutex_unlock(&header_->client_state_mutex);
-        Reset();
-        return StatusCode::InvalidArgument;
-      }
-    }
-    header_->client_attached = 1;
-    header_->active_client_pid = static_cast<uint32_t>(getpid());
-    owns_client_slot_ = true;
-    pthread_mutex_unlock(&header_->client_state_mutex);
   }
   return StatusCode::Ok;
 }

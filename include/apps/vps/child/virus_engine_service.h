@@ -11,6 +11,7 @@
 
 #include "apps/vps/child/lib_loader.h"
 #include "apps/vps/common/vps_codec.h"
+#include "apps/vps/protocol.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace OHOS::Security::VirusProtectionService {
@@ -33,6 +34,13 @@ class VirusEngineService {
   PollBehaviorEventReply PollBehaviorEvent();
 
  private:
+  using SimpleMethod = int32_t (VirusEngineService::*)();
+  using AccessTokenMethod = int32_t (VirusEngineService::*)(uint32_t);
+
+  void RegisterSimpleHandler(memrpc::RpcServer* server, VpsOpcode opcode, SimpleMethod method);
+  void RegisterAccessTokenHandler(memrpc::RpcServer* server, VpsOpcode opcode,
+                                  AccessTokenMethod method);
+
   struct PendingBehaviorEvent {
     uint32_t accessToken = 0;
     BehaviorScanResult scanResult;
