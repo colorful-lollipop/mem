@@ -3,7 +3,7 @@
 **Date:** 2026-03-11
 
 ## Goal
-Make `OpenSession` the single synchronous engine-initialization entry point for the vpsdemo SA path. `AcceptLoop` remains a transport-layer mock and delegates real session creation to a server-side service object. The client no longer calls `InitEngine`.
+Make `OpenSession` the single synchronous engine-initialization entry point for the vpsdemo SA path. The SA class is named `VirusExecutorService`. `AcceptLoop` remains a transport-layer mock and delegates real session creation to a server-side service object. The client no longer calls `InitEngine`.
 
 ## Scope
 - Add a session provider service in `vpsdemo_engine_sa` that performs synchronous initialization and returns `BootstrapHandles`.
@@ -19,7 +19,7 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
 - `EngineSessionService` (server-side) owns real `OpenSession`:
   - Synchronously initializes the engine (once).
   - Returns `BootstrapHandles`.
-- `VpsBootstrapStub` is transport-only:
+- `VirusExecutorService` (renamed SA class; implements `IVpsBootstrap`) is transport-only:
   - `AcceptLoop()` calls `provider->OpenSession(&handles)`.
   - On success, sends fds + metadata via SCM_RIGHTS.
 - `VpsDemoService` initialization is driven by `EngineSessionService` rather than the client `InitEngine` RPC.
@@ -32,26 +32,27 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
     - Holds `memrpc::PosixDemoBootstrapChannel`.
     - Performs synchronous `Initialize()` once.
     - Returns `BootstrapHandles`.
-- **Update:** `demo/vpsdemo/include/vps_bootstrap_stub.h`
-- **Update:** `demo/vpsdemo/src/vps_bootstrap_stub.cpp`
+- **Rename/Update:** `demo/vpsdemo/include/vps_bootstrap_stub.h` -> `demo/vpsdemo/include/virus_executor_service.h`
+- **Rename/Update:** `demo/vpsdemo/src/vps_bootstrap_stub.cpp` -> `demo/vpsdemo/src/virus_executor_service.cpp`
   - Inject `VpsSessionProvider`.
   - `AcceptLoop()` calls provider `OpenSession()` then sends fds.
 - **Update:** `demo/vpsdemo/src/vpsdemo_engine_sa.cpp`
   - Construct `EngineSessionService`.
-  - Inject into `VpsBootstrapStub`.
+  - Inject into `VirusExecutorService`.
 - **Update:** `demo/vpsdemo/include/vpsdemo_service.h`
 - **Update:** `demo/vpsdemo/src/vpsdemo_service.cpp`
   - Add `Initialize()` (synchronous, idempotent).
   - `DemoInit` handler may call `Initialize()` to remain compatible.
 - **Update:** `demo/vpsdemo/src/vpsdemo_client.cpp`
   - Remove `InitEngine()` call.
+ - **Unchanged names:** `IVpsBootstrap`, `VPS_BOOTSTRAP_SA_ID`, `VpsBootstrapProxy`.
 
 ## Data Flow
 1. `VpsClient::Init()` -> `RpcClient::Init()` -> `bootstrap->OpenSession()`.
 2. `VpsBootstrapProxy` connects and sends the open command.
-3. `VpsBootstrapStub::AcceptLoop()` calls `provider->OpenSession(&handles)`.
+3. `VirusExecutorService::AcceptLoop()` calls `provider->OpenSession(&handles)`.
 4. `EngineSessionService::OpenSession()` synchronously initializes the engine (once) and returns handles.
-5. Stub sends handles via SCM_RIGHTS.
+5. `VirusExecutorService` sends handles via SCM_RIGHTS.
 6. `RpcClient` attaches and processes RPCs; client no longer calls `InitEngine`.
 
 ## Error Handling
