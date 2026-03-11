@@ -12,6 +12,9 @@ execute_process(
           ${CMAKE_BINARY_DIR}/compile_commands.json
           ${CMAKE_SOURCE_DIR}/compile_commands.json)
 
+option(MEMRPC_ENABLE_STRESS_TESTS "Enable stress test targets" OFF)
+option(MEMRPC_ENABLE_FUZZ "Enable fuzz targets" OFF)
+
 enable_testing()
 
 find_package(GTest REQUIRED)

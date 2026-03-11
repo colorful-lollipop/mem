@@ -1,4 +1,8 @@
 build/
+build_stress/
+build_fuzz/
+build_asan/
+stress_out/
 out/
 dist/
 .cache/

@@ -17,7 +17,9 @@ EchoReply MiniRpcService::Echo(const EchoRequest& request) const {
 
 AddReply MiniRpcService::Add(const AddRequest& request) const {
   AddReply reply;
-  reply.sum = request.lhs + request.rhs;
+  // Use unsigned arithmetic to avoid signed overflow UB, then cast back.
+  reply.sum = static_cast<int32_t>(
+      static_cast<uint32_t>(request.lhs) + static_cast<uint32_t>(request.rhs));
   return reply;
 }
 
