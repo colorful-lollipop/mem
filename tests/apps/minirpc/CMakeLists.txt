@@ -21,6 +21,8 @@ minirpc_add_test(memrpc_minirpc_dfx_test
 if (MEMRPC_ENABLE_DT_TESTS)
   minirpc_add_test(memrpc_minirpc_dt_stability_test minirpc_dt_stability_test.cpp)
   set_tests_properties(memrpc_minirpc_dt_stability_test PROPERTIES LABELS "dt_stability")
+  minirpc_add_test(memrpc_minirpc_dt_perf_test minirpc_dt_perf_test.cpp)
+  set_tests_properties(memrpc_minirpc_dt_perf_test PROPERTIES LABELS "dt_perf")
 endif()
 
 if (MEMRPC_ENABLE_STRESS_TESTS)
