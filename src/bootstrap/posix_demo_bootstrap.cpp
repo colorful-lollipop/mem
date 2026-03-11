@@ -232,7 +232,7 @@ void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callb
   impl_->death_callback = std::move(callback);
 }
 
-BootstrapHandles PosixDemoBootstrapChannel::server_handles() const {
+BootstrapHandles PosixDemoBootstrapChannel::serverHandles() const {
   BootstrapHandles handles;
   if (!DuplicateHandles(impl_->handles, &handles)) {
     HLOGE("server_handles failed while duplicating bootstrap handles");

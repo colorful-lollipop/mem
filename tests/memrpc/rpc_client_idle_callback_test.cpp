@@ -35,7 +35,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   CloseHandles(unused_handles);
 
   RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall&, RpcServerReply* reply) {
                            reply->status = StatusCode::Ok;
@@ -68,7 +68,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   CloseHandles(unused_handles);
 
   RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall& call, RpcServerReply* reply) {
                            reply->status = StatusCode::Ok;

@@ -66,7 +66,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   CloseHandles(unused_handles);
 
   memrpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   memrpc::ServerOptions options;
   options.high_worker_threads = thread_count;
   options.normal_worker_threads = thread_count;

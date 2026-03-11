@@ -51,7 +51,7 @@ TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
@@ -86,7 +86,7 @@ TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1});
   MiniRpcService service;
   service.RegisterHandlers(&server);
@@ -121,7 +121,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   const pid_t first_child = fork();
   ASSERT_GE(first_child, 0);
   if (first_child == 0) {
-    RunMiniRpcServerProcess(bootstrap->server_handles());
+    RunMiniRpcServerProcess(bootstrap->serverHandles());
   }
 
   MemRpc::RpcClient client(bootstrap);
@@ -160,7 +160,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   const pid_t second_child = fork();
   ASSERT_GE(second_child, 0);
   if (second_child == 0) {
-    RunMiniRpcServerProcess(bootstrap->server_handles());
+    RunMiniRpcServerProcess(bootstrap->serverHandles());
   }
 
   EchoRequest echo_request;
@@ -190,7 +190,7 @@ TEST(MiniRpcClientTest, TypedThenDecodesReply) {
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);

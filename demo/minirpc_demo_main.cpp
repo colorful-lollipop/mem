@@ -50,7 +50,7 @@ int main() {
   close(unused_handles.req_credit_event_fd);
   close(unused_handles.resp_credit_event_fd);
 
-  const Mem::BootstrapHandles server_handles = bootstrap->server_handles();
+  const Mem::BootstrapHandles server_handles = bootstrap->serverHandles();
   const pid_t child = fork();
   if (child == 0) {
     OHOS::Security::VirusProtectionService::RunChild(server_handles);

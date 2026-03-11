@@ -84,7 +84,7 @@ TEST(MiniRpcLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);

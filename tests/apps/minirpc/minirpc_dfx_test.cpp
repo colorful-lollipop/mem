@@ -43,7 +43,7 @@ void RunMiniRpcServerProcess(MemRpc::BootstrapHandles handles) {
 pid_t ForkServer(std::shared_ptr<MemRpc::PosixDemoBootstrapChannel> bootstrap) {
     pid_t child = fork();
     if (child == 0) {
-        RunMiniRpcServerProcess(bootstrap->server_handles());
+        RunMiniRpcServerProcess(bootstrap->serverHandles());
     }
     return child;
 }

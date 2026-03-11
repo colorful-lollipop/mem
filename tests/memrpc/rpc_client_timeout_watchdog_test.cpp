@@ -35,7 +35,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   CloseHandles(unused_handles);
 
   RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall&, RpcServerReply* reply) {
                            // Sleep long enough that exec timeout fires.
@@ -87,7 +87,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   // the first request occupying the only worker thread, so subsequent
   // requests stay queued.
   RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   std::atomic<bool> server_started{false};
   server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [&](const RpcServerCall&, RpcServerReply* reply) {

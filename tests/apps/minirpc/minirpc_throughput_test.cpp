@@ -242,7 +242,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   }
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   MemRpc::ServerOptions options;
   options.high_worker_threads = static_cast<uint32_t>(thread_count);
   options.normal_worker_threads = static_cast<uint32_t>(thread_count);

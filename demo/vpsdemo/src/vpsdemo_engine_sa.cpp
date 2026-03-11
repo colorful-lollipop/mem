@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     close(clientHandles.req_credit_event_fd);
     close(clientHandles.resp_credit_event_fd);
 
-    const memrpc::BootstrapHandles serverHandles = bootstrap->server_handles();
+    const memrpc::BootstrapHandles serverHandles = bootstrap->serverHandles();
 
     // Start memrpc RPC server with demo handlers.
     memrpc::RpcServer rpcServer(serverHandles);

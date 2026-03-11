@@ -28,7 +28,7 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
   StatusCode CloseSession() override;
   void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
-  BootstrapHandles server_handles() const;
+  BootstrapHandles serverHandles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
  private:

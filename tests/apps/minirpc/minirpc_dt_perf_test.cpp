@@ -133,7 +133,7 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->serverHandles());
   MemRpc::ServerOptions options;
   options.high_worker_threads = thread_count;
   options.normal_worker_threads = thread_count;

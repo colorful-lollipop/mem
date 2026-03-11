@@ -33,7 +33,7 @@ BootstrapHandles SaBootstrapChannel::server_handles() const {
   if (impl_->fallback == nullptr) {
     return {};
   }
-  return impl_->fallback->server_handles();
+  return impl_->fallback->serverHandles();
 }
 
 void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
