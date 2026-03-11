@@ -9,7 +9,6 @@
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/bootstrap.h"
 #include "registry_client.h"
-#include "vps_bootstrap_interface.h"
 #include "vps_bootstrap_proxy.h"
 #include "vpsdemo_codec.h"
 #include "vpsdemo_protocol.h"
@@ -23,7 +22,7 @@ const char* kRegistrySocketEnv = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 class VpsDeathRecipient : public OHOS::IRemoteObject::DeathRecipient {
  public:
     void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>& remote) override {
-        HLOGI("death callback: engine died");
+        HLOGI("death callback: engine died (OHOS path)");
         died_ = true;
     }
     bool died() const { return died_; }
@@ -110,30 +109,9 @@ VpsSession ConnectToEngine(const std::string& registrySocket) {
     auto proxy = std::make_shared<vpsdemo::VpsBootstrapProxy>(remoteObj, servicePath);
     remoteObj->AttachBroker(std::dynamic_pointer_cast<OHOS::IRemoteBroker>(proxy));
 
-    memrpc::BootstrapHandles handles;
-    auto status = proxy->OpenSession(&handles);
-    if (status != memrpc::StatusCode::Ok) {
-        HLOGE("OpenSession failed: %{public}d", static_cast<int>(status));
-        return session;
-    }
-    HLOGI("OpenSession ok, session_id=%{public}lu",
-          static_cast<unsigned long>(handles.session_id));
-
-    class HandleBootstrap : public memrpc::IBootstrapChannel {
-     public:
-        explicit HandleBootstrap(const memrpc::BootstrapHandles& h) : handles_(h) {}
-        memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* out) override {
-            if (out == nullptr) return memrpc::StatusCode::InvalidArgument;
-            *out = handles_;
-            return memrpc::StatusCode::Ok;
-        }
-        memrpc::StatusCode CloseSession() override { return memrpc::StatusCode::Ok; }
-        void SetEngineDeathCallback(memrpc::EngineDeathCallback) override {}
-     private:
-        memrpc::BootstrapHandles handles_;
-    };
-
-    auto bootstrap = std::make_shared<HandleBootstrap>(handles);
+    // Proxy implements IBootstrapChannel — RpcClient::Init() will call
+    // proxy->OpenSession() and proxy->SetEngineDeathCallback() internally.
+    auto bootstrap = std::shared_ptr<memrpc::IBootstrapChannel>(proxy, static_cast<memrpc::IBootstrapChannel*>(proxy.get()));
     auto rpcClient = std::make_unique<memrpc::RpcClient>(bootstrap);
     if (rpcClient->Init() != memrpc::StatusCode::Ok) {
         HLOGE("RpcClient init failed");

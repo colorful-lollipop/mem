@@ -1,13 +1,13 @@
 #include "vps_bootstrap_proxy.h"
 
 #include <cstring>
-#include <iostream>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <poll.h>
 #include <unistd.h>
 
 #include "scm_rights.h"
+#include "virus_protection_service_log.h"
 
 namespace vpsdemo {
 
@@ -63,7 +63,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
 
     sock_fd_ = ConnectToService(service_socket_path_);
     if (sock_fd_ < 0) {
-        std::cerr << "[proxy] connect to " << service_socket_path_ << " failed" << std::endl;
+        HLOGE("connect to %{public}s failed", service_socket_path_.c_str());
         return memrpc::StatusCode::PeerDisconnected;
     }
 
@@ -98,6 +98,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
     handles->resp_credit_event_fd = fds[5];
     handles->protocol_version = meta.protocol_version;
     handles->session_id = meta.session_id;
+    session_id_ = meta.session_id;
 
     // Start monitoring the socket for disconnect (death detection).
     stop_monitor_ = false;
@@ -121,6 +122,11 @@ memrpc::StatusCode VpsBootstrapProxy::CloseSession() {
     return memrpc::StatusCode::Ok;
 }
 
+void VpsBootstrapProxy::SetEngineDeathCallback(memrpc::EngineDeathCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    death_callback_ = std::move(callback);
+}
+
 void VpsBootstrapProxy::MonitorSocket() {
     struct pollfd pfd{};
     pfd.fd = sock_fd_;
@@ -133,7 +139,15 @@ void VpsBootstrapProxy::MonitorSocket() {
             char buf;
             ssize_t n = recv(sock_fd_, &buf, 1, MSG_PEEK | MSG_DONTWAIT);
             if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-                // Peer disconnected — trigger death recipients.
+                // Peer disconnected.
+                // Framework path — RpcClient will clean up session and fail pending futures.
+                {
+                    std::lock_guard<std::mutex> lock(callback_mutex_);
+                    if (death_callback_) {
+                        death_callback_(session_id_);
+                    }
+                }
+                // OHOS path — trigger DeathRecipients registered on the remote object.
                 auto object = AsObject();
                 if (object != nullptr) {
                     object->NotifyRemoteDiedForTest();
