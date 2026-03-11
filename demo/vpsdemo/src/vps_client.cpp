@@ -78,7 +78,7 @@ void VpsClient::Shutdown() {
     client_.Shutdown();
 }
 
-bool VpsClient::engine_died() const {
+bool VpsClient::EngineDied() const {
     return death_recipient_ != nullptr && death_recipient_->died();
 }
 

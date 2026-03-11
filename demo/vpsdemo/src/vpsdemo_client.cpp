@@ -104,7 +104,7 @@ int main() {
     sam->UnloadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    HLOGI("engine_died: %{public}s", client->engine_died() ? "true" : "false");
+    HLOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
 
     // --- Restart: load again ---
     HLOGI("=== Second session (after restart) ===");
@@ -125,5 +125,5 @@ int main() {
     }
 
     HLOGI("=== Done ===");
-    return client->engine_died() ? 0 : 1;
+    return client->EngineDied() ? 0 : 1;
 }

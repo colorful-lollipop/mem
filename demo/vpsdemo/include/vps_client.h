@@ -36,7 +36,7 @@ class VpsClient {
     memrpc::StatusCode UpdateFeatureLib(UpdateFeatureLibReply* reply);
 
     // Returns true after the engine process has died.
-    bool engine_died() const;
+    bool EngineDied() const;
 
  private:
     class DeathRecipientImpl;
