@@ -58,6 +58,9 @@ Add executable `vpsdemo_stress_client`:
   - If `shouldCrash` and `--include-crash` not set, skip.
   - Issue `ScanFile`; validate `threat_level` matches expectation.
 - Track `ok`, `mismatch`, `rpc_error`; return non-zero on any mismatch/error.
+- Default to self-hosting: start a `RegistryServer` and spawn `vpsdemo_engine_sa`
+  (similar to `vpsdemo_supervisor`). Optional flag can attach to an already
+  running registry/engine instead.
 
 ## Error Handling
 
@@ -66,5 +69,5 @@ Add executable `vpsdemo_stress_client`:
 
 ## Testing
 
-- Manual only: run `vpsdemo_supervisor` in one terminal, then
+- Manual only (self-host): run
   `vpsdemo_stress_client --threads 8 --iterations 200`.
