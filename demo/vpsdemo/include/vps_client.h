@@ -13,12 +13,19 @@
 
 namespace vpsdemo {
 
+struct VpsClientOptions {
+    uint32_t execTimeoutRestartDelayMs = 200;
+    uint32_t engineDeathRestartDelayMs = 200;
+    uint32_t idleRestartDelayMs = 0;
+};
+
 // Application-level client that owns the full connection to the engine:
 // IRemoteObject + VpsBootstrapProxy + RpcClient.
 // Provides typed VPS business methods.
 class VpsClient {
  public:
-    explicit VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote);
+    explicit VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+                       VpsClientOptions options = {});
     ~VpsClient();
 
     VpsClient(const VpsClient&) = delete;
@@ -45,6 +52,7 @@ class VpsClient {
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     std::shared_ptr<VpsBootstrapProxy> proxy_;
     memrpc::RpcClient client_;
+    VpsClientOptions options_;
     std::atomic<bool> engine_died_{false};
     EngineRestartCallback restart_callback_;
 };

@@ -51,12 +51,15 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   FailureStage captured_stage = FailureStage::Admission;
   StatusCode captured_status = StatusCode::Ok;
   ReplayHint captured_hint = ReplayHint::Unknown;
-  client.SetFailureCallback([&](const RpcFailure& failure) {
+  RecoveryPolicy policy;
+  policy.onFailure = [&](const RpcFailure& failure) {
     got_failure.store(true);
     captured_stage = failure.stage;
     captured_status = failure.status;
     captured_hint = failure.replay_hint;
-  });
+    return RecoveryDecision{RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   RpcCall call;
   call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
@@ -118,13 +121,16 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   std::atomic<bool> got_failure{false};
   StatusCode captured_status = StatusCode::Ok;
   ReplayHint captured_hint = ReplayHint::Unknown;
-  client.SetFailureCallback([&](const RpcFailure& failure) {
+  RecoveryPolicy policy2;
+  policy2.onFailure = [&](const RpcFailure& failure) {
     if (failure.stage == FailureStage::Timeout) {
       got_failure.store(true);
       captured_status = failure.status;
       captured_hint = failure.replay_hint;
     }
-  });
+    return RecoveryDecision{RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy2));
 
   RpcCall queued_call;
   queued_call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);

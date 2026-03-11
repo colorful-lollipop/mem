@@ -101,9 +101,6 @@ struct RpcFailure {
   RpcRuntimeState last_runtime_state = RpcRuntimeState::Unknown;
 };
 
-using RpcFailureCallback = std::function<void(const RpcFailure&)>;
-using RpcIdleCallback = std::function<void(uint64_t idle_ms)>;
-
 struct EngineDeathReport {
   uint64_t dead_session_id = 0;
   uint32_t safe_to_replay_count = 0;
@@ -116,14 +113,20 @@ struct EngineDeathReport {
   std::vector<PoisonPillSuspect> poison_pill_suspects;
 };
 
-enum class RestartAction { Abandon, Restart };
+enum class RecoveryAction { Ignore, Restart };
 
-struct RestartDecision {
-  RestartAction action = RestartAction::Restart;
+struct RecoveryDecision {
+  RecoveryAction action = RecoveryAction::Ignore;
   uint32_t delay_ms = 0;
 };
 
-using EngineDeathHandler = std::function<RestartDecision(const EngineDeathReport&)>;
+struct RecoveryPolicy {
+  std::function<RecoveryDecision(const RpcFailure&)> onFailure;
+  std::function<RecoveryDecision(uint64_t idle_ms)> onIdle;
+  std::function<RecoveryDecision(const EngineDeathReport&)> onEngineDeath;
+  uint32_t idle_timeout_ms = 0;
+  uint32_t idle_notify_interval_ms = 0;
+};
 
 class RpcClient {
  public:
@@ -137,10 +140,7 @@ class RpcClient {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
-  void SetFailureCallback(RpcFailureCallback callback);
-  void SetEngineDeathHandler(EngineDeathHandler handler);
-  void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
-                       uint32_t idle_notify_interval_ms = 0);
+  void SetRecoveryPolicy(RecoveryPolicy policy);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
   StatusCode Init();
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
@@ -166,10 +166,7 @@ class RpcSyncClient {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
-  void SetFailureCallback(RpcFailureCallback callback);
-  void SetEngineDeathHandler(EngineDeathHandler handler);
-  void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
-                       uint32_t idle_notify_interval_ms = 0);
+  void SetRecoveryPolicy(RecoveryPolicy policy);
   StatusCode Init();
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
   RpcClientRuntimeStats GetRuntimeStats() const;

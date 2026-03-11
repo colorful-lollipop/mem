@@ -50,10 +50,13 @@ TEST(EngineDeathHandlerTest, NoHandlerBackwardCompat) {
 
   std::mutex mutex;
   std::vector<MemRpc::RpcFailure> failures;
-  client.SetFailureCallback([&](const MemRpc::RpcFailure& f) {
+  MemRpc::RecoveryPolicy policy;
+  policy.onFailure = [&](const MemRpc::RpcFailure& f) {
     std::lock_guard<std::mutex> lock(mutex);
     failures.push_back(f);
-  });
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   // Init will fail to create a real session (no shm_fd), but InvokeAsync
   // will produce ready futures with failure status. This test verifies
@@ -66,16 +69,18 @@ TEST(EngineDeathHandlerTest, NoHandlerBackwardCompat) {
   client.Shutdown();
 }
 
-// With handler returning Abandon, all futures should fail.
+// With handler returning Ignore, all futures should fail.
 TEST(EngineDeathHandlerTest, AbandonFailsAll) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);
 
   bool handler_called = false;
-  client.SetEngineDeathHandler([&](const MemRpc::EngineDeathReport& report) {
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport& report) {
     handler_called = true;
-    return MemRpc::RestartDecision{MemRpc::RestartAction::Abandon, 0};
-  });
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   auto future = client.InvokeAsync(MemRpc::RpcCall{});
   ASSERT_TRUE(future.IsReady());
@@ -91,10 +96,12 @@ TEST(EngineDeathHandlerTest, RestartHandlerCallable) {
   MemRpc::RpcClient client(bootstrap);
 
   std::atomic<bool> handler_called{false};
-  client.SetEngineDeathHandler([&](const MemRpc::EngineDeathReport& report) {
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport& report) {
     handler_called.store(true);
-    return MemRpc::RestartDecision{MemRpc::RestartAction::Restart, 0};
-  });
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   auto future = client.InvokeAsync(MemRpc::RpcCall{});
   ASSERT_TRUE(future.IsReady());
@@ -126,23 +133,25 @@ TEST(EngineDeathHandlerTest, EngineDeathReportLayout) {
   EXPECT_EQ(suspect.last_state, MemRpc::RpcRuntimeState::Unknown);
 }
 
-// Verify RestartDecision defaults.
-TEST(EngineDeathHandlerTest, RestartDecisionDefaults) {
-  MemRpc::RestartDecision decision;
-  EXPECT_EQ(decision.action, MemRpc::RestartAction::Restart);
+// Verify RecoveryDecision defaults.
+TEST(EngineDeathHandlerTest, RecoveryDecisionDefaults) {
+  MemRpc::RecoveryDecision decision;
+  EXPECT_EQ(decision.action, MemRpc::RecoveryAction::Ignore);
   EXPECT_EQ(decision.delay_ms, 0u);
 }
 
-// Verify SetEngineDeathHandler on RpcSyncClient compiles and runs.
-TEST(EngineDeathHandlerTest, SyncClientSetEngineDeathHandler) {
+// Verify SetRecoveryPolicy on RpcSyncClient compiles and runs.
+TEST(EngineDeathHandlerTest, SyncClientSetRecoveryPolicy) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcSyncClient client(bootstrap);
 
   bool called = false;
-  client.SetEngineDeathHandler([&](const MemRpc::EngineDeathReport&) {
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport&) {
     called = true;
-    return MemRpc::RestartDecision{MemRpc::RestartAction::Abandon, 0};
-  });
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   MemRpc::RpcCall call;
   call.opcode = kTestOpcode;
@@ -157,9 +166,11 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);
 
-  client.SetEngineDeathHandler([](const MemRpc::EngineDeathReport&) {
-    return MemRpc::RestartDecision{MemRpc::RestartAction::Restart, 5000};
-  });
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 5000};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   auto future = client.InvokeAsync(MemRpc::RpcCall{});
   ASSERT_TRUE(future.IsReady());

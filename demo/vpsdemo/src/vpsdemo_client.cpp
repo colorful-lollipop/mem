@@ -87,7 +87,7 @@ int main() {
     client->ScanFile("/data/test_file_2.apk", &scanReply);
     HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 
-    // Request engine unload (triggers death callback via SetEngineDeathHandler).
+    // Request engine unload (triggers death callback via RecoveryPolicy).
     HLOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->UnloadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);

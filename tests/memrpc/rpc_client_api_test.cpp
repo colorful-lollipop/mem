@@ -169,11 +169,14 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   std::mutex mutex;
   MemRpc::RpcFailure captured{};
   int calls = 0;
-  client.SetFailureCallback([&](const MemRpc::RpcFailure& failure) {
+  MemRpc::RecoveryPolicy policy;
+  policy.onFailure = [&](const MemRpc::RpcFailure& failure) {
     std::lock_guard<std::mutex> lock(mutex);
     captured = failure;
     ++calls;
-  });
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   MemRpc::RpcCall call;
   call.opcode = kTestOpcode;

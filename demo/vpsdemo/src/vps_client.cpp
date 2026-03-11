@@ -10,9 +10,11 @@
 
 namespace vpsdemo {
 
-VpsClient::VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote)
+VpsClient::VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+                     VpsClientOptions options)
     : remote_(remote),
-      client_() {}
+      client_(),
+      options_(options) {}
 
 VpsClient::~VpsClient() = default;
 
@@ -43,7 +45,14 @@ memrpc::StatusCode VpsClient::Init() {
     // Set the bootstrap channel on the RpcClient.
     client_.SetBootstrapChannel(std::static_pointer_cast<memrpc::IBootstrapChannel>(proxy_));
 
-    client_.SetEngineDeathHandler([this](const memrpc::EngineDeathReport& report) {
+    memrpc::RecoveryPolicy policy;
+    policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const memrpc::RpcFailure& failure) {
+        if (failure.status == memrpc::StatusCode::ExecTimeout) {
+            return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, delay};
+        }
+        return memrpc::RecoveryDecision{memrpc::RecoveryAction::Ignore, 0};
+    };
+    policy.onEngineDeath = [this](const memrpc::EngineDeathReport& report) {
         HLOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
               static_cast<unsigned long long>(report.dead_session_id),
               report.safe_to_replay_count,
@@ -58,8 +67,14 @@ memrpc::StatusCode VpsClient::Init() {
         if (restart_callback_) {
             restart_callback_();
         }
-        return memrpc::RestartDecision{memrpc::RestartAction::Restart, 500};
-    });
+        return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, options_.engineDeathRestartDelayMs};
+    };
+    if (options_.idleRestartDelayMs > 0) {
+        policy.onIdle = [delay = options_.idleRestartDelayMs](uint64_t) {
+            return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, delay};
+        };
+    }
+    client_.SetRecoveryPolicy(std::move(policy));
 
     return client_.Init();
 }

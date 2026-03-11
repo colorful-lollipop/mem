@@ -44,11 +44,16 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
 
   RpcClient client(bootstrap);
   std::atomic<int> idle_hits{0};
-  client.SetIdleCallback([&](uint64_t idle_ms) {
+  RecoveryPolicy policy;
+  policy.idle_timeout_ms = 50;
+  policy.idle_notify_interval_ms = 20;
+  policy.onIdle = [&](uint64_t idle_ms) {
     if (idle_ms > 0) {
       idle_hits.fetch_add(1);
     }
-  }, 50, 20);
+    return RecoveryDecision{RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
 
   ASSERT_EQ(client.Init(), StatusCode::Ok);
 
@@ -78,9 +83,14 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
 
   RpcClient client(bootstrap);
   std::atomic<int> idle_hits{0};
-  client.SetIdleCallback([&](uint64_t) {
+  RecoveryPolicy policy;
+  policy.idle_timeout_ms = 50;
+  policy.idle_notify_interval_ms = 20;
+  policy.onIdle = [&](uint64_t) {
     idle_hits.fetch_add(1);
-  }, 50, 20);
+    return RecoveryDecision{RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
   ASSERT_EQ(client.Init(), StatusCode::Ok);
 
   // Send requests periodically to keep the client active.

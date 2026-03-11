@@ -194,22 +194,18 @@ struct RpcClient::Impl {
   std::atomic<uint64_t> next_request_id{1};
   std::mutex event_mutex;
   RpcEventCallback event_callback;
-  std::mutex failure_mutex;
-  RpcFailureCallback failure_callback;
+  std::mutex policy_mutex;
+  RecoveryPolicy recovery_policy;
   std::atomic<uint64_t> current_session_id{0};
   std::atomic<bool> session_dead{true};
   std::atomic<bool> session_live{false};
   std::thread watchdog_thread;
   std::atomic<bool> watchdog_running{false};
-  std::mutex idle_mutex;
-  RpcIdleCallback idle_callback;
-  uint32_t idle_timeout_ms{0};
-  uint32_t idle_notify_interval_ms{0};
   std::atomic<uint32_t> last_activity_mono_ms{0};
   uint32_t last_idle_notify_mono_ms{0};
-  std::mutex death_handler_mutex;
-  EngineDeathHandler death_handler;
   std::thread restart_thread;
+  std::atomic<bool> restart_pending{false};
+  std::atomic<bool> suppress_death_callback{false};
 
   RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
@@ -239,12 +235,12 @@ struct RpcClient::Impl {
     if (status == StatusCode::Ok) {
       return;
     }
-    RpcFailureCallback callback;
+    std::function<RecoveryDecision(const RpcFailure&)> on_failure;
     {
-      std::lock_guard<std::mutex> lock(failure_mutex);
-      callback = failure_callback;
+      std::lock_guard<std::mutex> lock(policy_mutex);
+      on_failure = recovery_policy.onFailure;
     }
-    if (!callback) {
+    if (!on_failure) {
       return;
     }
     RpcFailure failure;
@@ -261,7 +257,10 @@ struct RpcClient::Impl {
     failure.stage = stage;
     failure.replay_hint = info.replay_hint;
     failure.last_runtime_state = info.last_runtime_state;
-    callback(failure);
+    RecoveryDecision decision = on_failure(failure);
+    if (decision.action == RecoveryAction::Restart) {
+      RequestForcedRestart(decision.delay_ms);
+    }
   }
 
   void FailAndResolve(const PendingInfo& info, StatusCode status, FailureStage stage,
@@ -373,9 +372,9 @@ struct RpcClient::Impl {
       uint32_t cur_idle_timeout_ms = 0;
       uint32_t cur_idle_notify_interval_ms = 0;
       {
-        std::lock_guard<std::mutex> lock(idle_mutex);
-        cur_idle_timeout_ms = idle_timeout_ms;
-        cur_idle_notify_interval_ms = idle_notify_interval_ms;
+        std::lock_guard<std::mutex> lock(policy_mutex);
+        cur_idle_timeout_ms = recovery_policy.idle_timeout_ms;
+        cur_idle_notify_interval_ms = recovery_policy.idle_notify_interval_ms;
       }
       if (cur_idle_timeout_ms > 0 && cur_idle_notify_interval_ms > 0) {
         const uint32_t now_ms = MonotonicNowMs();
@@ -385,13 +384,16 @@ struct RpcClient::Impl {
           if (last_idle_notify_mono_ms == 0 ||
               now_ms - last_idle_notify_mono_ms >= cur_idle_notify_interval_ms) {
             last_idle_notify_mono_ms = now_ms;
-            RpcIdleCallback cb;
+            std::function<RecoveryDecision(uint64_t)> on_idle;
             {
-              std::lock_guard<std::mutex> lock(idle_mutex);
-              cb = idle_callback;
+              std::lock_guard<std::mutex> lock(policy_mutex);
+              on_idle = recovery_policy.onIdle;
             }
-            if (cb) {
-              cb(idle_ms);
+            if (on_idle) {
+              RecoveryDecision decision = on_idle(idle_ms);
+              if (decision.action == RecoveryAction::Restart) {
+                RequestForcedRestart(decision.delay_ms);
+              }
             }
           }
         } else {
@@ -582,8 +584,66 @@ struct RpcClient::Impl {
     submit_cv.notify_one();
   }
 
+  void RequestForcedRestart(uint32_t delay_ms) {
+    if (restart_pending.exchange(true)) {
+      return;  // Another restart already in progress.
+    }
+    if (shutting_down.load()) {
+      restart_pending.store(false);
+      return;
+    }
+    // Snapshot replayable requests and tear down the session.
+    StopDispatcher();
+    ReplayableSnapshot snapshot;
+    {
+      std::lock_guard<std::mutex> lock(session_mutex);
+      for (size_t i = 0; i < pending_info_slots.size(); ++i) {
+        if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
+          continue;
+        }
+        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+        if (payload != nullptr) {
+          pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+          pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
+        }
+      }
+      snapshot = SaveReplayableRequests();
+      session_live.store(false, std::memory_order_release);
+      session_dead = true;
+      current_session_id = 0;
+      session.Reset();
+      slot_pool.reset();
+    }
+
+    // Fail poison-pill futures.
+    for (auto& pe : snapshot.poison_list) {
+      NotifyFailure(pe.info, StatusCode::CrashedDuringExecution, FailureStage::Session);
+      ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
+    }
+
+    // Close the existing session (suppress death callback to avoid re-entry).
+    suppress_death_callback.store(true);
+    if (bootstrap != nullptr) {
+      bootstrap->CloseSession();
+    }
+    suppress_death_callback.store(false);
+
+    // Spawn restart thread.
+    if (restart_thread.joinable()) {
+      restart_thread.join();
+    }
+    restart_thread = std::thread([this, delay = delay_ms,
+                                  saved = std::move(snapshot.replay_list)]() mutable {
+      RestartAfterDeath(delay, std::move(saved));
+      restart_pending.store(false);
+    });
+  }
+
   void HandleEngineDeath(uint64_t dead_session_id) {
     if (shutting_down.load()) {
+      return;
+    }
+    if (suppress_death_callback.load()) {
       return;
     }
     std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
@@ -598,14 +658,14 @@ struct RpcClient::Impl {
           static_cast<unsigned long long>(dead_session_id));
     StopDispatcher();
 
-    // Check handler presence early.
-    EngineDeathHandler handler;
+    // Check policy presence early.
+    std::function<RecoveryDecision(const EngineDeathReport&)> on_engine_death;
     {
-      std::lock_guard<std::mutex> dh_lock(death_handler_mutex);
-      handler = death_handler;
+      std::lock_guard<std::mutex> lock(policy_mutex);
+      on_engine_death = recovery_policy.onEngineDeath;
     }
 
-    if (!handler) {
+    if (!on_engine_death) {
       // No handler — legacy behavior: fail everything.
       {
         std::lock_guard<std::mutex> lock(session_mutex);
@@ -665,7 +725,7 @@ struct RpcClient::Impl {
     }
 
     // Call handler.
-    RestartDecision decision = handler(report);
+    RecoveryDecision decision = on_engine_death(report);
 
     // Fail poison-pill futures with CrashedDuringExecution.
     for (auto& pe : snapshot.poison_list) {
@@ -673,7 +733,7 @@ struct RpcClient::Impl {
       ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
     }
 
-    if (decision.action == RestartAction::Abandon) {
+    if (decision.action == RecoveryAction::Ignore) {
       // Fail all replay-safe futures too.
       for (auto& ps : snapshot.replay_list) {
         PendingInfo info = MakePendingInfo(ps);
@@ -1304,22 +1364,9 @@ void RpcClient::SetEventCallback(RpcEventCallback callback) {
   impl_->event_callback = std::move(callback);
 }
 
-void RpcClient::SetFailureCallback(RpcFailureCallback callback) {
-  std::lock_guard<std::mutex> lock(impl_->failure_mutex);
-  impl_->failure_callback = std::move(callback);
-}
-
-void RpcClient::SetEngineDeathHandler(EngineDeathHandler handler) {
-  std::lock_guard<std::mutex> lock(impl_->death_handler_mutex);
-  impl_->death_handler = std::move(handler);
-}
-
-void RpcClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
-                                uint32_t idle_notify_interval_ms) {
-  std::lock_guard<std::mutex> lock(impl_->idle_mutex);
-  impl_->idle_callback = std::move(callback);
-  impl_->idle_timeout_ms = idle_timeout_ms;
-  impl_->idle_notify_interval_ms = idle_notify_interval_ms;
+void RpcClient::SetRecoveryPolicy(RecoveryPolicy policy) {
+  std::lock_guard<std::mutex> lock(impl_->policy_mutex);
+  impl_->recovery_policy = std::move(policy);
 }
 
 StatusCode RpcClient::Init() {
@@ -1412,17 +1459,8 @@ void RpcSyncClient::SetEventCallback(RpcEventCallback callback) {
   client_.SetEventCallback(std::move(callback));
 }
 
-void RpcSyncClient::SetFailureCallback(RpcFailureCallback callback) {
-  client_.SetFailureCallback(std::move(callback));
-}
-
-void RpcSyncClient::SetEngineDeathHandler(EngineDeathHandler handler) {
-  client_.SetEngineDeathHandler(std::move(handler));
-}
-
-void RpcSyncClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
-                                    uint32_t idle_notify_interval_ms) {
-  client_.SetIdleCallback(std::move(callback), idle_timeout_ms, idle_notify_interval_ms);
+void RpcSyncClient::SetRecoveryPolicy(RecoveryPolicy policy) {
+  client_.SetRecoveryPolicy(std::move(policy));
 }
 
 StatusCode RpcSyncClient::Init() {
