@@ -4,18 +4,60 @@
 
 **Goal:** Add short-duration DT stability and performance regression tests for memrpc and minirpc, with per-machine baselines under `build/`.
 
-**Architecture:** Add four new GTest binaries (memrpc/minirpc stability + perf). Each perf test records ops/s and p99 latency, compares against a per-machine baseline file, and auto-updates only on improvement. Stability tests run short randomized workloads with progress watchdogs.
+**Architecture:** Add four new GTest binaries (memrpc/minirpc stability + perf). Each perf test records ops/s and p99 latency, compares against a per-machine baseline file, and auto-updates only on improvement. Stability tests run short randomized workloads with progress watchdogs. To honor "independent build first", DT tests are gated by a CMake option (`MEMRPC_ENABLE_DT_TESTS`) that is OFF during phase 1, verified in a dedicated build dir (`build-dt`), then flipped ON in a final phase to join mainline build.
 
 **Tech Stack:** C++17, GTest, CMake/CTest.
 
 ---
+
+### Task 0: Add DT test build gate (phase 1)
+
+**Files:**
+- Modify: `CMakeLists.txt`
+- Modify: `tests/memrpc/CMakeLists.txt`
+- Modify: `tests/apps/minirpc/CMakeLists.txt`
+
+**Step 1: Add a DT test CMake option (default OFF for phase 1)**
+
+Add a new option next to the existing stress/fuzz options:
+
+```cmake
+option(MEMRPC_ENABLE_DT_TESTS "Enable DT stability/perf tests" OFF)
+```
+
+**Step 2: Add DT test guard blocks (empty placeholders for now)**
+
+Add empty `if (MEMRPC_ENABLE_DT_TESTS)` blocks in the two test CMakeLists so later tasks can insert DT targets under the guard:
+
+```cmake
+if (MEMRPC_ENABLE_DT_TESTS)
+  # DT stability/perf tests (added in later tasks).
+endif()
+```
+
+**Step 3: Configure dedicated DT build directory**
+
+Run:
+
+```bash
+cmake -S . -B build-dt -DMEMRPC_ENABLE_DT_TESTS=ON
+```
+
+Expected: configure succeeds.
+
+**Step 4: Commit**
+
+```bash
+git add CMakeLists.txt tests/memrpc/CMakeLists.txt tests/apps/minirpc/CMakeLists.txt
+git commit -m "feat: add dt test build option"
+```
 
 ### Task 1: Add memrpc DT stability test
 
 **Files:**
 - Create: `tests/memrpc/dt_stability_test.cpp`
 - Modify: `tests/memrpc/CMakeLists.txt`
-- Test: `ctest --test-dir build -R memrpc_dt_stability_test -V`
+- Test: `ctest --test-dir build-dt -R memrpc_dt_stability_test -V`
 
 **Step 1: Write the failing test**
 
@@ -34,8 +76,8 @@ TEST(DtStabilityTest, Runs) {
 Run:
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_dt_stability_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_dt_stability_test -V
 ```
 
 Expected: test fails with "intentional failure".
@@ -187,13 +229,22 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
 }
 ```
 
+Update `tests/memrpc/CMakeLists.txt` to register the DT test under the guard and add the label:
+
+```cmake
+if (MEMRPC_ENABLE_DT_TESTS)
+  memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)
+  set_tests_properties(memrpc_dt_stability_test PROPERTIES LABELS "dt_stability")
+endif()
+```
+
 **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_dt_stability_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_dt_stability_test -V
 ```
 
 Expected: PASS.
@@ -212,7 +263,7 @@ git commit -m "feat: add memrpc dt stability test"
 **Files:**
 - Create: `tests/memrpc/dt_perf_test.cpp`
 - Modify: `tests/memrpc/CMakeLists.txt`
-- Test: `ctest --test-dir build -R memrpc_dt_perf_test -V`
+- Test: `ctest --test-dir build-dt -R memrpc_dt_perf_test -V`
 
 **Step 1: Write the failing test**
 
@@ -229,8 +280,8 @@ TEST(DtPerfTest, Runs) {
 Run:
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_dt_perf_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_dt_perf_test -V
 ```
 
 Expected: FAIL with "intentional failure".
@@ -487,11 +538,20 @@ TEST(DtPerfTest, ShortPerfBaseline) {
 }
 ```
 
+Update `tests/memrpc/CMakeLists.txt` to register the DT perf test under the guard and add the label:
+
+```cmake
+if (MEMRPC_ENABLE_DT_TESTS)
+  memrpc_add_test(memrpc_dt_perf_test dt_perf_test.cpp)
+  set_tests_properties(memrpc_dt_perf_test PROPERTIES LABELS "dt_perf")
+endif()
+```
+
 **Step 4: Run test to verify it passes**
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_dt_perf_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_dt_perf_test -V
 ```
 
 Expected: PASS, baseline file created/updated under `build/perf_baselines/`.
@@ -510,7 +570,7 @@ git commit -m "feat: add memrpc dt perf test"
 **Files:**
 - Create: `tests/apps/minirpc/minirpc_dt_stability_test.cpp`
 - Modify: `tests/apps/minirpc/CMakeLists.txt`
-- Test: `ctest --test-dir build -R memrpc_minirpc_dt_stability_test -V`
+- Test: `ctest --test-dir build-dt -R memrpc_minirpc_dt_stability_test -V`
 
 **Step 1: Write the failing test**
 
@@ -525,8 +585,8 @@ TEST(MiniRpcDtStabilityTest, Runs) {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_minirpc_dt_stability_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_minirpc_dt_stability_test -V
 ```
 
 Expected: FAIL with "intentional failure".
@@ -675,11 +735,20 @@ TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc
 ```
 
+Update `tests/apps/minirpc/CMakeLists.txt` to register the DT stability test under the guard and add the label:
+
+```cmake
+if (MEMRPC_ENABLE_DT_TESTS)
+  minirpc_add_test(memrpc_minirpc_dt_stability_test minirpc_dt_stability_test.cpp)
+  set_tests_properties(memrpc_minirpc_dt_stability_test PROPERTIES LABELS "dt_stability")
+endif()
+```
+
 **Step 4: Run test to verify it passes**
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_minirpc_dt_stability_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_minirpc_dt_stability_test -V
 ```
 
 Expected: PASS.
@@ -698,7 +767,7 @@ git commit -m "feat: add minirpc dt stability test"
 **Files:**
 - Create: `tests/apps/minirpc/minirpc_dt_perf_test.cpp`
 - Modify: `tests/apps/minirpc/CMakeLists.txt`
-- Test: `ctest --test-dir build -R memrpc_minirpc_dt_perf_test -V`
+- Test: `ctest --test-dir build-dt -R memrpc_minirpc_dt_perf_test -V`
 
 **Step 1: Write the failing test**
 
@@ -713,8 +782,8 @@ TEST(MiniRpcDtPerfTest, Runs) {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_minirpc_dt_perf_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_minirpc_dt_perf_test -V
 ```
 
 Expected: FAIL with "intentional failure".
@@ -979,11 +1048,20 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc
 ```
 
+Update `tests/apps/minirpc/CMakeLists.txt` to register the DT perf test under the guard and add the label:
+
+```cmake
+if (MEMRPC_ENABLE_DT_TESTS)
+  minirpc_add_test(memrpc_minirpc_dt_perf_test minirpc_dt_perf_test.cpp)
+  set_tests_properties(memrpc_minirpc_dt_perf_test PROPERTIES LABELS "dt_perf")
+endif()
+```
+
 **Step 4: Run test to verify it passes**
 
 ```bash
-cmake --build build
-ctest --test-dir build -R memrpc_minirpc_dt_perf_test -V
+cmake --build build-dt
+ctest --test-dir build-dt -R memrpc_minirpc_dt_perf_test -V
 ```
 
 Expected: PASS, baseline file created/updated under `build/perf_baselines/`.
@@ -993,4 +1071,43 @@ Expected: PASS, baseline file created/updated under `build/perf_baselines/`.
 ```bash
 git add tests/apps/minirpc/minirpc_dt_perf_test.cpp tests/apps/minirpc/CMakeLists.txt
 git commit -m "feat: add minirpc dt perf test"
+```
+
+---
+
+### Task 5: Enable DT tests in mainline build (phase 2)
+
+**Files:**
+- Modify: `CMakeLists.txt`
+
+**Step 1: Flip DT option default to ON**
+
+Change:
+
+```cmake
+option(MEMRPC_ENABLE_DT_TESTS "Enable DT stability/perf tests" OFF)
+```
+
+To:
+
+```cmake
+option(MEMRPC_ENABLE_DT_TESTS "Enable DT stability/perf tests" ON)
+```
+
+**Step 2: Verify dt tests appear in the main build**
+
+Run:
+
+```bash
+cmake -S . -B build
+ctest --test-dir build -N | rg -n "dt_(stability|perf)"
+```
+
+Expected: dt tests are listed.
+
+**Step 3: Commit**
+
+```bash
+git add CMakeLists.txt
+git commit -m "feat: enable dt tests in default build"
 ```
