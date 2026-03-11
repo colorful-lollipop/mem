@@ -58,6 +58,7 @@ int main() {
   }
   if (child < 0) {
     std::cerr << "fork failed" << std::endl;
+    
     return 1;
   }
 

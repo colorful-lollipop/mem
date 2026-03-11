@@ -11,7 +11,6 @@
 #include "apps/minirpc/parent/minirpc_async_client.h"
 #include "apps/minirpc/parent/minirpc_client.h"
 #include "memrpc/client/demo_bootstrap.h"
-#include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
@@ -111,13 +110,13 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
       while (std::chrono::steady_clock::now() < warmup_end) {
         EchoRequest req;
         req.text = "ping";
-        std::vector<MemRpc::RpcFuture> futures;
+        std::vector<MemRpc::TypedFuture<EchoReply>> futures;
         futures.reserve(batch_size);
         for (int j = 0; j < batch_size; ++j) {
           futures.push_back(async_client.EchoAsync(req));
         }
         for (auto& f : futures) {
-          MemRpc::RpcReply reply;
+          EchoReply reply;
           f.Wait(&reply);
         }
       }
@@ -130,14 +129,14 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
     while (std::chrono::steady_clock::now() < end_time) {
       EchoRequest req;
       req.text = "ping";
-      std::vector<MemRpc::RpcFuture> futures;
+      std::vector<MemRpc::TypedFuture<EchoReply>> futures;
       futures.reserve(batch_size);
       for (int j = 0; j < batch_size; ++j) {
         futures.push_back(async_client.EchoAsync(req));
       }
       bool all_ok = true;
       for (auto& f : futures) {
-        MemRpc::RpcReply reply;
+        EchoReply reply;
         MemRpc::StatusCode status = f.Wait(&reply);
         if (status != MemRpc::StatusCode::Ok) {
           all_ok = false;

@@ -95,7 +95,7 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
   std::string memrpc_content((std::istreambuf_iterator<char>(memrpc_stream)),
                              std::istreambuf_iterator<char>());
   EXPECT_NE(memrpc_content.find("memrpc_smoke_test"), std::string::npos);
-  EXPECT_NE(memrpc_content.find("memrpc_response_queue_event_test"), std::string::npos);
+  EXPECT_NE(memrpc_content.find("memrpc_session_test"), std::string::npos);
 
   std::ifstream minirpc_stream("/root/code/demo/mem/tests/apps/minirpc/CMakeLists.txt");
   ASSERT_TRUE(minirpc_stream.is_open());

@@ -30,7 +30,6 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
 
   BootstrapHandles server_handles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
-  void SetDupFailureAfterCountForTest(int count);
 
  private:
   struct Impl;

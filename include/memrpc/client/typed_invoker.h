@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
+#include "memrpc/client/typed_future.h"
 #include "memrpc/core/codec.h"
 
 namespace memrpc {
@@ -61,6 +62,18 @@ void Then(RpcFuture future,
         }
         cb(rpcReply.status, std::move(decoded));
     }, std::move(executor));
+}
+
+// Encode request and invoke asynchronously, returning a TypedFuture<Rep> that
+// performs owning decode at consumption time (Wait/Then).
+template <typename Req, typename Rep>
+TypedFuture<Rep> InvokeTypedAsync(RpcClient* client,
+                                  Opcode opcode,
+                                  const Req& request,
+                                  Priority priority = Priority::Normal,
+                                  uint32_t exec_timeout_ms = 30000) {
+    return TypedFuture<Rep>(
+        InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms));
 }
 
 // Synchronous convenience: encode, invoke, wait, decode — all in one call.

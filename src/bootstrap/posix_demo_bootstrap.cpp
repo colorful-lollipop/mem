@@ -29,19 +29,7 @@ uint64_t GenerateSessionId() {
   return engine();
 }
 
-int DuplicateFdWithTestHook(int fd, int* remaining_successes_before_failure) {
-  if (remaining_successes_before_failure != nullptr && *remaining_successes_before_failure == 0) {
-    errno = EMFILE;
-    return -1;
-  }
-  if (remaining_successes_before_failure != nullptr && *remaining_successes_before_failure > 0) {
-    --(*remaining_successes_before_failure);
-  }
-  return dup(fd);
-}
-
-bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target,
-                      int* remaining_successes_before_failure) {
+bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) {
   if (target == nullptr) {
     return false;
   }
@@ -59,7 +47,7 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target,
 
   size_t dup_count = 0;
   for (FdField field : kFdFields) {
-    target->*field = DuplicateFdWithTestHook(source.*field, remaining_successes_before_failure);
+    target->*field = dup(source.*field);
     if (target->*field < 0) {
       for (size_t j = 0; j < dup_count; ++j) {
         CloseFd(&(target->*kFdFields[j]));
@@ -92,7 +80,6 @@ struct PosixDemoBootstrapChannel::Impl {
   BootstrapHandles handles{};
   bool initialized = false;
   EngineDeathCallback death_callback;
-  int dup_fail_after_count = -1;
 
   void ResetHandles() {
     CloseFd(&handles.shm_fd);
@@ -230,7 +217,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
     }
   }
 
-  if (!DuplicateHandles(impl_->handles, handles, &impl_->dup_fail_after_count)) {
+  if (!DuplicateHandles(impl_->handles, handles)) {
     HLOGE("OpenSession failed while duplicating bootstrap handles");
     return StatusCode::EngineInternalError;
   }
@@ -247,7 +234,7 @@ void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callb
 
 BootstrapHandles PosixDemoBootstrapChannel::server_handles() const {
   BootstrapHandles handles;
-  if (!DuplicateHandles(impl_->handles, &handles, &impl_->dup_fail_after_count)) {
+  if (!DuplicateHandles(impl_->handles, &handles)) {
     HLOGE("server_handles failed while duplicating bootstrap handles");
   }
   return handles;
@@ -265,10 +252,6 @@ void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) 
   if (impl_->death_callback) {
     impl_->death_callback(dead_session_id);
   }
-}
-
-void PosixDemoBootstrapChannel::SetDupFailureAfterCountForTest(int count) {
-  impl_->dup_fail_after_count = count;
 }
 
 }  // namespace memrpc

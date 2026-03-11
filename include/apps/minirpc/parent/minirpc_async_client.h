@@ -5,7 +5,7 @@
 #include <memory>
 
 #include "apps/minirpc/common/minirpc_codec.h"
-#include "memrpc/client/rpc_client.h"
+#include "memrpc/client/typed_future.h"
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 
@@ -21,9 +21,9 @@ class MiniRpcAsyncClient {
 
   void SetBootstrapChannel(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap);
   MemRpc::StatusCode Init();
-  MemRpc::RpcFuture EchoAsync(const EchoRequest& request);
-  MemRpc::RpcFuture AddAsync(const AddRequest& request);
-  MemRpc::RpcFuture SleepAsync(const SleepRequest& request,
+  MemRpc::TypedFuture<EchoReply> EchoAsync(const EchoRequest& request);
+  MemRpc::TypedFuture<AddReply> AddAsync(const AddRequest& request);
+  MemRpc::TypedFuture<SleepReply> SleepAsync(const SleepRequest& request,
                                MemRpc::Priority priority = MemRpc::Priority::Normal,
                                uint32_t exec_timeout_ms = 30000);
   void Shutdown();

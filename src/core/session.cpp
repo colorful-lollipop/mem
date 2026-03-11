@@ -5,13 +5,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <atomic>
 #include <cerrno>
 #include <ctime>
 #include <cstring>
-#include <thread>
-
-#include "core/session_test_hook.h"
 
 namespace memrpc {
 
@@ -19,18 +15,6 @@ namespace {
 
 constexpr uint32_t kMaxRingEntries = 1u << 20;
 constexpr uint32_t kMaxSlotCount = 1u << 20;
-std::atomic<RingTraceCallback> g_ring_trace_callback{nullptr};
-
-uint64_t CurrentThreadToken() {
-  return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
-}
-
-void TraceRingOperation(RingTraceOperation operation) {
-  RingTraceCallback callback = g_ring_trace_callback.load(std::memory_order_relaxed);
-  if (callback != nullptr) {
-    callback(operation, CurrentThreadToken());
-  }
-}
 
 StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
   if (mutex == nullptr) {
@@ -118,8 +102,7 @@ bool ProcessIsAlive(uint32_t pid_value) {
 }
 
 template <typename EntryType>
-StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry,
-                         RingTraceOperation operation) {
+StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry) {
   if (access.cursor == nullptr || access.entries == nullptr) {
     return StatusCode::EngineInternalError;
   }
@@ -131,12 +114,11 @@ StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry,
   auto* entries = static_cast<EntryType*>(access.entries);
   entries[tail % access.cursor->capacity] = entry;
   access.cursor->tail.store(tail + 1u, std::memory_order_release);
-  TraceRingOperation(operation);
   return StatusCode::Ok;
 }
 
 template <typename EntryType>
-bool PopRingEntry(Session::RingAccess access, EntryType* entry, RingTraceOperation operation) {
+bool PopRingEntry(Session::RingAccess access, EntryType* entry) {
   if (entry == nullptr || access.cursor == nullptr || access.entries == nullptr) {
     return false;
   }
@@ -148,7 +130,6 @@ bool PopRingEntry(Session::RingAccess access, EntryType* entry, RingTraceOperati
   auto* entries = static_cast<EntryType*>(access.entries);
   *entry = entries[head % access.cursor->capacity];
   access.cursor->head.store(head + 1u, std::memory_order_release);
-  TraceRingOperation(operation);
   return true;
 }
 
@@ -412,35 +393,19 @@ void* Session::response_slot_pool_region() {
 }
 
 StatusCode Session::PushRequest(QueueKind queue, const RequestRingEntry& entry) {
-  return PushRingEntry<RequestRingEntry>(
-      ResolveRing(queue), entry,
-      queue == QueueKind::HighRequest ? RingTraceOperation::PushHighRequest
-                                      : RingTraceOperation::PushNormalRequest);
+  return PushRingEntry<RequestRingEntry>(ResolveRing(queue), entry);
 }
 
 bool Session::PopRequest(QueueKind queue, RequestRingEntry* entry) {
-  return PopRingEntry<RequestRingEntry>(
-      ResolveRing(queue), entry,
-      queue == QueueKind::HighRequest ? RingTraceOperation::PopHighRequest
-                                      : RingTraceOperation::PopNormalRequest);
+  return PopRingEntry<RequestRingEntry>(ResolveRing(queue), entry);
 }
 
 StatusCode Session::PushResponse(const ResponseRingEntry& entry) {
-  return PushRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry,
-                                          RingTraceOperation::PushResponse);
+  return PushRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 
 bool Session::PopResponse(ResponseRingEntry* entry) {
-  return PopRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry,
-                                         RingTraceOperation::PopResponse);
-}
-
-void SetRingTraceCallbackForTest(RingTraceCallback callback) {
-  g_ring_trace_callback.store(callback, std::memory_order_relaxed);
-}
-
-void ClearRingTraceCallbackForTest() {
-  g_ring_trace_callback.store(nullptr, std::memory_order_relaxed);
+  return PopRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 
 Session::RingAccess Session::ResolveRing(QueueKind queue) {

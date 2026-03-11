@@ -20,18 +20,18 @@ MemRpc::StatusCode MiniRpcAsyncClient::Init() {
   return client_.Init();
 }
 
-MemRpc::RpcFuture MiniRpcAsyncClient::EchoAsync(const EchoRequest& request) {
-  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho), request);
+MemRpc::TypedFuture<EchoReply> MiniRpcAsyncClient::EchoAsync(const EchoRequest& request) {
+  return MemRpc::InvokeTypedAsync<EchoRequest, EchoReply>(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho), request);
 }
 
-MemRpc::RpcFuture MiniRpcAsyncClient::AddAsync(const AddRequest& request) {
-  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd), request);
+MemRpc::TypedFuture<AddReply> MiniRpcAsyncClient::AddAsync(const AddRequest& request) {
+  return MemRpc::InvokeTypedAsync<AddRequest, AddReply>(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd), request);
 }
 
-MemRpc::RpcFuture MiniRpcAsyncClient::SleepAsync(const SleepRequest& request,
+MemRpc::TypedFuture<SleepReply> MiniRpcAsyncClient::SleepAsync(const SleepRequest& request,
                                                  MemRpc::Priority priority,
                                                  uint32_t exec_timeout_ms) {
-  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep), request, priority, exec_timeout_ms);
+  return MemRpc::InvokeTypedAsync<SleepRequest, SleepReply>(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep), request, priority, exec_timeout_ms);
 }
 
 void MiniRpcAsyncClient::Shutdown() {

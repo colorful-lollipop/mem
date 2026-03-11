@@ -62,10 +62,8 @@ TEST(MiniRpcClientTest, SyncAndAsyncCallsRoundTrip) {
   EchoRequest echo_request;
   echo_request.text = "ping";
   auto future = async_client.EchoAsync(echo_request);
-  MemRpc::RpcReply echo_rpc_reply;
-  ASSERT_EQ(future.WaitAndTake(&echo_rpc_reply), MemRpc::StatusCode::Ok);
   EchoReply echo_reply;
-  ASSERT_TRUE(DecodeMessage<EchoReply>(echo_rpc_reply.payload, &echo_reply));
+  ASSERT_EQ(future.Wait(&echo_reply), MemRpc::StatusCode::Ok);
   EXPECT_EQ(echo_reply.text, "ping");
 
   async_client.Shutdown();
@@ -103,11 +101,11 @@ TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
 
   SleepRequest fast_request;
   fast_request.delay_ms = 5;
-  MemRpc::RpcReply fast_reply;
+  SleepReply fast_reply;
   EXPECT_EQ(async_client.SleepAsync(fast_request, MemRpc::Priority::High, 1000).Wait(&fast_reply),
             MemRpc::StatusCode::Ok);
 
-  MemRpc::RpcReply slow_reply;
+  SleepReply slow_reply;
   EXPECT_EQ(slow_future.Wait(&slow_reply), MemRpc::StatusCode::Ok);
 
   async_client.Shutdown();
@@ -197,8 +195,8 @@ TEST(MiniRpcClientTest, TypedThenDecodesReply) {
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  MemRpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+  MiniRpcAsyncClient async_client(bootstrap);
+  ASSERT_EQ(async_client.Init(), MemRpc::StatusCode::Ok);
 
   EchoRequest req;
   req.text = "typed-then";
@@ -207,8 +205,8 @@ TEST(MiniRpcClientTest, TypedThenDecodesReply) {
   std::mutex mutex;
   EchoReply received;
 
-  auto future = MemRpc::InvokeTyped(&client, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho), req);
-  MemRpc::Then<EchoReply>(std::move(future),
+  auto future = async_client.EchoAsync(req);
+  future.Then(
       [&](MemRpc::StatusCode status, EchoReply reply) {
         EXPECT_EQ(status, MemRpc::StatusCode::Ok);
         std::lock_guard<std::mutex> lock(mutex);
@@ -226,7 +224,7 @@ TEST(MiniRpcClientTest, TypedThenDecodesReply) {
     EXPECT_EQ(received.text, "typed-then");
   }
 
-  client.Shutdown();
+  async_client.Shutdown();
   server.Stop();
 }
 

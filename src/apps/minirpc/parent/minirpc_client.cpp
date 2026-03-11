@@ -19,12 +19,12 @@ MemRpc::StatusCode MiniRpcClient::Init() {
 
 MemRpc::StatusCode MiniRpcClient::Echo(const std::string& text, EchoReply* reply) {
   EchoRequest request{text};
-  return MemRpc::WaitAndDecode(async_client_.EchoAsync(request), reply);
+  return async_client_.EchoAsync(request).Wait(reply);
 }
 
 MemRpc::StatusCode MiniRpcClient::Add(int32_t lhs, int32_t rhs, AddReply* reply) {
   AddRequest request{lhs, rhs};
-  return MemRpc::WaitAndDecode(async_client_.AddAsync(request), reply);
+  return async_client_.AddAsync(request).Wait(reply);
 }
 
 MemRpc::StatusCode MiniRpcClient::Sleep(uint32_t delay_ms,
@@ -32,7 +32,7 @@ MemRpc::StatusCode MiniRpcClient::Sleep(uint32_t delay_ms,
                                         MemRpc::Priority priority,
                                         uint32_t exec_timeout_ms) {
   SleepRequest request{delay_ms};
-  return MemRpc::WaitAndDecode(async_client_.SleepAsync(request, priority, exec_timeout_ms), reply);
+  return async_client_.SleepAsync(request, priority, exec_timeout_ms).Wait(reply);
 }
 
 void MiniRpcClient::Shutdown() {
