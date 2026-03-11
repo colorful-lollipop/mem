@@ -1,0 +1,16 @@
+#ifndef VPSDEMO_VPSDEMO_PROTOCOL_H_
+#define VPSDEMO_VPSDEMO_PROTOCOL_H_
+
+#include <cstdint>
+
+namespace vpsdemo {
+
+enum class DemoOpcode : uint16_t {
+    DemoInit = 100,
+    DemoScanFile = 102,
+    DemoUpdateFeatureLib = 107,
+};
+
+}  // namespace vpsdemo
+
+#endif  // VPSDEMO_VPSDEMO_PROTOCOL_H_

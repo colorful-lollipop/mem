@@ -1,37 +1,29 @@
 #include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <string>
 #include <thread>
 #include <unistd.h>
 
-#include "apps/vps/common/virus_protection_service_define.h"
-#include "apps/vps/common/vps_codec.h"
-#include "apps/vps/protocol.h"
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
+#include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/bootstrap.h"
 #include "registry_client.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_bootstrap_proxy.h"
-
-using namespace OHOS::Security::VirusProtectionService;
+#include "vpsdemo_codec.h"
+#include "vpsdemo_protocol.h"
+#include "vpsdemo_types.h"
+#include "virus_protection_service_log.h"
 
 namespace {
 
 const char* kRegistrySocketEnv = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 
-memrpc::RpcCall MakeCall(memrpc::Opcode opcode, std::vector<uint8_t> payload = {}) {
-    memrpc::RpcCall call;
-    call.opcode = opcode;
-    call.payload = std::move(payload);
-    return call;
-}
-
 class VpsDeathRecipient : public OHOS::IRemoteObject::DeathRecipient {
  public:
     void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>& remote) override {
-        std::cout << "[client] death callback: engine died" << std::endl;
+        HLOGI("death callback: engine died");
         died_ = true;
     }
     bool died() const { return died_; }
@@ -39,71 +31,65 @@ class VpsDeathRecipient : public OHOS::IRemoteObject::DeathRecipient {
     bool died_ = false;
 };
 
-bool DoScanFile(memrpc::RpcSyncClient& client, const std::string& path) {
-    ScanTask task;
-    task.bundleName = "com.example.test";
-    BasicFileInfo fi;
-    fi.filePath = path;
-    fi.fileSize = 1024;
-    task.fileInfos.push_back(std::make_shared<BasicFileInfo>(fi));
-    task.scanTaskType = ScanTaskType::QUICK;
-
-    std::vector<uint8_t> reqBytes;
-    if (!EncodeScanTask(task, &reqBytes)) {
-        std::cerr << "[client] encode scan task failed" << std::endl;
-        return false;
-    }
-
+bool DoInit(memrpc::RpcClient& client) {
+    // Init takes no request payload — send empty and decode InitReply.
+    memrpc::RpcCall call;
+    call.opcode = static_cast<memrpc::Opcode>(vpsdemo::DemoOpcode::DemoInit);
+    auto future = client.InvokeAsync(call);
     memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanFile), std::move(reqBytes)),
-                                     &reply);
+    auto status = future.WaitAndTake(&reply);
     if (status != memrpc::StatusCode::Ok) {
-        std::cerr << "[client] ScanFile RPC failed: " << static_cast<int>(status)
-                  << std::endl;
+        HLOGE("Init RPC failed: %{public}d", static_cast<int>(status));
         return false;
     }
-
-    int32_t resultCode = -1;
-    ScanResult scanResult;
-    if (!DecodeScanFileReply(reply.payload, &resultCode, &scanResult)) {
-        std::cerr << "[client] decode scan result failed" << std::endl;
+    vpsdemo::InitReply result;
+    if (!memrpc::DecodeMessage<vpsdemo::InitReply>(reply.payload, &result)) {
+        HLOGE("Init: decode failed");
         return false;
     }
-
-    std::cout << "[client] ScanFile(" << path << "): code=" << resultCode
-              << " threat=" << static_cast<int>(scanResult.threatLevel) << std::endl;
+    HLOGI("Init: code=%{public}d", result.code);
     return true;
 }
 
-bool DoInit(memrpc::RpcSyncClient& client) {
-    memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsInit)), &reply);
+bool DoScanFile(memrpc::RpcClient& client, const std::string& path) {
+    vpsdemo::ScanFileRequest request;
+    request.file_path = path;
+    vpsdemo::ScanFileReply result;
+    auto status = memrpc::InvokeTypedSync<vpsdemo::ScanFileRequest, vpsdemo::ScanFileReply>(
+        &client,
+        static_cast<memrpc::Opcode>(vpsdemo::DemoOpcode::DemoScanFile),
+        request, &result);
     if (status != memrpc::StatusCode::Ok) {
-        std::cerr << "[client] Init RPC failed" << std::endl;
+        HLOGE("ScanFile RPC failed: %{public}d", static_cast<int>(status));
         return false;
     }
-    int32_t code = -1;
-    DecodeInt32Result(reply.payload, &code);
-    std::cout << "[client] Init: code=" << code << std::endl;
+    HLOGI("ScanFile(%{public}s): code=%{public}d threat=%{public}d",
+          path.c_str(), result.code, result.threat_level);
     return true;
 }
 
-bool DoUpdateFeatureLib(memrpc::RpcSyncClient& client) {
+bool DoUpdateFeatureLib(memrpc::RpcClient& client) {
+    memrpc::RpcCall call;
+    call.opcode = static_cast<memrpc::Opcode>(vpsdemo::DemoOpcode::DemoUpdateFeatureLib);
+    auto future = client.InvokeAsync(call);
     memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsUpdateFeatureLib)), &reply);
+    auto status = future.WaitAndTake(&reply);
     if (status != memrpc::StatusCode::Ok) {
-        std::cerr << "[client] UpdateFeatureLib RPC failed" << std::endl;
+        HLOGE("UpdateFeatureLib RPC failed: %{public}d", static_cast<int>(status));
         return false;
     }
-    int32_t code = -1;
-    DecodeInt32Result(reply.payload, &code);
-    std::cout << "[client] UpdateFeatureLib: code=" << code << std::endl;
+    vpsdemo::UpdateFeatureLibReply result;
+    if (!memrpc::DecodeMessage<vpsdemo::UpdateFeatureLibReply>(reply.payload, &result)) {
+        HLOGE("UpdateFeatureLib: decode failed");
+        return false;
+    }
+    HLOGI("UpdateFeatureLib: code=%{public}d", result.code);
     return true;
 }
 
 struct VpsSession {
     std::shared_ptr<vpsdemo::VpsBootstrapProxy> proxy;
-    std::unique_ptr<memrpc::RpcSyncClient> client;
+    std::unique_ptr<memrpc::RpcClient> client;
     OHOS::sptr<OHOS::IRemoteObject> remote;
 };
 
@@ -112,31 +98,27 @@ VpsSession ConnectToEngine(const std::string& registrySocket) {
     vpsdemo::RegistryClient registry(registrySocket);
     std::string servicePath = registry.GetServicePath(vpsdemo::kVpsBootstrapSaId);
     if (servicePath.empty()) {
-        // Try Load.
         servicePath = registry.LoadServicePath(vpsdemo::kVpsBootstrapSaId);
     }
     if (servicePath.empty()) {
-        std::cerr << "[client] failed to get service path from registry" << std::endl;
+        HLOGE("failed to get service path from registry");
         return session;
     }
-    std::cout << "[client] service path: " << servicePath << std::endl;
+    HLOGI("service path: %{public}s", servicePath.c_str());
 
-    // Create IRemoteObject + proxy.
     auto remoteObj = std::make_shared<OHOS::IRemoteObject>();
     auto proxy = std::make_shared<vpsdemo::VpsBootstrapProxy>(remoteObj, servicePath);
     remoteObj->AttachBroker(std::dynamic_pointer_cast<OHOS::IRemoteBroker>(proxy));
 
-    // OpenSession to get BootstrapHandles via SCM_RIGHTS.
     memrpc::BootstrapHandles handles;
     auto status = proxy->OpenSession(&handles);
     if (status != memrpc::StatusCode::Ok) {
-        std::cerr << "[client] OpenSession failed: " << static_cast<int>(status) << std::endl;
+        HLOGE("OpenSession failed: %{public}d", static_cast<int>(status));
         return session;
     }
-    std::cout << "[client] OpenSession ok, session_id=" << handles.session_id << std::endl;
+    HLOGI("OpenSession ok, session_id=%{public}lu",
+          static_cast<unsigned long>(handles.session_id));
 
-    // Create an RpcSyncClient that wraps a bootstrap channel from the received handles.
-    // We need an IBootstrapChannel. Create a simple one from handles.
     class HandleBootstrap : public memrpc::IBootstrapChannel {
      public:
         explicit HandleBootstrap(const memrpc::BootstrapHandles& h) : handles_(h) {}
@@ -152,9 +134,9 @@ VpsSession ConnectToEngine(const std::string& registrySocket) {
     };
 
     auto bootstrap = std::make_shared<HandleBootstrap>(handles);
-    auto rpcClient = std::make_unique<memrpc::RpcSyncClient>(bootstrap);
+    auto rpcClient = std::make_unique<memrpc::RpcClient>(bootstrap);
     if (rpcClient->Init() != memrpc::StatusCode::Ok) {
-        std::cerr << "[client] RpcSyncClient init failed" << std::endl;
+        HLOGE("RpcClient init failed");
         return session;
     }
 
@@ -169,18 +151,17 @@ VpsSession ConnectToEngine(const std::string& registrySocket) {
 int main() {
     const char* registrySocket = std::getenv(kRegistrySocketEnv);
     if (registrySocket == nullptr) {
-        std::cerr << "[client] " << kRegistrySocketEnv << " not set" << std::endl;
+        HLOGE("%{public}s not set", kRegistrySocketEnv);
         return 1;
     }
 
     // --- First session ---
-    std::cout << "\n=== First session ===" << std::endl;
+    HLOGI("=== First session ===");
     auto session = ConnectToEngine(registrySocket);
     if (!session.client) {
         return 1;
     }
 
-    // Install death recipient.
     auto deathRecipient = std::make_shared<VpsDeathRecipient>();
     session.remote->AddDeathRecipient(deathRecipient);
 
@@ -189,25 +170,22 @@ int main() {
     DoUpdateFeatureLib(*session.client);
     DoScanFile(*session.client, "/data/test_file_2.apk");
 
-    // Shut down first session.
     session.client->Shutdown();
     session.proxy->CloseSession();
 
     // Request engine unload (triggers death callback).
-    std::cout << "\n=== Unload engine ===" << std::endl;
+    HLOGI("=== Unload engine ===");
     vpsdemo::RegistryClient registry(registrySocket);
     registry.UnloadService(vpsdemo::kVpsBootstrapSaId);
 
-    // Give time for death notification.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    std::cout << "[client] death_recipient_called: "
-              << (deathRecipient->died() ? "true" : "false") << std::endl;
+    HLOGI("death_recipient_called: %{public}s",
+          deathRecipient->died() ? "true" : "false");
 
     // --- Restart: load again ---
-    std::cout << "\n=== Second session (after restart) ===" << std::endl;
+    HLOGI("=== Second session (after restart) ===");
     std::string servicePath = registry.LoadServicePath(vpsdemo::kVpsBootstrapSaId);
     if (servicePath.empty()) {
-        // Engine not restarted by supervisor in time — give more time.
         std::this_thread::sleep_for(std::chrono::seconds(1));
         servicePath = registry.LoadServicePath(vpsdemo::kVpsBootstrapSaId);
     }
@@ -219,13 +197,12 @@ int main() {
             DoScanFile(*session2.client, "/data/test_file_3.apk");
             session2.client->Shutdown();
             session2.proxy->CloseSession();
-            std::cout << "[client] second session completed" << std::endl;
+            HLOGI("second session completed");
         }
     } else {
-        std::cout << "[client] engine not available after restart (expected in demo)"
-                  << std::endl;
+        HLOGI("engine not available after restart (expected in demo)");
     }
 
-    std::cout << "\n=== Done ===" << std::endl;
+    HLOGI("=== Done ===");
     return deathRecipient->died() ? 0 : 1;
 }

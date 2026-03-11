@@ -1,16 +1,15 @@
 #include <csignal>
-#include <cstdlib>
-#include <iostream>
 #include <string>
+#include <thread>
+#include <unistd.h>
 
-#include "apps/vps/child/virus_engine_service.h"
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "registry_client.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_bootstrap_stub.h"
-
-using namespace OHOS::Security::VirusProtectionService;
+#include "vpsdemo_service.h"
+#include "virus_protection_service_log.h"
 
 namespace {
 
@@ -23,10 +22,8 @@ void SignalHandler(int) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    // Expected args: <registry_socket> <service_socket>
     if (argc < 3) {
-        std::cerr << "[engine] usage: vpsdemo_engine_sa <registry_socket> <service_socket>"
-                  << std::endl;
+        HLOGE("usage: vpsdemo_engine_sa <registry_socket> <service_socket>");
         return 1;
     }
     const std::string registrySocket = argv[1];
@@ -39,7 +36,7 @@ int main(int argc, char* argv[]) {
     auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
     memrpc::BootstrapHandles clientHandles;
     if (bootstrap->OpenSession(&clientHandles) != memrpc::StatusCode::Ok) {
-        std::cerr << "[engine] bootstrap OpenSession failed" << std::endl;
+        HLOGE("bootstrap OpenSession failed");
         return 1;
     }
     // Close the client-side duplicate handles; engine only needs server handles.
@@ -52,15 +49,15 @@ int main(int argc, char* argv[]) {
 
     const memrpc::BootstrapHandles serverHandles = bootstrap->server_handles();
 
-    // Start memrpc RPC server with VPS handlers.
+    // Start memrpc RPC server with demo handlers.
     memrpc::RpcServer rpcServer(serverHandles);
-    VirusEngineService service;
+    vpsdemo::VpsDemoService service;
     service.RegisterHandlers(&rpcServer);
     if (rpcServer.Start() != memrpc::StatusCode::Ok) {
-        std::cerr << "[engine] RpcServer start failed" << std::endl;
+        HLOGE("RpcServer start failed");
         return 1;
     }
-    std::cout << "[engine] RpcServer started" << std::endl;
+    HLOGI("RpcServer started");
 
     // Create bootstrap stub SA and start its service socket.
     auto stub = std::make_shared<vpsdemo::VpsBootstrapStub>();
@@ -68,30 +65,29 @@ int main(int argc, char* argv[]) {
     stub->OnStart();
 
     if (!stub->StartServiceSocket(serviceSocket)) {
-        std::cerr << "[engine] failed to start service socket at " << serviceSocket
-                  << std::endl;
+        HLOGE("failed to start service socket at %{public}s", serviceSocket.c_str());
         rpcServer.Stop();
         return 1;
     }
-    std::cout << "[engine] service socket at " << serviceSocket << std::endl;
+    HLOGI("service socket at %{public}s", serviceSocket.c_str());
 
     // Register with the SA registry.
     vpsdemo::RegistryClient registry(registrySocket);
     if (!registry.RegisterService(vpsdemo::kVpsBootstrapSaId, serviceSocket)) {
-        std::cerr << "[engine] registry registration failed" << std::endl;
+        HLOGE("registry registration failed");
     }
 
     // Publish to in-process SA registry (for completeness).
     stub->Publish(stub.get());
 
-    std::cout << "[engine] ready" << std::endl;
+    HLOGI("engine ready");
 
     // Run until signaled.
     while (!g_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    std::cout << "[engine] shutting down" << std::endl;
+    HLOGI("engine shutting down");
     stub->OnStop();
     rpcServer.Stop();
     return 0;

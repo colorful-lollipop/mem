@@ -28,20 +28,6 @@ target_include_directories(memrpc_core PUBLIC
 target_compile_features(memrpc_core PUBLIC cxx_std_17)
 target_link_libraries(memrpc_core PUBLIC pthread rt)
 
-# --- VPS application library ---
-add_library(vps_app
-    ${MEMRPC_ROOT}/src/apps/vps/child/virus_engine_service.cpp
-    ${MEMRPC_ROOT}/src/apps/vps/child/fake_virus_engine.cpp
-    ${MEMRPC_ROOT}/src/apps/vps/child/fake_lib_loader.cpp
-    ${MEMRPC_ROOT}/src/apps/vps/common/vps_codec.cpp
-    ${MEMRPC_ROOT}/src/apps/vps/parent/virus_engine_manager.cpp
-)
-target_include_directories(vps_app PUBLIC
-    ${MEMRPC_ROOT}/include
-    ${MEMRPC_ROOT}/src
-)
-target_link_libraries(vps_app PUBLIC memrpc_core)
-
 # --- ohos_sa_mock library ---
 add_library(ohos_sa_mock
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/system_ability_manager.cpp
@@ -52,7 +38,7 @@ target_include_directories(ohos_sa_mock PUBLIC
 )
 target_compile_features(ohos_sa_mock PUBLIC cxx_std_17)
 
-# --- vpsdemo library (registry + bootstrap + SCM_RIGHTS) ---
+# --- vpsdemo library (registry + bootstrap + SCM_RIGHTS + demo service) ---
 add_library(vpsdemo_lib
     src/registry_protocol.cpp
     src/registry_server.cpp
@@ -60,6 +46,7 @@ add_library(vpsdemo_lib
     src/scm_rights.cpp
     src/vps_bootstrap_stub.cpp
     src/vps_bootstrap_proxy.cpp
+    src/vpsdemo_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -71,7 +58,7 @@ add_executable(vpsdemo_supervisor src/vpsdemo_supervisor.cpp)
 target_link_libraries(vpsdemo_supervisor PRIVATE vpsdemo_lib)
 
 add_executable(vpsdemo_engine_sa src/vpsdemo_engine_sa.cpp)
-target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib vps_app)
+target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib)
 
 add_executable(vpsdemo_client src/vpsdemo_client.cpp)
-target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib vps_app)
+target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib)

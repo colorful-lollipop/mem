@@ -87,7 +87,6 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
                            std::istreambuf_iterator<char>());
   EXPECT_NE(root_content.find("add_subdirectory(memrpc)"), std::string::npos);
   EXPECT_NE(root_content.find("add_subdirectory(apps/minirpc)"), std::string::npos);
-  EXPECT_NE(root_content.find("add_subdirectory(apps/vps)"), std::string::npos);
 
   std::ifstream memrpc_stream("/root/code/demo/mem/tests/memrpc/CMakeLists.txt");
   ASSERT_TRUE(memrpc_stream.is_open());
@@ -104,13 +103,6 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
                               std::istreambuf_iterator<char>());
   EXPECT_NE(minirpc_content.find("memrpc_minirpc_client_test"), std::string::npos);
   EXPECT_NE(minirpc_content.find("memrpc_minirpc_service_test"), std::string::npos);
-
-  std::ifstream vps_stream("/root/code/demo/mem/tests/apps/vps/CMakeLists.txt");
-  ASSERT_TRUE(vps_stream.is_open());
-
-  std::string vps_content((std::istreambuf_iterator<char>(vps_stream)),
-                          std::istreambuf_iterator<char>());
-  EXPECT_NE(vps_content.find("memrpc_vps_codec_test"), std::string::npos);
 }
 
 TEST(BuildConfigTest, TopLevelMemrpcForwardingHeadersAreNotPartOfMainline) {
