@@ -7,6 +7,7 @@
 
 #include "apps/vps/common/virus_protection_service_define.h"
 #include "apps/vps/common/vps_codec.h"
+#include "apps/vps/protocol.h"
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
@@ -54,7 +55,7 @@ bool DoScanFile(memrpc::RpcSyncClient& client, const std::string& path) {
     }
 
     memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(memrpc::Opcode::VpsScanFile, std::move(reqBytes)),
+    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanFile), std::move(reqBytes)),
                                      &reply);
     if (status != memrpc::StatusCode::Ok) {
         std::cerr << "[client] ScanFile RPC failed: " << static_cast<int>(status)
@@ -76,7 +77,7 @@ bool DoScanFile(memrpc::RpcSyncClient& client, const std::string& path) {
 
 bool DoInit(memrpc::RpcSyncClient& client) {
     memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(memrpc::Opcode::VpsInit), &reply);
+    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsInit)), &reply);
     if (status != memrpc::StatusCode::Ok) {
         std::cerr << "[client] Init RPC failed" << std::endl;
         return false;
@@ -89,7 +90,7 @@ bool DoInit(memrpc::RpcSyncClient& client) {
 
 bool DoUpdateFeatureLib(memrpc::RpcSyncClient& client) {
     memrpc::RpcReply reply;
-    auto status = client.InvokeSync(MakeCall(memrpc::Opcode::VpsUpdateFeatureLib), &reply);
+    auto status = client.InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsUpdateFeatureLib)), &reply);
     if (status != memrpc::StatusCode::Ok) {
         std::cerr << "[client] UpdateFeatureLib RPC failed" << std::endl;
         return false;

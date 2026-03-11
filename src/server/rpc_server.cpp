@@ -495,7 +495,7 @@ struct RpcServer::Impl {
     }
 
     RpcServerCall call;
-    call.opcode = static_cast<Opcode>(request_entry.opcode);
+    call.opcode = request_entry.opcode;
     call.priority = payload->request.priority == static_cast<uint32_t>(Priority::High)
                         ? Priority::High
                         : Priority::Normal;

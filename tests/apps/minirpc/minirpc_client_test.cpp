@@ -18,6 +18,8 @@
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
 
+#include "apps/minirpc/protocol.h"
+
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
@@ -133,13 +135,13 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   ASSERT_TRUE(EncodeMessage<SleepRequest>(sleep_request, &sleep_payload));
 
   MemRpc::RpcCall sleep_call;
-  sleep_call.opcode = MemRpc::Opcode::MiniSleep;
+  sleep_call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep);
   sleep_call.exec_timeout_ms = 5000;
   sleep_call.payload = sleep_payload;
   auto sleep_future = client.InvokeAsync(sleep_call);
 
   MemRpc::RpcCall crash_call;
-  crash_call.opcode = MemRpc::Opcode::MiniCrashForTest;
+  crash_call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest);
   crash_call.priority = MemRpc::Priority::High;
   auto crash_future = client.InvokeAsync(crash_call);
 
@@ -169,7 +171,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
   ASSERT_TRUE(EncodeMessage<EchoRequest>(echo_request, &echo_payload));
 
   MemRpc::RpcCall echo_call;
-  echo_call.opcode = MemRpc::Opcode::MiniEcho;
+  echo_call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho);
   echo_call.payload = echo_payload;
 
   MemRpc::RpcReply echo_rpc_reply;
@@ -205,7 +207,7 @@ TEST(MiniRpcClientTest, TypedThenDecodesReply) {
   std::mutex mutex;
   EchoReply received;
 
-  auto future = MemRpc::InvokeTyped(&client, MemRpc::Opcode::MiniEcho, req);
+  auto future = MemRpc::InvokeTyped(&client, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho), req);
   MemRpc::Then<EchoReply>(std::move(future),
       [&](MemRpc::StatusCode status, EchoReply reply) {
         EXPECT_EQ(status, MemRpc::StatusCode::Ok);

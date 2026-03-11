@@ -20,6 +20,8 @@
 #include "memrpc/client/sa_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 
+constexpr memrpc::Opcode kTestOpcode = 1u;
+
 namespace {
 
 bool WaitForAtomicAtLeast(const std::atomic<int>& value, int expected, int timeout_ms) {
@@ -109,7 +111,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -127,7 +129,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncAndInvokeSyncRoundTrip) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{4, 5, 6};
 
   auto future = client.InvokeAsync(call);
@@ -160,7 +162,7 @@ TEST(RpcClientIntegrationTest, ThenCallbackInvokedByDispatcher) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -172,7 +174,7 @@ TEST(RpcClientIntegrationTest, ThenCallbackInvokedByDispatcher) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{10, 20, 30};
 
   std::atomic<bool> called{false};
@@ -206,7 +208,7 @@ TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequest
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -225,7 +227,7 @@ TEST(RpcClientIntegrationTest, ConcurrentInvokeAsyncKeepsRepliesMatchedToRequest
   for (int i = 0; i < kRequestCount; ++i) {
     threads.emplace_back([&client, &results_mutex, &mismatches, i] {
       memrpc::RpcCall call;
-      call.opcode = memrpc::Opcode::ScanFile;
+      call.opcode = kTestOpcode;
       call.payload = {static_cast<uint8_t>(i), static_cast<uint8_t>(i + 1)};
 
       memrpc::RpcReply reply;
@@ -265,7 +267,7 @@ TEST(RpcClientIntegrationTest, SharedRequestRingsUseSingleProducerAndConsumerThr
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -282,7 +284,7 @@ TEST(RpcClientIntegrationTest, SharedRequestRingsUseSingleProducerAndConsumerThr
   for (int i = 0; i < kCallsPerPriority; ++i) {
     threads.emplace_back([&client, i] {
       memrpc::RpcCall call;
-      call.opcode = memrpc::Opcode::ScanFile;
+      call.opcode = kTestOpcode;
       call.priority = memrpc::Priority::High;
       call.payload = {static_cast<uint8_t>(i), 0xa1};
       memrpc::RpcReply reply;
@@ -291,7 +293,7 @@ TEST(RpcClientIntegrationTest, SharedRequestRingsUseSingleProducerAndConsumerThr
     });
     threads.emplace_back([&client, i] {
       memrpc::RpcCall call;
-      call.opcode = memrpc::Opcode::ScanFile;
+      call.opcode = kTestOpcode;
       call.priority = memrpc::Priority::Normal;
       call.payload = {static_cast<uint8_t>(i), 0xb2};
       memrpc::RpcReply reply;
@@ -331,7 +333,7 @@ TEST(RpcClientIntegrationTest, RequestEventFdSignalsOnlyOnEmptyToNonEmptyTransit
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall first;
-  first.opcode = memrpc::Opcode::ScanFile;
+  first.opcode = kTestOpcode;
   first.payload = {1};
   first.admission_timeout_ms = 10;
   first.queue_timeout_ms = 10;
@@ -367,7 +369,7 @@ TEST(RpcClientIntegrationTest, SubmitterConsumesManualRequestCreditWakeup) {
             memrpc::StatusCode::Ok);
 
   memrpc::RpcCall first;
-  first.opcode = memrpc::Opcode::ScanFile;
+  first.opcode = kTestOpcode;
   first.admission_timeout_ms = 1000;
   first.queue_timeout_ms = 5000;
   first.exec_timeout_ms = 5000;
@@ -411,7 +413,7 @@ TEST(RpcClientIntegrationTest, PendingRequestFailsPromptlyAfterEngineDeath) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -424,7 +426,7 @@ TEST(RpcClientIntegrationTest, PendingRequestFailsPromptlyAfterEngineDeath) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.exec_timeout_ms = 5000;
   call.payload = std::vector<uint8_t>{1, 2, 3};
 
@@ -449,7 +451,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncReconnectsAfterEngineRestart) {
 
   memrpc::RpcServer first_server;
   first_server.SetBootstrapHandles(bootstrap->server_handles());
-  first_server.RegisterHandler(memrpc::Opcode::ScanFile,
+  first_server.RegisterHandler(kTestOpcode,
                                [](const memrpc::RpcServerCall& call,
                                   memrpc::RpcServerReply* reply) {
                                  ASSERT_NE(reply, nullptr);
@@ -463,7 +465,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncReconnectsAfterEngineRestart) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{9, 8, 7};
 
   memrpc::RpcReply first_reply;
@@ -479,7 +481,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncReconnectsAfterEngineRestart) {
 
   memrpc::RpcServer second_server;
   second_server.SetBootstrapHandles(bootstrap->server_handles());
-  second_server.RegisterHandler(memrpc::Opcode::ScanFile,
+  second_server.RegisterHandler(kTestOpcode,
                                 [](const memrpc::RpcServerCall& call,
                                    memrpc::RpcServerReply* reply) {
                                   ASSERT_NE(reply, nullptr);
@@ -517,7 +519,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncRejectsPayloadLargerThanConfiguredRequ
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -528,7 +530,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncRejectsPayloadLargerThanConfiguredRequ
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>(9, 0x7f);
 
   memrpc::RpcReply reply;
@@ -546,7 +548,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
@@ -559,7 +561,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWithoutExplicitTimeoutCanWaitPastOneSec
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.admission_timeout_ms = 0;
   call.queue_timeout_ms = 0;
   call.exec_timeout_ms = 0;
@@ -585,7 +587,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncUsesExactTimeoutBudgetWithoutPadding) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            std::this_thread::sleep_for(std::chrono::milliseconds(400));
@@ -598,7 +600,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncUsesExactTimeoutBudgetWithoutPadding) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.admission_timeout_ms = 200;
   call.queue_timeout_ms = 0;
   call.exec_timeout_ms = 0;
@@ -635,7 +637,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturn
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& call,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -652,7 +654,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturn
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall first_call;
-  first_call.opcode = memrpc::Opcode::ScanFile;
+  first_call.opcode = kTestOpcode;
   first_call.admission_timeout_ms = 1000;
   first_call.queue_timeout_ms = 5000;
   first_call.exec_timeout_ms = 5000;
@@ -661,7 +663,7 @@ TEST(RpcClientIntegrationTest, InvokeSyncWaitsForAdmissionTimeoutInsteadOfReturn
   ASSERT_TRUE(WaitForAtomicAtLeast(started, 1, 200));
 
   memrpc::RpcCall second_call;
-  second_call.opcode = memrpc::Opcode::ScanFile;
+  second_call.opcode = kTestOpcode;
   second_call.admission_timeout_ms = 1800;
   second_call.queue_timeout_ms = 10;
   second_call.exec_timeout_ms = 10;
@@ -707,7 +709,7 @@ TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&server](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            memrpc::RpcEvent event;
@@ -730,7 +732,7 @@ TEST(RpcClientIntegrationTest, ResponseQueueFullRetriesUntilClientDrainsEvent) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{0x10, 0x20, 0x30};
 
   memrpc::RpcReply reply;
@@ -761,7 +763,7 @@ TEST(RpcClientIntegrationTest, ResponseSlotRequestIdMismatchReturnsProtocolMisma
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& /*call*/,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -782,7 +784,7 @@ TEST(RpcClientIntegrationTest, ResponseSlotRequestIdMismatchReturnsProtocolMisma
 
   // Send an RPC that blocks inside the server handler.
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = {0x41};
   auto future = client.InvokeAsync(call);
 
@@ -856,7 +858,7 @@ TEST(RpcClientIntegrationTest, BusyServerLeavesSharedRequestQueueBackedUp) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& call,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -875,7 +877,7 @@ TEST(RpcClientIntegrationTest, BusyServerLeavesSharedRequestQueueBackedUp) {
   std::vector<memrpc::RpcFuture> futures;
   for (int i = 0; i < 3; ++i) {
     memrpc::RpcCall call;
-    call.opcode = memrpc::Opcode::ScanFile;
+    call.opcode = kTestOpcode;
     call.admission_timeout_ms = 1000;
     call.queue_timeout_ms = 5000;
     call.exec_timeout_ms = 5000;
@@ -925,7 +927,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncWaitsForSlotUntilAdmissionTimeout) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& call,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -942,7 +944,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncWaitsForSlotUntilAdmissionTimeout) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall first_call;
-  first_call.opcode = memrpc::Opcode::ScanFile;
+  first_call.opcode = kTestOpcode;
   first_call.admission_timeout_ms = 1000;
   first_call.queue_timeout_ms = 5000;
   first_call.exec_timeout_ms = 5000;
@@ -951,7 +953,7 @@ TEST(RpcClientIntegrationTest, InvokeAsyncWaitsForSlotUntilAdmissionTimeout) {
   ASSERT_TRUE(WaitForAtomicAtLeast(started, 1, 200));
 
   memrpc::RpcCall second_call;
-  second_call.opcode = memrpc::Opcode::ScanFile;
+  second_call.opcode = kTestOpcode;
   second_call.admission_timeout_ms = 200;
   second_call.queue_timeout_ms = 5000;
   second_call.exec_timeout_ms = 5000;
@@ -986,7 +988,7 @@ TEST(RpcClientIntegrationTest, SharedMemoryShowsExecutingRequestWhileHandlerRuns
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& call,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -1003,7 +1005,7 @@ TEST(RpcClientIntegrationTest, SharedMemoryShowsExecutingRequestWhileHandlerRuns
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = {0x51, 0x52};
   auto future = client.InvokeAsync(call);
 
@@ -1046,7 +1048,7 @@ TEST(RpcClientIntegrationTest, HandlerPayloadViewCanObserveAndMutateUnderlyingRe
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&started, &release](const memrpc::RpcServerCall& call,
                                               memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -1066,7 +1068,7 @@ TEST(RpcClientIntegrationTest, HandlerPayloadViewCanObserveAndMutateUnderlyingRe
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = {0x11, 0x22};
   auto future = client.InvokeAsync(call);
 
@@ -1107,7 +1109,7 @@ TEST(RpcClientIntegrationTest, WaitAndTakeMovesReplyPayloadToCaller) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -1119,7 +1121,7 @@ TEST(RpcClientIntegrationTest, WaitAndTakeMovesReplyPayloadToCaller) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = {0x21, 0x22, 0x23};
 
   memrpc::RpcReply reply;
@@ -1138,7 +1140,7 @@ TEST(RpcClientIntegrationTest, FailureCallbackFiresOnExecTimeout) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -1162,7 +1164,7 @@ TEST(RpcClientIntegrationTest, FailureCallbackFiresOnExecTimeout) {
   });
 
   memrpc::RpcCall call2;
-  call2.opcode = memrpc::Opcode::ScanFile;
+  call2.opcode = kTestOpcode;
   call2.exec_timeout_ms = 1;
   call2.queue_timeout_ms = 0;
   call2.payload = std::vector<uint8_t>{1, 2, 3};

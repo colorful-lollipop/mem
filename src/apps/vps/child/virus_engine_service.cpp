@@ -3,6 +3,8 @@
 #include <array>
 #include <utility>
 
+#include "apps/vps/protocol.h"
+
 namespace OHOS::Security::VirusProtectionService {
 
 namespace {
@@ -27,19 +29,19 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
   if (server == nullptr) {
     return;
   }
-  server->RegisterHandler(memrpc::Opcode::VpsInit,
+  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsInit),
                           [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                             if (reply != nullptr) {
                               EncodeInt32Result(Init(), &reply->payload);
                             }
                           });
-  server->RegisterHandler(memrpc::Opcode::VpsDeInit,
+  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsDeInit),
                           [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                             if (reply != nullptr) {
                               EncodeInt32Result(DeInit(), &reply->payload);
                             }
                           });
-  server->RegisterHandler(memrpc::Opcode::VpsScanFile,
+  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanFile),
                           [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                             if (reply == nullptr) {
                               return;
@@ -52,7 +54,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
                             }
                             EncodeScanFileReply(ScanFile(&task, &result), result, &reply->payload);
                           });
-  server->RegisterHandler(memrpc::Opcode::VpsScanBehavior,
+  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanBehavior),
                           [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                             if (reply == nullptr) {
                               return;
@@ -67,7 +69,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
                                 &reply->payload);
                           });
   server->RegisterHandler(
-      memrpc::Opcode::VpsIsExistAnalysisEngine,
+      static_cast<memrpc::Opcode>(VpsOpcode::VpsIsExistAnalysisEngine),
       [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
         if (reply == nullptr) {
           return;
@@ -80,7 +82,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
         EncodeInt32Result(IsExistAnalysisEngine(request.accessToken), &reply->payload);
       });
   server->RegisterHandler(
-      memrpc::Opcode::VpsCreateAnalysisEngine,
+      static_cast<memrpc::Opcode>(VpsOpcode::VpsCreateAnalysisEngine),
       [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
         if (reply == nullptr) {
           return;
@@ -93,7 +95,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
         EncodeInt32Result(CreateAnalysisEngine(request.accessToken), &reply->payload);
       });
   server->RegisterHandler(
-      memrpc::Opcode::VpsDestroyAnalysisEngine,
+      static_cast<memrpc::Opcode>(VpsOpcode::VpsDestroyAnalysisEngine),
       [this](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
         if (reply == nullptr) {
           return;
@@ -105,7 +107,7 @@ void VirusEngineService::RegisterHandlers(memrpc::RpcServer* server) {
         }
         EncodeInt32Result(DestroyAnalysisEngine(request.accessToken), &reply->payload);
       });
-  server->RegisterHandler(memrpc::Opcode::VpsUpdateFeatureLib,
+  server->RegisterHandler(static_cast<memrpc::Opcode>(VpsOpcode::VpsUpdateFeatureLib),
                           [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                             if (reply != nullptr) {
                               EncodeInt32Result(UpdateFeatureLib(), &reply->payload);

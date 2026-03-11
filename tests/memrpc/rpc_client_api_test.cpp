@@ -13,6 +13,8 @@
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
 
+constexpr memrpc::Opcode kTestOpcode = 1u;
+
 namespace {
 
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
@@ -46,7 +48,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   });
 
   MemRpc::RpcCall call;
-  call.opcode = MemRpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{1, 2, 3};
 
   MemRpc::RpcReply reply;
@@ -67,7 +69,7 @@ TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis) {
   MemRpc::RpcClient client(bootstrap);
 
   MemRpc::RpcCall call;
-  call.opcode = MemRpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{4, 5, 6};
 
   MemRpc::RpcReply reply;
@@ -174,7 +176,7 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   });
 
   MemRpc::RpcCall call;
-  call.opcode = MemRpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.priority = MemRpc::Priority::Normal;
   call.admission_timeout_ms = 1000;
   call.queue_timeout_ms = 0;

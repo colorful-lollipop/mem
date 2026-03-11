@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "apps/minirpc/protocol.h"
 #include "memrpc/server/typed_handler.h"
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
@@ -36,22 +37,22 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
   }
 
   MemRpc::RegisterTypedHandler<EchoRequest, EchoReply>(
-      server, MemRpc::Opcode::MiniEcho,
+      server, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho),
       [this](const EchoRequest& r) { return Echo(r); });
   MemRpc::RegisterTypedHandler<AddRequest, AddReply>(
-      server, MemRpc::Opcode::MiniAdd,
+      server, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd),
       [this](const AddRequest& r) { return Add(r); });
   MemRpc::RegisterTypedHandler<SleepRequest, SleepReply>(
-      server, MemRpc::Opcode::MiniSleep,
+      server, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep),
       [this](const SleepRequest& r) { return Sleep(r); });
 
   // Test-only fault injection paths for verifying client recovery.
   server->RegisterHandler(
-      MemRpc::Opcode::MiniCrashForTest,
+      static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest),
       [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
 
   server->RegisterHandler(
-      MemRpc::Opcode::MiniHangForTest,
+      static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniHangForTest),
       [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
         while (true) {
           std::this_thread::sleep_for(std::chrono::hours(1));
@@ -59,7 +60,7 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
       });
 
   server->RegisterHandler(
-      MemRpc::Opcode::MiniOomForTest,
+      static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniOomForTest),
       [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
         std::vector<std::vector<char>> leaks;
         while (true) {
@@ -68,7 +69,7 @@ void MiniRpcService::RegisterHandlers(MemRpc::RpcServer* server) {
       });
 
   server->RegisterHandler(
-      MemRpc::Opcode::MiniStackOverflowForTest,
+      static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniStackOverflowForTest),
       [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
         struct Recurse {
           static void Go(volatile int depth) { Go(depth + 1); }

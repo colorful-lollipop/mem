@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "apps/minirpc/protocol.h"
 #include "memrpc/client/typed_invoker.h"
 
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
@@ -20,17 +21,17 @@ MemRpc::StatusCode MiniRpcAsyncClient::Init() {
 }
 
 MemRpc::RpcFuture MiniRpcAsyncClient::EchoAsync(const EchoRequest& request) {
-  return MemRpc::InvokeTyped(&client_, MemRpc::Opcode::MiniEcho, request);
+  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniEcho), request);
 }
 
 MemRpc::RpcFuture MiniRpcAsyncClient::AddAsync(const AddRequest& request) {
-  return MemRpc::InvokeTyped(&client_, MemRpc::Opcode::MiniAdd, request);
+  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd), request);
 }
 
 MemRpc::RpcFuture MiniRpcAsyncClient::SleepAsync(const SleepRequest& request,
                                                  MemRpc::Priority priority,
                                                  uint32_t exec_timeout_ms) {
-  return MemRpc::InvokeTyped(&client_, MemRpc::Opcode::MiniSleep, request, priority, exec_timeout_ms);
+  return MemRpc::InvokeTyped(&client_, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep), request, priority, exec_timeout_ms);
 }
 
 void MiniRpcAsyncClient::Shutdown() {

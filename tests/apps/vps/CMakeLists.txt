@@ -5,3 +5,4 @@ function(vps_add_test target source)
 endfunction()
 
 vps_add_test(memrpc_vps_codec_test vps_codec_test.cpp)
+vps_add_test(memrpc_vps_headers_test vps_headers_test.cpp)

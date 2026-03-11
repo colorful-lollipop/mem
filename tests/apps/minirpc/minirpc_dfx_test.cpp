@@ -14,6 +14,8 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
+#include "apps/minirpc/protocol.h"
+
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
@@ -58,7 +60,7 @@ MemRpc::RpcCall MakeAddCall(int32_t lhs, int32_t rhs) {
     std::vector<uint8_t> payload;
     EncodeMessage<AddRequest>(request, &payload);
     MemRpc::RpcCall call;
-    call.opcode = MemRpc::Opcode::MiniAdd;
+    call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd);
     call.payload = std::move(payload);
     return call;
 }
@@ -69,7 +71,7 @@ MemRpc::RpcCall MakeSleepCall(uint32_t delay_ms) {
     std::vector<uint8_t> payload;
     EncodeMessage<SleepRequest>(request, &payload);
     MemRpc::RpcCall call;
-    call.opcode = MemRpc::Opcode::MiniSleep;
+    call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep);
     call.exec_timeout_ms = 5000;
     call.payload = std::move(payload);
     return call;
@@ -100,7 +102,7 @@ TEST(MiniRpcDfxTest, CrashDuringBatchTracksAllFailures) {
     for (int i = 0; i < 10; ++i) {
         batch.push_back(MakeAddCall(i, i + 1));
     }
-    batch.push_back(MakeFaultCall(MemRpc::Opcode::MiniCrashForTest));
+    batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest)));
 
     invoker.SubmitBatch(batch);
 
@@ -137,7 +139,7 @@ TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
 
     // Replay everything except crash calls (we don't want to crash the new child).
     auto replay_non_fault = [](const FailedCallRecord& r) {
-        return r.opcode == MemRpc::Opcode::MiniCrashForTest ? ReplayDecision::Skip
+        return r.opcode == static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest) ? ReplayDecision::Skip
                                                             : ReplayDecision::Replay;
     };
     ResilientBatchInvoker invoker(bootstrap, replay_non_fault);
@@ -148,7 +150,7 @@ TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
     for (int i = 0; i < 5; ++i) {
         batch.push_back(MakeAddCall(i, 100));
     }
-    batch.push_back(MakeFaultCall(MemRpc::Opcode::MiniCrashForTest));
+    batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest)));
     invoker.SubmitBatch(batch);
 
     waitpid(child, nullptr, 0);
@@ -175,7 +177,7 @@ TEST(MiniRpcDfxTest, ReplayPolicyResubmitsAfterCrash) {
     // Only the skipped crash call should remain in failed list.
     EXPECT_EQ(invoker.GetFailedCalls().size(), 1u);
     if (!invoker.GetFailedCalls().empty()) {
-        EXPECT_EQ(invoker.GetFailedCalls()[0].opcode, MemRpc::Opcode::MiniCrashForTest);
+        EXPECT_EQ(invoker.GetFailedCalls()[0].opcode, static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest));
     }
 
     for (const auto& reply : replay_completed) {
@@ -201,7 +203,7 @@ TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
 
     // Skip Add calls, replay everything else.
     auto skip_add = [](const FailedCallRecord& record) {
-        return record.opcode == MemRpc::Opcode::MiniAdd ? ReplayDecision::Skip
+        return record.opcode == static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd) ? ReplayDecision::Skip
                                                         : ReplayDecision::Replay;
     };
 
@@ -211,7 +213,7 @@ TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
     std::vector<MemRpc::RpcCall> batch;
     batch.push_back(MakeAddCall(1, 2));
     batch.push_back(MakeSleepCall(500));
-    batch.push_back(MakeFaultCall(MemRpc::Opcode::MiniCrashForTest));
+    batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest)));
     invoker.SubmitBatch(batch);
 
     waitpid(child, nullptr, 0);
@@ -225,7 +227,7 @@ TEST(MiniRpcDfxTest, ReplayPolicySkipsSelectedCalls) {
     // Count how many failed Add calls there are.
     size_t add_failures = 0;
     for (const auto& f : invoker.GetFailedCalls()) {
-        if (f.opcode == MemRpc::Opcode::MiniAdd) {
+        if (f.opcode == static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniAdd)) {
             ++add_failures;
         }
     }
@@ -265,7 +267,7 @@ TEST(MiniRpcDfxTest, HangingChildKilledAndRecovered) {
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    auto hang_future = client.InvokeAsync(MakeFaultCall(MemRpc::Opcode::MiniHangForTest));
+    auto hang_future = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniHangForTest)));
 
     // Give child time to enter handler, then kill it.
     usleep(100000);
@@ -311,7 +313,7 @@ TEST(MiniRpcDfxTest, OomKilledChildRecovery) {
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    auto oom_future = client.InvokeAsync(MakeFaultCall(MemRpc::Opcode::MiniOomForTest));
+    auto oom_future = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniOomForTest)));
 
     // Wait for child to die from OOM (or time out and SIGKILL it).
     int status = 0;
@@ -366,7 +368,7 @@ TEST(MiniRpcDfxTest, StackOverflowChildRecovery) {
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     auto so_future =
-        client.InvokeAsync(MakeFaultCall(MemRpc::Opcode::MiniStackOverflowForTest));
+        client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniStackOverflowForTest)));
 
     // Wait for child to die from SIGSEGV.
     int status = 0;
@@ -426,7 +428,7 @@ TEST(MiniRpcDfxTest, BatchPartialCompletionTracking) {
         batch.push_back(MakeAddCall(i, 1));
     }
     batch.push_back(MakeSleepCall(500));
-    batch.push_back(MakeFaultCall(MemRpc::Opcode::MiniCrashForTest));
+    batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest)));
     invoker.SubmitBatch(batch);
 
     waitpid(child, nullptr, 0);
@@ -482,7 +484,7 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
 
         // Crash child.
         auto crash_future =
-            client.InvokeAsync(MakeFaultCall(MemRpc::Opcode::MiniCrashForTest));
+            client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniCrashForTest)));
         waitpid(child, nullptr, 0);
         bootstrap->SimulateEngineDeathForTest();
 

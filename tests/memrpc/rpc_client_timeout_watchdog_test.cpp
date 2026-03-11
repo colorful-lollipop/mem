@@ -9,6 +9,10 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
+#include "apps/minirpc/protocol.h"
+
+using OHOS::Security::VirusProtectionService::MiniRpc::MiniRpcOpcode;
+
 namespace {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
@@ -32,7 +36,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
 
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(Opcode::MiniEcho,
+  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall&, RpcServerReply* reply) {
                            // Sleep long enough that exec timeout fires.
                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -55,7 +59,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   });
 
   RpcCall call;
-  call.opcode = Opcode::MiniEcho;
+  call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
   call.queue_timeout_ms = 5000;
   call.exec_timeout_ms = 100;  // Short exec timeout.
   auto future = client.InvokeAsync(call);
@@ -85,7 +89,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   std::atomic<bool> server_started{false};
-  server.RegisterHandler(Opcode::MiniEcho,
+  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [&](const RpcServerCall&, RpcServerReply* reply) {
                            server_started.store(true);
                            std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -98,7 +102,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
 
   // First request: blocks the server worker.
   RpcCall blocker;
-  blocker.opcode = Opcode::MiniEcho;
+  blocker.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
   blocker.queue_timeout_ms = 10000;
   blocker.exec_timeout_ms = 10000;
   auto blocker_future = client.InvokeAsync(blocker);
@@ -123,7 +127,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   });
 
   RpcCall queued_call;
-  queued_call.opcode = Opcode::MiniEcho;
+  queued_call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
   queued_call.queue_timeout_ms = 100;  // Short queue timeout.
   queued_call.exec_timeout_ms = 5000;
   auto queued_future = client.InvokeAsync(queued_call);

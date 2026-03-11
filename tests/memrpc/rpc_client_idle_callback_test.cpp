@@ -9,6 +9,10 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
+#include "apps/minirpc/protocol.h"
+
+using OHOS::Security::VirusProtectionService::MiniRpc::MiniRpcOpcode;
+
 namespace {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
@@ -32,7 +36,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
 
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(Opcode::MiniEcho,
+  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall&, RpcServerReply* reply) {
                            reply->status = StatusCode::Ok;
                          });
@@ -65,7 +69,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
 
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(Opcode::MiniEcho,
+  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
                          [](const RpcServerCall& call, RpcServerReply* reply) {
                            reply->status = StatusCode::Ok;
                            reply->payload = call.payload;
@@ -82,7 +86,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   // Send requests periodically to keep the client active.
   for (int i = 0; i < 5; ++i) {
     RpcCall call;
-    call.opcode = Opcode::MiniEcho;
+    call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
     auto future = client.InvokeAsync(call);
     RpcReply reply;
     future.Wait(&reply);

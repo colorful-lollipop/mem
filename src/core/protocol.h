@@ -10,28 +10,11 @@ inline constexpr uint32_t kSharedMemoryMagic = 0x4d454d52u;
 inline constexpr uint32_t kProtocolVersion = 3u;
 inline constexpr uint32_t kDefaultMaxRequestBytes = 4u * 1024u;
 inline constexpr uint32_t kDefaultMaxResponseBytes = 4u * 1024u;
-inline constexpr uint32_t kMaxFilePathSize = 1024u;
-inline constexpr uint32_t kMaxMessageSize = 512u;
 
-enum class Opcode : uint16_t {
-  ScanFile = 1,
-  ScanBehavior = 2,
-  VpsInit = 100,
-  VpsDeInit = 101,
-  VpsScanFile = 102,
-  VpsScanBehavior = 103,
-  VpsIsExistAnalysisEngine = 104,
-  VpsCreateAnalysisEngine = 105,
-  VpsDestroyAnalysisEngine = 106,
-  VpsUpdateFeatureLib = 107,
-  MiniEcho = 200,
-  MiniAdd = 201,
-  MiniSleep = 202,
-  MiniCrashForTest = 203,
-  MiniHangForTest = 204,
-  MiniOomForTest = 205,
-  MiniStackOverflowForTest = 206,
-};
+// Framework-level opcode type. Applications define their own typed enums and
+// cast to Opcode when building RpcCall / registering handlers.
+using Opcode = uint16_t;
+inline constexpr Opcode OPCODE_INVALID = 0;
 
 enum class ResponseMessageKind : uint16_t {
   Reply = 0,
@@ -52,7 +35,7 @@ struct RequestRingEntry {
   // Ring entry 只保存路由/定位信息，真正的请求体放在 slot payload 中。
   uint64_t request_id = 0;
   uint32_t slot_index = 0;
-  uint16_t opcode = static_cast<uint16_t>(Opcode::ScanFile);
+  uint16_t opcode = OPCODE_INVALID;
   uint16_t flags = 0;
   uint32_t enqueue_mono_ms = 0;
   uint32_t payload_size = 0;
@@ -132,17 +115,6 @@ inline constexpr uint32_t ComputeSlotSize(uint32_t max_request_bytes,
 inline constexpr uint32_t ComputeResponseSlotSize(uint32_t max_response_bytes) {
   return sizeof(ResponseSlotPayload) + max_response_bytes;
 }
-
-struct ScanFileRequestPayload {
-  uint32_t file_path_length = 0;
-  char file_path[kMaxFilePathSize]{};
-};
-
-struct ScanFileResponsePayload {
-  uint32_t verdict = 0;
-  uint32_t message_length = 0;
-  char message[kMaxMessageSize]{};
-};
 
 }  // namespace memrpc
 

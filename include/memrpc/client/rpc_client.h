@@ -15,7 +15,7 @@ namespace memrpc {
 using RpcThenExecutor = std::function<void(std::function<void()>)>;
 
 struct RpcCall {
-  Opcode opcode = Opcode::ScanFile;
+  Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
   // admission_timeout_ms 作用在 client 等待 slot / request ring 可写阶段。
   uint32_t admission_timeout_ms = 1000;
@@ -86,7 +86,7 @@ enum class FailureStage {
 
 struct RpcFailure {
   StatusCode status = StatusCode::Ok;
-  Opcode opcode = Opcode::ScanFile;
+  Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
   uint32_t flags = 0;
   uint32_t admission_timeout_ms = 0;

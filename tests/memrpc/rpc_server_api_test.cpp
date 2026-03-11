@@ -8,6 +8,8 @@
 
 namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
 
+constexpr memrpc::Opcode kTestOpcode = 1u;
+
 TEST(RpcServerApiTest, PublicHeaderComposes) {
   MemRpc::RpcServer server;
   MemRpc::ServerOptions options;
@@ -16,7 +18,7 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
   options.completion_queue_capacity = 4;
   MemRpc::RpcServerRuntimeStats stats;
   server.SetOptions(options);
-  server.RegisterHandler(MemRpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = MemRpc::StatusCode::Ok;

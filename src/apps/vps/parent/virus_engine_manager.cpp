@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <utility>
 
+#include "apps/vps/protocol.h"
+
 namespace OHOS::Security::VirusProtectionService {
 
 namespace {
@@ -91,7 +93,7 @@ int32_t VirusEngineManager::InvokeScanFile(const ScanTask& task, ScanResult* res
   }
 
   memrpc::RpcReply reply;
-  if (client_->InvokeSync(MakeCall(memrpc::Opcode::VpsScanFile, std::move(requestBytes)), &reply) !=
+  if (client_->InvokeSync(MakeCall(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanFile), std::move(requestBytes)), &reply) !=
       memrpc::StatusCode::Ok) {
     return FAILED;
   }
@@ -105,7 +107,7 @@ int32_t VirusEngineManager::InvokeScanFile(const ScanTask& task, ScanResult* res
 
 int32_t VirusEngineManager::Init() {
   int32_t resultCode = FAILED;
-  const int32_t result = InvokeInt32(memrpc::Opcode::VpsInit, {}, &resultCode);
+  const int32_t result = InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsInit), {}, &resultCode);
   if (result == SUCCESS) {
     is_initialized_ = true;
   }
@@ -115,7 +117,7 @@ int32_t VirusEngineManager::Init() {
 void VirusEngineManager::DeInit() {
   int32_t resultCode = FAILED;
   if (client_ != nullptr) {
-    InvokeInt32(memrpc::Opcode::VpsDeInit, {}, &resultCode);
+    InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsDeInit), {}, &resultCode);
   }
   is_initialized_ = false;
 }
@@ -137,7 +139,7 @@ int32_t VirusEngineManager::ScanBehavior(uint32_t accessToken,
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeScanBehaviorRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsScanBehavior, std::move(requestBytes), &resultCode)
+             ? InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsScanBehavior), std::move(requestBytes), &resultCode)
              : FAILED;
 }
 
@@ -146,7 +148,7 @@ int32_t VirusEngineManager::IsExistAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsIsExistAnalysisEngine, std::move(requestBytes),
+             ? InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsIsExistAnalysisEngine), std::move(requestBytes),
                            &resultCode)
              : FAILED;
 }
@@ -156,7 +158,7 @@ int32_t VirusEngineManager::CreateAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsCreateAnalysisEngine, std::move(requestBytes),
+             ? InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsCreateAnalysisEngine), std::move(requestBytes),
                            &resultCode)
              : FAILED;
 }
@@ -166,7 +168,7 @@ int32_t VirusEngineManager::DestroyAnalysisEngine(uint32_t accessToken) {
   std::vector<uint8_t> requestBytes;
   int32_t resultCode = FAILED;
   return EncodeAccessTokenRequest(request, &requestBytes)
-             ? InvokeInt32(memrpc::Opcode::VpsDestroyAnalysisEngine, std::move(requestBytes),
+             ? InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsDestroyAnalysisEngine), std::move(requestBytes),
                            &resultCode)
              : FAILED;
 }
@@ -192,7 +194,7 @@ int32_t VirusEngineManager::UnRegisterScanResultListener(
 
 int32_t VirusEngineManager::UpdateFeatureLib() {
   int32_t resultCode = FAILED;
-  return InvokeInt32(memrpc::Opcode::VpsUpdateFeatureLib, {}, &resultCode);
+  return InvokeInt32(static_cast<memrpc::Opcode>(VpsOpcode::VpsUpdateFeatureLib), {}, &resultCode);
 }
 
 }  // namespace OHOS::Security::VirusProtectionService

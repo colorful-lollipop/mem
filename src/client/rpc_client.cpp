@@ -158,7 +158,7 @@ struct RpcClient::Impl {
   };
 
   struct PendingInfo {
-    Opcode opcode = Opcode::ScanFile;
+    Opcode opcode = OPCODE_INVALID;
     Priority priority = Priority::Normal;
     uint32_t flags = 0;
     uint32_t admission_timeout_ms = 0;

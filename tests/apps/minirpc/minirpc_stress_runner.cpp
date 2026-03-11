@@ -20,6 +20,8 @@
 #include "memrpc/server/rpc_server.h"
 #include "virus_protection_service_log.h"
 
+#include "apps/minirpc/protocol.h"
+
 namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
@@ -196,16 +198,16 @@ bool RunStress(const StressConfig& config) {
           std::string text(size, 'x');
           EchoRequest request{text};
           EchoReply reply;
-          status = Mem::InvokeTypedSync(&client, Mem::Opcode::MiniEcho, request, &reply, priority);
+          status = Mem::InvokeTypedSync(&client, static_cast<Mem::Opcode>(MiniRpcOpcode::MiniEcho), request, &reply, priority);
         } else if (kind == RpcKind::Add) {
           AddRequest request{static_cast<int32_t>(rng()), static_cast<int32_t>(rng())};
           AddReply reply;
-          status = Mem::InvokeTypedSync(&client, Mem::Opcode::MiniAdd, request, &reply, priority);
+          status = Mem::InvokeTypedSync(&client, static_cast<Mem::Opcode>(MiniRpcOpcode::MiniAdd), request, &reply, priority);
         } else {
           const uint32_t delayMs = static_cast<uint32_t>(rng() % std::max(1, config.maxSleepMs));
           SleepRequest request{delayMs};
           SleepReply reply;
-          status = Mem::InvokeTypedSync(&client, Mem::Opcode::MiniSleep, request, &reply, priority);
+          status = Mem::InvokeTypedSync(&client, static_cast<Mem::Opcode>(MiniRpcOpcode::MiniSleep), request, &reply, priority);
         }
 
         if (status != Mem::StatusCode::Ok) {

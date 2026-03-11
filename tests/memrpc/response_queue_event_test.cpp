@@ -20,6 +20,8 @@
 #include "memrpc/client/sa_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 
+constexpr memrpc::Opcode kTestOpcode = 1u;
+
 namespace {
 
 bool WaitForValue(const std::atomic<int>& value, int expected, int timeout_ms) {
@@ -109,7 +111,7 @@ TEST(ResponseQueueEventTest, EventDoesNotRequirePendingRequest) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -151,7 +153,7 @@ TEST(ResponseQueueEventTest, ResponseEventFdSignalsOnlyOnEmptyToNonEmptyTransiti
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -192,7 +194,7 @@ TEST(ResponseQueueEventTest, ClientSignalsResponseCreditWhenFullResponseQueueSta
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -239,7 +241,7 @@ TEST(ResponseQueueEventTest, ResponseWriterConsumesManualResponseCreditWakeup) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -297,7 +299,7 @@ TEST(ResponseQueueEventTest, ReplyAndEventCanShareOneResponseQueue) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&server](const memrpc::RpcServerCall& call,
                                    memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -326,7 +328,7 @@ TEST(ResponseQueueEventTest, ReplyAndEventCanShareOneResponseQueue) {
   ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
   memrpc::RpcCall call;
-  call.opcode = memrpc::Opcode::ScanFile;
+  call.opcode = kTestOpcode;
   call.payload = {9, 10, 11};
 
   memrpc::RpcReply reply;
@@ -350,7 +352,7 @@ TEST(ResponseQueueEventTest, EventRespectsConfiguredResponseLimit) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -380,7 +382,7 @@ TEST(ResponseQueueEventTest, InterleavedRepliesAndEventsPreserveBothCounts) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&server](const memrpc::RpcServerCall& call,
                                    memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -405,7 +407,7 @@ TEST(ResponseQueueEventTest, InterleavedRepliesAndEventsPreserveBothCounts) {
   constexpr int kRequestCount = 16;
   for (int i = 0; i < kRequestCount; ++i) {
     memrpc::RpcCall call;
-    call.opcode = memrpc::Opcode::ScanFile;
+    call.opcode = kTestOpcode;
     call.payload = {static_cast<uint8_t>(i)};
 
     memrpc::RpcReply reply;
@@ -428,7 +430,7 @@ TEST(ResponseQueueEventTest, ResponseRingUsesSingleProducerAndConsumerThreads) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [&server](const memrpc::RpcServerCall& call,
                                    memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
@@ -456,7 +458,7 @@ TEST(ResponseQueueEventTest, ResponseRingUsesSingleProducerAndConsumerThreads) {
   for (int i = 0; i < kRequestCount; ++i) {
     threads.emplace_back([&client, i] {
       memrpc::RpcCall call;
-      call.opcode = memrpc::Opcode::ScanFile;
+      call.opcode = kTestOpcode;
       call.payload = {static_cast<uint8_t>(i)};
       memrpc::RpcReply reply;
       EXPECT_EQ(client.InvokeAsync(call).Wait(&reply), memrpc::StatusCode::Ok);
@@ -484,7 +486,7 @@ TEST(ResponseQueueEventTest, EventCallbackSeesReadyResponseSlotBeforeRelease) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -554,7 +556,7 @@ TEST(ResponseQueueEventTest, PublishedEventKeepsResponseSlotOwnedWhenNotifyWrite
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -612,7 +614,7 @@ TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;
@@ -637,7 +639,7 @@ TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
   std::memset(payload, 0, sizeof(memrpc::SlotPayload));
   payload->runtime.request_id = 1;
   payload->runtime.state = memrpc::SlotRuntimeStateCode::Queued;
-  payload->request.opcode = static_cast<uint16_t>(memrpc::Opcode::ScanFile);
+  payload->request.opcode = static_cast<uint16_t>(kTestOpcode);
   payload->request.queue_timeout_ms = 0;
   payload->request.exec_timeout_ms = 0;
   payload->request.payload_size = 1;
@@ -646,7 +648,7 @@ TEST(ResponseQueueEventTest, ReplyKeepsResponseSlotOwnedWhenNotifyWriteFails) {
   memrpc::RequestRingEntry request_entry;
   request_entry.request_id = 1;
   request_entry.slot_index = 0;
-  request_entry.opcode = static_cast<uint16_t>(memrpc::Opcode::ScanFile);
+  request_entry.opcode = static_cast<uint16_t>(kTestOpcode);
   request_entry.payload_size = 1;
   ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, request_entry),
             memrpc::StatusCode::Ok);
@@ -703,7 +705,7 @@ TEST(ResponseQueueEventTest, PublishEventFailsFastWhenCompletionBacklogIsFull) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1, .completion_queue_capacity = 1});
-  server.RegisterHandler(memrpc::Opcode::ScanFile,
+  server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
                            reply->status = memrpc::StatusCode::Ok;

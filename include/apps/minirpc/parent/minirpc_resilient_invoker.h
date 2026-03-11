@@ -13,7 +13,7 @@ namespace OHOS::Security::VirusProtectionService::MiniRpc {
 
 struct FailedCallRecord {
     uint64_t sequence_id = 0;
-    MemRpc::Opcode opcode = MemRpc::Opcode::ScanFile;
+    MemRpc::Opcode opcode = MemRpc::OPCODE_INVALID;
     std::vector<uint8_t> payload;
     MemRpc::StatusCode failure_status = MemRpc::StatusCode::PeerDisconnected;
     std::chrono::steady_clock::time_point failed_at;
