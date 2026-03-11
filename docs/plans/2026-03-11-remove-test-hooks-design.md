@@ -38,6 +38,7 @@
 
 - 删除 `tests/memrpc/rpc_client_integration_test.cpp`。
 - 删除 `tests/memrpc/response_queue_event_test.cpp`。
+- 删除 `tests/memrpc/bootstrap_callback_test.cpp`。
 - 清理 `tests/memrpc/CMakeLists.txt` 中的对应 test target。
 
 ## 风险与约束
