@@ -84,10 +84,6 @@ int main() {
     client->ScanFile("/data/test_file_1.apk", &scanReply);
     HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 
-    vpsdemo::UpdateFeatureLibReply updateReply;
-    client->UpdateFeatureLib(&updateReply);
-    HLOGI("UpdateFeatureLib: code=%{public}d", updateReply.code);
-
     client->ScanFile("/data/test_file_2.apk", &scanReply);
     HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 

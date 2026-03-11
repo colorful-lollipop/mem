@@ -8,7 +8,6 @@ namespace vpsdemo {
 enum class DemoOpcode : uint16_t {
     DemoInit = 100,
     DemoScanFile = 102,
-    DemoUpdateFeatureLib = 107,
 };
 
 }  // namespace vpsdemo

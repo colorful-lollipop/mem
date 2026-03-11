@@ -19,10 +19,6 @@ struct ScanFileReply {
     int32_t threat_level = 0;  // 0 = clean, 1 = infected
 };
 
-struct UpdateFeatureLibReply {
-    int32_t code = 0;
-};
-
 }  // namespace vpsdemo
 
 #endif  // VPSDEMO_VPSDEMO_TYPES_H_

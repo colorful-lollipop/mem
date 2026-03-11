@@ -10,18 +10,6 @@
 
 namespace vpsdemo {
 
-// Internal DeathRecipient that sets an atomic flag when the engine dies.
-class VpsClient::DeathRecipientImpl : public OHOS::IRemoteObject::DeathRecipient {
- public:
-    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>& remote) override {
-        HLOGI("death callback: engine died (OHOS path)");
-        died_ = true;
-    }
-    bool died() const { return died_.load(); }
- private:
-    std::atomic<bool> died_{false};
-};
-
 VpsClient::VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote)
     : remote_(remote),
       client_() {}
@@ -55,7 +43,7 @@ memrpc::StatusCode VpsClient::Init() {
     // Set the bootstrap channel on the RpcClient.
     client_.SetBootstrapChannel(std::static_pointer_cast<memrpc::IBootstrapChannel>(proxy_));
 
-    client_.SetEngineDeathHandler([](const memrpc::EngineDeathReport& report) {
+    client_.SetEngineDeathHandler([this](const memrpc::EngineDeathReport& report) {
         HLOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
               static_cast<unsigned long long>(report.dead_session_id),
               report.safe_to_replay_count,
@@ -66,11 +54,10 @@ memrpc::StatusCode VpsClient::Init() {
                   static_cast<unsigned>(suspect.opcode),
                   static_cast<int>(suspect.last_state));
         }
+        engine_died_ = true;
         return memrpc::RestartDecision{memrpc::RestartAction::Restart, 200};
     });
 
-    death_recipient_ = std::make_shared<DeathRecipientImpl>();
-    remote_->AddDeathRecipient(death_recipient_);
     return client_.Init();
 }
 
@@ -79,7 +66,7 @@ void VpsClient::Shutdown() {
 }
 
 bool VpsClient::EngineDied() const {
-    return death_recipient_ != nullptr && death_recipient_->died();
+    return engine_died_.load();
 }
 
 memrpc::StatusCode VpsClient::ScanFile(const std::string& path, ScanFileReply* reply) {
@@ -89,21 +76,6 @@ memrpc::StatusCode VpsClient::ScanFile(const std::string& path, ScanFileReply* r
         &client_,
         static_cast<memrpc::Opcode>(DemoOpcode::DemoScanFile),
         request, reply);
-}
-
-memrpc::StatusCode VpsClient::UpdateFeatureLib(UpdateFeatureLibReply* reply) {
-    memrpc::RpcCall call;
-    call.opcode = static_cast<memrpc::Opcode>(DemoOpcode::DemoUpdateFeatureLib);
-    auto future = client_.InvokeAsync(call);
-    memrpc::RpcReply raw;
-    auto status = future.WaitAndTake(&raw);
-    if (status != memrpc::StatusCode::Ok) {
-        return status;
-    }
-    if (reply != nullptr && !memrpc::DecodeMessage<UpdateFeatureLibReply>(raw.payload, reply)) {
-        return memrpc::StatusCode::ProtocolMismatch;
-    }
-    return memrpc::StatusCode::Ok;
 }
 
 }  // namespace vpsdemo

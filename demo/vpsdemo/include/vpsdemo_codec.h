@@ -49,19 +49,6 @@ struct CodecTraits<vpsdemo::ScanFileReply> {
     }
 };
 
-template <>
-struct CodecTraits<vpsdemo::UpdateFeatureLibReply> {
-    static bool Encode(const vpsdemo::UpdateFeatureLibReply& reply, std::vector<uint8_t>* bytes) {
-        ByteWriter writer;
-        return writer.WriteInt32(reply.code) && detail::AssignBytes(writer, bytes);
-    }
-    static bool Decode(const uint8_t* bytes, std::size_t size, vpsdemo::UpdateFeatureLibReply* reply) {
-        if (reply == nullptr) return false;
-        ByteReader reader(bytes, size);
-        return reader.ReadInt32(&reply->code);
-    }
-};
-
 }  // namespace memrpc
 
 #endif  // VPSDEMO_VPSDEMO_CODEC_H_

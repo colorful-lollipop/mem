@@ -14,8 +14,7 @@ namespace vpsdemo {
 
 // Application-level client that owns the full connection to the engine:
 // IRemoteObject + VpsBootstrapProxy + RpcClient.
-// Provides typed VPS business methods.  Internally registers an OHOS
-// DeathRecipient to track engine liveness.
+// Provides typed VPS business methods.
 class VpsClient {
  public:
     explicit VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote);
@@ -32,18 +31,15 @@ class VpsClient {
     void Shutdown();
 
     memrpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
-    memrpc::StatusCode UpdateFeatureLib(UpdateFeatureLibReply* reply);
 
     // Returns true after the engine process has died.
     bool EngineDied() const;
 
  private:
-    class DeathRecipientImpl;
-
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     std::shared_ptr<VpsBootstrapProxy> proxy_;
     memrpc::RpcClient client_;
-    OHOS::sptr<DeathRecipientImpl> death_recipient_;
+    std::atomic<bool> engine_died_{false};
 };
 
 }  // namespace vpsdemo
