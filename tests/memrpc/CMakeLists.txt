@@ -25,6 +25,7 @@ target_compile_definitions(memrpc_rpc_client_timeout_watchdog_test PRIVATE
 memrpc_add_test(memrpc_rpc_client_idle_callback_test rpc_client_idle_callback_test.cpp)
 memrpc_add_test(memrpc_rpc_server_executor_test rpc_server_executor_test.cpp)
 memrpc_add_test(memrpc_typed_future_test typed_future_test.cpp)
+memrpc_add_test(memrpc_engine_death_handler_test engine_death_handler_test.cpp)
 
 if (MEMRPC_ENABLE_DT_TESTS)
   memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)

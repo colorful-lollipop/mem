@@ -103,6 +103,27 @@ struct RpcFailure {
 using RpcFailureCallback = std::function<void(const RpcFailure&)>;
 using RpcIdleCallback = std::function<void(uint64_t idle_ms)>;
 
+struct EngineDeathReport {
+  uint64_t dead_session_id = 0;
+  uint32_t safe_to_replay_count = 0;
+
+  struct PoisonPillSuspect {
+    uint64_t request_id = 0;
+    Opcode opcode = OPCODE_INVALID;
+    RpcRuntimeState last_state = RpcRuntimeState::Unknown;
+  };
+  std::vector<PoisonPillSuspect> poison_pill_suspects;
+};
+
+enum class RestartAction { Abandon, Restart };
+
+struct RestartDecision {
+  RestartAction action = RestartAction::Restart;
+  uint32_t delay_ms = 0;
+};
+
+using EngineDeathHandler = std::function<RestartDecision(const EngineDeathReport&)>;
+
 class RpcClient {
  public:
   explicit RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap = nullptr);
@@ -116,6 +137,7 @@ class RpcClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetFailureCallback(RpcFailureCallback callback);
+  void SetEngineDeathHandler(EngineDeathHandler handler);
   void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
                        uint32_t idle_notify_interval_ms = 0);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
@@ -144,6 +166,7 @@ class RpcSyncClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetFailureCallback(RpcFailureCallback callback);
+  void SetEngineDeathHandler(EngineDeathHandler handler);
   void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
                        uint32_t idle_notify_interval_ms = 0);
   StatusCode Init();

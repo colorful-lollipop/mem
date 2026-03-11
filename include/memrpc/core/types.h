@@ -49,6 +49,7 @@ enum class StatusCode {
   ProtocolMismatch,
   EngineInternalError,
   InvalidArgument,
+  CrashedDuringExecution,
 };
 
 struct ScanResult {

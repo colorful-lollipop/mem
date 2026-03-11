@@ -53,8 +53,21 @@ memrpc::StatusCode VpsClient::Init() {
     }
 
     // Set the bootstrap channel on the RpcClient.
-    client_.SetBootstrapChannel(std::shared_ptr<memrpc::IBootstrapChannel>(
-        proxy_, static_cast<memrpc::IBootstrapChannel*>(proxy_.get())));
+    client_.SetBootstrapChannel(std::static_pointer_cast<memrpc::IBootstrapChannel>(proxy_));
+
+    client_.SetEngineDeathHandler([](const memrpc::EngineDeathReport& report) {
+        HLOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
+              static_cast<unsigned long long>(report.dead_session_id),
+              report.safe_to_replay_count,
+              report.poison_pill_suspects.size());
+        for (const auto& suspect : report.poison_pill_suspects) {
+            HLOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
+                  static_cast<unsigned long long>(suspect.request_id),
+                  static_cast<unsigned>(suspect.opcode),
+                  static_cast<int>(suspect.last_state));
+        }
+        return memrpc::RestartDecision{memrpc::RestartAction::Restart, 200};
+    });
 
     death_recipient_ = std::make_shared<DeathRecipientImpl>();
     remote_->AddDeathRecipient(death_recipient_);

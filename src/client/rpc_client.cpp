@@ -203,6 +203,9 @@ struct RpcClient::Impl {
   uint32_t idle_notify_interval_ms{0};
   std::atomic<uint32_t> last_activity_mono_ms{0};
   uint32_t last_idle_notify_mono_ms{0};
+  std::mutex death_handler_mutex;
+  EngineDeathHandler death_handler;
+  std::thread restart_thread;
 
   RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
@@ -477,6 +480,104 @@ struct RpcClient::Impl {
     pending_count.store(0, std::memory_order_relaxed);
   }
 
+  struct ReplayableSnapshot {
+    std::vector<PendingSubmit> replay_list;
+    struct PoisonEntry {
+      PendingInfo info;
+      std::shared_ptr<RpcFuture::State> future;
+    };
+    std::vector<PoisonEntry> poison_list;
+  };
+
+  // Must be called under session_mutex, before session.Reset().
+  // Separates pending requests into replay-safe and poison-pill categories.
+  ReplayableSnapshot SaveReplayableRequests() {
+    ReplayableSnapshot snapshot;
+
+    // Classify pending slots (already in shared memory).
+    for (size_t i = 0; i < pending_slots.size(); ++i) {
+      if (pending_slots[i] == nullptr || !pending_info_slots[i].has_value()) {
+        continue;
+      }
+      const PendingInfo& info = *pending_info_slots[i];
+      if (info.replay_hint == ReplayHint::SafeToReplay) {
+        PendingSubmit ps;
+        ps.call.opcode = info.opcode;
+        ps.call.priority = info.priority;
+        ps.call.flags = info.flags;
+        ps.call.admission_timeout_ms = info.admission_timeout_ms;
+        ps.call.queue_timeout_ms = info.queue_timeout_ms;
+        ps.call.exec_timeout_ms = info.exec_timeout_ms;
+        // Recover payload from shared memory.
+        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+        const uint8_t* request_bytes = session.slot_request_bytes(static_cast<uint32_t>(i));
+        if (payload != nullptr && request_bytes != nullptr && payload->request.payload_size > 0) {
+          ps.call.payload.assign(request_bytes, request_bytes + payload->request.payload_size);
+        }
+        ps.request_id = info.request_id;
+        ps.session_id = info.session_id;
+        ps.future = std::move(pending_slots[i]);
+        snapshot.replay_list.push_back(std::move(ps));
+      } else {
+        snapshot.poison_list.push_back({info, std::move(pending_slots[i])});
+      }
+      pending_slots[i].reset();
+      pending_info_slots[i].reset();
+    }
+    pending_count.store(0, std::memory_order_relaxed);
+
+    // All queued submissions are SafeToReplay (not yet written to shm).
+    {
+      std::lock_guard<std::mutex> lock(submit_mutex);
+      for (auto& qs : submit_queue) {
+        snapshot.replay_list.push_back(std::move(qs));
+      }
+      submit_queue.clear();
+    }
+
+    return snapshot;
+  }
+
+  void FailSavedRequests(std::vector<PendingSubmit>& saved, StatusCode status) {
+    for (auto& item : saved) {
+      ResolveFuture(item.future, status);
+    }
+    saved.clear();
+  }
+
+  void RestartAfterDeath(uint32_t delay_ms,
+                         std::vector<PendingSubmit> saved_requests) {
+    // Segmented sleep, checking shutting_down every 100ms.
+    for (uint32_t elapsed = 0; elapsed < delay_ms && !shutting_down.load(); elapsed += 100) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+          std::min(100u, delay_ms - elapsed)));
+    }
+    if (shutting_down.load()) {
+      FailSavedRequests(saved_requests, StatusCode::PeerDisconnected);
+      return;
+    }
+
+    StatusCode status = EnsureLiveSession();
+    if (status != StatusCode::Ok) {
+      FailSavedRequests(saved_requests, StatusCode::PeerDisconnected);
+      return;
+    }
+
+    // Inject replay requests at the front of submit_queue.
+    uint64_t new_session_id = current_session_id.load(std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> lock(submit_mutex);
+      for (auto& item : saved_requests) {
+        item.session_id = new_session_id;
+        item.request_id = next_request_id.fetch_add(1);
+      }
+      submit_queue.insert(submit_queue.begin(),
+          std::make_move_iterator(saved_requests.begin()),
+          std::make_move_iterator(saved_requests.end()));
+    }
+    submit_cv.notify_one();
+  }
+
   void HandleEngineDeath(uint64_t dead_session_id) {
     if (shutting_down.load()) {
       return;
@@ -491,11 +592,44 @@ struct RpcClient::Impl {
     }
     HLOGW("session died, session_id=%{public}llu",
           static_cast<unsigned long long>(dead_session_id));
-    // 先停掉响应线程，再整体废弃 session/slot，最后统一失败所有 pending future。
     StopDispatcher();
+
+    // Check handler presence early.
+    EngineDeathHandler handler;
+    {
+      std::lock_guard<std::mutex> dh_lock(death_handler_mutex);
+      handler = death_handler;
+    }
+
+    if (!handler) {
+      // No handler — legacy behavior: fail everything.
+      {
+        std::lock_guard<std::mutex> lock(session_mutex);
+        for (size_t i = 0; i < pending_info_slots.size(); ++i) {
+          if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
+            continue;
+          }
+          const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+          if (payload != nullptr) {
+            pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+            pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
+          }
+        }
+        session_live.store(false, std::memory_order_release);
+        session_dead = true;
+        current_session_id = 0;
+        session.Reset();
+        slot_pool.reset();
+      }
+      FailQueuedSubmissions(StatusCode::PeerDisconnected);
+      FailAllPending(StatusCode::PeerDisconnected);
+      return;
+    }
+
+    // Handler exists — snapshot, classify, and tear down session.
+    ReplayableSnapshot snapshot;
     {
       std::lock_guard<std::mutex> lock(session_mutex);
-      // Snapshot slot runtime states for replay classification before destroying session.
       for (size_t i = 0; i < pending_info_slots.size(); ++i) {
         if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
           continue;
@@ -506,14 +640,53 @@ struct RpcClient::Impl {
           pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
         }
       }
+      snapshot = SaveReplayableRequests();
       session_live.store(false, std::memory_order_release);
       session_dead = true;
       current_session_id = 0;
       session.Reset();
       slot_pool.reset();
     }
-    FailQueuedSubmissions(StatusCode::PeerDisconnected);
-    FailAllPending(StatusCode::PeerDisconnected);
+
+    // Build report.
+    EngineDeathReport report;
+    report.dead_session_id = dead_session_id;
+    report.safe_to_replay_count = static_cast<uint32_t>(snapshot.replay_list.size());
+    for (const auto& pe : snapshot.poison_list) {
+      EngineDeathReport::PoisonPillSuspect suspect;
+      suspect.request_id = pe.info.request_id;
+      suspect.opcode = pe.info.opcode;
+      suspect.last_state = pe.info.last_runtime_state;
+      report.poison_pill_suspects.push_back(suspect);
+    }
+
+    // Call handler.
+    RestartDecision decision = handler(report);
+
+    // Fail poison-pill futures with CrashedDuringExecution.
+    for (auto& pe : snapshot.poison_list) {
+      NotifyFailure(pe.info, StatusCode::CrashedDuringExecution, FailureStage::Session);
+      ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
+    }
+
+    if (decision.action == RestartAction::Abandon) {
+      // Fail all replay-safe futures too.
+      for (auto& ps : snapshot.replay_list) {
+        PendingInfo info = MakePendingInfo(ps);
+        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Session);
+        ResolveFuture(ps.future, StatusCode::PeerDisconnected);
+      }
+      return;
+    }
+
+    // Restart: join any prior restart thread, then spawn a new one.
+    if (restart_thread.joinable()) {
+      restart_thread.join();
+    }
+    restart_thread = std::thread([this, delay = decision.delay_ms,
+                                  saved = std::move(snapshot.replay_list)]() mutable {
+      RestartAfterDeath(delay, std::move(saved));
+    });
   }
 
   StatusCode EnsureLiveSession() {
@@ -1130,6 +1303,11 @@ void RpcClient::SetFailureCallback(RpcFailureCallback callback) {
   impl_->failure_callback = std::move(callback);
 }
 
+void RpcClient::SetEngineDeathHandler(EngineDeathHandler handler) {
+  std::lock_guard<std::mutex> lock(impl_->death_handler_mutex);
+  impl_->death_handler = std::move(handler);
+}
+
 void RpcClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
                                 uint32_t idle_notify_interval_ms) {
   std::lock_guard<std::mutex> lock(impl_->idle_mutex);
@@ -1193,6 +1371,9 @@ void RpcClient::Shutdown() {
   if (impl_->bootstrap != nullptr) {
     impl_->bootstrap->SetEngineDeathCallback({});
   }
+  if (impl_->restart_thread.joinable()) {
+    impl_->restart_thread.join();
+  }
   impl_->StopSubmitter();
   impl_->StopWatchdog();
   impl_->StopDispatcher();
@@ -1227,6 +1408,10 @@ void RpcSyncClient::SetEventCallback(RpcEventCallback callback) {
 
 void RpcSyncClient::SetFailureCallback(RpcFailureCallback callback) {
   client_.SetFailureCallback(std::move(callback));
+}
+
+void RpcSyncClient::SetEngineDeathHandler(EngineDeathHandler handler) {
+  client_.SetEngineDeathHandler(std::move(handler));
 }
 
 void RpcSyncClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
