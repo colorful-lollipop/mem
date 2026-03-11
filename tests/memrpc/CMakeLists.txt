@@ -28,5 +28,6 @@ target_compile_definitions(memrpc_rpc_client_timeout_watchdog_test PRIVATE
 memrpc_add_test(memrpc_rpc_client_idle_callback_test rpc_client_idle_callback_test.cpp)
 
 if (MEMRPC_ENABLE_DT_TESTS)
-  # DT stability/perf tests (added in later tasks).
+  memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)
+  set_tests_properties(memrpc_dt_stability_test PROPERTIES LABELS "dt_stability")
 endif()
