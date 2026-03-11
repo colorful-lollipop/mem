@@ -96,34 +96,10 @@ Define the public API exactly as designed.
 Run: `ctest --test-dir build --output-on-failure -R api_headers_test`
 Expected: PASS.
 
-### Task 4: Implement ring buffer primitive
+### Task 4: Ring buffer primitive (removed)
 
-**Files:**
-- Create: `src/core/ring_buffer.h`
-- Create: `src/core/ring_buffer.cpp`
-- Test: `tests/ring_buffer_test.cpp`
-
-**Step 1: Write the failing test**
-
-Add tests covering:
-
-- push/pop one entry
-- full ring rejection
-- FIFO ordering
-
-**Step 2: Run test to verify it fails**
-
-Run: `ctest --test-dir build --output-on-failure -R ring_buffer_test`
-Expected: FAIL because the ring implementation does not exist.
-
-**Step 3: Write minimal implementation**
-
-Implement a bounded ring abstraction suitable for shared-memory-backed entries.
-
-**Step 4: Run test to verify it passes**
-
-Run: `ctest --test-dir build --output-on-failure -R ring_buffer_test`
-Expected: PASS.
+This task was removed because the framework uses shared-memory ring cursors (`src/core/shm_layout.h`,
+`src/core/session.cpp`) and the standalone ring buffer implementation was deleted.
 
 ### Task 5: Implement slot pool lifecycle
 

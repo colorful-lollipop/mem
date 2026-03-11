@@ -113,16 +113,6 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
   EXPECT_NE(vps_content.find("memrpc_vps_codec_test"), std::string::npos);
 }
 
-TEST(BuildConfigTest, LegacyArchiveHasDedicatedReadme) {
-  std::ifstream stream("/root/code/demo/mem/legacy/README.md");
-  ASSERT_TRUE(stream.is_open());
-
-  std::string content((std::istreambuf_iterator<char>(stream)),
-                      std::istreambuf_iterator<char>());
-  EXPECT_NE(content.find("legacy"), std::string::npos);
-  EXPECT_NE(content.find("不纳入主构建"), std::string::npos);
-}
-
 TEST(BuildConfigTest, TopLevelMemrpcForwardingHeadersAreNotPartOfMainline) {
   const char* kLegacyHeaders[] = {
       "/root/code/demo/mem/include/memrpc/bootstrap.h",

@@ -52,7 +52,7 @@ Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `chore:`. Keep commits
 
 ## Testing
 
-GoogleTest via CMake. Framework tests in `tests/memrpc/`, app tests in `tests/apps/`. Name tests by feature (e.g. `ring_buffer_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
+GoogleTest via CMake. Framework tests in `tests/memrpc/`, app tests in `tests/apps/`. Name tests by feature (e.g. `slot_pool_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
 
 ## Dependencies
 
