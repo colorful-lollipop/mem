@@ -30,4 +30,6 @@ memrpc_add_test(memrpc_rpc_client_idle_callback_test rpc_client_idle_callback_te
 if (MEMRPC_ENABLE_DT_TESTS)
   memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)
   set_tests_properties(memrpc_dt_stability_test PROPERTIES LABELS "dt_stability")
+  memrpc_add_test(memrpc_dt_perf_test dt_perf_test.cpp)
+  set_tests_properties(memrpc_dt_perf_test PROPERTIES LABELS "dt_perf")
 endif()
