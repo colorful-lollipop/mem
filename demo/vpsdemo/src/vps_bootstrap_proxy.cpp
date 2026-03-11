@@ -76,12 +76,12 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
     }
 
     // Receive 6 FDs + metadata via SCM_RIGHTS.
-    constexpr size_t kFdCount = 6;
-    int fds[kFdCount] = {-1, -1, -1, -1, -1, -1};
+    constexpr size_t FD_COUNT = 6;
+    int fds[FD_COUNT] = {-1, -1, -1, -1, -1, -1};
     SessionMetadata meta{};
     size_t data_len = sizeof(meta);
-    size_t received = RecvFds(sock_fd_, fds, kFdCount, &meta, &data_len);
-    if (received != kFdCount || data_len != sizeof(meta)) {
+    size_t received = RecvFds(sock_fd_, fds, FD_COUNT, &meta, &data_len);
+    if (received != FD_COUNT || data_len != sizeof(meta)) {
         for (size_t i = 0; i < received; ++i) {
             close(fds[i]);
         }

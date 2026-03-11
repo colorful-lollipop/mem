@@ -16,9 +16,9 @@ struct LayoutConfig {
   uint32_t normal_ring_size = 32;
   uint32_t response_ring_size = 64;
   uint32_t slot_count = 64;
-  uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
-  uint32_t max_request_bytes = kDefaultMaxRequestBytes;
-  uint32_t max_response_bytes = kDefaultMaxResponseBytes;
+  uint32_t slot_size = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
+  uint32_t max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
+  uint32_t max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
 };
 
 struct Layout {
@@ -49,8 +49,8 @@ inline uint32_t RingCount(const RingCursor& cursor) {
 }
 
 struct SharedMemoryHeader {
-  uint32_t magic = kSharedMemoryMagic;
-  uint32_t protocol_version = kProtocolVersion;
+  uint32_t magic = SHARED_MEMORY_MAGIC;
+  uint32_t protocol_version = PROTOCOL_VERSION;
   uint64_t session_id = 0;
   uint32_t session_state = 0;
   uint32_t client_attached = 0;
@@ -59,9 +59,9 @@ struct SharedMemoryHeader {
   uint32_t normal_ring_size = 32;
   uint32_t response_ring_size = 64;
   uint32_t slot_count = 64;
-  uint32_t slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
-  uint32_t max_request_bytes = kDefaultMaxRequestBytes;
-  uint32_t max_response_bytes = kDefaultMaxResponseBytes;
+  uint32_t slot_size = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
+  uint32_t max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
+  uint32_t max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
   RingCursor high_ring{};
   RingCursor normal_ring{};
   RingCursor response_ring{};

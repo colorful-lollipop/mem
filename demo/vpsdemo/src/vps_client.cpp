@@ -30,7 +30,7 @@ VpsClient::~VpsClient() = default;
 
 void VpsClient::RegisterProxyFactory() {
     OHOS::BrokerRegistration::GetInstance().Register(
-        kVpsBootstrapSaId,
+        VPS_BOOTSTRAP_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
             std::string servicePath = remote->GetServicePath();
             return std::make_shared<VpsBootstrapProxy>(remote, servicePath);

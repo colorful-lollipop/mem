@@ -116,8 +116,8 @@ struct PosixDemoBootstrapChannel::Impl {
     }
     std::memset(region, 0, layout.total_size);
     auto* header = static_cast<SharedMemoryHeader*>(region);
-    header->magic = kSharedMemoryMagic;
-    header->protocol_version = kProtocolVersion;
+    header->magic = SHARED_MEMORY_MAGIC;
+    header->protocol_version = PROTOCOL_VERSION;
     header->session_id = GenerateSessionId();
     header->session_state = 0;
     header->high_ring_size = config.high_ring_size;
@@ -181,7 +181,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
   if (!impl_->initialized) {
     if (impl_->config.max_request_bytes == 0 ||
         impl_->config.max_response_bytes == 0 ||
-        impl_->config.max_response_bytes > kDefaultMaxResponseBytes) {
+        impl_->config.max_response_bytes > DEFAULT_MAX_RESPONSE_BYTES) {
       HLOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
             impl_->config.max_request_bytes, impl_->config.max_response_bytes);
       return StatusCode::InvalidArgument;
@@ -206,7 +206,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
     }
 
     impl_->handles.shm_fd = shm_fd;
-    impl_->handles.protocol_version = kProtocolVersion;
+    impl_->handles.protocol_version = PROTOCOL_VERSION;
     impl_->handles.session_id = session_id;
     impl_->initialized = impl_->CreateEventFds();
     if (!impl_->initialized) {

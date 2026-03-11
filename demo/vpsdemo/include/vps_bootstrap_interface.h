@@ -7,7 +7,7 @@
 namespace vpsdemo {
 
 // SA ID for the VPS bootstrap service.
-constexpr int32_t kVpsBootstrapSaId = 1251;
+constexpr int32_t VPS_BOOTSTRAP_SA_ID = 1251;
 
 // Interface exposed by the engine SA for session establishment.
 class IVpsBootstrap : public OHOS::IRemoteBroker {

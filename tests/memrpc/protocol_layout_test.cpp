@@ -7,19 +7,19 @@
 #include "core/shm_layout.h"
 
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
-  EXPECT_EQ(memrpc::kSharedMemoryMagic, 0x4d454d52u);
-  EXPECT_EQ(memrpc::kProtocolVersion, 3u);
-  EXPECT_EQ(memrpc::kDefaultMaxRequestBytes, 4u * 1024u);
-  EXPECT_EQ(memrpc::kDefaultMaxResponseBytes, 4u * 1024u);
+  EXPECT_EQ(memrpc::SHARED_MEMORY_MAGIC, 0x4d454d52u);
+  EXPECT_EQ(memrpc::PROTOCOL_VERSION, 3u);
+  EXPECT_EQ(memrpc::DEFAULT_MAX_REQUEST_BYTES, 4u * 1024u);
+  EXPECT_EQ(memrpc::DEFAULT_MAX_RESPONSE_BYTES, 4u * 1024u);
   EXPECT_EQ(sizeof(memrpc::RequestRingEntry), 32u);
   EXPECT_EQ(sizeof(memrpc::SlotRuntimeState), 32u);
   EXPECT_LE(sizeof(memrpc::ResponseRingEntry), 64u);
 }
 
 TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {
-  EXPECT_EQ(memrpc::ComputeSlotSize(memrpc::kDefaultMaxRequestBytes,
-                                    memrpc::kDefaultMaxResponseBytes),
-            sizeof(memrpc::SlotPayload) + memrpc::kDefaultMaxRequestBytes);
+  EXPECT_EQ(memrpc::ComputeSlotSize(memrpc::DEFAULT_MAX_REQUEST_BYTES,
+                                    memrpc::DEFAULT_MAX_RESPONSE_BYTES),
+            sizeof(memrpc::SlotPayload) + memrpc::DEFAULT_MAX_REQUEST_BYTES);
   EXPECT_EQ(memrpc::ComputeSlotSize(4096u, 256u), memrpc::ComputeSlotSize(4096u, 1024u));
   EXPECT_EQ(static_cast<uint32_t>(memrpc::SlotRuntimeStateCode::Free), 0u);
   EXPECT_EQ(static_cast<uint32_t>(memrpc::SlotRuntimeStateCode::Admitted), 1u);
@@ -45,8 +45,8 @@ TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {
       32,
       64,
       sizeof(memrpc::SlotPayload),
-      memrpc::kDefaultMaxRequestBytes,
-      memrpc::kDefaultMaxResponseBytes,
+      memrpc::DEFAULT_MAX_REQUEST_BYTES,
+      memrpc::DEFAULT_MAX_RESPONSE_BYTES,
   };
   const memrpc::Layout layout = memrpc::ComputeLayout(config);
   EXPECT_LT(layout.high_ring_offset, layout.normal_ring_offset);

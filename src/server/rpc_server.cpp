@@ -613,7 +613,7 @@ struct RpcServer::Impl {
   }
 
   void DispatcherLoop() {
-    constexpr int kSpinIterations = 256;
+    constexpr int SPIN_ITERATIONS = 256;
     pollfd fds[2] = {
         {session.handles().high_req_event_fd, POLLIN, 0},
         {session.handles().normal_req_event_fd, POLLIN, 0},
@@ -628,7 +628,7 @@ struct RpcServer::Impl {
       if (HandleBackloggedQueues()) {
         continue;
       }
-      if (SpinForRingActivity(kSpinIterations)) {
+      if (SpinForRingActivity(SPIN_ITERATIONS)) {
         continue;
       }
 

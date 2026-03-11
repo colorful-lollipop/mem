@@ -146,7 +146,7 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
   ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   const size_t max_echo_payload =
-      MemRpc::kDefaultMaxRequestBytes > 4 ? MemRpc::kDefaultMaxRequestBytes - 4 : 0;
+      MemRpc::DEFAULT_MAX_REQUEST_BYTES > 4 ? MemRpc::DEFAULT_MAX_REQUEST_BYTES - 4 : 0;
   const size_t echo_large_payload = std::min<size_t>(4096, max_echo_payload);
   const std::vector<std::pair<const char*, size_t>> cases = {
       {"echo_0B", 0},

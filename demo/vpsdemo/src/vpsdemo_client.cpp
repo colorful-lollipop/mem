@@ -12,18 +12,18 @@
 
 namespace {
 
-const char* kRegistrySocketEnv = "OHOS_SA_MOCK_REGISTRY_SOCKET";
-constexpr int32_t kLoadTimeoutMs = 5000;
+const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
+constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
 std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->GetSystemAbility(vpsdemo::kVpsBootstrapSaId);
+    auto remote = sam->GetSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
     if (remote == nullptr) {
         // Service not registered yet; try LoadSystemAbility.
-        remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
+        remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
     }
     if (remote == nullptr) {
-        HLOGE("ConnectToEngine failed for saId=%{public}d", vpsdemo::kVpsBootstrapSaId);
+        HLOGE("ConnectToEngine failed for saId=%{public}d", vpsdemo::VPS_BOOTSTRAP_SA_ID);
         return nullptr;
     }
     HLOGI("service path: %{public}s", remote->GetServicePath().c_str());
@@ -39,11 +39,11 @@ std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
 std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
 
-    auto remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
+    auto remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
     if (remote == nullptr) {
         // Retry once after a delay.
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
+        remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
     }
 
     if (remote == nullptr) {
@@ -63,9 +63,9 @@ std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
 }  // namespace
 
 int main() {
-    const char* registrySocket = std::getenv(kRegistrySocketEnv);
+    const char* registrySocket = std::getenv(REGISTRY_SOCKET_ENV);
     if (registrySocket == nullptr) {
-        HLOGE("%{public}s not set", kRegistrySocketEnv);
+        HLOGE("%{public}s not set", REGISTRY_SOCKET_ENV);
         return 1;
     }
 
@@ -101,7 +101,7 @@ int main() {
     // Request engine unload (triggers death callback).
     HLOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    sam->UnloadSystemAbility(vpsdemo::kVpsBootstrapSaId);
+    sam->UnloadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     HLOGI("engine_died: %{public}s", client->engine_died() ? "true" : "false");

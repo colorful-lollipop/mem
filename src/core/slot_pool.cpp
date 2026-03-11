@@ -10,7 +10,7 @@ bool IsQueuedState(SlotState state) {
   return state == SlotState::QueuedHigh || state == SlotState::QueuedNormal;
 }
 
-constexpr uint32_t kSharedEmpty = UINT32_MAX;
+constexpr uint32_t SHARED_EMPTY = UINT32_MAX;
 
 uint64_t PackTagged(uint32_t index, uint32_t version) {
   return (static_cast<uint64_t>(version) << 32) | index;
@@ -41,9 +41,9 @@ bool InitializeSharedSlotPool(void* region, uint32_t slot_count) {
   auto* in_use_slots = reinterpret_cast<uint8_t*>(
       static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader) + sizeof(uint32_t) * slot_count);
 
-  // Build linked list: 0 → 1 → 2 → ... → (n-1) → kSharedEmpty
+  // Build linked list: 0 → 1 → 2 → ... → (n-1) → SHARED_EMPTY
   for (uint32_t i = 0; i < slot_count; ++i) {
-    next_ptrs[i] = (i + 1 < slot_count) ? i + 1 : kSharedEmpty;
+    next_ptrs[i] = (i + 1 < slot_count) ? i + 1 : SHARED_EMPTY;
     in_use_slots[i] = 0;
   }
   // Stack top = 0, version = 0
@@ -71,7 +71,7 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
   uint64_t old_tagged = header_->top_tagged.load(std::memory_order_acquire);
   while (true) {
     const uint32_t top = TaggedIndex(old_tagged);
-    if (top == kSharedEmpty) {
+    if (top == SHARED_EMPTY) {
       return std::nullopt;
     }
     if (!IsValidIndex(top) || in_use_slots_[top] != 0) {
@@ -125,7 +125,7 @@ uint32_t SharedSlotPool::available() const {
   uint64_t tagged = header_->top_tagged.load(std::memory_order_acquire);
   uint32_t count = 0;
   uint32_t idx = TaggedIndex(tagged);
-  while (idx != kSharedEmpty && idx < header_->capacity) {
+  while (idx != SHARED_EMPTY && idx < header_->capacity) {
     ++count;
     idx = free_slots_[idx];
   }
@@ -150,11 +150,11 @@ SlotPool::SlotPool(uint32_t slot_count)
   for (uint32_t i = 0; i < slot_count; ++i) {
     states_[i].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
   }
-  // Build the free list as a linked stack: 0 → 1 → 2 → ... → (n-1) → kEmpty
+  // Build the free list as a linked stack: 0 → 1 → 2 → ... → (n-1) → EMPTY
   for (uint32_t i = 0; i < slot_count; ++i) {
-    next_free_[i] = (i + 1 < slot_count) ? i + 1 : kEmpty;
+    next_free_[i] = (i + 1 < slot_count) ? i + 1 : EMPTY;
   }
-  free_top_.store(slot_count > 0 ? 0 : kEmpty, std::memory_order_relaxed);
+  free_top_.store(slot_count > 0 ? 0 : EMPTY, std::memory_order_relaxed);
   free_count_.store(slot_count, std::memory_order_relaxed);
 }
 
@@ -166,7 +166,7 @@ std::optional<uint32_t> SlotPool::Reserve() {
 
   // Pop from the Treiber stack. Single consumer (submit thread), so ABA is not possible.
   uint32_t top = free_top_.load(std::memory_order_acquire);
-  while (top != kEmpty) {
+  while (top != EMPTY) {
     const uint32_t next = next_free_[top];
     if (free_top_.compare_exchange_weak(top, next,
                                          std::memory_order_acq_rel,

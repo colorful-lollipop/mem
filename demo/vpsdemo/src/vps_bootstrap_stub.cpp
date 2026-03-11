@@ -20,7 +20,7 @@ struct SessionMetadata {
 }  // namespace
 
 VpsBootstrapStub::VpsBootstrapStub()
-    : OHOS::SystemAbility(kVpsBootstrapSaId, true) {}
+    : OHOS::SystemAbility(VPS_BOOTSTRAP_SA_ID, true) {}
 
 VpsBootstrapStub::~VpsBootstrapStub() {
     StopServiceSocket();
@@ -92,8 +92,8 @@ void VpsBootstrapStub::AcceptLoop() {
         }
 
         // Send 6 fds + metadata.
-        constexpr size_t kFdCount = 6;
-        int fds[kFdCount] = {
+        constexpr size_t FD_COUNT = 6;
+        int fds[FD_COUNT] = {
             handles_.shm_fd,
             handles_.high_req_event_fd,
             handles_.normal_req_event_fd,
@@ -106,7 +106,7 @@ void VpsBootstrapStub::AcceptLoop() {
         meta.protocol_version = handles_.protocol_version;
         meta.session_id = handles_.session_id;
 
-        if (!SendFds(client_fd, fds, kFdCount, &meta, sizeof(meta))) {
+        if (!SendFds(client_fd, fds, FD_COUNT, &meta, sizeof(meta))) {
             std::cerr << "[engine] failed to send fds" << std::endl;
         }
 

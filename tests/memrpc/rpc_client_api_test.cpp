@@ -22,7 +22,7 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles* handles) override {
     if (handles != nullptr) {
       *handles = MemRpc::BootstrapHandles{};
-      handles->protocol_version = MemRpc::kProtocolVersion;
+      handles->protocol_version = MemRpc::PROTOCOL_VERSION;
     }
     return MemRpc::StatusCode::Ok;
   }

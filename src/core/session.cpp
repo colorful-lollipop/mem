@@ -13,8 +13,8 @@ namespace memrpc {
 
 namespace {
 
-constexpr uint32_t kMaxRingEntries = 1u << 20;
-constexpr uint32_t kMaxSlotCount = 1u << 20;
+constexpr uint32_t MAX_RING_ENTRIES = 1u << 20;
+constexpr uint32_t MAX_SLOT_COUNT = 1u << 20;
 
 StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
   if (mutex == nullptr) {
@@ -50,7 +50,7 @@ StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
 }
 
 bool ValidateRingCursor(const RingCursor& cursor, uint32_t expected_capacity) {
-  if (expected_capacity == 0 || expected_capacity > kMaxRingEntries) {
+  if (expected_capacity == 0 || expected_capacity > MAX_RING_ENTRIES) {
     return false;
   }
   if (cursor.capacity != expected_capacity) {
@@ -63,20 +63,20 @@ bool ValidateRingCursor(const RingCursor& cursor, uint32_t expected_capacity) {
 }
 
 bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
-  if (config.high_ring_size == 0 || config.high_ring_size > kMaxRingEntries) {
+  if (config.high_ring_size == 0 || config.high_ring_size > MAX_RING_ENTRIES) {
     return false;
   }
-  if (config.normal_ring_size == 0 || config.normal_ring_size > kMaxRingEntries) {
+  if (config.normal_ring_size == 0 || config.normal_ring_size > MAX_RING_ENTRIES) {
     return false;
   }
-  if (config.response_ring_size == 0 || config.response_ring_size > kMaxRingEntries) {
+  if (config.response_ring_size == 0 || config.response_ring_size > MAX_RING_ENTRIES) {
     return false;
   }
-  if (config.slot_count == 0 || config.slot_count > kMaxSlotCount) {
+  if (config.slot_count == 0 || config.slot_count > MAX_SLOT_COUNT) {
     return false;
   }
   if (config.max_request_bytes == 0 || config.max_response_bytes == 0 ||
-      config.max_response_bytes > kDefaultMaxResponseBytes) {
+      config.max_response_bytes > DEFAULT_MAX_RESPONSE_BYTES) {
     return false;
   }
   if (config.slot_size != ComputeSlotSize(config.max_request_bytes, config.max_response_bytes)) {
@@ -147,9 +147,9 @@ StatusCode Session::MapAndValidateHeader(int shm_fd) {
   config.normal_ring_size = 32;
   config.response_ring_size = 64;
   config.slot_count = 64;
-  config.slot_size = ComputeSlotSize(kDefaultMaxRequestBytes, kDefaultMaxResponseBytes);
-  config.max_request_bytes = kDefaultMaxRequestBytes;
-  config.max_response_bytes = kDefaultMaxResponseBytes;
+  config.slot_size = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
+  config.max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
+  config.max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
 
   Layout default_layout = ComputeLayout(config);
   initial_mapped_size_ = default_layout.total_size;
@@ -161,7 +161,7 @@ StatusCode Session::MapAndValidateHeader(int shm_fd) {
   }
 
   header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
-  if (header_->magic != kSharedMemoryMagic || header_->protocol_version != kProtocolVersion) {
+  if (header_->magic != SHARED_MEMORY_MAGIC || header_->protocol_version != PROTOCOL_VERSION) {
     Reset();
     return StatusCode::ProtocolMismatch;
   }

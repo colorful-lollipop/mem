@@ -7,7 +7,7 @@
 
 namespace {
 
-constexpr int32_t kDemoSaId = 40110;
+constexpr int32_t DEMO_SA_ID = 40110;
 
 class IDemoPing : public OHOS::IRemoteBroker {
  public:
@@ -18,7 +18,7 @@ class IDemoPing : public OHOS::IRemoteBroker {
 class DemoPingService : public OHOS::SystemAbility,
                         public OHOS::IRemoteStub<IDemoPing> {
  public:
-  DemoPingService() : OHOS::SystemAbility(kDemoSaId, true) {}
+  DemoPingService() : OHOS::SystemAbility(DEMO_SA_ID, true) {}
 
   std::string Ping() override
   {
@@ -48,7 +48,7 @@ int main() {
     return 1;
   }
 
-  auto object = registry->GetSystemAbility(kDemoSaId);
+  auto object = registry->GetSystemAbility(DEMO_SA_ID);
   auto ping = OHOS::iface_cast<IDemoPing>(object);
   if (ping == nullptr) {
     std::cerr << "iface_cast failed" << std::endl;
@@ -56,7 +56,7 @@ int main() {
   }
   std::cout << "get: " << ping->Ping() << std::endl;
 
-  auto loaded_object = registry->LoadSystemAbility(kDemoSaId, 5000);
+  auto loaded_object = registry->LoadSystemAbility(DEMO_SA_ID, 5000);
   if (loaded_object == nullptr) {
     std::cerr << "load failed" << std::endl;
     return 1;
@@ -70,7 +70,7 @@ int main() {
     return 1;
   }
 
-  if (registry->UnloadSystemAbility(kDemoSaId) != OHOS::ERR_OK) {
+  if (registry->UnloadSystemAbility(DEMO_SA_ID) != OHOS::ERR_OK) {
     std::cerr << "unload failed" << std::endl;
     return 1;
   }

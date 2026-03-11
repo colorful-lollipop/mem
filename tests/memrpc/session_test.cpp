@@ -192,7 +192,7 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
 
 TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   memrpc::DemoBootstrapConfig config;
-  config.max_response_bytes = memrpc::kDefaultMaxResponseBytes + 1;
+  config.max_response_bytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES + 1;
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
   memrpc::BootstrapHandles invalid_handles;

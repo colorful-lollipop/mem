@@ -347,9 +347,9 @@ struct RpcClient::Impl {
   }
 
   void WatchdogLoop() {
-    constexpr uint32_t kWatchdogIntervalMs = MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS;
+    constexpr uint32_t WATCHDOG_INTERVAL_MS = MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS;
     while (watchdog_running.load()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(kWatchdogIntervalMs));
+      std::this_thread::sleep_for(std::chrono::milliseconds(WATCHDOG_INTERVAL_MS));
       if (!watchdog_running.load() || shutting_down.load()) {
         break;
       }
@@ -1038,7 +1038,7 @@ struct RpcClient::Impl {
     if (resp_fd < 0) {
       return;
     }
-    constexpr int kSpinIterations = 256;
+    constexpr int SPIN_ITERATIONS = 256;
     pollfd fd{resp_fd, POLLIN, 0};
     while (dispatcher_running.load()) {
       if (session.state() == Session::SessionState::Broken) {
@@ -1052,7 +1052,7 @@ struct RpcClient::Impl {
         }
         continue;
       }
-      if (SpinForResponseRing(kSpinIterations)) {
+      if (SpinForResponseRing(SPIN_ITERATIONS)) {
         continue;
       }
       if (!PollAndDrainEventFd(&fd)) {

@@ -43,8 +43,8 @@ TEST(MiniRpcBackpressureTest, SlotExhaustionAndRecovery) {
   config.high_ring_size = 8;
   config.normal_ring_size = 8;
   config.response_ring_size = 8;
-  config.max_request_bytes = MemRpc::kDefaultMaxRequestBytes;
-  config.max_response_bytes = MemRpc::kDefaultMaxResponseBytes;
+  config.max_request_bytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+  config.max_response_bytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
   MemRpc::BootstrapHandles unused_handles;
@@ -112,8 +112,8 @@ TEST(MiniRpcBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
   config.high_ring_size = 4;
   config.normal_ring_size = 4;
   config.response_ring_size = 4;
-  config.max_request_bytes = MemRpc::kDefaultMaxRequestBytes;
-  config.max_response_bytes = MemRpc::kDefaultMaxResponseBytes;
+  config.max_request_bytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+  config.max_response_bytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
   MemRpc::BootstrapHandles unused_handles;

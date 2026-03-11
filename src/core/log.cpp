@@ -6,7 +6,7 @@
 namespace memrpc {
 namespace {
 
-constexpr const char* kLogTag = "MemRpc";
+constexpr const char* LOG_TAG = "MemRpc";
 
 char LevelChar(LogLevel level) {
   switch (level) {
@@ -64,7 +64,7 @@ void LogVPrint(LogLevel level, const char* file, int line, const char* format, v
   std::vsnprintf(buffer.data(), buffer.size(), normalized.c_str(), copied_args);
   va_end(copied_args);
 
-  std::fprintf(stderr, "[%c][%s][%s:%d] %s\n", LevelChar(level), kLogTag, file, line,
+  std::fprintf(stderr, "[%c][%s][%s:%d] %s\n", LevelChar(level), LOG_TAG, file, line,
                buffer.data());
 }
 

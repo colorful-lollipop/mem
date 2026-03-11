@@ -11,8 +11,8 @@
 
 namespace {
 
-const std::string kRegistrySocket = "/tmp/vpsdemo_registry.sock";
-const std::string kServiceSocket = "/tmp/vpsdemo_service.sock";
+const std::string REGISTRY_SOCKET = "/tmp/vpsdemo_registry.sock";
+const std::string SERVICE_SOCKET = "/tmp/vpsdemo_service.sock";
 
 volatile std::sig_atomic_t g_stop = 0;
 pid_t g_engine_pid = -1;
@@ -26,7 +26,7 @@ pid_t SpawnEngine(const std::string& enginePath) {
     pid_t pid = fork();
     if (pid == 0) {
         execl(enginePath.c_str(), enginePath.c_str(),
-              kRegistrySocket.c_str(), kServiceSocket.c_str(),
+              REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
               nullptr);
         HLOGE("exec engine failed");
         _exit(1);
@@ -37,7 +37,7 @@ pid_t SpawnEngine(const std::string& enginePath) {
 pid_t SpawnClient(const std::string& clientPath) {
     pid_t pid = fork();
     if (pid == 0) {
-        setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", kRegistrySocket.c_str(), 1);
+        setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", REGISTRY_SOCKET.c_str(), 1);
         execl(clientPath.c_str(), clientPath.c_str(), nullptr);
         HLOGE("exec client failed");
         _exit(1);
@@ -68,10 +68,10 @@ int main(int argc, char* argv[]) {
     std::string enginePath = dir + "/vpsdemo_engine_sa";
     std::string clientPath = dir + "/vpsdemo_client";
 
-    vpsdemo::RegistryServer registry(kRegistrySocket);
+    vpsdemo::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != vpsdemo::kVpsBootstrapSaId) {
+        if (sa_id != vpsdemo::VPS_BOOTSTRAP_SA_ID) {
             return false;
         }
         if (g_engine_pid > 0) {
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != vpsdemo::kVpsBootstrapSaId) {
+        if (sa_id != vpsdemo::VPS_BOOTSTRAP_SA_ID) {
             return;
         }
         HLOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
         HLOGE("failed to start registry");
         return 1;
     }
-    HLOGI("registry started at %{public}s", kRegistrySocket.c_str());
+    HLOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
 
     g_engine_pid = SpawnEngine(enginePath);
     if (g_engine_pid < 0) {

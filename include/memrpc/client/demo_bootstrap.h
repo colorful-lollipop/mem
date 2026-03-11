@@ -14,8 +14,8 @@ struct DemoBootstrapConfig {
   uint32_t normal_ring_size = 32;
   uint32_t response_ring_size = 64;
   uint32_t slot_count = 64;
-  uint32_t max_request_bytes = kDefaultMaxRequestBytes;
-  uint32_t max_response_bytes = kDefaultMaxResponseBytes;
+  uint32_t max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
+  uint32_t max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
   std::string shm_name;
 };
 
