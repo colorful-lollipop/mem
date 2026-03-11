@@ -46,6 +46,7 @@ add_library(vpsdemo_lib
     src/scm_rights.cpp
     src/vps_bootstrap_stub.cpp
     src/vps_bootstrap_proxy.cpp
+    src/vps_client.cpp
     src/vpsdemo_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC

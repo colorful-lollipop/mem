@@ -1,0 +1,4 @@
+# minirpc throughput baseline
+add.threads=4=12931.000
+echo.threads=4=10404.000
+sleep.threads=4=9291.000
