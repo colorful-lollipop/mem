@@ -19,7 +19,6 @@ target_include_directories(memrpc
 target_compile_features(memrpc PUBLIC cxx_std_17)
 
 add_library(minirpc_demo
-  apps/minirpc/common/minirpc_codec.cpp
   apps/minirpc/child/minirpc_service.cpp
   apps/minirpc/parent/minirpc_async_client.cpp
   apps/minirpc/parent/minirpc_client.cpp
