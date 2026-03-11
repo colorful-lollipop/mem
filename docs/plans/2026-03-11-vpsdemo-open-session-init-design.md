@@ -18,7 +18,7 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
 ## Architecture
 - `EngineSessionService` (server-side) owns real `OpenSession`:
   - Synchronously initializes the engine (once).
-  - Returns `BootstrapHandles`.
+  - Returns `BootstrapHandles` from the same `OpenSession` call that triggers initialization.
 - `VirusExecutorService` (renamed SA class; implements `IVpsBootstrap`) is transport-only:
   - `AcceptLoop()` calls `provider->OpenSession(&handles)`.
   - On success, sends fds + metadata via SCM_RIGHTS.
@@ -31,7 +31,7 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
   - `EngineSessionService` implementation:
     - Holds `memrpc::PosixDemoBootstrapChannel`.
     - Performs synchronous `Initialize()` once.
-    - Returns `BootstrapHandles`.
+    - Returns `BootstrapHandles` directly from the first `OpenSession`, avoiding a throwaway open/close.
 - **Rename/Update:** `demo/vpsdemo/include/vps_bootstrap_stub.h` -> `demo/vpsdemo/include/virus_executor_service.h`
 - **Rename/Update:** `demo/vpsdemo/src/vps_bootstrap_stub.cpp` -> `demo/vpsdemo/src/virus_executor_service.cpp`
   - Inject `VpsSessionProvider`.
@@ -51,7 +51,7 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
 1. `VpsClient::Init()` -> `RpcClient::Init()` -> `bootstrap->OpenSession()`.
 2. `VpsBootstrapProxy` connects and sends the open command.
 3. `VirusExecutorService::AcceptLoop()` calls `provider->OpenSession(&handles)`.
-4. `EngineSessionService::OpenSession()` synchronously initializes the engine (once) and returns handles.
+4. `EngineSessionService::OpenSession()` calls `bootstrap->OpenSession(handles)` on first use, returns those handles, then initializes the engine once using `serverHandles()`.
 5. `VirusExecutorService` sends handles via SCM_RIGHTS.
 6. `RpcClient` attaches and processes RPCs; client no longer calls `InitEngine`.
 
