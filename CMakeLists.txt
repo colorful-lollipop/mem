@@ -14,7 +14,7 @@ execute_process(
 
 option(MEMRPC_ENABLE_STRESS_TESTS "Enable stress test targets" OFF)
 option(MEMRPC_ENABLE_FUZZ "Enable fuzz targets" OFF)
-option(MEMRPC_ENABLE_DT_TESTS "Enable DT stability/perf tests" OFF)
+option(MEMRPC_ENABLE_DT_TESTS "Enable DT stability/perf tests" ON)
 
 enable_testing()
 
