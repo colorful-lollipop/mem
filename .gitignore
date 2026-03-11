@@ -3,6 +3,7 @@ build_stress/
 build_fuzz/
 build_asan/
 build-warn/
+build-dt/
 stress_out/
 out/
 dist/

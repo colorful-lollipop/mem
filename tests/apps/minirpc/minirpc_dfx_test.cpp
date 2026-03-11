@@ -9,7 +9,7 @@
 #include "apps/minirpc/child/minirpc_service.h"
 #include "apps/minirpc/common/minirpc_codec.h"
 #include "apps/minirpc/parent/minirpc_failure_monitor.h"
-#include "apps/minirpc/parent/minirpc_resilient_invoker.h"
+#include "minirpc_resilient_invoker.h"
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"

@@ -1,4 +1,4 @@
-#include "apps/minirpc/parent/minirpc_resilient_invoker.h"
+#include "minirpc_resilient_invoker.h"
 
 #include <utility>
 

@@ -19,6 +19,7 @@
 #include "core/protocol.h"
 #include "core/session.h"
 #include "core/slot_pool.h"
+#include "memrpc/core/task_executor.h"
 #include "virus_protection_service_log.h"
 
 namespace memrpc {
@@ -52,31 +53,54 @@ int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
   return remaining > 0 ? remaining : 0;
 }
 
-class WorkerPool {
+class ThreadPoolExecutor final : public TaskExecutor {
  public:
-  void Start(uint32_t thread_count, std::function<void(const RequestRingEntry&)> callback) {
-    callback_ = std::move(callback);
+  explicit ThreadPoolExecutor(uint32_t thread_count) {
+    const uint32_t threads = std::max(1u, thread_count);
+    queue_capacity_ = threads;
     running_ = true;
-    queue_capacity_ = std::max(1u, thread_count);
-    for (uint32_t i = 0; i < thread_count; ++i) {
+    for (uint32_t i = 0; i < threads; ++i) {
       workers_.emplace_back([this] { WorkerLoop(); });
     }
   }
 
-  bool HasCapacity() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return queue_.size() < queue_capacity_;
+  ~ThreadPoolExecutor() override {
+    Stop();
   }
 
-  void Enqueue(const RequestRingEntry& entry) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    queue_.push(entry);
-    cv_.notify_one();
-  }
-
-  void Stop() {
+  bool TrySubmit(std::function<void()> task) override {
+    if (!task) {
+      return false;
+    }
     {
       std::lock_guard<std::mutex> lock(mutex_);
+      if (!running_ || queue_.size() >= queue_capacity_) {
+        return false;
+      }
+      queue_.push(std::move(task));
+    }
+    cv_.notify_one();
+    return true;
+  }
+
+  bool HasCapacity() const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return running_ && queue_.size() < queue_capacity_;
+  }
+
+  bool WaitForCapacity(std::chrono::milliseconds timeout) override {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return cv_.wait_for(lock, timeout, [this] {
+      return !running_ || queue_.size() < queue_capacity_;
+    });
+  }
+
+  void Stop() override {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!running_) {
+        return;
+      }
       running_ = false;
     }
     cv_.notify_all();
@@ -88,36 +112,28 @@ class WorkerPool {
     workers_.clear();
   }
 
-  bool WaitForCapacity(std::chrono::milliseconds timeout) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    return cv_.wait_for(lock, timeout, [this] {
-      return !running_ || queue_.size() < queue_capacity_;
-    });
-  }
-
  private:
   void WorkerLoop() {
     while (true) {
-      RequestRingEntry entry;
+      std::function<void()> task;
       {
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [this] { return !running_ || !queue_.empty(); });
         if (!running_ && queue_.empty()) {
           return;
         }
-        entry = queue_.front();
+        task = std::move(queue_.front());
         queue_.pop();
         cv_.notify_one();
       }
-      callback_(entry);
+      task();
     }
   }
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::condition_variable cv_;
-  std::queue<RequestRingEntry> queue_;
+  std::queue<std::function<void()>> queue_;
   std::vector<std::thread> workers_;
-  std::function<void(const RequestRingEntry&)> callback_;
   bool running_ = false;
   uint32_t queue_capacity_ = 1;
 };
@@ -144,8 +160,8 @@ struct RpcServer::Impl {
   BootstrapHandles handles{};
   ServerOptions options{};
   Session session;
-  WorkerPool high_pool;
-  WorkerPool normal_pool;
+  std::shared_ptr<TaskExecutor> high_executor;
+  std::shared_ptr<TaskExecutor> normal_executor;
   std::mutex completion_mutex;
   std::condition_variable completion_cv;
   std::queue<CompletionItem> completion_queue;
@@ -541,18 +557,19 @@ struct RpcServer::Impl {
     WriteResponse(request_entry, reply);
   }
 
-  bool DrainQueue(QueueKind kind, WorkerPool* pool) {
+  bool DrainQueue(QueueKind kind, TaskExecutor* executor) {
     bool drained = false;
     RequestRingEntry entry;
     bool request_ring_became_not_full = false;
-    while (pool->HasCapacity() && session.PopRequest(kind, &entry)) {
+    while (executor->HasCapacity() && session.PopRequest(kind, &entry)) {
       const RingCursor& cursor =
           kind == QueueKind::HighRequest ? session.header()->high_ring : session.header()->normal_ring;
       if (cursor.capacity != 0 && RingCount(cursor) + 1u == cursor.capacity) {
         request_ring_became_not_full = true;
       }
       drained = true;
-      pool->Enqueue(entry);
+      const RequestRingEntry captured_entry = entry;
+      executor->TrySubmit([this, captured_entry] { ProcessEntry(captured_entry); });
     }
     if (request_ring_became_not_full) {
       const uint64_t signal_value = 1;
@@ -564,16 +581,16 @@ struct RpcServer::Impl {
   bool HandleBackloggedQueues() {
     const bool high_backlogged = session.header() != nullptr &&
                                  RingCount(session.header()->high_ring) > 0 &&
-                                 !high_pool.HasCapacity();
+                                 !high_executor->HasCapacity();
     const bool normal_backlogged = session.header() != nullptr &&
                                    RingCount(session.header()->normal_ring) > 0 &&
-                                   !normal_pool.HasCapacity();
+                                   !normal_executor->HasCapacity();
     if (high_backlogged) {
-      high_pool.WaitForCapacity(std::chrono::milliseconds(100));
+      high_executor->WaitForCapacity(std::chrono::milliseconds(100));
       return true;
     }
     if (normal_backlogged) {
-      normal_pool.WaitForCapacity(std::chrono::milliseconds(100));
+      normal_executor->WaitForCapacity(std::chrono::milliseconds(100));
       return true;
     }
     return false;
@@ -603,9 +620,9 @@ struct RpcServer::Impl {
     };
 
     while (running.load()) {
-      bool high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
+      bool high_work = DrainQueue(QueueKind::HighRequest, high_executor.get());
       if (!high_work) {
-        DrainQueue(QueueKind::NormalRequest, &normal_pool);
+        DrainQueue(QueueKind::NormalRequest, normal_executor.get());
       }
 
       if (HandleBackloggedQueues()) {
@@ -620,12 +637,12 @@ struct RpcServer::Impl {
       if (poll_result > 0 && (fds[0].revents & POLLIN) != 0) {
         while (read(fds[0].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        high_work = DrainQueue(QueueKind::HighRequest, &high_pool);
+        high_work = DrainQueue(QueueKind::HighRequest, high_executor.get());
       }
       if (poll_result > 0 && !high_work && (fds[1].revents & POLLIN) != 0) {
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        DrainQueue(QueueKind::NormalRequest, &normal_pool);
+        DrainQueue(QueueKind::NormalRequest, normal_executor.get());
       }
     }
   }
@@ -679,14 +696,12 @@ StatusCode RpcServer::Start() {
           : impl_->options.completion_queue_capacity;
   impl_->pending_completion_count = 0;
   impl_->StartResponseWriter();
-  impl_->high_pool.Start(std::max(1u, impl_->options.high_worker_threads),
-                         [this](const RequestRingEntry& entry) {
-                           impl_->ProcessEntry(entry);
-                         });
-  impl_->normal_pool.Start(std::max(1u, impl_->options.normal_worker_threads),
-                           [this](const RequestRingEntry& entry) {
-                             impl_->ProcessEntry(entry);
-                           });
+  impl_->high_executor = impl_->options.high_executor
+      ? impl_->options.high_executor
+      : std::make_shared<ThreadPoolExecutor>(impl_->options.high_worker_threads);
+  impl_->normal_executor = impl_->options.normal_executor
+      ? impl_->options.normal_executor
+      : std::make_shared<ThreadPoolExecutor>(impl_->options.normal_worker_threads);
   impl_->dispatcher_thread = std::thread([this] { impl_->DispatcherLoop(); });
   return StatusCode::Ok;
 }
@@ -728,8 +743,14 @@ void RpcServer::Stop() {
   if (impl_->dispatcher_thread.joinable()) {
     impl_->dispatcher_thread.join();
   }
-  impl_->high_pool.Stop();
-  impl_->normal_pool.Stop();
+  if (impl_->high_executor) {
+    impl_->high_executor->Stop();
+    impl_->high_executor.reset();
+  }
+  if (impl_->normal_executor) {
+    impl_->normal_executor->Stop();
+    impl_->normal_executor.reset();
+  }
   impl_->StopResponseWriter();
   impl_->session.Reset();
 }

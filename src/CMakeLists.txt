@@ -22,7 +22,6 @@ add_library(minirpc_demo
   apps/minirpc/child/minirpc_service.cpp
   apps/minirpc/parent/minirpc_async_client.cpp
   apps/minirpc/parent/minirpc_client.cpp
-  apps/minirpc/parent/minirpc_resilient_invoker.cpp
 )
 
 target_include_directories(minirpc_demo

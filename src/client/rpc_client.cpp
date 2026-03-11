@@ -194,6 +194,7 @@ struct RpcClient::Impl {
   RpcFailureCallback failure_callback;
   std::atomic<uint64_t> current_session_id{0};
   std::atomic<bool> session_dead{true};
+  std::atomic<bool> session_live{false};
   std::thread watchdog_thread;
   std::atomic<bool> watchdog_running{false};
   std::mutex idle_mutex;
@@ -505,6 +506,7 @@ struct RpcClient::Impl {
           pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
         }
       }
+      session_live.store(false, std::memory_order_release);
       session_dead = true;
       current_session_id = 0;
       session.Reset();
@@ -515,10 +517,13 @@ struct RpcClient::Impl {
   }
 
   StatusCode EnsureLiveSession() {
+    if (session_live.load(std::memory_order_acquire)) {
+      return StatusCode::Ok;
+    }
     std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
     {
       std::lock_guard<std::mutex> lock(session_mutex);
-      if (!session_dead && session.valid() && slot_pool != nullptr) {
+      if (session_live.load(std::memory_order_relaxed)) {
         return StatusCode::Ok;
       }
     }
@@ -537,6 +542,7 @@ struct RpcClient::Impl {
     StopDispatcher();
     std::lock_guard<std::mutex> lock(session_mutex);
     // 每次重连都完整替换 session 视图，避免旧 fd / shm 映射残留。
+    session_live.store(false, std::memory_order_release);
     session_dead = true;
     current_session_id = 0;
     session.Reset();
@@ -552,6 +558,7 @@ struct RpcClient::Impl {
     pending_info_slots.assign(session.header()->slot_count, std::nullopt);
     current_session_id = handles.session_id;
     session_dead = false;
+    session_live.store(true, std::memory_order_release);
     TouchActivity();
     StartDispatcher();
     return StatusCode::Ok;
@@ -1191,6 +1198,7 @@ void RpcClient::Shutdown() {
   impl_->StopDispatcher();
   {
     std::lock_guard<std::mutex> lock(impl_->session_mutex);
+    impl_->session_live.store(false, std::memory_order_release);
     impl_->session_dead = true;
     impl_->current_session_id = 0;
     impl_->session.Reset();

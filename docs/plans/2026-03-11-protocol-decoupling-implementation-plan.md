@@ -187,7 +187,7 @@ git commit -m "feat: decouple core opcode type"
 - Modify: `tests/memrpc/rpc_client_timeout_watchdog_test.cpp`
 - Modify: `tests/memrpc/rpc_client_idle_callback_test.cpp`
 - Modify: `tests/apps/minirpc/minirpc_stress_runner.cpp`
-- Modify: `include/apps/minirpc/parent/minirpc_resilient_invoker.h`
+- Modify: `tests/apps/minirpc/minirpc_resilient_invoker.h`
 
 **Step 1: 写一个会失败的替换（MiniRPC）**
 
@@ -220,7 +220,7 @@ git add src/apps/minirpc \
   tests/apps/minirpc \
   tests/memrpc/rpc_client_timeout_watchdog_test.cpp \
   tests/memrpc/rpc_client_idle_callback_test.cpp \
-  include/apps/minirpc/parent/minirpc_resilient_invoker.h
+  tests/apps/minirpc/minirpc_resilient_invoker.h
 
 git commit -m "feat: switch minirpc to app opcode"
 ```
@@ -325,4 +325,3 @@ git add -A
 
 git commit -m "fix: follow-up protocol decoupling cleanup"
 ```
-
