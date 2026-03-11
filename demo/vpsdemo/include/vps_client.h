@@ -18,11 +18,15 @@ namespace vpsdemo {
 // DeathRecipient to track engine liveness.
 class VpsClient {
  public:
-    explicit VpsClient(const std::string& servicePath);
+    explicit VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote);
     ~VpsClient();
 
     VpsClient(const VpsClient&) = delete;
     VpsClient& operator=(const VpsClient&) = delete;
+
+    // Register VpsBootstrapProxy factory with BrokerRegistration.
+    // Call once before using iface_cast<IVpsBootstrap>.
+    static void RegisterProxyFactory();
 
     memrpc::StatusCode Init();
     void Shutdown();

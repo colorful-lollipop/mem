@@ -3,9 +3,10 @@
 #include <thread>
 #include <unistd.h>
 
+#include "iservice_registry.h"
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
-#include "registry_client.h"
+#include "registry_backend.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_bootstrap_stub.h"
 #include "vpsdemo_service.h"
@@ -31,6 +32,10 @@ int main(int argc, char* argv[]) {
 
     std::signal(SIGTERM, SignalHandler);
     std::signal(SIGINT, SignalHandler);
+
+    // Inject backend so Publish() routes through the registry.
+    auto backend = std::make_shared<vpsdemo::RegistryBackend>(registrySocket);
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
 
     // Create shared memory + eventfd resources.
     auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
@@ -71,13 +76,11 @@ int main(int argc, char* argv[]) {
     }
     HLOGI("service socket at %{public}s", serviceSocket.c_str());
 
-    // Register with the SA registry.
-    vpsdemo::RegistryClient registry(registrySocket);
-    if (!registry.RegisterService(vpsdemo::kVpsBootstrapSaId, serviceSocket)) {
-        HLOGE("registry registration failed");
-    }
+    // Set service path metadata on the stub's IRemoteObject so Publish()
+    // can route through the backend.
+    stub->AsObject()->SetServicePath(serviceSocket);
 
-    // Publish to in-process SA registry (for completeness).
+    // Publish to SA registry — backend routes to RegistryServer.
     stub->Publish(stub.get());
 
     HLOGI("engine ready");

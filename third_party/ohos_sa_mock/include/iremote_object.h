@@ -1,6 +1,8 @@
 #ifndef OHOS_SA_MOCK_IREMOTE_OBJECT_H
 #define OHOS_SA_MOCK_IREMOTE_OBJECT_H
 
+#include <string>
+
 #include "refbase.h"
 
 namespace OHOS {
@@ -23,6 +25,12 @@ class IRemoteObject : public RefBase {
 
   void AttachBroker(const sptr<IRemoteBroker>& broker);
   sptr<IRemoteBroker> GetBroker() const;
+
+  void SetSaId(int32_t saId);
+  int32_t GetSaId() const;
+
+  void SetServicePath(const std::string& path);
+  std::string GetServicePath() const;
 
  private:
   class Impl;

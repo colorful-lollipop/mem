@@ -1,7 +1,9 @@
 #include "vps_client.h"
 
 #include "iremote_broker.h"
+#include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
+#include "vps_bootstrap_interface.h"
 #include "vpsdemo_codec.h"
 #include "vpsdemo_protocol.h"
 #include "virus_protection_service_log.h"
@@ -20,18 +22,40 @@ class VpsClient::DeathRecipientImpl : public OHOS::IRemoteObject::DeathRecipient
     std::atomic<bool> died_{false};
 };
 
-VpsClient::VpsClient(const std::string& servicePath)
-    : remote_(std::make_shared<OHOS::IRemoteObject>()),
-      proxy_(std::make_shared<VpsBootstrapProxy>(remote_, servicePath)),
-      client_(std::shared_ptr<memrpc::IBootstrapChannel>(
-          proxy_, static_cast<memrpc::IBootstrapChannel*>(proxy_.get()))) {
-    remote_->AttachBroker(
-        std::dynamic_pointer_cast<OHOS::IRemoteBroker>(proxy_));
-}
+VpsClient::VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote)
+    : remote_(remote),
+      client_() {}
 
 VpsClient::~VpsClient() = default;
 
+void VpsClient::RegisterProxyFactory() {
+    OHOS::BrokerRegistration::GetInstance().Register(
+        kVpsBootstrapSaId,
+        [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
+            std::string servicePath = remote->GetServicePath();
+            return std::make_shared<VpsBootstrapProxy>(remote, servicePath);
+        });
+}
+
 memrpc::StatusCode VpsClient::Init() {
+    // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
+    auto bootstrap = OHOS::iface_cast<IVpsBootstrap>(remote_);
+    if (bootstrap == nullptr) {
+        HLOGE("iface_cast<IVpsBootstrap> failed");
+        return memrpc::StatusCode::InvalidArgument;
+    }
+
+    // Alias shared_ptr to use VpsBootstrapProxy as IBootstrapChannel.
+    proxy_ = std::dynamic_pointer_cast<VpsBootstrapProxy>(bootstrap);
+    if (proxy_ == nullptr) {
+        HLOGE("dynamic_pointer_cast to VpsBootstrapProxy failed");
+        return memrpc::StatusCode::InvalidArgument;
+    }
+
+    // Set the bootstrap channel on the RpcClient.
+    client_.SetBootstrapChannel(std::shared_ptr<memrpc::IBootstrapChannel>(
+        proxy_, static_cast<memrpc::IBootstrapChannel*>(proxy_.get())));
+
     death_recipient_ = std::make_shared<DeathRecipientImpl>();
     remote_->AddDeathRecipient(death_recipient_);
     return client_.Init();

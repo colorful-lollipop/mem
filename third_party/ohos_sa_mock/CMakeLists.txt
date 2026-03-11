@@ -13,6 +13,7 @@ endif()
 
 add_library(ohos_sa_mock
   src/iremote_object.cpp
+  src/iremote_broker_registry.cpp
   src/system_ability_manager.cpp
 )
 

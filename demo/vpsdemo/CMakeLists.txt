@@ -32,6 +32,7 @@ target_link_libraries(memrpc_core PUBLIC pthread rt)
 add_library(ohos_sa_mock
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/system_ability_manager.cpp
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/iremote_object.cpp
+    ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/iremote_broker_registry.cpp
 )
 target_include_directories(ohos_sa_mock PUBLIC
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/include
@@ -43,6 +44,7 @@ add_library(vpsdemo_lib
     src/registry_protocol.cpp
     src/registry_server.cpp
     src/registry_client.cpp
+    src/registry_backend.cpp
     src/scm_rights.cpp
     src/vps_bootstrap_stub.cpp
     src/vps_bootstrap_proxy.cpp

@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "if_system_ability_manager.h"
+#include "isam_backend.h"
 #include "isystem_ability_load_callback.h"
 
 namespace OHOS {
@@ -76,7 +77,72 @@ class LocalSystemAbilityManager : public IRemoteStub<ISystemAbilityManager> {
   std::unordered_map<int32_t, sptr<IRemoteObject>> abilities_;
 };
 
-sptr<ISystemAbilityManager> GetOrCreateManager()
+class RemoteSystemAbilityManager : public IRemoteStub<ISystemAbilityManager> {
+ public:
+  explicit RemoteSystemAbilityManager(std::shared_ptr<ISamBackend> backend)
+      : backend_(std::move(backend)) {}
+
+  ErrCode AddSystemAbility(int32_t systemAbilityId,
+                           const sptr<IRemoteObject>& object) override
+  {
+    if (object == nullptr) {
+      return ERR_NULL_OBJECT;
+    }
+    std::string servicePath = object->GetServicePath();
+    if (!backend_->AddService(systemAbilityId, servicePath)) {
+      return ERR_INVALID_VALUE;
+    }
+    return ERR_OK;
+  }
+
+  sptr<IRemoteObject> GetSystemAbility(int32_t systemAbilityId) override
+  {
+    return CheckSystemAbility(systemAbilityId);
+  }
+
+  sptr<IRemoteObject> CheckSystemAbility(int32_t systemAbilityId) override
+  {
+    std::string path = backend_->GetServicePath(systemAbilityId);
+    if (path.empty()) {
+      return nullptr;
+    }
+    auto remote = std::make_shared<IRemoteObject>();
+    remote->SetSaId(systemAbilityId);
+    remote->SetServicePath(path);
+    return remote;
+  }
+
+  ErrCode LoadSystemAbility(int32_t systemAbilityId,
+                            const sptr<SystemAbilityLoadCallbackStub>& callback) override
+  {
+    if (callback == nullptr) {
+      return ERR_NULL_OBJECT;
+    }
+    std::string path = backend_->LoadService(systemAbilityId);
+    if (path.empty()) {
+      callback->OnLoadSystemAbilityFail(systemAbilityId);
+      return ERR_NAME_NOT_FOUND;
+    }
+    auto remote = std::make_shared<IRemoteObject>();
+    remote->SetSaId(systemAbilityId);
+    remote->SetServicePath(path);
+    callback->OnLoadSystemAbilitySuccess(systemAbilityId, remote);
+    return ERR_OK;
+  }
+
+  ErrCode UnloadSystemAbility(int32_t systemAbilityId) override
+  {
+    if (!backend_->UnloadService(systemAbilityId)) {
+      return ERR_NAME_NOT_FOUND;
+    }
+    return ERR_OK;
+  }
+
+ private:
+  std::shared_ptr<ISamBackend> backend_;
+};
+
+sptr<ISystemAbilityManager> GetOrCreateLocalManager()
 {
   static sptr<ISystemAbilityManager> manager = std::make_shared<LocalSystemAbilityManager>();
   return manager;
@@ -122,7 +188,15 @@ SystemAbilityManagerClient& SystemAbilityManagerClient::GetInstance()
 
 sptr<ISystemAbilityManager> SystemAbilityManagerClient::GetSystemAbilityManager()
 {
-  return GetOrCreateManager();
+  if (backend_ != nullptr) {
+    return std::make_shared<RemoteSystemAbilityManager>(backend_);
+  }
+  return GetOrCreateLocalManager();
+}
+
+void SystemAbilityManagerClient::SetBackend(const std::shared_ptr<ISamBackend>& backend)
+{
+  backend_ = backend;
 }
 
 }  // namespace OHOS

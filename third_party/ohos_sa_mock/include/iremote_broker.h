@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "iremote_object.h"
+#include "iremote_broker_registry.h"
 
 namespace OHOS {
 
@@ -20,6 +21,15 @@ sptr<T> iface_cast(const sptr<IRemoteObject>& object)
     return nullptr;
   }
   auto broker = object->GetBroker();
+  if (broker == nullptr) {
+    int32_t saId = object->GetSaId();
+    if (saId >= 0) {
+      broker = BrokerRegistration::GetInstance().CreateBroker(saId, object);
+      if (broker != nullptr) {
+        object->AttachBroker(broker);
+      }
+    }
+  }
   return std::dynamic_pointer_cast<T>(broker);
 }
 

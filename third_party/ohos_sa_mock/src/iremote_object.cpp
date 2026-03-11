@@ -13,6 +13,8 @@ class IRemoteObject::Impl {
   std::mutex mutex;
   std::vector<wptr<DeathRecipient>> recipients;
   wptr<IRemoteBroker> broker;
+  int32_t sa_id = -1;
+  std::string service_path;
 };
 
 bool IRemoteObject::AddDeathRecipient(const sptr<DeathRecipient>& recipient)
@@ -86,6 +88,42 @@ sptr<IRemoteBroker> IRemoteObject::GetBroker() const
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   return impl_->broker.lock();
+}
+
+void IRemoteObject::SetSaId(int32_t saId)
+{
+  if (impl_ == nullptr) {
+    impl_ = std::make_shared<Impl>();
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  impl_->sa_id = saId;
+}
+
+int32_t IRemoteObject::GetSaId() const
+{
+  if (impl_ == nullptr) {
+    return -1;
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  return impl_->sa_id;
+}
+
+void IRemoteObject::SetServicePath(const std::string& path)
+{
+  if (impl_ == nullptr) {
+    impl_ = std::make_shared<Impl>();
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  impl_->service_path = path;
+}
+
+std::string IRemoteObject::GetServicePath() const
+{
+  if (impl_ == nullptr) {
+    return {};
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  return impl_->service_path;
 }
 
 }  // namespace OHOS
