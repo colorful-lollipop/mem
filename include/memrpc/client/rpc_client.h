@@ -18,9 +18,10 @@ struct RpcCall {
   Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
   // admission_timeout_ms 作用在 client 等待 slot / request ring 可写阶段。
-  uint32_t admission_timeout_ms = 1000;
-  // queue_timeout_ms 作用在服务端排队阶段。
-  uint32_t queue_timeout_ms = 1000;
+  // 0 = 无限等待（slot 耗尽时阻塞直到可用）。
+  uint32_t admission_timeout_ms = 0;
+  // queue_timeout_ms 作用在服务端排队阶段。0 = 无限等待。
+  uint32_t queue_timeout_ms = 0;
   // exec_timeout_ms 作用在服务端 handler 执行阶段；当前为软超时，不强杀 handler。
   uint32_t exec_timeout_ms = 30000;
   uint32_t flags = 0;

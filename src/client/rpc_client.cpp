@@ -45,8 +45,12 @@ bool RingCountIsOneAfterPush(const RingCursor& cursor) {
 }
 
 int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
+  const auto now = std::chrono::steady_clock::now();
+  if (deadline == std::chrono::steady_clock::time_point::max()) {
+    return INT64_MAX;
+  }
   const auto remaining =
-      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now())
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
           .count();
   return remaining > 0 ? remaining : 0;
 }
@@ -950,8 +954,10 @@ struct RpcClient::Impl {
 
   void SubmitOne(const PendingSubmit& pending_submit) {
     const bool infinite_admission_wait = pending_submit.call.admission_timeout_ms == 0;
-    const auto admission_deadline = std::chrono::steady_clock::now() +
-                                    std::chrono::milliseconds(pending_submit.call.admission_timeout_ms);
+    const auto admission_deadline = infinite_admission_wait
+                                    ? std::chrono::steady_clock::time_point::max()
+                                    : std::chrono::steady_clock::now() +
+                                      std::chrono::milliseconds(pending_submit.call.admission_timeout_ms);
     const PendingInfo info = MakePendingInfo(pending_submit);
 
     while (submit_running.load() && !shutting_down.load()) {

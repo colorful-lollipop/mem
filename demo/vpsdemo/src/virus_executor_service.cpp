@@ -1,5 +1,8 @@
 #include "virus_executor_service.h"
 
+#include <thread>
+
+#include "iservice_registry.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {
@@ -22,7 +25,19 @@ memrpc::StatusCode VirusExecutorService::CloseSession() {
     if (!session_service_) {
         return memrpc::StatusCode::Ok;
     }
-    return session_service_->CloseSession();
+    auto status = session_service_->CloseSession();
+
+    // After releasing session resources, trigger self-unload asynchronously.
+    // Must be async because the IPC caller is still waiting for our reply.
+    std::thread([sa_id = GetSystemAbilityId()]() {
+        HLOGI("requesting self-unload for sa_id=%{public}d", sa_id);
+        auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+        if (sam != nullptr) {
+            sam->UnloadSystemAbility(sa_id);
+        }
+    }).detach();
+
+    return status;
 }
 
 void VirusExecutorService::OnStart() {

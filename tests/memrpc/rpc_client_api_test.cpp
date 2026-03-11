@@ -56,7 +56,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
   EXPECT_EQ(stats.pending_calls, 0u);
   EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
-  EXPECT_EQ(call.admission_timeout_ms, 1000u);
+  EXPECT_EQ(call.admission_timeout_ms, 0u);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
 
   auto future = client.InvokeAsync(call);

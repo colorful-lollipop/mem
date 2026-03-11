@@ -2,6 +2,7 @@
 #define VPSDEMO_VPS_CLIENT_H_
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -30,6 +31,11 @@ class VpsClient {
     memrpc::StatusCode Init();
     void Shutdown();
 
+    // Set a callback invoked inside the engine death handler, before restart.
+    // Use this to respawn the engine process so the new session can connect.
+    using EngineRestartCallback = std::function<void()>;
+    void SetEngineRestartCallback(EngineRestartCallback callback);
+
     memrpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
 
     // Returns true after the engine process has died.
@@ -40,6 +46,7 @@ class VpsClient {
     std::shared_ptr<VpsBootstrapProxy> proxy_;
     memrpc::RpcClient client_;
     std::atomic<bool> engine_died_{false};
+    EngineRestartCallback restart_callback_;
 };
 
 }  // namespace vpsdemo

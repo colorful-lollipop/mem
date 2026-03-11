@@ -61,6 +61,19 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
         return memrpc::StatusCode::InvalidArgument;
     }
 
+    // Clean up any previous connection (reconnect after engine death).
+    stop_monitor_ = true;
+    if (monitor_thread_.joinable()) {
+        if (sock_fd_ >= 0) {
+            shutdown(sock_fd_, SHUT_RDWR);
+        }
+        monitor_thread_.join();
+    }
+    if (sock_fd_ >= 0) {
+        close(sock_fd_);
+        sock_fd_ = -1;
+    }
+
     sock_fd_ = ConnectToService(service_socket_path_);
     if (sock_fd_ < 0) {
         HLOGE("connect to %{public}s failed", service_socket_path_.c_str());

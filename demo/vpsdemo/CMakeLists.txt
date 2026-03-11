@@ -51,6 +51,7 @@ add_library(vpsdemo_lib
     src/vps_bootstrap_proxy.cpp
     src/vps_client.cpp
     src/vps_session_service.cpp
+    src/vpsdemo_sample_rules.cpp
     src/vpsdemo_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
@@ -67,6 +68,12 @@ target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib)
 
 add_executable(vpsdemo_client src/vpsdemo_client.cpp)
 target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib)
+
+add_executable(vpsdemo_stress_client src/vpsdemo_stress_client.cpp)
+target_link_libraries(vpsdemo_stress_client PRIVATE vpsdemo_lib)
+
+add_executable(vpsdemo_dt_crash_recovery src/vpsdemo_dt_crash_recovery.cpp)
+target_link_libraries(vpsdemo_dt_crash_recovery PRIVATE vpsdemo_lib)
 
 option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
 

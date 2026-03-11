@@ -55,7 +55,10 @@ memrpc::StatusCode VpsClient::Init() {
                   static_cast<int>(suspect.last_state));
         }
         engine_died_ = true;
-        return memrpc::RestartDecision{memrpc::RestartAction::Restart, 200};
+        if (restart_callback_) {
+            restart_callback_();
+        }
+        return memrpc::RestartDecision{memrpc::RestartAction::Restart, 500};
     });
 
     return client_.Init();
@@ -63,6 +66,10 @@ memrpc::StatusCode VpsClient::Init() {
 
 void VpsClient::Shutdown() {
     client_.Shutdown();
+}
+
+void VpsClient::SetEngineRestartCallback(EngineRestartCallback callback) {
+    restart_callback_ = std::move(callback);
 }
 
 bool VpsClient::EngineDied() const {

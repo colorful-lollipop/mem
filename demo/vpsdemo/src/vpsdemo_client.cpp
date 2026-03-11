@@ -87,15 +87,15 @@ int main() {
     client->ScanFile("/data/test_file_2.apk", &scanReply);
     HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 
-    client->Shutdown();
-
-    // Request engine unload (triggers death callback).
+    // Request engine unload (triggers death callback via SetEngineDeathHandler).
     HLOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->UnloadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     HLOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
+
+    client->Shutdown();
 
     // --- Restart: load again ---
     HLOGI("=== Second session (after restart) ===");
