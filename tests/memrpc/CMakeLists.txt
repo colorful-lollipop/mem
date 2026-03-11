@@ -11,7 +11,6 @@ memrpc_add_test(memrpc_framework_split_headers_test framework_split_headers_test
 memrpc_add_test(memrpc_log_test log_test.cpp)
 memrpc_add_test(memrpc_protocol_layout_test protocol_layout_test.cpp)
 memrpc_add_test(memrpc_byte_codec_test byte_codec_test.cpp)
-memrpc_add_test(memrpc_ring_buffer_test ring_buffer_test.cpp)
 memrpc_add_test(memrpc_slot_pool_test slot_pool_test.cpp)
 memrpc_add_test(memrpc_session_test session_test.cpp)
 memrpc_add_test(memrpc_build_config_test build_config_test.cpp)

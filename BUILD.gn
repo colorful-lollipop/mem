@@ -16,7 +16,6 @@ source_set("memrpc") {
     "src/client/rpc_client.cpp",
     "src/core/byte_reader.cpp",
     "src/core/byte_writer.cpp",
-    "src/core/ring_buffer.cpp",
     "src/core/session.cpp",
     "src/core/slot_pool.cpp",
     "src/rpc/scan_behavior_codec.cpp",
@@ -134,10 +133,6 @@ if (memrpc_enable_tests) {
 
   memrpc_test("memrpc_scan_behavior_codec_test") {
     sources = [ "tests/scan_behavior_codec_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_ring_buffer_test") {
-    sources = [ "tests/ring_buffer_test.cpp" ]
   }
 
   memrpc_test("memrpc_slot_pool_test") {
