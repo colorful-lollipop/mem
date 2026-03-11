@@ -80,7 +80,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
     int fds[FD_COUNT] = {-1, -1, -1, -1, -1, -1};
     SessionMetadata meta{};
     size_t data_len = sizeof(meta);
-    size_t received = RecvFds(sock_fd_, fds, FD_COUNT, &meta, &data_len);
+    size_t received = OHOS::RecvFds(sock_fd_, fds, FD_COUNT, &meta, &data_len);
     if (received != FD_COUNT || data_len != sizeof(meta)) {
         for (size_t i = 0; i < received; ++i) {
             close(fds[i]);

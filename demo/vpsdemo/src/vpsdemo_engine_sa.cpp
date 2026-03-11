@@ -4,11 +4,10 @@
 #include <unistd.h>
 
 #include "iservice_registry.h"
-#include "memrpc/client/demo_bootstrap.h"
-#include "memrpc/server/rpc_server.h"
 #include "registry_backend.h"
 #include "vps_bootstrap_interface.h"
-#include "vps_bootstrap_stub.h"
+#include "vps_session_service.h"
+#include "virus_executor_service.h"
 #include "vpsdemo_service.h"
 #include "virus_protection_service_log.h"
 
@@ -37,48 +36,16 @@ int main(int argc, char* argv[]) {
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
 
-    // Create shared memory + eventfd resources.
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles clientHandles;
-    if (bootstrap->OpenSession(&clientHandles) != memrpc::StatusCode::Ok) {
-        HLOGE("bootstrap OpenSession failed");
-        return 1;
-    }
-    // Close the client-side duplicate handles; engine only needs server handles.
-    close(clientHandles.shm_fd);
-    close(clientHandles.high_req_event_fd);
-    close(clientHandles.normal_req_event_fd);
-    close(clientHandles.resp_event_fd);
-    close(clientHandles.req_credit_event_fd);
-    close(clientHandles.resp_credit_event_fd);
-
-    const memrpc::BootstrapHandles serverHandles = bootstrap->serverHandles();
-
-    // Start memrpc RPC server with demo handlers.
-    memrpc::RpcServer rpcServer(serverHandles);
+    // Create engine session service — owns bootstrap, RPC server, and demo service.
     vpsdemo::VpsDemoService service;
-    service.RegisterHandlers(&rpcServer);
-    if (rpcServer.Start() != memrpc::StatusCode::Ok) {
-        HLOGE("RpcServer start failed");
-        return 1;
-    }
-    HLOGI("RpcServer started");
+    auto sessionService = std::make_shared<vpsdemo::EngineSessionService>(&service);
 
-    // Create bootstrap stub SA and start its service socket.
-    auto stub = std::make_shared<vpsdemo::VpsBootstrapStub>();
-    stub->SetBootstrapHandles(serverHandles);
-    stub->OnStart();
+    // Create SA stub — delegates OpenSession to the session service.
+    auto stub = std::make_shared<vpsdemo::VirusExecutorService>(sessionService);
 
-    if (!stub->StartServiceSocket(serviceSocket)) {
-        HLOGE("failed to start service socket at %{public}s", serviceSocket.c_str());
-        rpcServer.Stop();
-        return 1;
-    }
-    HLOGI("service socket at %{public}s", serviceSocket.c_str());
-
-    // Set service path metadata on the stub's IRemoteObject so Publish()
-    // can route through the backend.
+    // Set service path before OnStart so transport knows where to listen.
     stub->AsObject()->SetServicePath(serviceSocket);
+    stub->OnStart();
 
     // Publish to SA registry — backend routes to RegistryServer.
     stub->Publish(stub.get());
@@ -92,6 +59,5 @@ int main(int argc, char* argv[]) {
 
     HLOGI("engine shutting down");
     stub->OnStop();
-    rpcServer.Stop();
     return 0;
 }

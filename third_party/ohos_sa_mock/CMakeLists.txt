@@ -15,6 +15,8 @@ add_library(ohos_sa_mock
   src/iremote_object.cpp
   src/iremote_broker_registry.cpp
   src/system_ability_manager.cpp
+  src/scm_rights.cpp
+  src/mock_service_socket.cpp
 )
 
 target_include_directories(ohos_sa_mock
@@ -23,6 +25,7 @@ target_include_directories(ohos_sa_mock
 )
 
 target_compile_features(ohos_sa_mock PUBLIC cxx_std_17)
+target_link_libraries(ohos_sa_mock PUBLIC pthread)
 
 if (OHOS_SA_MOCK_BUILD_DEMO)
   add_executable(ohos_sa_mock_demo demo/sa_mock_demo.cpp)

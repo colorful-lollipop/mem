@@ -8,6 +8,8 @@ namespace vpsdemo {
 class VpsDemoService {
  public:
     void RegisterHandlers(memrpc::RpcServer* server);
+    void Initialize();
+    bool initialized() const;
 
  private:
     bool initialized_ = false;

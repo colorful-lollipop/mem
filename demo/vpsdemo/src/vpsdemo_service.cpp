@@ -8,17 +8,30 @@
 
 namespace vpsdemo {
 
+void VpsDemoService::Initialize() {
+    if (initialized_) {
+        return;
+    }
+    initialized_ = true;
+    HLOGI("VpsDemoService initialized");
+}
+
+bool VpsDemoService::initialized() const {
+    return initialized_;
+}
+
 void VpsDemoService::RegisterHandlers(memrpc::RpcServer* server) {
     if (server == nullptr) {
         return;
     }
 
-    // Init handler.
+    // Init handler — calls Initialize() for compatibility with clients
+    // that still send InitEngine RPC.
     server->RegisterHandler(
         static_cast<memrpc::Opcode>(DemoOpcode::DemoInit),
         [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
             if (reply == nullptr) return;
-            initialized_ = true;
+            Initialize();
             InitReply result;
             result.code = 0;
             memrpc::EncodeMessage(result, &reply->payload);

@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-namespace vpsdemo {
+namespace OHOS {
 
 bool SendFds(int sock_fd, const int* fds, size_t fd_count,
              const void* data, size_t data_len) {
@@ -90,4 +90,4 @@ size_t RecvFds(int sock_fd, int* fds, size_t max_fds,
     return count;
 }
 
-}  // namespace vpsdemo
+}  // namespace OHOS

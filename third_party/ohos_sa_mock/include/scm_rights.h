@@ -1,9 +1,9 @@
-#ifndef VPSDEMO_SCM_RIGHTS_H_
-#define VPSDEMO_SCM_RIGHTS_H_
+#ifndef OHOS_SA_MOCK_SCM_RIGHTS_H_
+#define OHOS_SA_MOCK_SCM_RIGHTS_H_
 
 #include <cstddef>
 
-namespace vpsdemo {
+namespace OHOS {
 
 // Send fds over a Unix domain socket using SCM_RIGHTS.
 // Also sends 'data_len' bytes of 'data' as the message payload.
@@ -15,6 +15,6 @@ bool SendFds(int sock_fd, const int* fds, size_t fd_count,
 size_t RecvFds(int sock_fd, int* fds, size_t max_fds,
                void* data, size_t* data_len);
 
-}  // namespace vpsdemo
+}  // namespace OHOS
 
-#endif  // VPSDEMO_SCM_RIGHTS_H_
+#endif  // OHOS_SA_MOCK_SCM_RIGHTS_H_

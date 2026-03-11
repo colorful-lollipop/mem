@@ -7,7 +7,6 @@
 #include "registry_backend.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_client.h"
-#include "vpsdemo_protocol.h"
 #include "virus_protection_service_log.h"
 
 namespace {
@@ -81,10 +80,6 @@ int main() {
         return 1;
     }
 
-    vpsdemo::InitReply initReply;
-    client->InitEngine(&initReply);
-    HLOGI("Init: code=%{public}d", initReply.code);
-
     vpsdemo::ScanFileReply scanReply;
     client->ScanFile("/data/test_file_1.apk", &scanReply);
     HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
@@ -110,10 +105,6 @@ int main() {
     HLOGI("=== Second session (after restart) ===");
     auto client2 = LoadAndConnectToEngine();
     if (client2) {
-        vpsdemo::InitReply reply2;
-        client2->InitEngine(&reply2);
-        HLOGI("Init: code=%{public}d", reply2.code);
-
         vpsdemo::ScanFileReply scan2;
         client2->ScanFile("/data/test_file_3.apk", &scan2);
         HLOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threat_level);

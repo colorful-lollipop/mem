@@ -1,33 +1,25 @@
-#ifndef VPSDEMO_VPS_BOOTSTRAP_STUB_H_
-#define VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+#ifndef VPSDEMO_VIRUS_EXECUTOR_SERVICE_H_
+#define VPSDEMO_VIRUS_EXECUTOR_SERVICE_H_
 
-#include <atomic>
-#include <string>
-#include <thread>
+#include <memory>
 
 #include "iremote_stub.h"
+#include "mock_service_socket.h"
 #include "system_ability.h"
 #include "vps_bootstrap_interface.h"
+#include "vps_session_service.h"
 
 namespace vpsdemo {
 
-// Engine-side stub: listens on a Unix domain socket and sends
-// BootstrapHandles (6 fds + metadata) via SCM_RIGHTS to clients.
-class VpsBootstrapStub : public OHOS::SystemAbility,
-                          public OHOS::IRemoteStub<IVpsBootstrap> {
+// Engine-side SA: delegates session management to an injected VpsSessionProvider.
+// Mock IPC transport (Unix socket + SCM_RIGHTS) is handled by MockServiceSocket.
+class VirusExecutorService : public OHOS::SystemAbility,
+                              public OHOS::IRemoteStub<IVpsBootstrap> {
  public:
-    VpsBootstrapStub();
-    ~VpsBootstrapStub() override;
+    explicit VirusExecutorService(std::shared_ptr<VpsSessionProvider> provider);
+    ~VirusExecutorService() override;
 
-    // Start listening on a socket, return the path.
-    bool StartServiceSocket(const std::string& path);
-    void StopServiceSocket();
-    const std::string& service_socket_path() const { return socket_path_; }
-
-    // Set the handles to distribute to connecting clients.
-    void SetBootstrapHandles(const memrpc::BootstrapHandles& handles);
-
-    // IVpsBootstrap (not used directly; handle exchange is via socket).
+    // IVpsBootstrap — delegates to provider.
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) override;
     memrpc::StatusCode CloseSession() override;
 
@@ -36,15 +28,10 @@ class VpsBootstrapStub : public OHOS::SystemAbility,
     void OnStop() override;
 
  private:
-    void AcceptLoop();
-
-    std::string socket_path_;
-    int listen_fd_ = -1;
-    std::atomic<bool> stop_{false};
-    std::thread accept_thread_;
-    memrpc::BootstrapHandles handles_{};
+    std::shared_ptr<VpsSessionProvider> provider_;
+    OHOS::MockServiceSocket transport_;
 };
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+#endif  // VPSDEMO_VIRUS_EXECUTOR_SERVICE_H_

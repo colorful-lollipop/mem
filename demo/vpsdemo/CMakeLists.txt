@@ -33,22 +33,24 @@ add_library(ohos_sa_mock
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/system_ability_manager.cpp
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/iremote_object.cpp
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/iremote_broker_registry.cpp
+    ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/scm_rights.cpp
+    ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/mock_service_socket.cpp
 )
 target_include_directories(ohos_sa_mock PUBLIC
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/include
 )
 target_compile_features(ohos_sa_mock PUBLIC cxx_std_17)
 
-# --- vpsdemo library (registry + bootstrap + SCM_RIGHTS + demo service) ---
+# --- vpsdemo library (registry + bootstrap + demo service) ---
 add_library(vpsdemo_lib
     src/registry_protocol.cpp
     src/registry_server.cpp
     src/registry_client.cpp
     src/registry_backend.cpp
-    src/scm_rights.cpp
-    src/vps_bootstrap_stub.cpp
+    src/virus_executor_service.cpp
     src/vps_bootstrap_proxy.cpp
     src/vps_client.cpp
+    src/vps_session_service.cpp
     src/vpsdemo_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
@@ -65,3 +67,13 @@ target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib)
 
 add_executable(vpsdemo_client src/vpsdemo_client.cpp)
 target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib)
+
+option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
+
+if (VPSDEMO_ENABLE_TESTS)
+  enable_testing()
+  find_package(GTest REQUIRED)
+  add_executable(vpsdemo_session_service_test tests/vps_session_service_test.cpp)
+  target_link_libraries(vpsdemo_session_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_session_service_test COMMAND vpsdemo_session_service_test)
+endif()
