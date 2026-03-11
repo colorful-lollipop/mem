@@ -1,0 +1,367 @@
+# C++ 函数行数检测与优化 - AI 指导手册
+
+本文档指导 AI 助手使用 `check_function_length.py` 工具检测并优化超长 C++ 函数。
+
+---
+
+## 1. 工具简介
+
+`tools/lint/check_function_length.py` 是基于 `lizard` 的函数行数检测工具，用于识别超过公司规范（50行）的函数。
+
+### 核心能力
+- 检测所有 C++ 函数的行数和圈复杂度
+- 识别超长函数（默认阈值：50行）
+- 生成 AI 友好的优化提示
+
+---
+
+## 2. AI 使用指南
+
+### 步骤 1：运行检测
+
+```bash
+# 基础检测 - 查看所有超长函数
+python3 tools/lint/check_function_length.py src/ --max-lines 50
+
+# 生成 AI 优化提示（复制输出用于下一步）
+python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt
+```
+
+### 步骤 2：分析输出
+
+工具输出格式：
+```
+行数 | 圈复杂度 | 函数名                              | 文件
+----------------------------------------------------------------------------------------------------
+ 163 |       30 | memrpc::RpcClient::Impl::SubmitOne | src/client/rpc_client.cpp:620
+```
+
+关注指标：
+- **行数 > 50**：需要拆分
+- **圈复杂度 > 10**：逻辑过于复杂，需要简化
+
+### 步骤 3：逐函数优化
+
+按以下优先级处理：
+1. 行数最多且圈复杂度高的函数
+2. 核心模块中的函数（client/server/session）
+3. 测试代码中的函数
+
+---
+
+## 3. 重构策略（AI 优化手册）
+
+### 策略 A：提取子函数（最常用）
+
+**适用场景**：函数内有明显的逻辑段落
+
+```cpp
+// ❌ 优化前：80+ 行的函数
+void ProcessRequest(Request& req) {
+    // 解析请求 - 20行
+    if (!req.valid) { ... }
+    auto header = ParseHeader(req.data);
+    ...
+    
+    // 验证权限 - 15行
+    if (!CheckAuth(req.token)) { ... }
+    ...
+    
+    // 执行逻辑 - 30行
+    auto result = Execute(req);
+    ...
+    
+    // 返回响应 - 15行
+    SendResponse(result);
+    ...
+}
+
+// ✅ 优化后：主函数控制在 20 行以内
+void ProcessRequest(Request& req) {
+    auto ctx = ParseAndValidate(req);  // 提取
+    if (!ctx.valid) return;
+    
+    auto result = ExecuteLogic(ctx);   // 提取
+    SendResultResponse(result);        // 提取
+}
+```
+
+### 策略 B：早返回（减少嵌套）
+
+**适用场景**：深层 if-else 嵌套
+
+```cpp
+// ❌ 优化前：深层嵌套
+void HandleMessage(Message* msg) {
+    if (msg != nullptr) {
+        if (msg->type == REQUEST) {
+            if (msg->valid) {
+                Process(msg);
+            } else {
+                LogError("invalid");
+            }
+        }
+    }
+}
+
+// ✅ 优化后：扁平结构
+void HandleMessage(Message* msg) {
+    if (!msg) return;
+    if (msg->type != REQUEST) return;
+    if (!msg->valid) {
+        LogError("invalid");
+        return;
+    }
+    Process(msg);
+}
+```
+
+### 策略 C：状态机替代条件分支
+
+**适用场景**：大量 switch/if-else 处理状态
+
+```cpp
+// ❌ 优化前：长 switch
+void ProcessState(Event e) {
+    switch (state_) {
+        case INIT: ... // 15行
+        case CONNECTING: ... // 15行
+        case CONNECTED: ... // 15行
+        case CLOSING: ... // 15行
+    }
+}
+
+// ✅ 优化后：表驱动
+using Handler = void (Class::*)(Event);
+static const Handler kHandlers[] = {
+    &Class::HandleInit,
+    &Class::HandleConnecting,
+    &Class::HandleConnected,
+    &Class::HandleClosing,
+};
+
+void ProcessState(Event e) {
+    (this->*kHandlers[state_])(e);
+}
+```
+
+### 策略 D：Lambda 提取局部逻辑
+
+**适用场景**：循环内有复杂处理逻辑
+
+```cpp
+// ❌ 优化前：循环内嵌套复杂逻辑
+void ProcessItems(std::vector<Item>& items) {
+    for (auto& item : items) {
+        if (item.active) {
+            auto data = Load(item.id);
+            if (data.valid) {
+                auto result = Transform(data);
+                if (result.ok) {
+                    Save(result);
+                }
+            }
+        }
+    }
+}
+
+// ✅ 优化后：提取 lambda
+void ProcessItems(std::vector<Item>& items) {
+    auto processOne = [this](Item& item) {
+        if (!item.active) return;
+        auto data = Load(item.id);
+        if (!data.valid) return;
+        auto result = Transform(data);
+        if (result.ok) Save(result);
+    };
+    
+    for (auto& item : items) processOne(item);
+}
+```
+
+---
+
+## 4. 优化检查清单
+
+优化完成后，逐项确认：
+
+- [ ] 函数行数 <= 50 行
+- [ ] 圈复杂度 <= 10（理想情况 <= 5）
+- [ ] 函数职责单一（只做一件事）
+- [ ] 命名清晰（提取的子函数名能说明用途）
+- [ ] 无代码重复（DRY 原则）
+- [ ] 早返回减少嵌套层级
+- [ ] 编译通过，测试通过
+
+---
+
+## 5. 工作流模板
+
+### 单函数优化工作流
+
+```
+1. 阅读原始函数，理解其完整功能
+2. 识别逻辑段落（注释、空行往往是分隔点）
+3. 为每段提取子函数（命名：动词+名词，如 ParseHeader）
+4. 重写主函数，调用子函数
+5. 检查行数，如仍超标，继续细化
+6. 运行工具验证：python3 tools/lint/check_function_length.py <file>
+7. 编译并运行相关测试
+```
+
+### 批量优化工作流
+
+```
+1. 运行工具获取全部超长函数列表
+2. 按文件分组，优先处理核心模块
+3. 对单个文件：
+   - 先优化最长的函数
+   - 每次优化后编译检查
+   - 完成文件后运行单元测试
+4. 全部完成后，再次运行工具验证
+5. 提交变更
+```
+
+---
+
+## 6. 常见反模式（避免）
+
+| 反模式 | 说明 | 正确做法 |
+|--------|------|----------|
+| 简单拆分 | 将连续代码粗暴截断 | 按语义分组提取 |
+| 过度抽象 | 1-2行的函数也提取 | 内联简单逻辑 |
+| 命名模糊 | `Process1`, `Handle2` | `ParseRequestHeader`, `ValidateToken` |
+| 参数爆炸 | 提取的函数需要10+参数 | 封装参数为结构体 |
+
+---
+
+## 7. 示例：完整优化案例
+
+### 原始代码（89行）
+```cpp
+// src/apps/vps/child/virus_engine_service.cpp:28
+void VirusEngineService::RegisterHandlers(RpcServer& server) {
+    // 20行：ScanFile handler 注册
+    server.RegisterHandler("ScanFile", [this](Context* ctx, Buffer req, Buffer* resp) {
+        ScanRequest request;
+        if (!Decode(req, &request)) {
+            HLOGE("Failed to decode ScanFile request");
+            return ERR_DECODE_FAILED;
+        }
+        auto result = ScanFile(request.path);
+        *resp = Encode(result);
+        return OK;
+    });
+    
+    // 25行：ScanBehavior handler 注册
+    server.RegisterHandler("ScanBehavior", [this](Context* ctx, Buffer req, Buffer* resp) {
+        BehaviorRequest request;
+        if (!Decode(req, &request)) {
+            HLOGE("Failed to decode ScanBehavior request");
+            return ERR_DECODE_FAILED;
+        }
+        auto events = PollBehaviorEvent();
+        for (const auto& event : events) {
+            if (Match(event, request.pattern)) {
+                *resp = Encode(event);
+                return OK;
+            }
+        }
+        return ERR_NOT_FOUND;
+    });
+    
+    // 20行：UpdateFeatureLib handler
+    server.RegisterHandler("UpdateFeatureLib", [this](Context* ctx, Buffer req, Buffer* resp) {
+        UpdateRequest request;
+        if (!Decode(req, &request)) {
+            HLOGE("Failed to decode UpdateFeatureLib request");
+            return ERR_DECODE_FAILED;
+        }
+        auto success = UpdateFeatureLib(request.path);
+        *resp = Encode(success);
+        return OK;
+    });
+    
+    // 15行：其他 handlers...
+    // ...
+}
+```
+
+### 优化后（18行）
+```cpp
+void VirusEngineService::RegisterHandlers(RpcServer& server) {
+    RegisterScanFileHandler(server);
+    RegisterScanBehaviorHandler(server);
+    RegisterUpdateFeatureLibHandler(server);
+    RegisterOtherHandlers(server);
+}
+
+void VirusEngineService::RegisterScanFileHandler(RpcServer& server) {
+    server.RegisterHandler("ScanFile", [this](Context* ctx, Buffer req, Buffer* resp) {
+        return HandleScanFile(ctx, req, resp);
+    });
+}
+
+int VirusEngineService::HandleScanFile(Context* ctx, Buffer req, Buffer* resp) {
+    ScanRequest request;
+    if (!DecodeRequest(req, &request, "ScanFile")) return ERR_DECODE_FAILED;
+    *resp = Encode(ScanFile(request.path));
+    return OK;
+}
+
+// 其他 handler 类似提取...
+```
+
+---
+
+## 8. 工具命令速查
+
+```bash
+# 检测全部源码
+python3 tools/lint/check_function_length.py src/ --max-lines 50
+
+# 检测特定目录
+python3 tools/lint/check_function_length.py src/client/ --max-lines 50
+
+# 检测单个文件
+python3 tools/lint/check_function_length.py src/client/rpc_client.cpp --max-lines 50
+
+# 生成 AI 提示（用于批量优化）
+python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt > ai_tasks.md
+
+# JSON 输出（用于脚本处理）
+python3 tools/lint/check_function_length.py src/ --max-lines 50 --json
+```
+
+---
+
+## 9. 与 CI 集成建议
+
+将以下检查加入预提交钩子或 CI：
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit 或 CI 脚本
+set -e
+
+echo "Checking function length..."
+python3 tools/lint/check_function_length.py src/ --max-lines 50
+
+echo "All functions are within 50 lines!"
+```
+
+---
+
+## 10. 总结
+
+AI 助手使用此工具的核心流程：
+
+1. **扫描** → 运行工具识别超标函数
+2. **分析** → 理解函数逻辑，识别提取点
+3. **重构** → 提取子函数，应用早返回等策略
+4. **验证** → 确认行数达标，编译测试通过
+5. **迭代** → 重复直到所有函数符合规范
+
+---
+
+*最后更新：2026-03-11*
