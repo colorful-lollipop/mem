@@ -77,6 +77,23 @@ struct RpcEvent {
 
 using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
+enum class ReplayHint {
+  Unknown = 0,
+  SafeToReplay = 1,
+  MaybeExecuted = 2,
+};
+
+enum class RpcRuntimeState {
+  Unknown = 0,
+  Free,
+  Admitted,
+  Queued,
+  Executing,
+  Responding,
+  Ready,
+  Consumed,
+};
+
 }  // namespace memrpc
 
 namespace OHOS {

@@ -114,6 +114,3 @@ Idle timeout and notify interval are **compile-time constants** (default 0 = dis
 
 ---
 
-## Open Questions
-- Do we need to expose `idle_exit_reason` to app diagnostics?
-- Should we allow per-opcode default replay policy (e.g., via registry)?

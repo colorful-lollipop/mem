@@ -17,9 +17,14 @@
 
 #include "core/session.h"
 #include "core/slot_pool.h"
+#include "client/replay_classifier.h"
 #include "virus_protection_service_log.h"
 
 namespace memrpc {
+
+#ifndef MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS
+#define MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS 50
+#endif
 
 namespace {
 
@@ -161,6 +166,8 @@ struct RpcClient::Impl {
     uint32_t exec_timeout_ms = 0;
     uint64_t request_id = 0;
     uint64_t session_id = 0;
+    ReplayHint replay_hint = ReplayHint::Unknown;
+    RpcRuntimeState last_runtime_state = RpcRuntimeState::Unknown;
   };
 
   std::shared_ptr<IBootstrapChannel> bootstrap;
@@ -187,12 +194,24 @@ struct RpcClient::Impl {
   RpcFailureCallback failure_callback;
   std::atomic<uint64_t> current_session_id{0};
   std::atomic<bool> session_dead{true};
+  std::thread watchdog_thread;
+  std::atomic<bool> watchdog_running{false};
+  std::mutex idle_mutex;
+  RpcIdleCallback idle_callback;
+  uint32_t idle_timeout_ms{0};
+  uint32_t idle_notify_interval_ms{0};
+  std::atomic<uint32_t> last_activity_mono_ms{0};
+  uint32_t last_idle_notify_mono_ms{0};
 
   RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
     state->ready = true;
     state->reply.status = status;
     return RpcFuture(std::move(state));
+  }
+
+  void TouchActivity() {
+    last_activity_mono_ms.store(MonotonicNowMs(), std::memory_order_relaxed);
   }
 
   PendingInfo MakePendingInfo(const PendingSubmit& submit) {
@@ -232,6 +251,8 @@ struct RpcClient::Impl {
     failure.session_id = info.session_id;
     failure.monotonic_ms = MonotonicNowMs();
     failure.stage = stage;
+    failure.replay_hint = info.replay_hint;
+    failure.last_runtime_state = info.last_runtime_state;
     callback(failure);
   }
 
@@ -303,6 +324,134 @@ struct RpcClient::Impl {
     dispatcher_thread = std::thread([this] { ResponseLoop(); });
   }
 
+  void StopWatchdog() {
+    watchdog_running.store(false);
+    if (watchdog_thread.joinable() &&
+        std::this_thread::get_id() != watchdog_thread.get_id()) {
+      watchdog_thread.join();
+    }
+  }
+
+  void StartWatchdog() {
+    if (watchdog_running.exchange(true)) {
+      return;
+    }
+    watchdog_thread = std::thread([this] { WatchdogLoop(); });
+  }
+
+  void WatchdogLoop() {
+    constexpr uint32_t kWatchdogIntervalMs = MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS;
+    while (watchdog_running.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kWatchdogIntervalMs));
+      if (!watchdog_running.load() || shutting_down.load()) {
+        break;
+      }
+
+      // --- Async timeout scanning ---
+      if (!session_dead.load(std::memory_order_acquire) && pending_count.load() > 0) {
+        std::lock_guard<std::mutex> lock(session_mutex);
+        if (!session_dead.load(std::memory_order_relaxed) && session.valid()) {
+          ScanPendingTimeouts();
+        }
+      }
+
+      // --- Idle reminder ---
+      uint32_t cur_idle_timeout_ms = 0;
+      uint32_t cur_idle_notify_interval_ms = 0;
+      {
+        std::lock_guard<std::mutex> lock(idle_mutex);
+        cur_idle_timeout_ms = idle_timeout_ms;
+        cur_idle_notify_interval_ms = idle_notify_interval_ms;
+      }
+      if (cur_idle_timeout_ms > 0 && cur_idle_notify_interval_ms > 0) {
+        const uint32_t now_ms = MonotonicNowMs();
+        const uint32_t last_ms = last_activity_mono_ms.load(std::memory_order_relaxed);
+        if (last_ms > 0 && now_ms - last_ms >= cur_idle_timeout_ms) {
+          const uint32_t idle_ms = now_ms - last_ms;
+          if (last_idle_notify_mono_ms == 0 ||
+              now_ms - last_idle_notify_mono_ms >= cur_idle_notify_interval_ms) {
+            last_idle_notify_mono_ms = now_ms;
+            RpcIdleCallback cb;
+            {
+              std::lock_guard<std::mutex> lock(idle_mutex);
+              cb = idle_callback;
+            }
+            if (cb) {
+              cb(idle_ms);
+            }
+          }
+        } else {
+          last_idle_notify_mono_ms = 0;
+        }
+      }
+    }
+  }
+
+  void ScanPendingTimeouts() {
+    const uint32_t now_ms = MonotonicNowMs();
+    for (size_t i = 0; i < pending_slots.size(); ++i) {
+      if (pending_slots[i] == nullptr || !pending_info_slots[i].has_value()) {
+        continue;
+      }
+      const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+      if (payload == nullptr) {
+        continue;
+      }
+      const PendingInfo& info = *pending_info_slots[i];
+      const SlotRuntimeState& rt = payload->runtime;
+      bool timed_out = false;
+      StatusCode timeout_status = StatusCode::ExecTimeout;
+
+      switch (rt.state) {
+        case SlotRuntimeStateCode::Admitted:
+        case SlotRuntimeStateCode::Queued:
+          if (info.queue_timeout_ms > 0 && rt.enqueue_mono_ms > 0 &&
+              now_ms - rt.enqueue_mono_ms >= info.queue_timeout_ms) {
+            timed_out = true;
+            timeout_status = StatusCode::QueueTimeout;
+          }
+          break;
+        case SlotRuntimeStateCode::Executing:
+        case SlotRuntimeStateCode::Responding: {
+          if (info.exec_timeout_ms > 0) {
+            const uint32_t ref_ms = rt.start_exec_mono_ms > 0
+                                        ? rt.start_exec_mono_ms
+                                        : rt.enqueue_mono_ms;
+            if (ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms) {
+              timed_out = true;
+              timeout_status = StatusCode::ExecTimeout;
+            }
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      if (!timed_out) {
+        continue;
+      }
+
+      // Timeout fired: snapshot state, fail future, release slot.
+      PendingInfo timeout_info = info;
+      timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
+      timeout_info.replay_hint = ClassifyReplayHint(rt.state);
+      auto pending = std::move(pending_slots[i]);
+      pending_slots[i].reset();
+      pending_info_slots[i].reset();
+      pending_count.fetch_sub(1, std::memory_order_relaxed);
+      NotifyFailure(timeout_info, timeout_status, FailureStage::Timeout);
+      ResolveFuture(pending, timeout_status);
+      if (slot_pool != nullptr) {
+        SlotPayload* mutable_payload = session.slot_payload(static_cast<uint32_t>(i));
+        if (mutable_payload != nullptr) {
+          std::memset(&mutable_payload->runtime, 0, sizeof(mutable_payload->runtime));
+        }
+        slot_pool->Release(static_cast<uint32_t>(i));
+      }
+    }
+  }
+
   void FailAllPending(StatusCode status_code) {
     for (size_t i = 0; i < pending_slots.size(); ++i) {
       auto pending = std::move(pending_slots[i]);
@@ -334,6 +483,17 @@ struct RpcClient::Impl {
     StopDispatcher();
     {
       std::lock_guard<std::mutex> lock(session_mutex);
+      // Snapshot slot runtime states for replay classification before destroying session.
+      for (size_t i = 0; i < pending_info_slots.size(); ++i) {
+        if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
+          continue;
+        }
+        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+        if (payload != nullptr) {
+          pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+          pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
+        }
+      }
       session_dead = true;
       current_session_id = 0;
       session.Reset();
@@ -381,6 +541,7 @@ struct RpcClient::Impl {
     pending_info_slots.assign(session.header()->slot_count, std::nullopt);
     current_session_id = handles.session_id;
     session_dead = false;
+    TouchActivity();
     StartDispatcher();
     return StatusCode::Ok;
   }
@@ -587,6 +748,7 @@ struct RpcClient::Impl {
                   ResolveFuture(pending_submit.future, StatusCode::PeerDisconnected);
                 }
               }
+              TouchActivity();
               return;
             }
           }
@@ -698,16 +860,23 @@ struct RpcClient::Impl {
         }
       }
     }
+    if (pending != nullptr) {
+      TouchActivity();
+    }
     if (response_slot != nullptr) {
-      SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
-      if (request_slot != nullptr) {
-        std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
+      // Only release request slot if we actually had a pending future for it.
+      // If pending is null, the watchdog already released this request slot.
+      if (pending != nullptr) {
+        SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
+        if (request_slot != nullptr) {
+          std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
+        }
+        const bool request_slot_became_available = slot_pool->available() == 0;
+        slot_pool->Release(response_slot->response.request_slot_index);
+        SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
+                              request_slot_became_available &&
+                                  submitter_waiting_for_credit.load(std::memory_order_relaxed));
       }
-      const bool request_slot_became_available = slot_pool->available() == 0;
-      slot_pool->Release(response_slot->response.request_slot_index);
-      SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
-                            request_slot_became_available &&
-                                submitter_waiting_for_credit.load(std::memory_order_relaxed));
       std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     }
     const bool response_slot_became_available = response_slot_pool.available() == 0;
@@ -896,6 +1065,14 @@ void RpcClient::SetFailureCallback(RpcFailureCallback callback) {
   impl_->failure_callback = std::move(callback);
 }
 
+void RpcClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
+                                uint32_t idle_notify_interval_ms) {
+  std::lock_guard<std::mutex> lock(impl_->idle_mutex);
+  impl_->idle_callback = std::move(callback);
+  impl_->idle_timeout_ms = idle_timeout_ms;
+  impl_->idle_notify_interval_ms = idle_notify_interval_ms;
+}
+
 StatusCode RpcClient::Init() {
   if (impl_->bootstrap == nullptr) {
     return StatusCode::InvalidArgument;
@@ -904,7 +1081,11 @@ StatusCode RpcClient::Init() {
   impl_->bootstrap->SetEngineDeathCallback(
       [this](uint64_t session_id) { impl_->HandleEngineDeath(session_id); });
   impl_->StartSubmitter();
-  return impl_->EnsureLiveSession();
+  const StatusCode status = impl_->EnsureLiveSession();
+  if (status == StatusCode::Ok) {
+    impl_->StartWatchdog();
+  }
+  return status;
 }
 
 RpcFuture RpcClient::InvokeAsync(const RpcCall& call) {
@@ -948,6 +1129,7 @@ void RpcClient::Shutdown() {
     impl_->bootstrap->SetEngineDeathCallback({});
   }
   impl_->StopSubmitter();
+  impl_->StopWatchdog();
   impl_->StopDispatcher();
   {
     std::lock_guard<std::mutex> lock(impl_->session_mutex);
@@ -979,6 +1161,11 @@ void RpcSyncClient::SetEventCallback(RpcEventCallback callback) {
 
 void RpcSyncClient::SetFailureCallback(RpcFailureCallback callback) {
   client_.SetFailureCallback(std::move(callback));
+}
+
+void RpcSyncClient::SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms,
+                                    uint32_t idle_notify_interval_ms) {
+  client_.SetIdleCallback(std::move(callback), idle_timeout_ms, idle_notify_interval_ms);
 }
 
 StatusCode RpcSyncClient::Init() {

@@ -81,6 +81,7 @@ enum class FailureStage {
   Admission = 0,
   Response = 1,
   Session = 2,
+  Timeout = 3,
 };
 
 struct RpcFailure {
@@ -95,9 +96,12 @@ struct RpcFailure {
   uint64_t session_id = 0;
   uint32_t monotonic_ms = 0;
   FailureStage stage = FailureStage::Admission;
+  ReplayHint replay_hint = ReplayHint::Unknown;
+  RpcRuntimeState last_runtime_state = RpcRuntimeState::Unknown;
 };
 
 using RpcFailureCallback = std::function<void(const RpcFailure&)>;
+using RpcIdleCallback = std::function<void(uint64_t idle_ms)>;
 
 class RpcClient {
  public:
@@ -112,6 +116,8 @@ class RpcClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetFailureCallback(RpcFailureCallback callback);
+  void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
+                       uint32_t idle_notify_interval_ms = 0);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
   StatusCode Init();
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
@@ -138,6 +144,8 @@ class RpcSyncClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetFailureCallback(RpcFailureCallback callback);
+  void SetIdleCallback(RpcIdleCallback callback, uint32_t idle_timeout_ms = 0,
+                       uint32_t idle_notify_interval_ms = 0);
   StatusCode Init();
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
   RpcClientRuntimeStats GetRuntimeStats() const;

@@ -280,6 +280,39 @@ credit fd 采用“资源重新可写”语义：
 
 这条边界是刻意保守的，目的是先保证正确性和可控性。进程 death / owner death / session 失效感知由 bootstrap 层负责，shared ring 本身不再依赖 robust ring mutex 做恢复。
 
+### 崩溃重放分类
+
+session 死亡时，框架会在销毁 session 之前快照每个 pending slot 的 `SlotRuntimeStateCode`，并分类为：
+
+- `SafeToReplay`：`Admitted` / `Queued` — 请求确定未被执行，应用可安全重放
+- `MaybeExecuted`：`Executing` / `Responding` / `Ready` / `Consumed` / `Free` — 请求可能已被执行，应用需自行判断是否重放
+
+分类结果通过 `RpcFailure.replay_hint` 和 `RpcFailure.last_runtime_state` 字段传递给 `RpcFailureCallback`。框架不做自动重放，决策权留给应用层。
+
+### 异步超时看门狗
+
+客户端内部维护一个轻量看门狗线程（默认间隔 50ms），用于检测异步请求的服务端超时：
+
+- 排队阶段超时：`queue_timeout_ms` 结合 `enqueue_mono_ms`，返回 `QueueTimeout`
+- 执行阶段超时：`exec_timeout_ms` 结合 `start_exec_mono_ms`，返回 `ExecTimeout`
+
+超时触发时：
+
+- 通过 `RpcFailureCallback` 以 `FailureStage::Timeout` 通知应用
+- 立即 resolve 对应 future
+- 释放 request slot
+- 迟到的 response 通过 pending 表为空自动丢弃（response slot 正常释放）
+
+### 空闲提醒
+
+客户端支持可选的空闲提醒回调：
+
+- 通过 `SetIdleCallback(callback, idle_timeout_ms, idle_notify_interval_ms)` 配置
+- 看门狗跟踪最近活动（session attach、提交、收到响应）
+- 空闲时间超过阈值后，按指定间隔重复触发 `RpcIdleCallback(idle_ms)`
+- 提醒不会自动关闭 session，应用自行决定是否调用 `CloseSession()`
+- 默认关闭（timeout = 0）
+
 ## 平台分层
 
 传输层和平台拉起解耦：

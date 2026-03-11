@@ -195,4 +195,6 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   EXPECT_EQ(captured.queue_timeout_ms, call.queue_timeout_ms);
   EXPECT_EQ(captured.exec_timeout_ms, call.exec_timeout_ms);
   EXPECT_NE(captured.request_id, 0u);
+  EXPECT_EQ(captured.replay_hint, MemRpc::ReplayHint::Unknown);
+  EXPECT_EQ(captured.last_runtime_state, MemRpc::RpcRuntimeState::Unknown);
 }
