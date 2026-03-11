@@ -15,6 +15,7 @@ class IRemoteObject::Impl {
   wptr<IRemoteBroker> broker;
   int32_t sa_id = -1;
   std::string service_path;
+  RemoteRequestHandler request_handler;
 };
 
 bool IRemoteObject::AddDeathRecipient(const sptr<DeathRecipient>& recipient)
@@ -124,6 +125,31 @@ std::string IRemoteObject::GetServicePath() const
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   return impl_->service_path;
+}
+
+void IRemoteObject::SetRequestHandler(RemoteRequestHandler handler)
+{
+  if (impl_ == nullptr) {
+    impl_ = std::make_shared<Impl>();
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  impl_->request_handler = std::move(handler);
+}
+
+bool IRemoteObject::HandleRequest(int command, MockIpcReply* reply)
+{
+  if (impl_ == nullptr) {
+    return false;
+  }
+  RemoteRequestHandler handler;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    handler = impl_->request_handler;
+  }
+  if (!handler) {
+    return false;
+  }
+  return handler(command, reply);
 }
 
 }  // namespace OHOS

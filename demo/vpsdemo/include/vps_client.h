@@ -31,7 +31,6 @@ class VpsClient {
     memrpc::StatusCode Init();
     void Shutdown();
 
-    memrpc::StatusCode InitEngine(InitReply* reply);
     memrpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
     memrpc::StatusCode UpdateFeatureLib(UpdateFeatureLibReply* reply);
 

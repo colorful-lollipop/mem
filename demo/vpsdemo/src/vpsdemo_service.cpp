@@ -25,19 +25,6 @@ void VpsDemoService::RegisterHandlers(memrpc::RpcServer* server) {
         return;
     }
 
-    // Init handler — calls Initialize() for compatibility with clients
-    // that still send InitEngine RPC.
-    server->RegisterHandler(
-        static_cast<memrpc::Opcode>(DemoOpcode::DemoInit),
-        [this](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-            if (reply == nullptr) return;
-            Initialize();
-            InitReply result;
-            result.code = 0;
-            memrpc::EncodeMessage(result, &reply->payload);
-            HLOGI("Init: ok");
-        });
-
     // ScanFile handler.
     server->RegisterHandler(
         static_cast<memrpc::Opcode>(DemoOpcode::DemoScanFile),

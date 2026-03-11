@@ -1,14 +1,10 @@
 #include <csignal>
 #include <string>
 #include <thread>
-#include <unistd.h>
 
 #include "iservice_registry.h"
 #include "registry_backend.h"
-#include "vps_bootstrap_interface.h"
-#include "vps_session_service.h"
 #include "virus_executor_service.h"
-#include "vpsdemo_service.h"
 #include "virus_protection_service_log.h"
 
 namespace {
@@ -36,18 +32,12 @@ int main(int argc, char* argv[]) {
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
 
-    // Create engine session service — owns bootstrap, RPC server, and demo service.
-    vpsdemo::VpsDemoService service;
-    auto sessionService = std::make_shared<vpsdemo::EngineSessionService>(&service);
-
-    // Create SA stub — delegates OpenSession to the session service.
-    auto stub = std::make_shared<vpsdemo::VirusExecutorService>(sessionService);
-
-    // Set service path before OnStart so transport knows where to listen.
+    // Create SA — self-creates VpsDemoService + EngineSessionService internally.
+    auto stub = std::make_shared<vpsdemo::VirusExecutorService>();
     stub->AsObject()->SetServicePath(serviceSocket);
     stub->OnStart();
 
-    // Publish to SA registry — backend routes to RegistryServer.
+    // Publish to SA registry — framework auto-starts MockServiceSocket.
     stub->Publish(stub.get());
 
     HLOGI("engine ready");

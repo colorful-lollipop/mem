@@ -3,6 +3,7 @@
 
 #include "iremote_broker.h"
 #include "iremote_object.h"
+#include "mock_ipc_types.h"
 
 namespace OHOS {
 
@@ -11,6 +12,11 @@ class IRemoteStub : public T {
  public:
   ~IRemoteStub() override = default;
 
+  virtual bool OnRemoteRequest(int command, MockIpcReply* reply)
+  {
+    return false;
+  }
+
   sptr<IRemoteObject> AsObject() override
   {
     if (remote_ == nullptr) {
@@ -18,6 +24,9 @@ class IRemoteStub : public T {
       auto broker =
           std::dynamic_pointer_cast<IRemoteBroker>(RefBase::shared_from_this());
       remote_->AttachBroker(broker);
+      remote_->SetRequestHandler([this](int cmd, MockIpcReply* reply) {
+        return OnRemoteRequest(cmd, reply);
+      });
     }
     return remote_;
   }

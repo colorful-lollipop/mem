@@ -1,0 +1,60 @@
+#ifndef VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+#define VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+
+#include <cstring>
+
+#include "iremote_stub.h"
+#include "mock_ipc_types.h"
+#include "memrpc/core/bootstrap.h"
+#include "vps_bootstrap_interface.h"
+
+namespace vpsdemo {
+
+namespace {
+
+struct SessionMetadata {
+    uint32_t protocol_version = 0;
+    uint64_t session_id = 0;
+};
+
+}  // namespace
+
+// Command dispatch layer — mirrors real OHOS XXXStub::OnRemoteRequest.
+// Maps IPC commands to IVpsBootstrap interface methods.
+class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
+ public:
+    bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
+        switch (command) {
+            case 1: {  // OpenSession
+                memrpc::BootstrapHandles handles{};
+                if (OpenSession(&handles) != memrpc::StatusCode::Ok) {
+                    return false;
+                }
+
+                constexpr size_t FD_COUNT = 6;
+                reply->fds[0] = handles.shm_fd;
+                reply->fds[1] = handles.high_req_event_fd;
+                reply->fds[2] = handles.normal_req_event_fd;
+                reply->fds[3] = handles.resp_event_fd;
+                reply->fds[4] = handles.req_credit_event_fd;
+                reply->fds[5] = handles.resp_credit_event_fd;
+                reply->fd_count = FD_COUNT;
+
+                SessionMetadata meta{};
+                meta.protocol_version = handles.protocol_version;
+                meta.session_id = handles.session_id;
+                std::memcpy(reply->data, &meta, sizeof(meta));
+                reply->data_len = sizeof(meta);
+                return true;
+            }
+            case 2:  // CloseSession
+                return CloseSession() == memrpc::StatusCode::Ok;
+            default:
+                return false;
+        }
+    }
+};
+
+}  // namespace vpsdemo
+
+#endif  // VPSDEMO_VPS_BOOTSTRAP_STUB_H_

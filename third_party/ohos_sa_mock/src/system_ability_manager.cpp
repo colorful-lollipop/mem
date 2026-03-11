@@ -139,6 +139,11 @@ sptr<ISystemAbilityManager> GetOrCreateLocalManager()
 SystemAbility::SystemAbility(int32_t systemAbilityId, bool runOnCreate)
     : system_ability_id_(systemAbilityId), run_on_create_(runOnCreate) {}
 
+SystemAbility::~SystemAbility()
+{
+  transport_.Stop();
+}
+
 void SystemAbility::OnStart() {}
 
 void SystemAbility::OnStop() {}
@@ -163,7 +168,18 @@ bool SystemAbility::Publish(const sptr<IRemoteObject>& object)
   if (registry == nullptr || object == nullptr) {
     return false;
   }
-  return registry->AddSystemAbility(system_ability_id_, object) == ERR_OK;
+  if (registry->AddSystemAbility(system_ability_id_, object) != ERR_OK) {
+    return false;
+  }
+
+  // Framework auto-starts mock transport if a service path is set.
+  const std::string path = object->GetServicePath();
+  if (!path.empty()) {
+    transport_.Start(path, [object](int cmd, MockIpcReply* reply) {
+      return object->HandleRequest(cmd, reply);
+    });
+  }
+  return true;
 }
 
 SystemAbilityManagerClient& SystemAbilityManagerClient::GetInstance()

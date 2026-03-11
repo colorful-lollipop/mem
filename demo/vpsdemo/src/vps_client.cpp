@@ -82,21 +82,6 @@ bool VpsClient::EngineDied() const {
     return death_recipient_ != nullptr && death_recipient_->died();
 }
 
-memrpc::StatusCode VpsClient::InitEngine(InitReply* reply) {
-    memrpc::RpcCall call;
-    call.opcode = static_cast<memrpc::Opcode>(DemoOpcode::DemoInit);
-    auto future = client_.InvokeAsync(call);
-    memrpc::RpcReply raw;
-    auto status = future.WaitAndTake(&raw);
-    if (status != memrpc::StatusCode::Ok) {
-        return status;
-    }
-    if (reply != nullptr && !memrpc::DecodeMessage<InitReply>(raw.payload, reply)) {
-        return memrpc::StatusCode::ProtocolMismatch;
-    }
-    return memrpc::StatusCode::Ok;
-}
-
 memrpc::StatusCode VpsClient::ScanFile(const std::string& path, ScanFileReply* reply) {
     ScanFileRequest request;
     request.file_path = path;

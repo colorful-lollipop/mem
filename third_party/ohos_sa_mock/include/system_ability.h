@@ -4,13 +4,14 @@
 #include <string>
 
 #include "iservice_registry.h"
+#include "mock_service_socket.h"
 
 namespace OHOS {
 
 class SystemAbility : public virtual RefBase {
  public:
   SystemAbility(int32_t systemAbilityId, bool runOnCreate);
-  ~SystemAbility() override = default;
+  ~SystemAbility() override;
 
   virtual void OnStart();
   virtual void OnStop();
@@ -34,6 +35,7 @@ class SystemAbility : public virtual RefBase {
  private:
   int32_t system_ability_id_;
   bool run_on_create_;
+  MockServiceSocket transport_;
 };
 
 #define DECLARE_SYSTEM_ABILITY(class_name)

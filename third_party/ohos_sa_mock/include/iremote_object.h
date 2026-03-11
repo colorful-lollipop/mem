@@ -1,13 +1,17 @@
 #ifndef OHOS_SA_MOCK_IREMOTE_OBJECT_H
 #define OHOS_SA_MOCK_IREMOTE_OBJECT_H
 
+#include <functional>
 #include <string>
 
+#include "mock_ipc_types.h"
 #include "refbase.h"
 
 namespace OHOS {
 
 class IRemoteBroker;
+
+using RemoteRequestHandler = std::function<bool(int command, MockIpcReply* reply)>;
 
 class IRemoteObject : public RefBase {
  public:
@@ -31,6 +35,9 @@ class IRemoteObject : public RefBase {
 
   void SetServicePath(const std::string& path);
   std::string GetServicePath() const;
+
+  void SetRequestHandler(RemoteRequestHandler handler);
+  bool HandleRequest(int command, MockIpcReply* reply);
 
  private:
   class Impl;

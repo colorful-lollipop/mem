@@ -3,23 +3,23 @@
 
 #include <memory>
 
-#include "iremote_stub.h"
-#include "mock_service_socket.h"
 #include "system_ability.h"
-#include "vps_bootstrap_interface.h"
+#include "vps_bootstrap_stub.h"
 #include "vps_session_service.h"
+#include "vpsdemo_service.h"
 
 namespace vpsdemo {
 
-// Engine-side SA: delegates session management to an injected VpsSessionProvider.
-// Mock IPC transport (Unix socket + SCM_RIGHTS) is handled by MockServiceSocket.
+// Engine-side SA: pure business logic.
+// Transport is managed by the framework (SystemAbility::Publish auto-starts MockServiceSocket).
+// Command dispatch is handled by VpsBootstrapStub (OnRemoteRequest).
 class VirusExecutorService : public OHOS::SystemAbility,
-                              public OHOS::IRemoteStub<IVpsBootstrap> {
+                              public VpsBootstrapStub {
  public:
-    explicit VirusExecutorService(std::shared_ptr<VpsSessionProvider> provider);
-    ~VirusExecutorService() override;
+    VirusExecutorService();
+    ~VirusExecutorService() override = default;
 
-    // IVpsBootstrap — delegates to provider.
+    // IVpsBootstrap — delegates to session_service_.
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) override;
     memrpc::StatusCode CloseSession() override;
 
@@ -28,8 +28,8 @@ class VirusExecutorService : public OHOS::SystemAbility,
     void OnStop() override;
 
  private:
-    std::shared_ptr<VpsSessionProvider> provider_;
-    OHOS::MockServiceSocket transport_;
+    VpsDemoService service_;
+    std::shared_ptr<EngineSessionService> session_service_;
 };
 
 }  // namespace vpsdemo
