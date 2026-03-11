@@ -3,7 +3,6 @@
 
 #include "iremote_stub.h"
 #include "iservice_registry.h"
-#include "isystem_ability_load_callback.h"
 #include "system_ability.h"
 
 namespace {
@@ -25,26 +24,6 @@ class DemoPingService : public OHOS::SystemAbility,
   {
     return "pong-from-sa";
   }
-};
-
-class DemoLoadCallback : public OHOS::SystemAbilityLoadCallbackStub {
- public:
-  void OnLoadSystemAbilitySuccess(
-      int32_t systemAbilityId,
-      const OHOS::sptr<OHOS::IRemoteObject>& object) override
-  {
-    loaded_sid = systemAbilityId;
-    loaded_object = object;
-  }
-
-  void OnLoadSystemAbilityFail(int32_t systemAbilityId) override
-  {
-    failed_sid = systemAbilityId;
-  }
-
-  int32_t loaded_sid = -1;
-  int32_t failed_sid = -1;
-  OHOS::sptr<OHOS::IRemoteObject> loaded_object;
 };
 
 class DemoDeathRecipient : public OHOS::IRemoteObject::DeathRecipient {
@@ -77,13 +56,12 @@ int main() {
   }
   std::cout << "get: " << ping->Ping() << std::endl;
 
-  auto callback = std::make_shared<DemoLoadCallback>();
-  if (registry->LoadSystemAbility(kDemoSaId, callback) != OHOS::ERR_OK ||
-      callback->loaded_object == nullptr) {
+  auto loaded_object = registry->LoadSystemAbility(kDemoSaId, 5000);
+  if (loaded_object == nullptr) {
     std::cerr << "load failed" << std::endl;
     return 1;
   }
-  auto loaded_ping = OHOS::iface_cast<IDemoPing>(callback->loaded_object);
+  auto loaded_ping = OHOS::iface_cast<IDemoPing>(loaded_object);
   std::cout << "load: " << loaded_ping->Ping() << std::endl;
 
   auto recipient = std::make_shared<DemoDeathRecipient>();

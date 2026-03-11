@@ -4,7 +4,6 @@
 #include <thread>
 
 #include "iservice_registry.h"
-#include "isystem_ability_load_callback.h"
 #include "registry_backend.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_client.h"
@@ -14,16 +13,17 @@
 namespace {
 
 const char* kRegistrySocketEnv = "OHOS_SA_MOCK_REGISTRY_SOCKET";
+constexpr int32_t kLoadTimeoutMs = 5000;
 
 std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     auto remote = sam->GetSystemAbility(vpsdemo::kVpsBootstrapSaId);
     if (remote == nullptr) {
         // Service not registered yet; try LoadSystemAbility.
-        remote = sam->GetSystemAbility(vpsdemo::kVpsBootstrapSaId);
+        remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
     }
     if (remote == nullptr) {
-        HLOGE("GetSystemAbility failed for saId=%{public}d", vpsdemo::kVpsBootstrapSaId);
+        HLOGE("ConnectToEngine failed for saId=%{public}d", vpsdemo::kVpsBootstrapSaId);
         return nullptr;
     }
     HLOGI("service path: %{public}s", remote->GetServicePath().c_str());
@@ -39,38 +39,20 @@ std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
 std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
 
-    // Use a load callback to get the remote object.
-    class LoadCallback : public OHOS::SystemAbilityLoadCallbackStub {
-     public:
-        OHOS::sptr<OHOS::IRemoteObject> remote;
-        bool success = false;
-
-        void OnLoadSystemAbilitySuccess(
-            int32_t saId, const OHOS::sptr<OHOS::IRemoteObject>& obj) override {
-            remote = obj;
-            success = true;
-        }
-        void OnLoadSystemAbilityFail(int32_t saId) override {
-            success = false;
-        }
-    };
-
-    auto cb = std::make_shared<LoadCallback>();
-    sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, cb);
-    if (!cb->success || cb->remote == nullptr) {
+    auto remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
+    if (remote == nullptr) {
         // Retry once after a delay.
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        cb->success = false;
-        sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, cb);
+        remote = sam->LoadSystemAbility(vpsdemo::kVpsBootstrapSaId, kLoadTimeoutMs);
     }
 
-    if (!cb->success || cb->remote == nullptr) {
+    if (remote == nullptr) {
         HLOGE("LoadSystemAbility failed");
         return nullptr;
     }
-    HLOGI("service path: %{public}s", cb->remote->GetServicePath().c_str());
+    HLOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(cb->remote);
+    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
         HLOGE("VpsClient init failed");
         return nullptr;

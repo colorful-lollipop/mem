@@ -4,8 +4,8 @@
 #include <unordered_map>
 
 #include "if_system_ability_manager.h"
+#include "iremote_stub.h"
 #include "isam_backend.h"
-#include "isystem_ability_load_callback.h"
 
 namespace OHOS {
 
@@ -39,19 +39,10 @@ class LocalSystemAbilityManager : public IRemoteStub<ISystemAbilityManager> {
     return it->second;
   }
 
-  ErrCode LoadSystemAbility(int32_t systemAbilityId,
-                            const sptr<SystemAbilityLoadCallbackStub>& callback) override
+  sptr<IRemoteObject> LoadSystemAbility(int32_t systemAbilityId,
+                                         int32_t /*timeout*/) override
   {
-    auto object = CheckSystemAbility(systemAbilityId);
-    if (callback == nullptr) {
-      return ERR_NULL_OBJECT;
-    }
-    if (object == nullptr) {
-      callback->OnLoadSystemAbilityFail(systemAbilityId);
-      return ERR_NAME_NOT_FOUND;
-    }
-    callback->OnLoadSystemAbilitySuccess(systemAbilityId, object);
-    return ERR_OK;
+    return CheckSystemAbility(systemAbilityId);
   }
 
   ErrCode UnloadSystemAbility(int32_t systemAbilityId) override
@@ -112,22 +103,17 @@ class RemoteSystemAbilityManager : public IRemoteStub<ISystemAbilityManager> {
     return remote;
   }
 
-  ErrCode LoadSystemAbility(int32_t systemAbilityId,
-                            const sptr<SystemAbilityLoadCallbackStub>& callback) override
+  sptr<IRemoteObject> LoadSystemAbility(int32_t systemAbilityId,
+                                         int32_t /*timeout*/) override
   {
-    if (callback == nullptr) {
-      return ERR_NULL_OBJECT;
-    }
     std::string path = backend_->LoadService(systemAbilityId);
     if (path.empty()) {
-      callback->OnLoadSystemAbilityFail(systemAbilityId);
-      return ERR_NAME_NOT_FOUND;
+      return nullptr;
     }
     auto remote = std::make_shared<IRemoteObject>();
     remote->SetSaId(systemAbilityId);
     remote->SetServicePath(path);
-    callback->OnLoadSystemAbilitySuccess(systemAbilityId, remote);
-    return ERR_OK;
+    return remote;
   }
 
   ErrCode UnloadSystemAbility(int32_t systemAbilityId) override
