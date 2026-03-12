@@ -1,0 +1,6 @@
+buildconfig = "//build/config/BUILDCONFIG.gn"
+
+default_args = {
+  is_debug = true
+  is_clang = true
+}

@@ -1,0 +1,34 @@
+declare_args() {
+  is_debug = true
+  is_clang = true
+}
+
+if (is_clang) {
+  default_toolchain = "//build/toolchain:clang"
+} else {
+  default_toolchain = "//build/toolchain:gcc"
+}
+
+set_default_toolchain(default_toolchain)
+
+config("default_compiler_config") {
+  cflags = []
+  cflags_cc = [ "-std=c++17" ]
+  if (is_debug) {
+    cflags += [ "-g", "-O0" ]
+  } else {
+    cflags += [ "-O2" ]
+  }
+}
+
+set_defaults("executable") {
+  configs += [ ":default_compiler_config" ]
+}
+
+set_defaults("static_library") {
+  configs += [ ":default_compiler_config" ]
+}
+
+set_defaults("source_set") {
+  configs += [ ":default_compiler_config" ]
+}

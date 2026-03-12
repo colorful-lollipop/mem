@@ -1,0 +1,93 @@
+toolchain("clang") {
+  lib_prefix = "lib"
+  lib_extension = "a"
+  solib_prefix = "lib"
+  solib_extension = "so"
+
+  tool("cc") {
+    command = "clang -MMD -MF $out.d $defines $include_dirs $cflags $cflags_c -c $in -o $out"
+    depfile = "$out.d"
+    depsformat = "gcc"
+    description = "CC $out"
+  }
+
+  tool("cxx") {
+    command = "clang++ -MMD -MF $out.d $defines $include_dirs $cflags $cflags_cc -c $in -o $out"
+    depfile = "$out.d"
+    depsformat = "gcc"
+    description = "CXX $out"
+  }
+
+  tool("alink") {
+    command = "rm -f $out && ar rcs $out $in"
+    description = "AR $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("solink") {
+    command = "clang++ -shared $ldflags $lib_dirs -o $out $in $libs"
+    description = "SOLINK $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("link") {
+    command = "clang++ $ldflags $lib_dirs -o $out $in $libs"
+    description = "LINK $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("stamp") {
+    command = "touch $out"
+  }
+
+  tool("copy") {
+    command = "cp -f $in $out"
+  }
+}
+
+toolchain("gcc") {
+  lib_prefix = "lib"
+  lib_extension = "a"
+  solib_prefix = "lib"
+  solib_extension = "so"
+
+  tool("cc") {
+    command = "gcc -MMD -MF $out.d $defines $include_dirs $cflags $cflags_c -c $in -o $out"
+    depfile = "$out.d"
+    depsformat = "gcc"
+    description = "CC $out"
+  }
+
+  tool("cxx") {
+    command = "g++ -MMD -MF $out.d $defines $include_dirs $cflags $cflags_cc -c $in -o $out"
+    depfile = "$out.d"
+    depsformat = "gcc"
+    description = "CXX $out"
+  }
+
+  tool("alink") {
+    command = "rm -f $out && ar rcs $out $in"
+    description = "AR $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("solink") {
+    command = "g++ -shared $ldflags $lib_dirs -o $out $in $libs"
+    description = "SOLINK $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("link") {
+    command = "g++ $ldflags $lib_dirs -o $out $in $libs"
+    description = "LINK $out"
+    outputs = [ "$out" ]
+  }
+
+  tool("stamp") {
+    command = "touch $out"
+  }
+
+  tool("copy") {
+    command = "cp -f $in $out"
+  }
+}
