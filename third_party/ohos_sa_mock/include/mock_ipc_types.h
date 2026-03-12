@@ -12,6 +12,7 @@ struct MockIpcReply {
     size_t fd_count = 0;
     char data[256] = {};
     size_t data_len = 0;
+    bool close_after_reply = false;
 };
 
 // Handles a single client connection's 1-byte command, fills fds + data reply.

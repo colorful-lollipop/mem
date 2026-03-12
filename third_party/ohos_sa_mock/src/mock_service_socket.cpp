@@ -83,12 +83,19 @@ void MockServiceSocket::AcceptLoop() {
             continue;
         }
 
-        // Send fds + data via SCM_RIGHTS.
+        // Send fds + data via SCM_RIGHTS, or data-only reply.
         if (reply.fd_count > 0) {
             if (!SendFds(client_fd, reply.fds, reply.fd_count,
                          reply.data, reply.data_len)) {
                 std::cerr << "[MockServiceSocket] failed to send fds" << std::endl;
             }
+        } else if (reply.data_len > 0) {
+            send(client_fd, reply.data, reply.data_len, MSG_NOSIGNAL);
+        }
+
+        if (reply.close_after_reply) {
+            close(client_fd);
+            continue;
         }
 
         // Keep client_fd open — proxy monitors it for death detection.

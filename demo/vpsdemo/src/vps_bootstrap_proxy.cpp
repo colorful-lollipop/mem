@@ -116,8 +116,28 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     return memrpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& /* reply */) {
-    return memrpc::StatusCode::PeerDisconnected;
+memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& reply) {
+    // Use a short-lived connection for heartbeat (server closes after reply).
+    int hb_fd = ConnectToService(service_socket_path_);
+    if (hb_fd < 0) {
+        return memrpc::StatusCode::PeerDisconnected;
+    }
+
+    char cmd = 3;
+    if (send(hb_fd, &cmd, 1, MSG_NOSIGNAL) != 1) {
+        close(hb_fd);
+        return memrpc::StatusCode::PeerDisconnected;
+    }
+
+    VpsHeartbeatReply buf{};
+    ssize_t n = recv(hb_fd, &buf, sizeof(buf), MSG_WAITALL);
+    close(hb_fd);
+
+    if (n != static_cast<ssize_t>(sizeof(buf))) {
+        return memrpc::StatusCode::ProtocolMismatch;
+    }
+    reply = buf;
+    return memrpc::StatusCode::Ok;
 }
 
 memrpc::StatusCode VpsBootstrapProxy::CloseSession() {

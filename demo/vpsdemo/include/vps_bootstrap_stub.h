@@ -49,6 +49,16 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
             }
             case 2:  // CloseSession
                 return CloseSession() == memrpc::StatusCode::Ok;
+            case 3: {  // Heartbeat
+                VpsHeartbeatReply hb{};
+                if (Heartbeat(hb) != memrpc::StatusCode::Ok) {
+                    return false;
+                }
+                std::memcpy(reply->data, &hb, sizeof(hb));
+                reply->data_len = sizeof(hb);
+                reply->close_after_reply = true;
+                return true;
+            }
             default:
                 return false;
         }
