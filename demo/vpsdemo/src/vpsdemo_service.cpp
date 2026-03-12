@@ -46,6 +46,10 @@ ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
     return result;
 }
 
+VpsHealthSnapshot VpsDemoService::GetHealthSnapshot() const {
+    return VpsHealthSnapshot{};
+}
+
 void VpsDemoService::RegisterHandlers(memrpc::RpcServer* server) {
     if (server == nullptr) {
         return;

@@ -83,4 +83,8 @@ if (VPSDEMO_ENABLE_TESTS)
   add_executable(vpsdemo_session_service_test tests/ves_session_service_test.cpp)
   target_link_libraries(vpsdemo_session_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_session_service_test COMMAND vpsdemo_session_service_test)
+
+  add_executable(vpsdemo_heartbeat_test tests/vps_heartbeat_test.cpp)
+  target_link_libraries(vpsdemo_heartbeat_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_heartbeat_test COMMAND vpsdemo_heartbeat_test)
 endif()

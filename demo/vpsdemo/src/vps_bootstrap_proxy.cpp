@@ -116,6 +116,10 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     return memrpc::StatusCode::Ok;
 }
 
+memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& /* reply */) {
+    return memrpc::StatusCode::PeerDisconnected;
+}
+
 memrpc::StatusCode VpsBootstrapProxy::CloseSession() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {

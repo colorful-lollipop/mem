@@ -1,5 +1,6 @@
 #include "virus_executor_service.h"
 
+#include <cstdio>
 #include <thread>
 
 #include "iservice_registry.h"
@@ -35,6 +36,14 @@ memrpc::StatusCode VirusExecutorService::CloseSession() {
     }).detach();
 
     return status;
+}
+
+memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
+    reply = VpsHeartbeatReply{};
+    const bool healthy = (session_service_ != nullptr) && service_.initialized();
+    reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok
+                                                 : VpsHeartbeatStatus::Unhealthy);
+    return memrpc::StatusCode::Ok;
 }
 
 void VirusExecutorService::OnStart() {
