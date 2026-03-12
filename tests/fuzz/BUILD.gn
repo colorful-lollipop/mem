@@ -1,3 +1,5 @@
+import("//memrpc.gni")
+
 if (memrpc_enable_fuzz) {
   assert(is_clang, "memrpc_enable_fuzz requires Clang")
 
@@ -11,6 +13,7 @@ if (memrpc_enable_fuzz) {
   }
 
   group("fuzz_targets") {
+    testonly = true
     deps = [ ":minirpc_codec_fuzz" ]
   }
 }

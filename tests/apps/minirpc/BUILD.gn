@@ -1,3 +1,5 @@
+import("//memrpc.gni")
+
 template("minirpc_test") {
   executable(target_name) {
     testonly = true
@@ -61,6 +63,7 @@ if (memrpc_enable_stress_tests) {
 }
 
 group("minirpc_tests") {
+  testonly = true
   deps = [
     ":memrpc_minirpc_headers_test",
     ":memrpc_minirpc_codec_test",

@@ -1,3 +1,5 @@
+import("//memrpc.gni")
+
 template("memrpc_test") {
   executable(target_name) {
     testonly = true
@@ -43,6 +45,7 @@ if (memrpc_enable_dt_tests) {
 }
 
 group("memrpc_tests") {
+  testonly = true
   deps = [
     ":memrpc_smoke_test",
     ":memrpc_types_test",

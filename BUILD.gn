@@ -10,178 +10,44 @@ config("memrpc_test_config") {
   cflags_cc = [ "-std=c++17" ]
 }
 
-source_set("memrpc") {
-  sources = [
-    "src/bootstrap/posix_demo_bootstrap.cpp",
-    "src/bootstrap/sa_bootstrap.cpp",
-    "src/client/engine_client.cpp",
-    "src/client/rpc_client.cpp",
-    "src/core/byte_reader.cpp",
-    "src/core/byte_writer.cpp",
-    "src/core/session.cpp",
-    "src/core/slot_pool.cpp",
-    "src/rpc/scan_behavior_codec.cpp",
-    "src/rpc/scan_codec.cpp",
-    "src/server/engine_server.cpp",
-    "src/server/rpc_server.cpp",
+group("memrpc_libs") {
+  deps = [
+    "//src:memrpc",
+    "//src:minirpc_demo",
   ]
-  public = [
-    "include/apps/vps/child/i_virus_engine.h",
-    "include/apps/vps/child/lib_loader.h",
-    "include/apps/vps/child/virus_engine_service.h",
-    "include/apps/vps/common/vps_codec.h",
-    "include/apps/vps/common/virus_protection_service_define.h",
-    "include/apps/vps/parent/virus_engine_manager.h",
-    "include/memrpc/client/demo_bootstrap.h",
-    "include/memrpc/bootstrap.h",
-    "include/memrpc/client/rpc_client.h",
-    "include/memrpc/client.h",
-    "include/memrpc/client/sa_bootstrap.h",
-    "include/memrpc/compat/engine_client.h",
-    "include/memrpc/compat/engine_server.h",
-    "include/memrpc/demo_bootstrap.h",
-    "include/memrpc/core/bootstrap.h",
-    "include/memrpc/core/byte_reader.h",
-    "include/memrpc/core/byte_writer.h",
-    "include/memrpc/core/types.h",
-    "include/memrpc/handler.h",
-    "include/memrpc/rpc_client.h",
-    "include/memrpc/rpc_server.h",
-    "include/memrpc/sa_bootstrap.h",
-    "include/memrpc/server/handler.h",
-    "include/memrpc/server/rpc_server.h",
-    "include/memrpc/server.h",
-    "include/memrpc/types.h",
-  ]
-  public_configs = [ ":memrpc_config" ]
 }
 
-source_set("vps_demo") {
-  sources = [
-    "src/apps/vps/child/fake_lib_loader.cpp",
-    "src/apps/vps/child/fake_virus_engine.cpp",
-    "src/apps/vps/child/virus_engine_service.cpp",
-    "src/apps/vps/common/vps_codec.cpp",
-    "src/apps/vps/parent/virus_engine_manager.cpp",
-  ]
-  public = [
-    "include/vps_demo/i_virus_engine.h",
-    "include/vps_demo/lib_loader.h",
-    "include/vps_demo/virus_engine_service.h",
-    "include/vps_demo/virus_protection_service_define.h",
-    "include/vps_demo/vps_codec.h",
-  ]
-  deps = [ ":memrpc" ]
-  public_configs = [ ":memrpc_config" ]
-}
-
-executable("memrpc_demo_dual_process") {
-  sources = [ "demo/demo_dual_process_main.cpp" ]
-  deps = [ ":memrpc" ]
+group("memrpc_demo") {
+  deps = [ "//demo:memrpc_minirpc_demo" ]
 }
 
 if (memrpc_enable_tests) {
-  template("memrpc_test") {
-    executable(target_name) {
-      testonly = true
-      sources = invoker.sources
-      deps = [
-        ":memrpc",
-        memrpc_gtest_main_target,
-      ]
-      configs += [ ":memrpc_test_config" ]
-    }
+  group("memrpc_tests") {
+    testonly = true
+    deps = [
+      "//tests/memrpc:memrpc_tests",
+      "//tests/apps/minirpc:minirpc_tests",
+    ]
   }
+}
 
-  template("vps_demo_test") {
-    executable(target_name) {
-      testonly = true
-      sources = invoker.sources
-      deps = [
-        ":vps_demo",
-        memrpc_gtest_main_target,
-      ]
-      configs += [ ":memrpc_test_config" ]
-    }
+if (memrpc_enable_fuzz) {
+  group("memrpc_fuzz") {
+    testonly = true
+    deps = [ "//tests/fuzz:fuzz_targets" ]
   }
+}
 
-  memrpc_test("memrpc_smoke_test") {
-    sources = [ "tests/smoke_test.cpp" ]
+group("all") {
+  testonly = memrpc_enable_tests || memrpc_enable_fuzz
+  deps = [
+    ":memrpc_libs",
+    ":memrpc_demo",
+  ]
+  if (memrpc_enable_tests) {
+    deps += [ ":memrpc_tests" ]
   }
-
-  memrpc_test("memrpc_types_test") {
-    sources = [ "tests/types_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_api_headers_test") {
-    sources = [ "tests/api_headers_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_framework_split_headers_test") {
-    sources = [ "tests/framework_split_headers_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_protocol_layout_test") {
-    sources = [ "tests/protocol_layout_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_byte_codec_test") {
-    sources = [ "tests/byte_codec_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_scan_codec_test") {
-    sources = [ "tests/scan_codec_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_scan_behavior_codec_test") {
-    sources = [ "tests/scan_behavior_codec_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_slot_pool_test") {
-    sources = [ "tests/slot_pool_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_session_test") {
-    sources = [ "tests/session_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_build_config_test") {
-    sources = [ "tests/build_config_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_bootstrap_callback_test") {
-    sources = [ "tests/bootstrap_callback_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_rpc_client_api_test") {
-    sources = [ "tests/rpc_client_api_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_rpc_server_api_test") {
-    sources = [ "tests/rpc_server_api_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_rpc_client_integration_test") {
-    sources = [ "tests/rpc_client_integration_test.cpp" ]
-  }
-
-  vps_demo_test("memrpc_vps_codec_test") {
-    sources = [ "tests/vps_codec_test.cpp" ]
-  }
-
-  vps_demo_test("memrpc_vps_service_test") {
-    sources = [ "tests/vps_service_test.cpp" ]
-  }
-
-  vps_demo_test("memrpc_vps_manager_integration_test") {
-    sources = [ "tests/vps_manager_integration_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_integration_end_to_end_test") {
-    sources = [ "tests/integration_end_to_end_test.cpp" ]
-  }
-
-  memrpc_test("memrpc_sa_bootstrap_stub_test") {
-    sources = [ "tests/sa_bootstrap_stub_test.cpp" ]
+  if (memrpc_enable_fuzz) {
+    deps += [ ":memrpc_fuzz" ]
   }
 }
