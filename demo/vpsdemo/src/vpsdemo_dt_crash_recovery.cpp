@@ -192,6 +192,7 @@ int main(int argc, char* argv[]) {
 
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
     HLOGI("=== Step 5: second crash + 10 sequential normal calls ===");
+    int prev = engineRestarts.load();
     {
         vpsdemo::ScanFileReply reply;
         HLOGI("step5: sending crash...");
@@ -200,7 +201,6 @@ int main(int argc, char* argv[]) {
     }
     // Wait for restart to complete.
     {
-        int prev = engineRestarts.load();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (engineRestarts.load() == prev &&
                std::chrono::steady_clock::now() < deadline) {
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
         vpsdemo::ScanFileReply reply;
         const auto t0 = std::chrono::steady_clock::now();
         auto status = client->ScanFile(
-            "/data/dt_post_crash_" + std::to_string(i) + ".apk", &reply);
+            "/data/dt_post_recover_" + std::to_string(i) + ".apk", &reply);
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
         HLOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
