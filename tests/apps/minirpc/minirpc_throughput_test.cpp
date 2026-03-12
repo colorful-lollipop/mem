@@ -231,7 +231,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
   {
     MemRpc::BootstrapHandles unused_handles;
-    if (bootstrap->OpenSession(&unused_handles) != MemRpc::StatusCode::Ok) {
+    if (bootstrap->OpenSession(unused_handles) != MemRpc::StatusCode::Ok) {
       for (const auto kind : kinds) {
         results.push_back({MakeBaselineKey(kind, thread_count), 0.0,
                            "bootstrap start failed"});

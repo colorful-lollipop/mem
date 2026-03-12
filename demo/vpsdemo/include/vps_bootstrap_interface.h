@@ -13,7 +13,7 @@ constexpr int32_t VPS_BOOTSTRAP_SA_ID = 1251;
 class IVpsBootstrap : public OHOS::IRemoteBroker {
  public:
     ~IVpsBootstrap() override = default;
-    virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) = 0;
+    virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) = 0;
     virtual memrpc::StatusCode CloseSession() = 0;
 };
 

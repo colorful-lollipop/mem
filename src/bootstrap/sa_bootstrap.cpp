@@ -42,13 +42,9 @@ void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
   }
 }
 
-StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles* handles) {
-  if (handles == nullptr) {
-    impl_->last_error = "Fake SA bootstrap received a null BootstrapHandles.";
-    return StatusCode::InvalidArgument;
-  }
+StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (impl_->fallback == nullptr) {
-    *handles = BootstrapHandles{};
+    handles = BootstrapHandles{};
     impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
     return StatusCode::EngineInternalError;
   }

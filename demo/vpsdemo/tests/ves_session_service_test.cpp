@@ -35,7 +35,7 @@ TEST(VpsSessionServiceTest, OpenSessionInitializesService) {
     EngineSessionService sessionService(&service);
 
     memrpc::BootstrapHandles handles{};
-    EXPECT_EQ(sessionService.OpenSession(&handles), memrpc::StatusCode::Ok);
+    EXPECT_EQ(sessionService.OpenSession(handles), memrpc::StatusCode::Ok);
     EXPECT_TRUE(service.initialized());
 
     CloseHandles(&handles);

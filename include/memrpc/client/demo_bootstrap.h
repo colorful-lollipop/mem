@@ -24,7 +24,7 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
   explicit PosixDemoBootstrapChannel(DemoBootstrapConfig config = {});
   ~PosixDemoBootstrapChannel() override;
 
-  StatusCode OpenSession(BootstrapHandles* handles) override;
+  StatusCode OpenSession(BootstrapHandles& handles) override;
   StatusCode CloseSession() override;
   void SetEngineDeathCallback(EngineDeathCallback callback) override;
 

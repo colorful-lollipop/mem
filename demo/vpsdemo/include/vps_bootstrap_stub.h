@@ -27,7 +27,7 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
         switch (command) {
             case 1: {  // OpenSession
                 memrpc::BootstrapHandles handles{};
-                if (OpenSession(&handles) != memrpc::StatusCode::Ok) {
+                if (OpenSession(handles) != memrpc::StatusCode::Ok) {
                     return false;
                 }
 

@@ -16,7 +16,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {
   memrpc::SaBootstrapChannel channel;
   memrpc::BootstrapHandles handles;
 
-  EXPECT_EQ(channel.OpenSession(&handles), memrpc::StatusCode::Ok);
+  EXPECT_EQ(channel.OpenSession(handles), memrpc::StatusCode::Ok);
   EXPECT_GE(handles.shm_fd, 0);
   EXPECT_GE(handles.high_req_event_fd, 0);
   EXPECT_GE(handles.normal_req_event_fd, 0);
@@ -37,7 +37,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {
 TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   memrpc::SaBootstrapChannel channel;
   memrpc::BootstrapHandles unused;
-  ASSERT_EQ(channel.OpenSession(&unused), memrpc::StatusCode::Ok);
+  ASSERT_EQ(channel.OpenSession(unused), memrpc::StatusCode::Ok);
   close(unused.shm_fd);
   close(unused.high_req_event_fd);
   close(unused.normal_req_event_fd);

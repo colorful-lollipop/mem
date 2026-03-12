@@ -127,7 +127,7 @@ TEST(DtPerfTest, ShortPerfBaseline) {
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 
   memrpc::RpcServer server;

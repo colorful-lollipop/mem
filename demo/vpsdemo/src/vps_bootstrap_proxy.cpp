@@ -56,11 +56,7 @@ VpsBootstrapProxy::~VpsBootstrapProxy() {
     }
 }
 
-memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* handles) {
-    if (handles == nullptr) {
-        return memrpc::StatusCode::InvalidArgument;
-    }
-
+memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& handles) {
     // Clean up any previous connection (reconnect after engine death).
     stop_monitor_ = true;
     if (monitor_thread_.joinable()) {
@@ -103,14 +99,14 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles* hand
         return memrpc::StatusCode::ProtocolMismatch;
     }
 
-    handles->shm_fd = fds[0];
-    handles->high_req_event_fd = fds[1];
-    handles->normal_req_event_fd = fds[2];
-    handles->resp_event_fd = fds[3];
-    handles->req_credit_event_fd = fds[4];
-    handles->resp_credit_event_fd = fds[5];
-    handles->protocol_version = meta.protocol_version;
-    handles->session_id = meta.session_id;
+    handles.shm_fd = fds[0];
+    handles.high_req_event_fd = fds[1];
+    handles.normal_req_event_fd = fds[2];
+    handles.resp_event_fd = fds[3];
+    handles.req_credit_event_fd = fds[4];
+    handles.resp_credit_event_fd = fds[5];
+    handles.protocol_version = meta.protocol_version;
+    handles.session_id = meta.session_id;
     session_id_ = meta.session_id;
 
     // Start monitoring the socket for disconnect (death detection).

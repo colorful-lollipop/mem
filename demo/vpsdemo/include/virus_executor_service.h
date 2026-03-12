@@ -20,7 +20,7 @@ class VirusExecutorService : public OHOS::SystemAbility,
     ~VirusExecutorService() override = default;
 
     // IVpsBootstrap — delegates to session_service_.
-    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) override;
+    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
 
     // SystemAbility lifecycle.

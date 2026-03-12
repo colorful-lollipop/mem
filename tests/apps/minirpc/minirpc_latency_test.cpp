@@ -80,7 +80,7 @@ TEST(MiniRpcLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
   MemRpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), MemRpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 
   MemRpc::RpcServer server;

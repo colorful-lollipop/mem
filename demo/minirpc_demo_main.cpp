@@ -39,7 +39,7 @@ int main() {
 
   auto bootstrap = std::make_shared<Mem::PosixDemoBootstrapChannel>();
   Mem::BootstrapHandles unused_handles;
-  if (bootstrap->OpenSession(&unused_handles) != Mem::StatusCode::Ok) {
+  if (bootstrap->OpenSession(unused_handles) != Mem::StatusCode::Ok) {
     std::cerr << "bootstrap open session failed" << std::endl;
     return 1;
   }

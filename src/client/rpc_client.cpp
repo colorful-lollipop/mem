@@ -770,7 +770,7 @@ struct RpcClient::Impl {
     }
 
     BootstrapHandles handles;
-    const StatusCode open_status = bootstrap->OpenSession(&handles);
+    const StatusCode open_status = bootstrap->OpenSession(handles);
     if (open_status != StatusCode::Ok) {
       HLOGE("OpenSession failed, status=%{public}d", static_cast<int>(open_status));
       return open_status;

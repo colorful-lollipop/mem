@@ -31,7 +31,7 @@ namespace memrpc {
 TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
   BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
   RpcServer server;
@@ -69,7 +69,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
 TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
   BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
   RpcServer server;

@@ -27,7 +27,7 @@ class IBootstrapChannel {
   virtual ~IBootstrapChannel() = default;
 
   // 建立 session：若资源未创建则惰性创建，返回 dup 后的句柄集合。幂等。
-  virtual StatusCode OpenSession(BootstrapHandles* handles) = 0;
+  virtual StatusCode OpenSession(BootstrapHandles& handles) = 0;
   // 关闭 session：通知 bootstrap 层客户端断开。不销毁 server 侧资源。
   virtual StatusCode CloseSession() = 0;
   // 用于将”子进程死亡”从 bootstrap 层回传给 client。

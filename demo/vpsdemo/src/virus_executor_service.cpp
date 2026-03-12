@@ -10,10 +10,7 @@ namespace vpsdemo {
 VirusExecutorService::VirusExecutorService()
     : OHOS::SystemAbility(VPS_BOOTSTRAP_SA_ID, true) {}
 
-memrpc::StatusCode VirusExecutorService::OpenSession(memrpc::BootstrapHandles* handles) {
-    if (handles == nullptr) {
-        return memrpc::StatusCode::InvalidArgument;
-    }
+memrpc::StatusCode VirusExecutorService::OpenSession(memrpc::BootstrapHandles& handles) {
     if (!session_service_) {
         HLOGE("session service not initialized");
         return memrpc::StatusCode::InvalidArgument;

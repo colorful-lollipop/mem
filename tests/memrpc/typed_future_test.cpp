@@ -52,7 +52,7 @@ namespace {
 TEST(TypedFutureTest, WaitDecodesReply) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -80,7 +80,7 @@ TEST(TypedFutureTest, WaitDecodesReply) {
 TEST(TypedFutureTest, ThenDecodesReply) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -125,7 +125,7 @@ TEST(TypedFutureTest, ThenDecodesReply) {
 TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -155,7 +155,7 @@ TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
 TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
@@ -195,7 +195,7 @@ TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
 TEST(TypedFutureTest, IsReadyDelegates) {
   auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), memrpc::StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
 
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());

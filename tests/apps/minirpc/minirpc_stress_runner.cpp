@@ -143,7 +143,7 @@ bool RunStress(const StressConfig& config) {
 
   auto bootstrap = std::make_shared<Mem::PosixDemoBootstrapChannel>(bootstrapConfig);
   Mem::BootstrapHandles unusedHandles;
-  if (bootstrap->OpenSession(&unusedHandles) != Mem::StatusCode::Ok) {
+  if (bootstrap->OpenSession(unusedHandles) != Mem::StatusCode::Ok) {
     HLOGE("stress bootstrap open session failed");
     return false;
   }

@@ -42,7 +42,7 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     }
 
     memrpc::BootstrapHandles throwaway{};
-    const memrpc::StatusCode open_status = bootstrap_->OpenSession(&throwaway);
+    const memrpc::StatusCode open_status = bootstrap_->OpenSession(throwaway);
     if (open_status != memrpc::StatusCode::Ok) {
         HLOGE("bootstrap OpenSession failed");
         CloseHandles(&throwaway);
@@ -69,10 +69,7 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     return memrpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles* handles) {
-    if (handles == nullptr) {
-        return memrpc::StatusCode::InvalidArgument;
-    }
+memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles& handles) {
     const memrpc::StatusCode init_status = EnsureInitialized();
     if (init_status != memrpc::StatusCode::Ok) {
         return init_status;

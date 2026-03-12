@@ -27,7 +27,7 @@ class VpsBootstrapProxy : public OHOS::IRemoteProxy<IVpsBootstrap>,
     ~VpsBootstrapProxy() override;
 
     // Shared by both IVpsBootstrap and IBootstrapChannel.
-    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) override;
+    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
 
     // IBootstrapChannel — framework death callback.

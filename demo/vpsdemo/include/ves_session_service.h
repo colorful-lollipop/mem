@@ -16,7 +16,7 @@ class VpsDemoService;
 class VesSessionProvider {
  public:
     virtual ~VesSessionProvider() = default;
-    virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) = 0;
+    virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) = 0;
     virtual memrpc::StatusCode CloseSession() = 0;
 };
 
@@ -24,7 +24,7 @@ class EngineSessionService final : public VesSessionProvider {
  public:
     explicit EngineSessionService(VpsDemoService* service);
 
-    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) override;
+    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
 
  private:

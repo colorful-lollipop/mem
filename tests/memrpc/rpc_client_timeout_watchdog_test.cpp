@@ -31,7 +31,7 @@ namespace memrpc {
 TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
   BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
   RpcServer server;
@@ -83,7 +83,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   // Create a server that does NOT start, so requests stay in Queued state.
   auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
   BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(&unused_handles), StatusCode::Ok);
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
   // Start server but register a handler that blocks forever to keep

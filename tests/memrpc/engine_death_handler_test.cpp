@@ -17,11 +17,9 @@ constexpr memrpc::Opcode kTestOpcode = 1u;
 
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
-  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles* handles) override {
-    if (handles != nullptr) {
-      *handles = MemRpc::BootstrapHandles{};
-      handles->protocol_version = MemRpc::PROTOCOL_VERSION;
-    }
+  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
+    handles = MemRpc::BootstrapHandles{};
+    handles.protocol_version = MemRpc::PROTOCOL_VERSION;
     return MemRpc::StatusCode::Ok;
   }
 

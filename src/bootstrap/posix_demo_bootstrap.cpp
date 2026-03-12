@@ -173,11 +173,7 @@ PosixDemoBootstrapChannel::PosixDemoBootstrapChannel(DemoBootstrapConfig config)
 
 PosixDemoBootstrapChannel::~PosixDemoBootstrapChannel() = default;
 
-StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
-  if (handles == nullptr) {
-    return StatusCode::InvalidArgument;
-  }
-
+StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (!impl_->initialized) {
     if (impl_->config.max_request_bytes == 0 ||
         impl_->config.max_response_bytes == 0 ||
@@ -217,7 +213,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles* handles) {
     }
   }
 
-  if (!DuplicateHandles(impl_->handles, handles)) {
+  if (!DuplicateHandles(impl_->handles, &handles)) {
     HLOGE("OpenSession failed while duplicating bootstrap handles");
     return StatusCode::EngineInternalError;
   }
