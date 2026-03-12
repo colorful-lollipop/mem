@@ -1,6 +1,7 @@
 #ifndef VPSDEMO_VPSDEMO_SERVICE_H_
 #define VPSDEMO_VPSDEMO_SERVICE_H_
 
+#include <mutex>
 #include <string>
 
 #include "memrpc/server/rpc_server.h"
@@ -25,6 +26,10 @@ class VpsDemoService {
 
  private:
     bool initialized_ = false;
+    mutable std::mutex health_mutex_;
+    uint32_t in_flight_ = 0;
+    uint32_t last_task_start_mono_ms_ = 0;
+    std::string current_task_ = "idle";
 };
 
 }  // namespace vpsdemo

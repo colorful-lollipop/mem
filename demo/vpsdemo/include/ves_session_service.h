@@ -27,6 +27,8 @@ class EngineSessionService final : public VesSessionProvider {
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
 
+    uint64_t session_id() const;
+
  private:
     memrpc::StatusCode EnsureInitialized();
 
@@ -35,6 +37,7 @@ class EngineSessionService final : public VesSessionProvider {
     std::unique_ptr<memrpc::RpcServer> rpc_server_;
     std::mutex init_mutex_;
     bool initialized_ = false;
+    uint64_t session_id_ = 0;
 };
 
 }  // namespace vpsdemo

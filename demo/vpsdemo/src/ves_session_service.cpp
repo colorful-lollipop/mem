@@ -74,7 +74,11 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles& h
     if (init_status != memrpc::StatusCode::Ok) {
         return init_status;
     }
-    return bootstrap_->OpenSession(handles);
+    auto status = bootstrap_->OpenSession(handles);
+    if (status == memrpc::StatusCode::Ok) {
+        session_id_ = handles.session_id;
+    }
+    return status;
 }
 
 memrpc::StatusCode EngineSessionService::CloseSession() {
@@ -88,8 +92,13 @@ memrpc::StatusCode EngineSessionService::CloseSession() {
     }
     bootstrap_.reset();
     initialized_ = false;
+    session_id_ = 0;
     HLOGI("EngineSessionService closed");
     return memrpc::StatusCode::Ok;
+}
+
+uint64_t EngineSessionService::session_id() const {
+    return session_id_;
 }
 
 }  // namespace vpsdemo

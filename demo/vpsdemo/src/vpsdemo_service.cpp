@@ -13,6 +13,15 @@
 
 namespace vpsdemo {
 
+namespace {
+uint32_t MonotonicNowMs() {
+    auto now = std::chrono::steady_clock::now();
+    return static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count());
+}
+}  // namespace
+
 void VpsDemoService::Initialize() {
     if (initialized_) {
         return;
@@ -26,6 +35,13 @@ bool VpsDemoService::initialized() const {
 }
 
 ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
+    {
+        std::lock_guard<std::mutex> lock(health_mutex_);
+        in_flight_++;
+        current_task_ = request.file_path;
+        last_task_start_mono_ms_ = MonotonicNowMs();
+    }
+
     ScanFileReply result;
     if (!initialized_) {
         result.code = -1;
@@ -43,11 +59,27 @@ ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
     }
     HLOGI("ScanFile(%{public}s): threat=%{public}d",
           request.file_path.c_str(), result.threat_level);
+
+    {
+        std::lock_guard<std::mutex> lock(health_mutex_);
+        in_flight_--;
+        if (in_flight_ == 0) {
+            current_task_ = "idle";
+        }
+    }
+
     return result;
 }
 
 VpsHealthSnapshot VpsDemoService::GetHealthSnapshot() const {
-    return VpsHealthSnapshot{};
+    std::lock_guard<std::mutex> lock(health_mutex_);
+    VpsHealthSnapshot snapshot;
+    snapshot.in_flight = in_flight_;
+    snapshot.current_task = current_task_;
+    if (in_flight_ > 0 && last_task_start_mono_ms_ > 0) {
+        snapshot.last_task_age_ms = MonotonicNowMs() - last_task_start_mono_ms_;
+    }
+    return snapshot;
 }
 
 void VpsDemoService::RegisterHandlers(memrpc::RpcServer* server) {
