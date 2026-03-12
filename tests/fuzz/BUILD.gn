@@ -1,0 +1,16 @@
+if (memrpc_enable_fuzz) {
+  assert(is_clang, "memrpc_enable_fuzz requires Clang")
+
+  executable("minirpc_codec_fuzz") {
+    testonly = true
+    sources = [ "minirpc_codec_fuzz.cpp" ]
+    deps = [ "//src:minirpc_demo" ]
+    configs += [ "//:memrpc_test_config" ]
+    cflags_cc = [ "-fsanitize=fuzzer,address,undefined" ]
+    ldflags = [ "-fsanitize=fuzzer,address,undefined" ]
+  }
+
+  group("fuzz_targets") {
+    deps = [ ":minirpc_codec_fuzz" ]
+  }
+}
