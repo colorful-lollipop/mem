@@ -1,0 +1,11 @@
+config("gtest_config") {
+  libs = [
+    "gtest",
+    "gtest_main",
+    "pthread",
+  ]
+}
+
+source_set("gtest_main") {
+  public_configs = [ ":gtest_config" ]
+}

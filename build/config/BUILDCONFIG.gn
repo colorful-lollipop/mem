@@ -11,24 +11,14 @@ if (is_clang) {
 
 set_default_toolchain(default_toolchain)
 
-config("default_compiler_config") {
-  cflags = []
-  cflags_cc = [ "-std=c++17" ]
-  if (is_debug) {
-    cflags += [ "-g", "-O0" ]
-  } else {
-    cflags += [ "-O2" ]
-  }
-}
-
 set_defaults("executable") {
-  configs += [ ":default_compiler_config" ]
+  configs = [ "//build/config:default_compiler_config" ]
 }
 
 set_defaults("static_library") {
-  configs += [ ":default_compiler_config" ]
+  configs = [ "//build/config:default_compiler_config" ]
 }
 
 set_defaults("source_set") {
-  configs += [ ":default_compiler_config" ]
+  configs = [ "//build/config:default_compiler_config" ]
 }

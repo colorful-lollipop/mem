@@ -1,0 +1,9 @@
+config("default_compiler_config") {
+  cflags = []
+  cflags_cc = [ "-std=c++17" ]
+  if (is_debug) {
+    cflags += [ "-g", "-O0" ]
+  } else {
+    cflags += [ "-O2" ]
+  }
+}

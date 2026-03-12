@@ -1,93 +1,117 @@
 toolchain("clang") {
-  lib_prefix = "lib"
-  lib_extension = "a"
-  solib_prefix = "lib"
-  solib_extension = "so"
+  lib_switch = "-l"
+  lib_dir_switch = "-L"
 
   tool("cc") {
-    command = "clang -MMD -MF $out.d $defines $include_dirs $cflags $cflags_c -c $in -o $out"
-    depfile = "$out.d"
+    depfile = "{{output}}.d"
+    command = "clang -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
     depsformat = "gcc"
-    description = "CC $out"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+    description = "CC {{source}}"
   }
 
   tool("cxx") {
-    command = "clang++ -MMD -MF $out.d $defines $include_dirs $cflags $cflags_cc -c $in -o $out"
-    depfile = "$out.d"
+    depfile = "{{output}}.d"
+    command = "clang++ -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
     depsformat = "gcc"
-    description = "CXX $out"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+    description = "CXX {{source}}"
   }
 
   tool("alink") {
-    command = "rm -f $out && ar rcs $out $in"
-    description = "AR $out"
-    outputs = [ "$out" ]
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "rm -f {{output}} && ar rcs {{output}} @$rspfile"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_extension = ".a"
+    output_prefix = "lib"
+    description = "AR {{output}}"
   }
 
   tool("solink") {
-    command = "clang++ -shared $ldflags $lib_dirs -o $out $in $libs"
-    description = "SOLINK $out"
-    outputs = [ "$out" ]
+    command = "clang++ -shared {{ldflags}} {{inputs}} {{solibs}} {{libs}} -o {{output}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    output_prefix = "lib"
+    default_output_extension = ".so"
+    description = "SOLINK {{output}}"
   }
 
   tool("link") {
-    command = "clang++ $ldflags $lib_dirs -o $out $in $libs"
-    description = "LINK $out"
-    outputs = [ "$out" ]
+    command = "clang++ {{ldflags}} {{inputs}} {{solibs}} {{libs}} -o {{output}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    description = "LINK {{output}}"
   }
 
   tool("stamp") {
-    command = "touch $out"
+    command = "touch {{output}}"
+    description = "STAMP {{output}}"
   }
 
   tool("copy") {
-    command = "cp -f $in $out"
+    command = "cp -f {{source}} {{output}}"
+    description = "COPY {{source}}"
   }
 }
 
 toolchain("gcc") {
-  lib_prefix = "lib"
-  lib_extension = "a"
-  solib_prefix = "lib"
-  solib_extension = "so"
+  lib_switch = "-l"
+  lib_dir_switch = "-L"
 
   tool("cc") {
-    command = "gcc -MMD -MF $out.d $defines $include_dirs $cflags $cflags_c -c $in -o $out"
-    depfile = "$out.d"
+    depfile = "{{output}}.d"
+    command = "gcc -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
     depsformat = "gcc"
-    description = "CC $out"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+    description = "CC {{source}}"
   }
 
   tool("cxx") {
-    command = "g++ -MMD -MF $out.d $defines $include_dirs $cflags $cflags_cc -c $in -o $out"
-    depfile = "$out.d"
+    depfile = "{{output}}.d"
+    command = "g++ -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
     depsformat = "gcc"
-    description = "CXX $out"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+    description = "CXX {{source}}"
   }
 
   tool("alink") {
-    command = "rm -f $out && ar rcs $out $in"
-    description = "AR $out"
-    outputs = [ "$out" ]
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "rm -f {{output}} && ar rcs {{output}} @$rspfile"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_extension = ".a"
+    output_prefix = "lib"
+    description = "AR {{output}}"
   }
 
   tool("solink") {
-    command = "g++ -shared $ldflags $lib_dirs -o $out $in $libs"
-    description = "SOLINK $out"
-    outputs = [ "$out" ]
+    command = "g++ -shared {{ldflags}} {{inputs}} {{solibs}} {{libs}} -o {{output}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    output_prefix = "lib"
+    default_output_extension = ".so"
+    description = "SOLINK {{output}}"
   }
 
   tool("link") {
-    command = "g++ $ldflags $lib_dirs -o $out $in $libs"
-    description = "LINK $out"
-    outputs = [ "$out" ]
+    command = "g++ {{ldflags}} {{inputs}} {{solibs}} {{libs}} -o {{output}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    description = "LINK {{output}}"
   }
 
   tool("stamp") {
-    command = "touch $out"
+    command = "touch {{output}}"
+    description = "STAMP {{output}}"
   }
 
   tool("copy") {
-    command = "cp -f $in $out"
+    command = "cp -f {{source}} {{output}}"
+    description = "COPY {{source}}"
   }
 }

@@ -27,7 +27,9 @@ third_party/*/build/
 *.log
 compile_commands.json
 !/build/
+build/**
 !/build/config/
 !/build/config/BUILDCONFIG.gn
+!/build/config/BUILD.gn
 !/build/toolchain/
 !/build/toolchain/BUILD.gn
