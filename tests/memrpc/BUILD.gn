@@ -1,0 +1,74 @@
+template("memrpc_test") {
+  executable(target_name) {
+    testonly = true
+    sources = invoker.sources
+    deps = [
+      "//src:memrpc",
+      memrpc_gtest_main_target,
+    ]
+    configs += [ "//:memrpc_test_config" ]
+    if (defined(invoker.defines)) {
+      defines = invoker.defines
+    }
+  }
+}
+
+memrpc_test("memrpc_smoke_test") { sources = [ "smoke_test.cpp" ] }
+memrpc_test("memrpc_types_test") { sources = [ "types_test.cpp" ] }
+memrpc_test("memrpc_api_headers_test") { sources = [ "api_headers_test.cpp" ] }
+memrpc_test("memrpc_framework_split_headers_test") { sources = [ "framework_split_headers_test.cpp" ] }
+memrpc_test("memrpc_log_test") { sources = [ "log_test.cpp" ] }
+memrpc_test("memrpc_protocol_layout_test") { sources = [ "protocol_layout_test.cpp" ] }
+memrpc_test("memrpc_byte_codec_test") { sources = [ "byte_codec_test.cpp" ] }
+memrpc_test("memrpc_slot_pool_test") { sources = [ "slot_pool_test.cpp" ] }
+memrpc_test("memrpc_session_test") { sources = [ "session_test.cpp" ] }
+memrpc_test("memrpc_build_config_test") { sources = [ "build_config_test.cpp" ] }
+memrpc_test("memrpc_rpc_client_api_test") { sources = [ "rpc_client_api_test.cpp" ] }
+memrpc_test("memrpc_rpc_server_api_test") { sources = [ "rpc_server_api_test.cpp" ] }
+memrpc_test("memrpc_sa_bootstrap_stub_test") { sources = [ "sa_bootstrap_stub_test.cpp" ] }
+memrpc_test("memrpc_replay_classifier_test") { sources = [ "replay_classifier_test.cpp" ] }
+memrpc_test("memrpc_rpc_client_timeout_watchdog_test") {
+  sources = [ "rpc_client_timeout_watchdog_test.cpp" ]
+  defines = [ "MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS=20" ]
+}
+memrpc_test("memrpc_rpc_client_idle_callback_test") { sources = [ "rpc_client_idle_callback_test.cpp" ] }
+memrpc_test("memrpc_rpc_server_executor_test") { sources = [ "rpc_server_executor_test.cpp" ] }
+memrpc_test("memrpc_typed_future_test") { sources = [ "typed_future_test.cpp" ] }
+memrpc_test("memrpc_engine_death_handler_test") { sources = [ "engine_death_handler_test.cpp" ] }
+memrpc_test("memrpc_rpc_client_recovery_policy_test") { sources = [ "rpc_client_recovery_policy_test.cpp" ] }
+
+if (memrpc_enable_dt_tests) {
+  memrpc_test("memrpc_dt_stability_test") { sources = [ "dt_stability_test.cpp" ] }
+  memrpc_test("memrpc_dt_perf_test") { sources = [ "dt_perf_test.cpp" ] }
+}
+
+group("memrpc_tests") {
+  deps = [
+    ":memrpc_smoke_test",
+    ":memrpc_types_test",
+    ":memrpc_api_headers_test",
+    ":memrpc_framework_split_headers_test",
+    ":memrpc_log_test",
+    ":memrpc_protocol_layout_test",
+    ":memrpc_byte_codec_test",
+    ":memrpc_slot_pool_test",
+    ":memrpc_session_test",
+    ":memrpc_build_config_test",
+    ":memrpc_rpc_client_api_test",
+    ":memrpc_rpc_server_api_test",
+    ":memrpc_sa_bootstrap_stub_test",
+    ":memrpc_replay_classifier_test",
+    ":memrpc_rpc_client_timeout_watchdog_test",
+    ":memrpc_rpc_client_idle_callback_test",
+    ":memrpc_rpc_server_executor_test",
+    ":memrpc_typed_future_test",
+    ":memrpc_engine_death_handler_test",
+    ":memrpc_rpc_client_recovery_policy_test",
+  ]
+  if (memrpc_enable_dt_tests) {
+    deps += [
+      ":memrpc_dt_stability_test",
+      ":memrpc_dt_perf_test",
+    ]
+  }
+}
