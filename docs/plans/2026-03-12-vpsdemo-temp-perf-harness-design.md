@@ -11,8 +11,9 @@
 - Harness spawns a local registry server and forks `vpsdemo_engine_sa` using Unix sockets under `/tmp`.
 - The harness sets up `RegistryBackend`, obtains `SystemAbility`, and initializes `VpsClient` to create a session.
 - Two phases:
-  - **Idle phase:** no RPC calls, sample CPU usage for a fixed duration.
-  - **Stress phase:** N threads issue `ScanFile` calls, record per-call latency, compute p50/p99.
+  - **Idle phase:** no RPC calls, sample CPU usage for a fixed duration (default: 10s).
+  - **Stress phase:** for a fixed duration (default: 5s), N threads (default: 4) issue
+    `ScanFile` calls, record per-call latency, compute p50/p99 and ops/s.
 
 **Measurements**
 - CPU sampling uses `/proc/stat` + `/proc/<pid>/stat` deltas across an interval. Report engine, harness, and combined CPU%.
@@ -21,7 +22,7 @@
 
 **Workload**
 - Use deterministic, non-sleep sample paths (e.g., `clean`/`virus`) to avoid artificial delays.
-- Default threads and iterations are configurable via CLI args.
+- Defaults are configurable via CLI args (idle seconds, stress duration, threads).
 
 **Failure Handling**
 - If `LoadSystemAbility` or `VpsClient::Init()` fails, exit with a clear error.
@@ -29,4 +30,3 @@
 
 **Outputs**
 - Print a concise summary block to stdout with durations, CPU%, throughput, and latency percentiles.
-
