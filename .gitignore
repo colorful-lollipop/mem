@@ -4,6 +4,7 @@ build_fuzz/
 build_asan/
 build-warn/
 build-dt/
+build_vps/
 stress_out/
 out/
 dist/
