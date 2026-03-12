@@ -49,6 +49,7 @@ if (memrpc_enable_stress_tests) {
       memrpc_gtest_main_target,
     ]
     configs += [ "//:memrpc_test_config" ]
+    include_dirs = [ "//tests" ]
   }
 
   executable("memrpc_minirpc_stress_runner") {
@@ -59,6 +60,7 @@ if (memrpc_enable_stress_tests) {
       "//src:minirpc_demo",
     ]
     configs += [ "//:memrpc_test_config" ]
+    include_dirs = [ "//tests" ]
   }
 }
 

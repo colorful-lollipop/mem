@@ -149,7 +149,7 @@ bool RunStress(const StressConfig& config) {
   }
   CloseHandles(unusedHandles);
 
-  const Mem::BootstrapHandles serverHandles = bootstrap->server_handles();
+  const Mem::BootstrapHandles serverHandles = bootstrap->serverHandles();
   const pid_t child = fork();
   if (child == 0) {
     RunChild(serverHandles, static_cast<uint32_t>(config.threads));
