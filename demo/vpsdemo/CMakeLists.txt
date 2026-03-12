@@ -76,6 +76,7 @@ add_executable(vpsdemo_dt_crash_recovery src/vpsdemo_dt_crash_recovery.cpp)
 target_link_libraries(vpsdemo_dt_crash_recovery PRIVATE vpsdemo_lib)
 
 option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
+option(VPSDEMO_ENABLE_FUZZ "Build vpsdemo fuzz targets" OFF)
 
 if (VPSDEMO_ENABLE_TESTS)
   enable_testing()
@@ -87,4 +88,29 @@ if (VPSDEMO_ENABLE_TESTS)
   add_executable(vpsdemo_heartbeat_test tests/vps_heartbeat_test.cpp)
   target_link_libraries(vpsdemo_heartbeat_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_heartbeat_test COMMAND vpsdemo_heartbeat_test)
+
+  add_executable(vpsdemo_codec_test tests/vpsdemo_codec_test.cpp)
+  target_link_libraries(vpsdemo_codec_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_codec_test COMMAND vpsdemo_codec_test)
+
+  add_executable(vpsdemo_sample_rules_test tests/vpsdemo_sample_rules_test.cpp)
+  target_link_libraries(vpsdemo_sample_rules_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_sample_rules_test COMMAND vpsdemo_sample_rules_test)
+
+  add_executable(vpsdemo_health_test tests/vpsdemo_health_test.cpp)
+  target_link_libraries(vpsdemo_health_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_health_test COMMAND vpsdemo_health_test)
+
+  add_executable(vpsdemo_policy_test tests/vpsdemo_policy_test.cpp)
+  target_link_libraries(vpsdemo_policy_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_policy_test COMMAND vpsdemo_policy_test)
+
+  add_executable(vpsdemo_crash_recovery_test tests/vpsdemo_crash_recovery_test.cpp)
+  target_link_libraries(vpsdemo_crash_recovery_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_crash_recovery_test COMMAND vpsdemo_crash_recovery_test)
+  set_tests_properties(vpsdemo_crash_recovery_test PROPERTIES LABELS "dt")
+
+  if (VPSDEMO_ENABLE_FUZZ)
+    add_subdirectory(tests/fuzz)
+  endif()
 endif()
