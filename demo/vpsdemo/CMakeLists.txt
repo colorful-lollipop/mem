@@ -50,7 +50,7 @@ add_library(vpsdemo_lib
     src/virus_executor_service.cpp
     src/vps_bootstrap_proxy.cpp
     src/vps_client.cpp
-    src/vps_session_service.cpp
+    src/ves_session_service.cpp
     src/vpsdemo_sample_rules.cpp
     src/vpsdemo_service.cpp
 )
@@ -80,7 +80,7 @@ option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
 if (VPSDEMO_ENABLE_TESTS)
   enable_testing()
   find_package(GTest REQUIRED)
-  add_executable(vpsdemo_session_service_test tests/vps_session_service_test.cpp)
+  add_executable(vpsdemo_session_service_test tests/ves_session_service_test.cpp)
   target_link_libraries(vpsdemo_session_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_session_service_test COMMAND vpsdemo_session_service_test)
 endif()

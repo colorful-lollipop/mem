@@ -5,7 +5,7 @@
 
 #include "system_ability.h"
 #include "vps_bootstrap_stub.h"
-#include "vps_session_service.h"
+#include "ves_session_service.h"
 #include "vpsdemo_service.h"
 
 namespace vpsdemo {

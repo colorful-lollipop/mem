@@ -27,14 +27,14 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
 ## Components
 - **New:** `demo/vpsdemo/include/vps_session_service.h`
 - **New:** `demo/vpsdemo/src/vps_session_service.cpp`
-  - `VpsSessionProvider` interface: `OpenSession` / `CloseSession`.
+  - `VesSessionProvider` interface: `OpenSession` / `CloseSession`.
   - `EngineSessionService` implementation:
     - Holds `memrpc::PosixDemoBootstrapChannel`.
     - Performs synchronous `Initialize()` once.
     - Returns `BootstrapHandles` directly from the first `OpenSession`, avoiding a throwaway open/close.
 - **Rename/Update:** `demo/vpsdemo/include/vps_bootstrap_stub.h` -> `demo/vpsdemo/include/virus_executor_service.h`
 - **Rename/Update:** `demo/vpsdemo/src/vps_bootstrap_stub.cpp` -> `demo/vpsdemo/src/virus_executor_service.cpp`
-  - Inject `VpsSessionProvider`.
+  - Inject `VesSessionProvider`.
   - `AcceptLoop()` calls provider `OpenSession()` then sends fds.
 - **Update:** `demo/vpsdemo/src/vpsdemo_engine_sa.cpp`
   - Construct `EngineSessionService`.

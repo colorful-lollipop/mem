@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPS_SESSION_SERVICE_H_
-#define VPSDEMO_VPS_SESSION_SERVICE_H_
+#ifndef VPSDEMO_VES_SESSION_SERVICE_H_
+#define VPSDEMO_VES_SESSION_SERVICE_H_
 
 #include <memory>
 #include <mutex>
@@ -13,14 +13,14 @@ namespace vpsdemo {
 
 class VpsDemoService;
 
-class VpsSessionProvider {
+class VesSessionProvider {
  public:
-    virtual ~VpsSessionProvider() = default;
+    virtual ~VesSessionProvider() = default;
     virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) = 0;
     virtual memrpc::StatusCode CloseSession() = 0;
 };
 
-class EngineSessionService final : public VpsSessionProvider {
+class EngineSessionService final : public VesSessionProvider {
  public:
     explicit EngineSessionService(VpsDemoService* service);
 
@@ -39,4 +39,4 @@ class EngineSessionService final : public VpsSessionProvider {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_SESSION_SERVICE_H_
+#endif  // VPSDEMO_VES_SESSION_SERVICE_H_

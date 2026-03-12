@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include "memrpc/core/types.h"
-#include "vps_session_service.h"
+#include "ves_session_service.h"
 #include "vpsdemo_service.h"
 
 namespace vpsdemo {

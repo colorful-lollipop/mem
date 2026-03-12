@@ -124,14 +124,14 @@ namespace vpsdemo {
 
 class VpsDemoService;
 
-class VpsSessionProvider {
+class VesSessionProvider {
  public:
-    virtual ~VpsSessionProvider() = default;
+    virtual ~VesSessionProvider() = default;
     virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles* handles) = 0;
     virtual memrpc::StatusCode CloseSession() = 0;
 };
 
-class EngineSessionService final : public VpsSessionProvider {
+class EngineSessionService final : public VesSessionProvider {
  public:
     explicit EngineSessionService(VpsDemoService* service);
 
@@ -315,18 +315,18 @@ Update include guards, filenames, and class name `VpsBootstrapStub` -> `VirusExe
 class VirusExecutorService : public OHOS::SystemAbility,
                               public OHOS::IRemoteStub<IVpsBootstrap> {
  public:
-    explicit VirusExecutorService(std::shared_ptr<VpsSessionProvider> provider);
+    explicit VirusExecutorService(std::shared_ptr<VesSessionProvider> provider);
     // ...
 
  private:
-    std::shared_ptr<VpsSessionProvider> provider_;
+    std::shared_ptr<VesSessionProvider> provider_;
 };
 ```
 
 `demo/vpsdemo/src/virus_executor_service.cpp`
 
 ```cpp
-VirusExecutorService::VirusExecutorService(std::shared_ptr<VpsSessionProvider> provider)
+VirusExecutorService::VirusExecutorService(std::shared_ptr<VesSessionProvider> provider)
     : OHOS::SystemAbility(VPS_BOOTSTRAP_SA_ID, true),
       provider_(std::move(provider)) {}
 
