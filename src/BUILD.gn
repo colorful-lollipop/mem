@@ -1,0 +1,24 @@
+source_set("memrpc") {
+  sources = [
+    "bootstrap/posix_demo_bootstrap.cpp",
+    "bootstrap/sa_bootstrap.cpp",
+    "client/rpc_client.cpp",
+    "core/byte_reader.cpp",
+    "core/byte_writer.cpp",
+    "core/log.cpp",
+    "core/session.cpp",
+    "core/slot_pool.cpp",
+    "server/rpc_server.cpp",
+  ]
+  public_configs = [ "//:memrpc_config" ]
+}
+
+source_set("minirpc_demo") {
+  sources = [
+    "apps/minirpc/child/minirpc_service.cpp",
+    "apps/minirpc/parent/minirpc_async_client.cpp",
+    "apps/minirpc/parent/minirpc_client.cpp",
+  ]
+  public_deps = [ ":memrpc" ]
+  public_configs = [ "//:memrpc_config" ]
+}
