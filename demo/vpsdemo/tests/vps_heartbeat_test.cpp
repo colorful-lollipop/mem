@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <unistd.h>
 
 #include "virus_executor_service.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_bootstrap_proxy.h"
+#include "vpsdemo_types.h"
 
 namespace vpsdemo {
 
@@ -32,6 +36,9 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
     EXPECT_EQ(reply.session_id, session_id);
     EXPECT_STREQ(reply.current_task, "idle");
+    EXPECT_EQ(reply.version, 1u);
+    EXPECT_EQ(reply.in_flight, 0u);
+    EXPECT_EQ(reply.last_task_age_ms, 0u);
 
     service.CloseSession();
     service.OnStop();
@@ -57,6 +64,35 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
 
     proxy.CloseSession();
     stub->OnStop();
+}
+
+TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
+    VirusExecutorService service;
+    service.OnStart();
+
+    memrpc::BootstrapHandles handles{};
+    ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
+
+    std::atomic<bool> started{false};
+    std::thread worker([&]() {
+        vpsdemo::ScanFileRequest req;
+        req.file_path = "/data/sleep50.bin";
+        started.store(true);
+        (void)service.service().ScanFile(req);
+    });
+
+    while (!started.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    VpsHeartbeatReply reply{};
+    EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
+    EXPECT_GE(reply.in_flight, 1u);
+    EXPECT_STRNE(reply.current_task, "idle");
+
+    worker.join();
+    service.CloseSession();
+    service.OnStop();
 }
 
 }  // namespace vpsdemo
