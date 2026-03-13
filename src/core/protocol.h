@@ -43,17 +43,17 @@ struct RequestRingEntry {
 };
 
 struct ResponseRingEntry {
-  uint64_t request_id = 0;
-  uint32_t slot_index = 0;
-  ResponseMessageKind message_kind = ResponseMessageKind::Reply;
+  uint64_t requestId = 0;
+  uint32_t slotIndex = 0;
+  ResponseMessageKind messageKind = ResponseMessageKind::Reply;
   uint16_t reserved = 0;
-  uint32_t status_code = 0;
-  int32_t engine_errno = 0;
-  int32_t detail_code = 0;
-  uint32_t event_domain = 0;
-  uint32_t event_type = 0;
+  uint32_t statusCode = 0;
+  int32_t engineErrno = 0;
+  int32_t detailCode = 0;
+  uint32_t eventDomain = 0;
+  uint32_t eventType = 0;
   uint32_t flags = 0;
-  uint32_t result_size = 0;
+  uint32_t resultSize = 0;
 };
 
 static_assert(sizeof(RequestRingEntry) == 32u, "RequestRingEntry size must stay fixed");

@@ -118,20 +118,20 @@ struct PosixDemoBootstrapChannel::Impl {
     auto* header = static_cast<SharedMemoryHeader*>(region);
     header->magic = SHARED_MEMORY_MAGIC;
     header->protocol_version = PROTOCOL_VERSION;
-    header->session_id = GenerateSessionId();
-    header->session_state = 0;
-    header->high_ring_size = config.high_ring_size;
-    header->normal_ring_size = config.normal_ring_size;
-    header->response_ring_size = config.response_ring_size;
-    header->slot_count = config.slot_count;
-    header->slot_size = ComputeSlotSize(config.max_request_bytes, config.max_response_bytes);
-    header->max_request_bytes = config.max_request_bytes;
-    header->max_response_bytes = config.max_response_bytes;
-    header->high_ring.capacity = config.high_ring_size;
-    header->normal_ring.capacity = config.normal_ring_size;
-    header->response_ring.capacity = config.response_ring_size;
-    *out_session_id = header->session_id;
-    if (!InitMutex(&header->client_state_mutex) ||
+    header->sessionId = GenerateSessionId();
+    header->sessionState = 0;
+    header->highRingSize = config.high_ring_size;
+    header->normalRingSize = config.normal_ring_size;
+    header->responseRingSize = config.response_ring_size;
+    header->slotCount = config.slot_count;
+    header->slotSize = ComputeSlotSize(config.max_request_bytes, config.max_response_bytes);
+    header->maxRequestBytes = config.max_request_bytes;
+    header->maxResponseBytes = config.max_response_bytes;
+    header->highRing.capacity = config.high_ring_size;
+    header->normalRing.capacity = config.normal_ring_size;
+    header->responseRing.capacity = config.response_ring_size;
+    *out_session_id = header->sessionId;
+    if (!InitMutex(&header->clientStateMutex) ||
         !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.responseSlotPoolOffset,
                                   config.response_ring_size)) {
       HILOGE("InitMutex failed");

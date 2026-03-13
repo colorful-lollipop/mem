@@ -68,21 +68,21 @@ TEST(ProtocolLayoutTest, RingCursorLayoutMatchesSpscHeadTailModel) {
 
 TEST(ProtocolLayoutTest, ResponseRingEntryDistinguishesReplyAndEventMessages) {
   memrpc::ResponseRingEntry reply;
-  reply.message_kind = memrpc::ResponseMessageKind::Reply;
-  reply.request_id = 123;
-  reply.slot_index = 5;
-  reply.result_size = 3;
+  reply.messageKind = memrpc::ResponseMessageKind::Reply;
+  reply.requestId = 123;
+  reply.slotIndex = 5;
+  reply.resultSize = 3;
 
   memrpc::ResponseRingEntry event;
-  event.message_kind = memrpc::ResponseMessageKind::Event;
-  event.slot_index = 7;
-  event.event_domain = 7;
-  event.event_type = 9;
+  event.messageKind = memrpc::ResponseMessageKind::Event;
+  event.slotIndex = 7;
+  event.eventDomain = 7;
+  event.eventType = 9;
   event.flags = 11;
-  event.result_size = 2;
+  event.resultSize = 2;
 
-  EXPECT_NE(reply.message_kind, event.message_kind);
-  EXPECT_EQ(event.request_id, 0u);
-  EXPECT_EQ(reply.slot_index, 5u);
-  EXPECT_EQ(event.slot_index, 7u);
+  EXPECT_NE(reply.messageKind, event.messageKind);
+  EXPECT_EQ(event.requestId, 0u);
+  EXPECT_EQ(reply.slotIndex, 5u);
+  EXPECT_EQ(event.slotIndex, 7u);
 }

@@ -50,7 +50,7 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
                       MAP_SHARED, corrupt_handles.shmFd, 0);
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<memrpc::SharedMemoryHeader*>(region);
-  header->slot_size = 0;
+  header->slotSize = 0;
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
@@ -92,9 +92,9 @@ TEST(SessionTest, DefaultsToFourKilobytePayloadLimits) {
 
   memrpc::Session session;
   ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
-  ASSERT_NE(session.header(), nullptr);
-  EXPECT_EQ(session.header()->max_request_bytes, 4096u);
-  EXPECT_EQ(session.header()->max_response_bytes, 4096u);
+  ASSERT_NE(session.Header(), nullptr);
+  EXPECT_EQ(session.Header()->maxRequestBytes, 4096u);
+  EXPECT_EQ(session.Header()->maxResponseBytes, 4096u);
 }
 
 TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
@@ -168,11 +168,11 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
             memrpc::StatusCode::Ok);
 
   memrpc::ResponseRingEntry first;
-  first.request_id = 11;
+  first.requestId = 11;
   memrpc::ResponseRingEntry second;
-  second.request_id = 12;
+  second.requestId = 12;
   memrpc::ResponseRingEntry third;
-  third.request_id = 13;
+  third.requestId = 13;
 
   ASSERT_EQ(server_session.PushResponse(first), memrpc::StatusCode::Ok);
   ASSERT_EQ(server_session.PushResponse(second), memrpc::StatusCode::Ok);
@@ -180,13 +180,13 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
 
   memrpc::ResponseRingEntry observed;
   ASSERT_TRUE(client_session.PopResponse(&observed));
-  EXPECT_EQ(observed.request_id, 11u);
+  EXPECT_EQ(observed.requestId, 11u);
 
   ASSERT_EQ(server_session.PushResponse(third), memrpc::StatusCode::Ok);
   ASSERT_TRUE(client_session.PopResponse(&observed));
-  EXPECT_EQ(observed.request_id, 12u);
+  EXPECT_EQ(observed.requestId, 12u);
   ASSERT_TRUE(client_session.PopResponse(&observed));
-  EXPECT_EQ(observed.request_id, 13u);
+  EXPECT_EQ(observed.requestId, 13u);
   EXPECT_FALSE(client_session.PopResponse(&observed));
 }
 
@@ -267,7 +267,7 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   memrpc::Session session;
   ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
 
-  const memrpc::SlotPayload* slot = session.slot_payload(0);
+  const memrpc::SlotPayload* slot = session.slotPayload(0);
   ASSERT_NE(slot, nullptr);
   EXPECT_EQ(slot->runtime.request_id, 0u);
   EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
@@ -276,7 +276,7 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   EXPECT_EQ(slot->runtime.start_exec_mono_ms, 0u);
   EXPECT_EQ(slot->runtime.last_heartbeat_mono_ms, 0u);
 
-  const memrpc::ResponseSlotPayload* response_slot = session.response_slot_payload(0);
+  const memrpc::ResponseSlotPayload* response_slot = session.responseSlotPayload(0);
   ASSERT_NE(response_slot, nullptr);
   EXPECT_EQ(response_slot->runtime.request_id, 0u);
   EXPECT_EQ(response_slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
@@ -296,8 +296,8 @@ TEST(SessionTest, AttachPreservesCreditEventFds) {
   ASSERT_EQ(server_session.Attach(server_handles, memrpc::Session::AttachRole::Server),
             memrpc::StatusCode::Ok);
 
-  EXPECT_GE(client_session.handles().reqCreditEventFd, 0);
-  EXPECT_GE(client_session.handles().respCreditEventFd, 0);
-  EXPECT_GE(server_session.handles().reqCreditEventFd, 0);
-  EXPECT_GE(server_session.handles().respCreditEventFd, 0);
+  EXPECT_GE(client_session.Handles().reqCreditEventFd, 0);
+  EXPECT_GE(client_session.Handles().respCreditEventFd, 0);
+  EXPECT_GE(server_session.Handles().reqCreditEventFd, 0);
+  EXPECT_GE(server_session.Handles().respCreditEventFd, 0);
 }

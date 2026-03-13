@@ -152,15 +152,15 @@ StatusCode Session::MapAndValidateHeader(int shmFd) {
   config.maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
 
   Layout default_layout = ComputeLayout(config);
-  initial_mapped_size_ = default_layout.totalSize;
-  mapped_region_ =
+  initialMappedSize_ = default_layout.totalSize;
+  mappedRegion_ =
       mmap(nullptr, default_layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
-  if (mapped_region_ == MAP_FAILED) {
-    mapped_region_ = nullptr;
+  if (mappedRegion_ == MAP_FAILED) {
+    mappedRegion_ = nullptr;
     return StatusCode::EngineInternalError;
   }
 
-  header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
+  header_ = static_cast<SharedMemoryHeader*>(mappedRegion_);
   if (header_->magic != SHARED_MEMORY_MAGIC || header_->protocol_version != PROTOCOL_VERSION) {
     Reset();
     return StatusCode::ProtocolMismatch;
@@ -176,56 +176,56 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
   }
 
   LayoutConfig config;
-  config.highRingSize = header_->high_ring_size;
-  config.normalRingSize = header_->normal_ring_size;
-  config.responseRingSize = header_->response_ring_size;
-  config.slotCount = header_->slot_count;
-  config.slotSize = header_->slot_size;
-  config.maxRequestBytes = header_->max_request_bytes;
-  config.maxResponseBytes = header_->max_response_bytes;
+  config.highRingSize = header_->highRingSize;
+  config.normalRingSize = header_->normalRingSize;
+  config.responseRingSize = header_->responseRingSize;
+  config.slotCount = header_->slotCount;
+  config.slotSize = header_->slotSize;
+  config.maxRequestBytes = header_->maxRequestBytes;
+  config.maxResponseBytes = header_->maxResponseBytes;
   if (!ValidateLayoutConfig(config, static_cast<std::size_t>(file_stat.st_size)) ||
-      !ValidateRingCursor(header_->high_ring, config.highRingSize) ||
-      !ValidateRingCursor(header_->normal_ring, config.normalRingSize) ||
-      !ValidateRingCursor(header_->response_ring, config.responseRingSize)) {
+      !ValidateRingCursor(header_->highRing, config.highRingSize) ||
+      !ValidateRingCursor(header_->normalRing, config.normalRingSize) ||
+      !ValidateRingCursor(header_->responseRing, config.responseRingSize)) {
     Reset();
     return StatusCode::ProtocolMismatch;
   }
   Layout actual_layout = ComputeLayout(config);
-  munmap(mapped_region_, initial_mapped_size_);
+  munmap(mappedRegion_, initialMappedSize_);
 
-  mapped_region_ =
+  mappedRegion_ =
       mmap(nullptr, actual_layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
-  if (mapped_region_ == MAP_FAILED) {
-    mapped_region_ = nullptr;
+  if (mappedRegion_ == MAP_FAILED) {
+    mappedRegion_ = nullptr;
     header_ = nullptr;
     return StatusCode::EngineInternalError;
   }
 
-  mapped_size_ = actual_layout.totalSize;
-  header_ = static_cast<SharedMemoryHeader*>(mapped_region_);
+  mappedSize_ = actual_layout.totalSize;
+  header_ = static_cast<SharedMemoryHeader*>(mappedRegion_);
   return StatusCode::Ok;
 }
 
 StatusCode Session::TryAcquireClientSlot() {
-  const StatusCode lock_status = LockSharedMutex(&header_->client_state_mutex);
+  const StatusCode lock_status = LockSharedMutex(&header_->clientStateMutex);
   if (lock_status != StatusCode::Ok) {
     Reset();
     return lock_status;
   }
-  if (header_->client_attached != 0) {
-    if (!ProcessIsAlive(header_->active_client_pid)) {
-      header_->client_attached = 0;
-      header_->active_client_pid = 0;
+  if (header_->clientAttached != 0) {
+    if (!ProcessIsAlive(header_->activeClientPid)) {
+      header_->clientAttached = 0;
+      header_->activeClientPid = 0;
     } else {
-      pthread_mutex_unlock(&header_->client_state_mutex);
+      pthread_mutex_unlock(&header_->clientStateMutex);
       Reset();
       return StatusCode::InvalidArgument;
     }
   }
-  header_->client_attached = 1;
-  header_->active_client_pid = static_cast<uint32_t>(getpid());
-  owns_client_slot_ = true;
-  pthread_mutex_unlock(&header_->client_state_mutex);
+  header_->clientAttached = 1;
+  header_->activeClientPid = static_cast<uint32_t>(getpid());
+  ownsClientSlot_ = true;
+  pthread_mutex_unlock(&header_->clientStateMutex);
   return StatusCode::Ok;
 }
 
@@ -246,8 +246,8 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   }
 
   handles_ = handles;
-  attach_role_ = role;
-  owns_client_slot_ = false;
+  attachRole_ = role;
+  ownsClientSlot_ = false;
   if (role == AttachRole::Client) {
     status = TryAcquireClientSlot();
     if (status != StatusCode::Ok) {
@@ -258,15 +258,15 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
 }
 
 void Session::Reset() {
-  if (header_ != nullptr && owns_client_slot_) {
-    if (LockSharedMutex(&header_->client_state_mutex) == StatusCode::Ok) {
-      header_->client_attached = 0;
-      header_->active_client_pid = 0;
-      pthread_mutex_unlock(&header_->client_state_mutex);
+  if (header_ != nullptr && ownsClientSlot_) {
+    if (LockSharedMutex(&header_->clientStateMutex) == StatusCode::Ok) {
+      header_->clientAttached = 0;
+      header_->activeClientPid = 0;
+      pthread_mutex_unlock(&header_->clientStateMutex);
     }
   }
-  if (mapped_region_ != nullptr) {
-    munmap(mapped_region_, mapped_size_);
+  if (mappedRegion_ != nullptr) {
+    munmap(mappedRegion_, mappedSize_);
   }
   if (handles_.shmFd >= 0) {
     close(handles_.shmFd);
@@ -286,62 +286,62 @@ void Session::Reset() {
   if (handles_.respCreditEventFd >= 0) {
     close(handles_.respCreditEventFd);
   }
-  mapped_size_ = 0;
-  mapped_region_ = nullptr;
+  mappedSize_ = 0;
+  mappedRegion_ = nullptr;
   header_ = nullptr;
   handles_ = {};
-  attach_role_ = AttachRole::Server;
-  owns_client_slot_ = false;
+  attachRole_ = AttachRole::Server;
+  ownsClientSlot_ = false;
 }
 
 bool Session::valid() const {
   return header_ != nullptr;
 }
 
-const SharedMemoryHeader* Session::header() const {
+const SharedMemoryHeader* Session::Header() const {
   return header_;
 }
 
-SharedMemoryHeader* Session::mutable_header() {
+SharedMemoryHeader* Session::mutableHeader() {
   return header_;
 }
 
-const BootstrapHandles& Session::handles() const {
+const BootstrapHandles& Session::Handles() const {
   return handles_;
 }
 
-Session::SessionState Session::state() const {
+Session::SessionState Session::State() const {
   if (header_ == nullptr) {
     return SessionState::Broken;
   }
-  return static_cast<SessionState>(header_->session_state);
+  return static_cast<SessionState>(header_->sessionState);
 }
 
 void Session::SetState(SessionState state) {
   if (header_ != nullptr) {
-    header_->session_state = static_cast<uint32_t>(state);
+    header_->sessionState = static_cast<uint32_t>(state);
   }
 }
 
-SlotPayload* Session::slot_payload(uint32_t slot_index) {
-  if (header_ == nullptr || slot_index >= header_->slot_count) {
+SlotPayload* Session::slotPayload(uint32_t slot_index) {
+  if (header_ == nullptr || slot_index >= header_->slotCount) {
     return nullptr;
   }
-  LayoutConfig config{header_->high_ring_size,
-                      header_->normal_ring_size,
-                      header_->response_ring_size,
-                      header_->slot_count,
-                      header_->slot_size,
-                      header_->max_request_bytes,
-                      header_->max_response_bytes};
+  LayoutConfig config{header_->highRingSize,
+                      header_->normalRingSize,
+                      header_->responseRingSize,
+                      header_->slotCount,
+                      header_->slotSize,
+                      header_->maxRequestBytes,
+                      header_->maxResponseBytes};
   Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mapped_region_);
+  auto* base = static_cast<std::byte*>(mappedRegion_);
   return reinterpret_cast<SlotPayload*>(base + layout.slotPoolOffset +
-                                        static_cast<std::size_t>(slot_index) * header_->slot_size);
+                                        static_cast<std::size_t>(slot_index) * header_->slotSize);
 }
 
-uint8_t* Session::slot_request_bytes(uint32_t slot_index) {
-  SlotPayload* payload = slot_payload(slot_index);
+uint8_t* Session::slotRequestBytes(uint32_t slot_index) {
+  SlotPayload* payload = slotPayload(slot_index);
   if (payload == nullptr) {
     return nullptr;
   }
@@ -349,26 +349,26 @@ uint8_t* Session::slot_request_bytes(uint32_t slot_index) {
   return base + sizeof(SlotPayload);
 }
 
-ResponseSlotPayload* Session::response_slot_payload(uint32_t slot_index) {
-  if (header_ == nullptr || slot_index >= header_->response_ring_size) {
+ResponseSlotPayload* Session::responseSlotPayload(uint32_t slot_index) {
+  if (header_ == nullptr || slot_index >= header_->responseRingSize) {
     return nullptr;
   }
-  LayoutConfig config{header_->high_ring_size,
-                      header_->normal_ring_size,
-                      header_->response_ring_size,
-                      header_->slot_count,
-                      header_->slot_size,
-                      header_->max_request_bytes,
-                      header_->max_response_bytes};
+  LayoutConfig config{header_->highRingSize,
+                      header_->normalRingSize,
+                      header_->responseRingSize,
+                      header_->slotCount,
+                      header_->slotSize,
+                      header_->maxRequestBytes,
+                      header_->maxResponseBytes};
   Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mapped_region_);
+  auto* base = static_cast<std::byte*>(mappedRegion_);
   return reinterpret_cast<ResponseSlotPayload*>(
       base + layout.responseSlotsOffset +
-      static_cast<std::size_t>(slot_index) * ComputeResponseSlotSize(header_->max_response_bytes));
+      static_cast<std::size_t>(slot_index) * ComputeResponseSlotSize(header_->maxResponseBytes));
 }
 
-uint8_t* Session::response_slot_bytes(uint32_t slot_index) {
-  ResponseSlotPayload* payload = response_slot_payload(slot_index);
+uint8_t* Session::responseSlotBytes(uint32_t slot_index) {
+  ResponseSlotPayload* payload = responseSlotPayload(slot_index);
   if (payload == nullptr) {
     return nullptr;
   }
@@ -376,19 +376,19 @@ uint8_t* Session::response_slot_bytes(uint32_t slot_index) {
   return base + sizeof(ResponseSlotPayload);
 }
 
-void* Session::response_slot_pool_region() {
-  if (header_ == nullptr || mapped_region_ == nullptr) {
+void* Session::responseSlotPoolRegion() {
+  if (header_ == nullptr || mappedRegion_ == nullptr) {
     return nullptr;
   }
-  LayoutConfig config{header_->high_ring_size,
-                      header_->normal_ring_size,
-                      header_->response_ring_size,
-                      header_->slot_count,
-                      header_->slot_size,
-                      header_->max_request_bytes,
-                      header_->max_response_bytes};
+  LayoutConfig config{header_->highRingSize,
+                      header_->normalRingSize,
+                      header_->responseRingSize,
+                      header_->slotCount,
+                      header_->slotSize,
+                      header_->maxRequestBytes,
+                      header_->maxResponseBytes};
   Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mapped_region_);
+  auto* base = static_cast<std::byte*>(mappedRegion_);
   return base + layout.responseSlotPoolOffset;
 }
 
@@ -409,25 +409,25 @@ bool Session::PopResponse(ResponseRingEntry* entry) {
 }
 
 Session::RingAccess Session::ResolveRing(QueueKind queue) {
-  if (header_ == nullptr || mapped_region_ == nullptr) {
+  if (header_ == nullptr || mappedRegion_ == nullptr) {
     return {};
   }
-  LayoutConfig config{header_->high_ring_size,
-                      header_->normal_ring_size,
-                      header_->response_ring_size,
-                      header_->slot_count,
-                      header_->slot_size,
-                      header_->max_request_bytes,
-                      header_->max_response_bytes};
+  LayoutConfig config{header_->highRingSize,
+                      header_->normalRingSize,
+                      header_->responseRingSize,
+                      header_->slotCount,
+                      header_->slotSize,
+                      header_->maxRequestBytes,
+                      header_->maxResponseBytes};
   Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mapped_region_);
+  auto* base = static_cast<std::byte*>(mappedRegion_);
   switch (queue) {
     case QueueKind::HighRequest:
-      return {&header_->high_ring, base + layout.highRingOffset};
+      return {&header_->highRing, base + layout.highRingOffset};
     case QueueKind::NormalRequest:
-      return {&header_->normal_ring, base + layout.normalRingOffset};
+      return {&header_->normalRing, base + layout.normalRingOffset};
     case QueueKind::Response:
-      return {&header_->response_ring, base + layout.responseRingOffset};
+      return {&header_->responseRing, base + layout.responseRingOffset};
   }
   return {};
 }

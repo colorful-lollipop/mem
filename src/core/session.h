@@ -44,16 +44,16 @@ class Session {
   void Reset();
 
   bool valid() const;
-  const SharedMemoryHeader* header() const;
-  SharedMemoryHeader* mutable_header();
-  const BootstrapHandles& handles() const;
-  SessionState state() const;
+  const SharedMemoryHeader* Header() const;
+  SharedMemoryHeader* mutableHeader();
+  const BootstrapHandles& Handles() const;
+  SessionState State() const;
   void SetState(SessionState state);
-  SlotPayload* slot_payload(uint32_t slot_index);
-  uint8_t* slot_request_bytes(uint32_t slot_index);
-  ResponseSlotPayload* response_slot_payload(uint32_t slot_index);
-  uint8_t* response_slot_bytes(uint32_t slot_index);
-  void* response_slot_pool_region();
+  SlotPayload* slotPayload(uint32_t slot_index);
+  uint8_t* slotRequestBytes(uint32_t slot_index);
+  ResponseSlotPayload* responseSlotPayload(uint32_t slot_index);
+  uint8_t* responseSlotBytes(uint32_t slot_index);
+  void* responseSlotPoolRegion();
 
   // Push/Pop 接口封装 ring + eventfd 对应的共享内存协议细节。
   StatusCode PushRequest(QueueKind queue, const RequestRingEntry& entry);
@@ -67,13 +67,13 @@ class Session {
   StatusCode MapAndValidateHeader(int shmFd);
   StatusCode RemapWithActualLayout(int shmFd);
   StatusCode TryAcquireClientSlot();
-  std::size_t mapped_size_ = 0;
-  std::size_t initial_mapped_size_ = 0;
-  void* mapped_region_ = nullptr;
+  std::size_t mappedSize_ = 0;
+  std::size_t initialMappedSize_ = 0;
+  void* mappedRegion_ = nullptr;
   BootstrapHandles handles_{};
   SharedMemoryHeader* header_ = nullptr;
-  AttachRole attach_role_ = AttachRole::Server;
-  bool owns_client_slot_ = false;
+  AttachRole attachRole_ = AttachRole::Server;
+  bool ownsClientSlot_ = false;
 };
 
 }  // namespace memrpc

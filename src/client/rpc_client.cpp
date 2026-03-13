@@ -56,10 +56,10 @@ int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
 }
 
 bool ResponseRingBecameNotFull(const SharedMemoryHeader* header) {
-  if (header == nullptr || header->response_ring.capacity == 0) {
+  if (header == nullptr || header->responseRing.capacity == 0) {
     return false;
   }
-  return RingCount(header->response_ring) + 1u == header->response_ring.capacity;
+  return RingCount(header->responseRing) + 1u == header->responseRing.capacity;
 }
 
 void SignalEventFdIfNeeded(int fd, bool should_signal) {
@@ -310,7 +310,7 @@ struct RpcClient::Impl {
 
   void StopSubmitter() {
     submit_running.store(false);
-    SignalEventFdIfNeeded(session.handles().reqCreditEventFd, true);
+    SignalEventFdIfNeeded(session.Handles().reqCreditEventFd, true);
     submit_cv.notify_all();
     if (submit_thread.joinable() && std::this_thread::get_id() != submit_thread.get_id()) {
       submit_thread.join();
@@ -448,7 +448,7 @@ struct RpcClient::Impl {
     pending_count.fetch_sub(1, std::memory_order_relaxed);
     FailAndResolve(timeout_info, status, FailureStage::Timeout, pending);
     if (slot_pool != nullptr) {
-      SlotPayload* mutable_payload = session.slot_payload(static_cast<uint32_t>(slot_index));
+      SlotPayload* mutable_payload = session.slotPayload(static_cast<uint32_t>(slot_index));
       if (mutable_payload != nullptr) {
         std::memset(&mutable_payload->runtime, 0, sizeof(mutable_payload->runtime));
       }
@@ -462,7 +462,7 @@ struct RpcClient::Impl {
       if (pending_slots[i] == nullptr || !pending_info_slots[i].has_value()) {
         continue;
       }
-      const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+      const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
       if (payload == nullptr) {
         continue;
       }
@@ -515,8 +515,8 @@ struct RpcClient::Impl {
         ps.call.queue_timeout_ms = info.queue_timeout_ms;
         ps.call.exec_timeout_ms = info.exec_timeout_ms;
         // Recover payload from shared memory.
-        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
-        const uint8_t* request_bytes = session.slot_request_bytes(static_cast<uint32_t>(i));
+        const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
+        const uint8_t* request_bytes = session.slotRequestBytes(static_cast<uint32_t>(i));
         if (payload != nullptr && request_bytes != nullptr && payload->request.payload_size > 0) {
           ps.call.payload.assign(request_bytes, request_bytes + payload->request.payload_size);
         }
@@ -601,7 +601,7 @@ struct RpcClient::Impl {
         if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
           continue;
         }
-        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+        const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
         if (payload != nullptr) {
           pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
           pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
@@ -673,7 +673,7 @@ struct RpcClient::Impl {
           if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
             continue;
           }
-          const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+          const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
           if (payload != nullptr) {
             pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
             pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
@@ -698,7 +698,7 @@ struct RpcClient::Impl {
         if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
           continue;
         }
-        const SlotPayload* payload = session.slot_payload(static_cast<uint32_t>(i));
+        const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
         if (payload != nullptr) {
           pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
           pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
@@ -790,9 +790,9 @@ struct RpcClient::Impl {
       HILOGE("Session attach failed, status=%{public}d", static_cast<int>(attach_status));
       return attach_status;
     }
-    slot_pool = std::make_unique<SlotPool>(session.header()->slot_count);
-    pending_slots.assign(session.header()->slot_count, nullptr);
-    pending_info_slots.assign(session.header()->slot_count, std::nullopt);
+    slot_pool = std::make_unique<SlotPool>(session.Header()->slotCount);
+    pending_slots.assign(session.Header()->slotCount, nullptr);
+    pending_info_slots.assign(session.Header()->slotCount, std::nullopt);
     current_session_id = handles.session_id;
     session_dead = false;
     session_live.store(true, std::memory_order_release);
@@ -811,7 +811,7 @@ struct RpcClient::Impl {
   }
 
   bool WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
-    const int fd = session.handles().reqCreditEventFd;
+    const int fd = session.Handles().reqCreditEventFd;
     if (fd < 0) {
       return false;
     }
@@ -899,8 +899,8 @@ struct RpcClient::Impl {
       result.should_retry = true;
       return result;
     }
-    result.payload = session.slot_payload(*result.slot);
-    result.request_bytes = session.slot_request_bytes(*result.slot);
+    result.payload = session.slotPayload(*result.slot);
+    result.request_bytes = session.slotRequestBytes(*result.slot);
     return result;
   }
 
@@ -960,11 +960,11 @@ struct RpcClient::Impl {
       return PushOutcome::FatalError;
     }
     const RingCursor& cursor =
-        high_priority ? session.header()->high_ring : session.header()->normal_ring;
+        high_priority ? session.Header()->highRing : session.Header()->normalRing;
     if (RingCountIsOneAfterPush(cursor)) {
       const uint64_t signal_value = 1;
-      const int req_fd = high_priority ? session.handles().highReqEventFd
-                                       : session.handles().normalReqEventFd;
+      const int req_fd = high_priority ? session.Handles().highReqEventFd
+                                       : session.Handles().normalReqEventFd;
       if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
         pending_slots[slot].reset();
         pending_info_slots[slot].reset();
@@ -1115,16 +1115,16 @@ struct RpcClient::Impl {
   void CleanupCompletedSlots(const ResponseSlotPayload* response_slot,
                              const std::shared_ptr<RpcFuture::State>& pending,
                              uint32_t response_slot_index,
-                             bool response_ring_became_not_full) {
-    SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+                             bool responseRing_became_not_full) {
+    SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
     if (response_slot != nullptr && pending != nullptr) {
-      SlotPayload* request_slot = session.slot_payload(response_slot->response.request_slot_index);
+      SlotPayload* request_slot = session.slotPayload(response_slot->response.request_slot_index);
       if (request_slot != nullptr) {
         std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
       }
       const bool request_slot_became_available = slot_pool->available() == 0;
       slot_pool->Release(response_slot->response.request_slot_index);
-      SignalEventFdIfNeeded(session.handles().reqCreditEventFd,
+      SignalEventFdIfNeeded(session.Handles().reqCreditEventFd,
                             request_slot_became_available &&
                                 submitter_waiting_for_credit.load(std::memory_order_relaxed));
     }
@@ -1133,25 +1133,25 @@ struct RpcClient::Impl {
     }
     const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(response_slot_index);
-    SignalEventFdIfNeeded(session.handles().respCreditEventFd,
-                          response_ring_became_not_full || response_slot_became_available);
+    SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
+                          responseRing_became_not_full || response_slot_became_available);
   }
 
-  void CompleteRequest(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
+  void CompleteRequest(const ResponseRingEntry& entry, bool responseRing_became_not_full) {
     if (slot_pool == nullptr) {
       return;
     }
 
     RpcReply reply;
-    reply.status = static_cast<StatusCode>(entry.status_code);
-    reply.engine_code = entry.engine_errno;
-    reply.detail_code = entry.detail_code;
-    ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
-    uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
+    reply.status = static_cast<StatusCode>(entry.statusCode);
+    reply.engine_code = entry.engineErrno;
+    reply.detail_code = entry.detailCode;
+    ResponseSlotPayload* response_slot = session.responseSlotPayload(entry.slotIndex);
+    uint8_t* response_bytes = session.responseSlotBytes(entry.slotIndex);
 
     auto lookup = LookupPendingFuture(response_slot);
 
-    if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
+    if (response_slot != nullptr && response_slot->runtime.request_id != entry.requestId) {
       reply.status = StatusCode::ProtocolMismatch;
       if (lookup.info.has_value()) {
         NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
@@ -1161,11 +1161,11 @@ struct RpcClient::Impl {
       HandleEngineDeath(current_session_id);
       return;
     }
-    if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
-        entry.result_size > session.header()->max_response_bytes) {
+    if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
+        entry.resultSize > session.Header()->maxResponseBytes) {
       reply.status = StatusCode::ProtocolMismatch;
     } else {
-      reply.payload.assign(response_bytes, response_bytes + entry.result_size);
+      reply.payload.assign(response_bytes, response_bytes + entry.resultSize);
     }
     if (response_slot != nullptr) {
       response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
@@ -1178,36 +1178,36 @@ struct RpcClient::Impl {
     if (lookup.future != nullptr) {
       TouchActivity();
     }
-    CleanupCompletedSlots(response_slot, lookup.future, entry.slot_index,
-                          response_ring_became_not_full);
+    CleanupCompletedSlots(response_slot, lookup.future, entry.slotIndex,
+                          responseRing_became_not_full);
   }
 
-  void DeliverEvent(const ResponseRingEntry& entry, bool response_ring_became_not_full) {
-    SharedSlotPool response_slot_pool(session.response_slot_pool_region());
+  void DeliverEvent(const ResponseRingEntry& entry, bool responseRing_became_not_full) {
+    SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
     RpcEvent event;
-    event.event_domain = entry.event_domain;
-    event.event_type = entry.event_type;
+    event.event_domain = entry.eventDomain;
+    event.event_type = entry.eventType;
     event.flags = entry.flags;
-    ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
-    uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
-    if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
+    ResponseSlotPayload* response_slot = session.responseSlotPayload(entry.slotIndex);
+    uint8_t* response_bytes = session.responseSlotBytes(entry.slotIndex);
+    if (response_slot != nullptr && response_slot->runtime.request_id != entry.requestId) {
       HILOGW("drop mismatched event request_id, expected=%{public}llu slot=%{public}llu",
-            static_cast<unsigned long long>(entry.request_id),
+            static_cast<unsigned long long>(entry.requestId),
             static_cast<unsigned long long>(response_slot->runtime.request_id));
       session.SetState(Session::SessionState::Broken);
       HandleEngineDeath(current_session_id);
       return;
     }
-    if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
-        entry.result_size > session.header()->max_response_bytes) {
-      HILOGW("drop invalid event, size=%{public}u", entry.result_size);
+    if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
+        entry.resultSize > session.Header()->maxResponseBytes) {
+      HILOGW("drop invalid event, size=%{public}u", entry.resultSize);
       const bool response_slot_became_available = response_slot_pool.available() == 0;
-      response_slot_pool.Release(entry.slot_index);
-      SignalEventFdIfNeeded(session.handles().respCreditEventFd,
-                            response_ring_became_not_full || response_slot_became_available);
+      response_slot_pool.Release(entry.slotIndex);
+      SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
+                            responseRing_became_not_full || response_slot_became_available);
       return;
     }
-    event.payload.assign(response_bytes, response_bytes + entry.result_size);
+    event.payload.assign(response_bytes, response_bytes + entry.resultSize);
 
     RpcEventCallback callback;
     {
@@ -1221,9 +1221,9 @@ struct RpcClient::Impl {
     response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     const bool response_slot_became_available = response_slot_pool.available() == 0;
-    response_slot_pool.Release(entry.slot_index);
-    SignalEventFdIfNeeded(session.handles().respCreditEventFd,
-                          response_ring_became_not_full || response_slot_became_available);
+    response_slot_pool.Release(entry.slotIndex);
+    SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
+                          responseRing_became_not_full || response_slot_became_available);
   }
 
   bool DrainResponseRing() {
@@ -1231,19 +1231,19 @@ struct RpcClient::Impl {
     bool drained = false;
     while (session.PopResponse(&entry)) {
       drained = true;
-      const bool response_ring_became_not_full = ResponseRingBecameNotFull(session.header());
-      if (entry.message_kind == ResponseMessageKind::Event) {
-        DeliverEvent(entry, response_ring_became_not_full);
+      const bool responseRing_became_not_full = ResponseRingBecameNotFull(session.Header());
+      if (entry.messageKind == ResponseMessageKind::Event) {
+        DeliverEvent(entry, responseRing_became_not_full);
         continue;
       }
-      CompleteRequest(entry, response_ring_became_not_full);
+      CompleteRequest(entry, responseRing_became_not_full);
     }
     return drained;
   }
 
   bool SpinForResponseRing(int iterations) {
     for (int i = 0; i < iterations; ++i) {
-      if (RingCount(session.header()->response_ring) > 0) {
+      if (RingCount(session.Header()->responseRing) > 0) {
         return true;
       }
 #if defined(__x86_64__) || defined(__i386__)
@@ -1273,19 +1273,19 @@ struct RpcClient::Impl {
   }
 
   void ResponseLoop() {
-    const int resp_fd = session.handles().respEventFd;
+    const int resp_fd = session.Handles().respEventFd;
     if (resp_fd < 0) {
       return;
     }
     constexpr int SPIN_ITERATIONS = 256;
     pollfd fd{resp_fd, POLLIN, 0};
     while (dispatcher_running.load()) {
-      if (session.state() == Session::SessionState::Broken) {
+      if (session.State() == Session::SessionState::Broken) {
         HandleEngineDeath(current_session_id);
         return;
       }
       if (DrainResponseRing()) {
-        if (session.state() == Session::SessionState::Broken) {
+        if (session.State() == Session::SessionState::Broken) {
           HandleEngineDeath(current_session_id);
           return;
         }
@@ -1319,7 +1319,7 @@ struct RpcClient::Impl {
 
     {
       std::lock_guard<std::mutex> session_lock(session_mutex);
-      if (session.header() != nullptr && call.payload.size() > session.header()->max_request_bytes) {
+      if (session.Header() != nullptr && call.payload.size() > session.Header()->maxRequestBytes) {
         PendingInfo info;
         info.opcode = call.opcode;
         info.priority = call.priority;
@@ -1408,10 +1408,10 @@ RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
     if (impl_->slot_pool != nullptr) {
       stats.request_slot_capacity = impl_->slot_pool->capacity();
     }
-    if (impl_->session.header() != nullptr) {
-      stats.high_request_ring_pending = RingCount(impl_->session.header()->high_ring);
-      stats.normal_request_ring_pending = RingCount(impl_->session.header()->normal_ring);
-      stats.response_ring_pending = RingCount(impl_->session.header()->response_ring);
+    if (impl_->session.Header() != nullptr) {
+      stats.high_request_ring_pending = RingCount(impl_->session.Header()->highRing);
+      stats.normal_request_ring_pending = RingCount(impl_->session.Header()->normalRing);
+      stats.response_ring_pending = RingCount(impl_->session.Header()->responseRing);
     }
   }
   stats.waiting_for_request_credit =

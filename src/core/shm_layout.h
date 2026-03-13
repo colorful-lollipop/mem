@@ -51,21 +51,21 @@ inline uint32_t RingCount(const RingCursor& cursor) {
 struct SharedMemoryHeader {
   uint32_t magic = SHARED_MEMORY_MAGIC;
   uint32_t protocol_version = PROTOCOL_VERSION;
-  uint64_t session_id = 0;
-  uint32_t session_state = 0;
-  uint32_t client_attached = 0;
-  uint32_t active_client_pid = 0;
-  uint32_t high_ring_size = 32;
-  uint32_t normal_ring_size = 32;
-  uint32_t response_ring_size = 64;
-  uint32_t slot_count = 64;
-  uint32_t slot_size = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
-  uint32_t max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
-  uint32_t max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
-  RingCursor high_ring{};
-  RingCursor normal_ring{};
-  RingCursor response_ring{};
-  pthread_mutex_t client_state_mutex{};
+  uint64_t sessionId = 0;
+  uint32_t sessionState = 0;
+  uint32_t clientAttached = 0;
+  uint32_t activeClientPid = 0;
+  uint32_t highRingSize = 32;
+  uint32_t normalRingSize = 32;
+  uint32_t responseRingSize = 64;
+  uint32_t slotCount = 64;
+  uint32_t slotSize = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
+  uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
+  uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
+  RingCursor highRing{};
+  RingCursor normalRing{};
+  RingCursor responseRing{};
+  pthread_mutex_t clientStateMutex{};
 };
 
 inline Layout ComputeLayout(const LayoutConfig& config) {
