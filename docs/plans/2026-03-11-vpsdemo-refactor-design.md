@@ -1,7 +1,7 @@
 # vpsdemo Refactor Design
 
 ## Goal
-Make `demo/vpsdemo` a self-contained, cross-process demo that depends only on the memrpc framework. Provide both async and sync client APIs (sync is the external interface), keep existing demo behavior, and standardize logging on `HLOG*`.
+Make `demo/vpsdemo` a self-contained, cross-process demo that depends only on the memrpc framework. Provide both async and sync client APIs (sync is the external interface), keep existing demo behavior, and standardize logging on `HILOG*`.
 
 ## Context
 - The current `demo/vpsdemo` has a working cross-process flow (registry + supervisor + engine + client) but uses protocol/types from `apps/vps`.
@@ -14,7 +14,7 @@ Make `demo/vpsdemo` a self-contained, cross-process demo that depends only on th
   - Sync API waits on the async future and returns `MemRpc::StatusCode` with decoded reply output.
 - Keep demo behavior (supervisor spawns registry/engine/client, SCM_RIGHTS passes handles).
 - Keep only base demo operations: `Init`, `ScanFile`, `UpdateFeatureLib`.
-- Logging uses `virus_protection_service_log.h` macros (`HLOGI/HLOGW/HLOGE`). No `std::cout`/`std::cerr`.
+- Logging uses `virus_protection_service_log.h` macros (`HILOGI/HILOGW/HILOGE`). No `std::cout`/`std::cerr`.
 
 ## Non-Goals
 - No expansion of VPS business functionality (behavior scan, analysis engine lifecycle, etc.).

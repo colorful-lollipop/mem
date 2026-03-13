@@ -28,7 +28,7 @@ pid_t SpawnEngine(const std::string& enginePath) {
         execl(enginePath.c_str(), enginePath.c_str(),
               REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
               nullptr);
-        HLOGE("exec engine failed");
+        HILOGE("exec engine failed");
         _exit(1);
     }
     return pid;
@@ -39,7 +39,7 @@ pid_t SpawnClient(const std::string& clientPath) {
     if (pid == 0) {
         setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", REGISTRY_SOCKET.c_str(), 1);
         execl(clientPath.c_str(), clientPath.c_str(), nullptr);
-        HLOGE("exec client failed");
+        HILOGE("exec client failed");
         _exit(1);
     }
     return pid;
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
         if (g_engine_pid > 0) {
             return true;
         }
-        HLOGI("spawning engine SA for load request");
+        HILOGI("spawning engine SA for load request");
         g_engine_pid = SpawnEngine(enginePath);
         if (g_engine_pid < 0) {
             return false;
@@ -90,45 +90,45 @@ int main(int argc, char* argv[]) {
         if (sa_id != vpsdemo::VPS_BOOTSTRAP_SA_ID) {
             return;
         }
-        HLOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
+        HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
     });
 
     if (!registry.Start()) {
-        HLOGE("failed to start registry");
+        HILOGE("failed to start registry");
         return 1;
     }
-    HLOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
+    HILOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
 
     g_engine_pid = SpawnEngine(enginePath);
     if (g_engine_pid < 0) {
-        HLOGE("failed to spawn engine");
+        HILOGE("failed to spawn engine");
         registry.Stop();
         return 1;
     }
-    HLOGI("engine spawned pid=%{public}d", g_engine_pid);
+    HILOGI("engine spawned pid=%{public}d", g_engine_pid);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     g_client_pid = SpawnClient(clientPath);
     if (g_client_pid < 0) {
-        HLOGE("failed to spawn client");
+        HILOGE("failed to spawn client");
         KillAndWait(g_engine_pid);
         registry.Stop();
         return 1;
     }
-    HLOGI("client spawned pid=%{public}d", g_client_pid);
+    HILOGI("client spawned pid=%{public}d", g_client_pid);
 
     int clientStatus = 0;
     waitpid(g_client_pid, &clientStatus, 0);
     g_client_pid = -1;
-    HLOGI("client exited status=%{public}d", WEXITSTATUS(clientStatus));
+    HILOGI("client exited status=%{public}d", WEXITSTATUS(clientStatus));
 
     KillAndWait(g_engine_pid);
     g_engine_pid = -1;
     registry.Stop();
 
-    HLOGI("supervisor done");
+    HILOGI("supervisor done");
     return WEXITSTATUS(clientStatus);
 }

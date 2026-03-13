@@ -196,7 +196,7 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles* h
     if (!initialized_) {
         const memrpc::StatusCode open_status = bootstrap_->OpenSession(handles);
         if (open_status != memrpc::StatusCode::Ok) {
-            HLOGE("bootstrap OpenSession failed");
+            HILOGE("bootstrap OpenSession failed");
             return open_status;
         }
 
@@ -207,7 +207,7 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles* h
         }
         const memrpc::StatusCode start_status = rpc_server_->Start();
         if (start_status != memrpc::StatusCode::Ok) {
-            HLOGE("RpcServer start failed");
+            HILOGE("RpcServer start failed");
             CloseHandles(handles);
             return start_status;
         }
@@ -216,7 +216,7 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles* h
             service_->Initialize();
         }
         initialized_ = true;
-        HLOGI("EngineSessionService initialized");
+        HILOGI("EngineSessionService initialized");
         return memrpc::StatusCode::Ok;
     }
     return bootstrap_->OpenSession(handles);
@@ -253,7 +253,7 @@ void VpsDemoService::Initialize() {
         return;
     }
     initialized_ = true;
-    HLOGI("VpsDemoService initialized");
+    HILOGI("VpsDemoService initialized");
 }
 
 bool VpsDemoService::initialized() const {

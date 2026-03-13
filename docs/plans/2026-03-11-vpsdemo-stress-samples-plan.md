@@ -131,7 +131,7 @@ Update `demo/vpsdemo/src/vpsdemo_service.cpp` scan handler:
 ```cpp
 const auto behavior = EvaluateSamplePath(request.file_path);
 if (behavior.shouldCrash) {
-    HLOGE("ScanFile(%{public}s): crash requested", request.file_path.c_str());
+    HILOGE("ScanFile(%{public}s): crash requested", request.file_path.c_str());
     std::abort();
 }
 if (behavior.sleepMs > 0) {

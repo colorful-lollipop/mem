@@ -27,7 +27,7 @@ void VpsDemoService::Initialize() {
         return;
     }
     initialized_ = true;
-    HLOGI("VpsDemoService initialized");
+    HILOGI("VpsDemoService initialized");
 }
 
 bool VpsDemoService::initialized() const {
@@ -48,7 +48,7 @@ ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
     } else {
         const auto behavior = EvaluateSamplePath(request.file_path);
         if (behavior.shouldCrash) {
-            HLOGE("ScanFile(%{public}s): crash requested", request.file_path.c_str());
+            HILOGE("ScanFile(%{public}s): crash requested", request.file_path.c_str());
             std::abort();
         }
         if (behavior.sleepMs > 0) {
@@ -57,7 +57,7 @@ ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
         result.code = 0;
         result.threat_level = behavior.threatLevel;
     }
-    HLOGI("ScanFile(%{public}s): threat=%{public}d",
+    HILOGI("ScanFile(%{public}s): threat=%{public}d",
           request.file_path.c_str(), result.threat_level);
 
     {

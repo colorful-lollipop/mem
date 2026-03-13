@@ -193,7 +193,7 @@ credit fd 采用“资源重新可写”语义：
 框架层当前提供一个很薄的日志门面：
 
 - 头文件固定为 `virus_protection_service_log.h`
-- 宏风格为 `HLOGD/HLOGI/HLOGW/HLOGE`
+- 宏风格为 `HILOGD/HILOGI/HILOGW/HILOGE`
 - 同时兼容 `HILOGD/HILOGI/HILOGW/HILOGE` 别名
 - 支持 `%{public}` / `%{private}` 这类鸿蒙风格格式串
 

@@ -31,14 +31,14 @@ memrpc::StatusCode VpsClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
     auto bootstrap = OHOS::iface_cast<IVpsBootstrap>(remote_);
     if (bootstrap == nullptr) {
-        HLOGE("iface_cast<IVpsBootstrap> failed");
+        HILOGE("iface_cast<IVpsBootstrap> failed");
         return memrpc::StatusCode::InvalidArgument;
     }
 
     // Alias shared_ptr to use VpsBootstrapProxy as IBootstrapChannel.
     proxy_ = std::dynamic_pointer_cast<VpsBootstrapProxy>(bootstrap);
     if (proxy_ == nullptr) {
-        HLOGE("dynamic_pointer_cast to VpsBootstrapProxy failed");
+        HILOGE("dynamic_pointer_cast to VpsBootstrapProxy failed");
         return memrpc::StatusCode::InvalidArgument;
     }
 
@@ -53,12 +53,12 @@ memrpc::StatusCode VpsClient::Init() {
         return memrpc::RecoveryDecision{memrpc::RecoveryAction::Ignore, 0};
     };
     policy.onEngineDeath = [this](const memrpc::EngineDeathReport& report) {
-        HLOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
+        HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
               static_cast<unsigned long long>(report.dead_session_id),
               report.safe_to_replay_count,
               report.poison_pill_suspects.size());
         for (const auto& suspect : report.poison_pill_suspects) {
-            HLOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
+            HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
                   static_cast<unsigned long long>(suspect.request_id),
                   static_cast<unsigned>(suspect.opcode),
                   static_cast<int>(suspect.last_state));

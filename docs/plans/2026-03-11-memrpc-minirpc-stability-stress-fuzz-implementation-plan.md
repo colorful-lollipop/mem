@@ -430,7 +430,7 @@ void RunChild(Mem::BootstrapHandles handles, uint32_t threads) {
   MiniRpcService service;
   service.RegisterHandlers(&server);
   if (server.Start() != Mem::StatusCode::Ok) {
-    HLOGE("minirpc stress server start failed");
+    HILOGE("minirpc stress server start failed");
     std::_Exit(1);
   }
   server.Run();
@@ -498,7 +498,7 @@ bool RunStress(const StressConfig& config) {
   auto bootstrap = std::make_shared<Mem::PosixDemoBootstrapChannel>(bootstrapConfig);
   Mem::BootstrapHandles unusedHandles;
   if (bootstrap->OpenSession(&unusedHandles) != Mem::StatusCode::Ok) {
-    HLOGE("stress bootstrap open session failed");
+    HILOGE("stress bootstrap open session failed");
     return false;
   }
   CloseHandles(unusedHandles);
@@ -510,7 +510,7 @@ bool RunStress(const StressConfig& config) {
     return true;
   }
   if (child < 0) {
-    HLOGE("stress fork failed");
+    HILOGE("stress fork failed");
     return false;
   }
 
@@ -518,7 +518,7 @@ bool RunStress(const StressConfig& config) {
 
   Mem::RpcClient client(bootstrap);
   if (client.Init() != Mem::StatusCode::Ok) {
-    HLOGE("stress client init failed");
+    HILOGE("stress client init failed");
     kill(child, SIGTERM);
     waitpid(child, nullptr, 0);
     return false;
@@ -608,11 +608,11 @@ bool RunStress(const StressConfig& config) {
   waitpid(child, nullptr, 0);
 
   if (!state.error.empty()) {
-    HLOGE("stress failed: %s", state.error.c_str());
+    HILOGE("stress failed: %s", state.error.c_str());
     return false;
   }
 
-  HLOGI("stress ok: ops=%{public}llu", static_cast<unsigned long long>(state.okCount.load()));
+  HILOGI("stress ok: ops=%{public}llu", static_cast<unsigned long long>(state.okCount.load()));
   return true;
 }
 
@@ -622,7 +622,7 @@ bool RunStress(const StressConfig& config) {
 int main() {
   using namespace OHOS::Security::VirusProtectionService::MiniRpc;
   const StressConfig config = ParseStressConfigFromEnv();
-  HLOGI("stress start: duration=%{public}d warmup=%{public}d threads=%{public}d",
+  HILOGI("stress start: duration=%{public}d warmup=%{public}d threads=%{public}d",
         config.durationSec, config.warmupSec, config.threads);
   const bool ok = RunStress(config);
   return ok ? 0 : 1;

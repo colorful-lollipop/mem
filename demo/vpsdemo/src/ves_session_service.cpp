@@ -12,7 +12,7 @@ namespace {
 void CloseHandles(memrpc::BootstrapHandles* handles) {
     if (handles == nullptr) return;
     int* fds[] = {
-        &handles->shm_fd,
+        &handles->shmFd,
         &handles->high_req_event_fd,
         &handles->normal_req_event_fd,
         &handles->resp_event_fd,
@@ -44,7 +44,7 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     memrpc::BootstrapHandles throwaway{};
     const memrpc::StatusCode open_status = bootstrap_->OpenSession(throwaway);
     if (open_status != memrpc::StatusCode::Ok) {
-        HLOGE("bootstrap OpenSession failed");
+        HILOGE("bootstrap OpenSession failed");
         CloseHandles(&throwaway);
         return open_status;
     }
@@ -57,7 +57,7 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     }
     const memrpc::StatusCode start_status = rpc_server_->Start();
     if (start_status != memrpc::StatusCode::Ok) {
-        HLOGE("RpcServer start failed");
+        HILOGE("RpcServer start failed");
         return start_status;
     }
 
@@ -65,7 +65,7 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
         service_->Initialize();
     }
     initialized_ = true;
-    HLOGI("EngineSessionService initialized");
+    HILOGI("EngineSessionService initialized");
     return memrpc::StatusCode::Ok;
 }
 
@@ -93,7 +93,7 @@ memrpc::StatusCode EngineSessionService::CloseSession() {
     bootstrap_.reset();
     initialized_ = false;
     session_id_ = 0;
-    HLOGI("EngineSessionService closed");
+    HILOGI("EngineSessionService closed");
     return memrpc::StatusCode::Ok;
 }
 

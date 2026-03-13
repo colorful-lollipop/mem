@@ -14,7 +14,7 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
         return;
     }
     int* fds[] = {
-        &handles->shm_fd,
+        &handles->shmFd,
         &handles->high_req_event_fd,
         &handles->normal_req_event_fd,
         &handles->resp_event_fd,

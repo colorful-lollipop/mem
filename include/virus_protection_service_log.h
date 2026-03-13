@@ -21,30 +21,25 @@ void LogVPrint(LogLevel level, const char* file, int line, const char* format, v
 
 }  // namespace memrpc
 
-#define HLOGD(format, ...)                                                                    \
+#define HILOGD(format, ...)                                                                    \
   ::memrpc::LogPrint(                                                                         \
       ::memrpc::LogLevel::Debug, __FILE__, __LINE__,                                          \
       format, ##__VA_ARGS__)
 
-#define HLOGI(format, ...)                                                                   \
+#define HILOGI(format, ...)                                                                   \
   ::memrpc::LogPrint(                                                                        \
       ::memrpc::LogLevel::Info, __FILE__, __LINE__,                                         \
       format, ##__VA_ARGS__)
 
-#define HLOGW(format, ...)                                                                   \
+#define HILOGW(format, ...)                                                                   \
   ::memrpc::LogPrint(                                                                        \
       ::memrpc::LogLevel::Warn, __FILE__, __LINE__,                                         \
       format, ##__VA_ARGS__)
 
-#define HLOGE(format, ...)                                                                    \
+#define HILOGE(format, ...)                                                                    \
   ::memrpc::LogPrint(                                                                         \
       ::memrpc::LogLevel::Error, __FILE__, __LINE__,                                          \
       format, ##__VA_ARGS__)
-
-#define HILOGD HLOGD
-#define HILOGI HLOGI
-#define HILOGW HLOGW
-#define HILOGE HLOGE
 
 namespace OHOS {
 namespace Security {

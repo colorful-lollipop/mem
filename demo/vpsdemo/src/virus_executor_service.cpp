@@ -13,7 +13,7 @@ VirusExecutorService::VirusExecutorService()
 
 memrpc::StatusCode VirusExecutorService::OpenSession(memrpc::BootstrapHandles& handles) {
     if (!session_service_) {
-        HLOGE("session service not initialized");
+        HILOGE("session service not initialized");
         return memrpc::StatusCode::InvalidArgument;
     }
     return session_service_->OpenSession(handles);
@@ -28,7 +28,7 @@ memrpc::StatusCode VirusExecutorService::CloseSession() {
     // After releasing session resources, trigger self-unload asynchronously.
     // Must be async because the IPC caller is still waiting for our reply.
     std::thread([sa_id = GetSystemAbilityId()]() {
-        HLOGI("requesting self-unload for sa_id=%{public}d", sa_id);
+        HILOGI("requesting self-unload for sa_id=%{public}d", sa_id);
         auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
         if (sam != nullptr) {
             sam->UnloadSystemAbility(sa_id);
@@ -57,12 +57,12 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
 }
 
 void VirusExecutorService::OnStart() {
-    HLOGI("OnStart sa_id=%{public}d", GetSystemAbilityId());
+    HILOGI("OnStart sa_id=%{public}d", GetSystemAbilityId());
     session_service_ = std::make_shared<EngineSessionService>(&service_);
 }
 
 void VirusExecutorService::OnStop() {
-    HLOGI("OnStop");
+    HILOGI("OnStop");
     if (session_service_) {
         session_service_->CloseSession();
         session_service_.reset();

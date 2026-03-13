@@ -43,7 +43,7 @@ int main() {
     std::cerr << "bootstrap open session failed" << std::endl;
     return 1;
   }
-  close(unused_handles.shm_fd);
+  close(unused_handles.shmFd);
   close(unused_handles.high_req_event_fd);
   close(unused_handles.normal_req_event_fd);
   close(unused_handles.resp_event_fd);

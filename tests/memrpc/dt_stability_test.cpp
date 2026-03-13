@@ -21,7 +21,7 @@ namespace {
 constexpr memrpc::Opcode kTestOpcode = 1u;
 
 void CloseHandles(memrpc::BootstrapHandles& handles) {
-  if (handles.shm_fd >= 0) close(handles.shm_fd);
+  if (handles.shmFd >= 0) close(handles.shmFd);
   if (handles.high_req_event_fd >= 0) close(handles.high_req_event_fd);
   if (handles.normal_req_event_fd >= 0) close(handles.normal_req_event_fd);
   if (handles.resp_event_fd >= 0) close(handles.resp_event_fd);

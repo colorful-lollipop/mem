@@ -62,7 +62,7 @@ pid_t SpawnEngine(const std::string& enginePath) {
         execl(enginePath.c_str(), enginePath.c_str(),
               REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
               nullptr);
-        HLOGE("exec engine failed");
+        HILOGE("exec engine failed");
         _exit(1);
     }
     return pid;
@@ -87,7 +87,7 @@ void RespawnEngine(const std::string& enginePath, StressStats* stats) {
     g_engine_pid = SpawnEngine(enginePath);
     if (g_engine_pid > 0) {
         stats->engineRestarts++;
-        HLOGI("engine respawned pid=%{public}d", g_engine_pid);
+        HILOGI("engine respawned pid=%{public}d", g_engine_pid);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
 }
@@ -122,7 +122,7 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
 
         if (reply.threat_level != behavior.threatLevel) {
             stats->mismatch++;
-            HLOGE("thread %{public}u: MISMATCH %{public}s expected=%{public}d got=%{public}d",
+            HILOGE("thread %{public}u: MISMATCH %{public}s expected=%{public}d got=%{public}d",
                   threadId, path.c_str(), behavior.threatLevel, reply.threat_level);
         } else {
             stats->ok++;
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
 
     StressConfig config = ParseArgs(argc, argv);
 
-    HLOGI("stress client: threads=%{public}d iterations=%{public}d seed=%{public}u crash=%{public}s",
+    HILOGI("stress client: threads=%{public}d iterations=%{public}d seed=%{public}u crash=%{public}s",
           config.threads, config.iterations, config.seed,
           config.enableCrash ? "5%" : "off");
 
@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
         if (g_engine_pid > 0) {
             return true;
         }
-        HLOGI("spawning engine SA for load request");
+        HILOGI("spawning engine SA for load request");
         g_engine_pid = SpawnEngine(enginePath);
         if (g_engine_pid < 0) {
             return false;
@@ -192,16 +192,16 @@ int main(int argc, char* argv[]) {
             return;
         }
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        HLOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
+        HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
     });
 
     if (!registry.Start()) {
-        HLOGE("failed to start registry");
+        HILOGE("failed to start registry");
         return 1;
     }
-    HLOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
+    HILOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
 
     // Inject backend for client-side SAM access.
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(REGISTRY_SOCKET);
@@ -214,18 +214,18 @@ int main(int argc, char* argv[]) {
         g_engine_pid = SpawnEngine(enginePath);
     }
     if (g_engine_pid < 0) {
-        HLOGE("failed to spawn engine");
+        HILOGE("failed to spawn engine");
         registry.Stop();
         return 1;
     }
-    HLOGI("engine spawned pid=%{public}d", g_engine_pid);
+    HILOGI("engine spawned pid=%{public}d", g_engine_pid);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Create a single shared client (engine supports one session).
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     auto remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, 5000);
     if (remote == nullptr) {
-        HLOGE("LoadSystemAbility failed");
+        HILOGE("LoadSystemAbility failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
         RespawnEngine(enginePath, &stats);
     });
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HLOGE("VpsClient init failed");
+        HILOGE("VpsClient init failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
@@ -269,12 +269,12 @@ int main(int argc, char* argv[]) {
 
     const uint64_t estimatedMs = stats.sleepMs.load();
 
-    HLOGI("=== Stress Results ===");
-    HLOGI("total=%{public}d ok=%{public}d mismatch=%{public}d rpc_error=%{public}d",
+    HILOGI("=== Stress Results ===");
+    HILOGI("total=%{public}d ok=%{public}d mismatch=%{public}d rpc_error=%{public}d",
           stats.total.load(), stats.ok.load(), stats.mismatch.load(), stats.rpcError.load());
-    HLOGI("crashes_sent=%{public}d engine_restarts=%{public}d",
+    HILOGI("crashes_sent=%{public}d engine_restarts=%{public}d",
           stats.crashesSent.load(), stats.engineRestarts.load());
-    HLOGI("estimated=%{public}llu ms (sleep_total=%{public}llu ms / server_workers=1)  actual=%{public}llu ms",
+    HILOGI("estimated=%{public}llu ms (sleep_total=%{public}llu ms / server_workers=1)  actual=%{public}llu ms",
           static_cast<unsigned long long>(estimatedMs),
           static_cast<unsigned long long>(stats.sleepMs.load()),
           static_cast<unsigned long long>(actualMs));
@@ -291,6 +291,6 @@ int main(int argc, char* argv[]) {
     // With crash enabled, RPC errors are expected (in-flight requests fail on engine death).
     // Only mismatch (wrong result) is a real failure.
     int exitCode = (stats.mismatch.load() == 0) ? 0 : 1;
-    HLOGI("stress client exit=%{public}d", exitCode);
+    HILOGI("stress client exit=%{public}d", exitCode);
     return exitCode;
 }

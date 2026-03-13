@@ -22,14 +22,14 @@ std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
         remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
     }
     if (remote == nullptr) {
-        HLOGE("ConnectToEngine failed for saId=%{public}d", vpsdemo::VPS_BOOTSTRAP_SA_ID);
+        HILOGE("ConnectToEngine failed for saId=%{public}d", vpsdemo::VPS_BOOTSTRAP_SA_ID);
         return nullptr;
     }
-    HLOGI("service path: %{public}s", remote->GetServicePath().c_str());
+    HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
     auto client = std::make_unique<vpsdemo::VpsClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HLOGE("VpsClient init failed");
+        HILOGE("VpsClient init failed");
         return nullptr;
     }
     return client;
@@ -46,14 +46,14 @@ std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
     }
 
     if (remote == nullptr) {
-        HLOGE("LoadSystemAbility failed");
+        HILOGE("LoadSystemAbility failed");
         return nullptr;
     }
-    HLOGI("service path: %{public}s", remote->GetServicePath().c_str());
+    HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
     auto client = std::make_unique<vpsdemo::VpsClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HLOGE("VpsClient init failed");
+        HILOGE("VpsClient init failed");
         return nullptr;
     }
     return client;
@@ -64,7 +64,7 @@ std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
 int main() {
     const char* registrySocket = std::getenv(REGISTRY_SOCKET_ENV);
     if (registrySocket == nullptr) {
-        HLOGE("%{public}s not set", REGISTRY_SOCKET_ENV);
+        HILOGE("%{public}s not set", REGISTRY_SOCKET_ENV);
         return 1;
     }
 
@@ -74,7 +74,7 @@ int main() {
     vpsdemo::VpsClient::RegisterProxyFactory();
 
     // --- First session ---
-    HLOGI("=== First session ===");
+    HILOGI("=== First session ===");
     auto client = ConnectToEngine();
     if (!client) {
         return 1;
@@ -82,35 +82,35 @@ int main() {
 
     vpsdemo::ScanFileReply scanReply;
     client->ScanFile("/data/test_file_1.apk", &scanReply);
-    HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
+    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 
     client->ScanFile("/data/test_file_2.apk", &scanReply);
-    HLOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
+    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
 
     // Request engine unload (triggers death callback via RecoveryPolicy).
-    HLOGI("=== Unload engine ===");
+    HILOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->UnloadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    HLOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
+    HILOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
 
     client->Shutdown();
 
     // --- Restart: load again ---
-    HLOGI("=== Second session (after restart) ===");
+    HILOGI("=== Second session (after restart) ===");
     auto client2 = LoadAndConnectToEngine();
     if (client2) {
         vpsdemo::ScanFileReply scan2;
         client2->ScanFile("/data/test_file_3.apk", &scan2);
-        HLOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threat_level);
+        HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threat_level);
 
         client2->Shutdown();
-        HLOGI("second session completed");
+        HILOGI("second session completed");
     } else {
-        HLOGI("engine not available after restart (expected in demo)");
+        HILOGI("engine not available after restart (expected in demo)");
     }
 
-    HLOGI("=== Done ===");
+    HILOGI("=== Done ===");
     return client->EngineDied() ? 0 : 1;
 }

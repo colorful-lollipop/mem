@@ -43,7 +43,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 - `UpperCamelCase` for types/functions/methods; `lowerCamelCase` for variables/parameters; `ALL_CAPS` for constants/macros
 - Simple explicit code over template-heavy or macro-heavy abstractions
 - Framework headers use layered paths: `memrpc/core/*`, `memrpc/client/*`, `memrpc/server/*`
-- Logging: use `virus_protection_service_log.h` macros (`HLOGI`, `HLOGW`, `HLOGE`, `HLOGD`). Log only on state changes, failures, or recovery — never in hot paths
+- Logging: use `virus_protection_service_log.h` macros (`HILOGI`, `HILOGW`, `HILOGE`, `HILOGD`). Log only on state changes, failures, or recovery — never in hot paths
 - Keep business-specific compatibility layers out of the framework
 
 ## Commit Style

@@ -37,7 +37,7 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) 
 
   using FdField = int BootstrapHandles::*;
   static constexpr FdField kFdFields[] = {
-      &BootstrapHandles::shm_fd,
+      &BootstrapHandles::shmFd,
       &BootstrapHandles::high_req_event_fd,
       &BootstrapHandles::normal_req_event_fd,
       &BootstrapHandles::resp_event_fd,
@@ -82,7 +82,7 @@ struct PosixDemoBootstrapChannel::Impl {
   EngineDeathCallback death_callback;
 
   void ResetHandles() {
-    CloseFd(&handles.shm_fd);
+    CloseFd(&handles.shmFd);
     CloseFd(&handles.high_req_event_fd);
     CloseFd(&handles.normal_req_event_fd);
     CloseFd(&handles.resp_event_fd);
@@ -104,14 +104,14 @@ struct PosixDemoBootstrapChannel::Impl {
                                      config.max_response_bytes};
     const Layout layout = ComputeLayout(layout_config);
     if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
-      HLOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+      HILOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
       return StatusCode::EngineInternalError;
     }
 
     void* region =
         mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (region == MAP_FAILED) {
-      HLOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+      HILOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
       return StatusCode::EngineInternalError;
     }
     std::memset(region, 0, layout.total_size);
@@ -134,7 +134,7 @@ struct PosixDemoBootstrapChannel::Impl {
     if (!InitMutex(&header->client_state_mutex) ||
         !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.response_slot_pool_offset,
                                   config.response_ring_size)) {
-      HLOGE("InitMutex failed");
+      HILOGE("InitMutex failed");
       munmap(region, layout.total_size);
       return StatusCode::EngineInternalError;
     }
@@ -178,7 +178,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
     if (impl_->config.max_request_bytes == 0 ||
         impl_->config.max_response_bytes == 0 ||
         impl_->config.max_response_bytes > DEFAULT_MAX_RESPONSE_BYTES) {
-      HLOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
+      HILOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
             impl_->config.max_request_bytes, impl_->config.max_response_bytes);
       return StatusCode::InvalidArgument;
     }
@@ -188,7 +188,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
     const int shm_fd =
         shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (shm_fd < 0) {
-      HLOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shm_name.c_str(),
+      HILOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shm_name.c_str(),
             errno);
       return StatusCode::EngineInternalError;
     }
@@ -201,12 +201,12 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
       return init_status;
     }
 
-    impl_->handles.shm_fd = shm_fd;
+    impl_->handles.shmFd = shm_fd;
     impl_->handles.protocol_version = PROTOCOL_VERSION;
     impl_->handles.session_id = session_id;
     impl_->initialized = impl_->CreateEventFds();
     if (!impl_->initialized) {
-      HLOGE("eventfd initialization failed");
+      HILOGE("eventfd initialization failed");
       impl_->ResetHandles();
       shm_unlink(impl_->config.shm_name.c_str());
       return StatusCode::EngineInternalError;
@@ -214,7 +214,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   }
 
   if (!DuplicateHandles(impl_->handles, &handles)) {
-    HLOGE("OpenSession failed while duplicating bootstrap handles");
+    HILOGE("OpenSession failed while duplicating bootstrap handles");
     return StatusCode::EngineInternalError;
   }
   return StatusCode::Ok;
@@ -231,7 +231,7 @@ void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callb
 BootstrapHandles PosixDemoBootstrapChannel::serverHandles() const {
   BootstrapHandles handles;
   if (!DuplicateHandles(impl_->handles, &handles)) {
-    HLOGE("server_handles failed while duplicating bootstrap handles");
+    HILOGE("server_handles failed while duplicating bootstrap handles");
   }
   return handles;
 }

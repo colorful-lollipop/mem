@@ -357,7 +357,7 @@ struct RpcServer::Impl {
             sizeof(signal_value)) {
           CompleteItem(item.completion, StatusCode::PeerDisconnected);
           if (item.break_session_on_failure) {
-            HLOGE("eventfd write failed while flushing response queue");
+            HILOGE("eventfd write failed while flushing response queue");
             MarkSessionBroken();
           }
           return;
@@ -366,14 +366,14 @@ struct RpcServer::Impl {
     } else if (item.break_session_on_failure) {
       SharedSlotPool response_slot_pool(session.response_slot_pool_region());
       response_slot_pool.Release(item.entry.slot_index);
-      HLOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
+      HILOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
             static_cast<int>(status),
             static_cast<unsigned long long>(item.entry.request_id));
       MarkSessionBroken();
     } else {
       SharedSlotPool response_slot_pool(session.response_slot_pool_region());
       response_slot_pool.Release(item.entry.slot_index);
-      HLOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
+      HILOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
     }
     CompleteItem(item.completion, status);
   }
@@ -398,11 +398,11 @@ struct RpcServer::Impl {
       if (!response_slot_index.has_value()) {
         CompleteItem(item.completion, StatusCode::QueueFull);
         if (item.break_session_on_failure) {
-          HLOGE("failed to reserve response slot, request_id=%{public}llu",
+          HILOGE("failed to reserve response slot, request_id=%{public}llu",
                 static_cast<unsigned long long>(item.entry.request_id));
           MarkSessionBroken();
         } else {
-          HLOGW("failed to reserve response slot for event");
+          HILOGW("failed to reserve response slot for event");
         }
         continue;
       }
@@ -452,7 +452,7 @@ struct RpcServer::Impl {
     item.retry_budget = RESPONSE_RETRY_BUDGET;
     item.break_session_on_failure = true;
     if (!EnqueueCompletion(std::move(item))) {
-      HLOGE("completion backlog full while enqueueing rpc reply, request_id=%{public}llu",
+      HILOGE("completion backlog full while enqueueing rpc reply, request_id=%{public}llu",
             static_cast<unsigned long long>(request_entry.request_id));
       MarkSessionBroken();
     }
@@ -460,11 +460,11 @@ struct RpcServer::Impl {
 
   StatusCode PublishEvent(const RpcEvent& event) {
     if (!session.valid() || session.handles().resp_event_fd < 0 || session.header() == nullptr) {
-      HLOGE("PublishEvent failed, session is not ready");
+      HILOGE("PublishEvent failed, session is not ready");
       return StatusCode::EngineInternalError;
     }
     if (event.payload.size() > session.header()->max_response_bytes) {
-      HLOGW("PublishEvent payload too large, size=%{public}zu", event.payload.size());
+      HILOGW("PublishEvent payload too large, size=%{public}zu", event.payload.size());
       return StatusCode::InvalidArgument;
     }
 

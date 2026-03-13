@@ -654,7 +654,7 @@ struct RpcClient::Impl {
         return;
       }
     }
-    HLOGW("session died, session_id=%{public}llu",
+    HILOGW("session died, session_id=%{public}llu",
           static_cast<unsigned long long>(dead_session_id));
     StopDispatcher();
 
@@ -772,7 +772,7 @@ struct RpcClient::Impl {
     BootstrapHandles handles;
     const StatusCode open_status = bootstrap->OpenSession(handles);
     if (open_status != StatusCode::Ok) {
-      HLOGE("OpenSession failed, status=%{public}d", static_cast<int>(open_status));
+      HILOGE("OpenSession failed, status=%{public}d", static_cast<int>(open_status));
       return open_status;
     }
 
@@ -787,7 +787,7 @@ struct RpcClient::Impl {
 
     const StatusCode attach_status = session.Attach(handles);
     if (attach_status != StatusCode::Ok) {
-      HLOGE("Session attach failed, status=%{public}d", static_cast<int>(attach_status));
+      HILOGE("Session attach failed, status=%{public}d", static_cast<int>(attach_status));
       return attach_status;
     }
     slot_pool = std::make_unique<SlotPool>(session.header()->slot_count);
@@ -1191,7 +1191,7 @@ struct RpcClient::Impl {
     ResponseSlotPayload* response_slot = session.response_slot_payload(entry.slot_index);
     uint8_t* response_bytes = session.response_slot_bytes(entry.slot_index);
     if (response_slot != nullptr && response_slot->runtime.request_id != entry.request_id) {
-      HLOGW("drop mismatched event request_id, expected=%{public}llu slot=%{public}llu",
+      HILOGW("drop mismatched event request_id, expected=%{public}llu slot=%{public}llu",
             static_cast<unsigned long long>(entry.request_id),
             static_cast<unsigned long long>(response_slot->runtime.request_id));
       session.SetState(Session::SessionState::Broken);
@@ -1200,7 +1200,7 @@ struct RpcClient::Impl {
     }
     if (session.header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
         entry.result_size > session.header()->max_response_bytes) {
-      HLOGW("drop invalid event, size=%{public}u", entry.result_size);
+      HILOGW("drop invalid event, size=%{public}u", entry.result_size);
       const bool response_slot_became_available = response_slot_pool.available() == 0;
       response_slot_pool.Release(entry.slot_index);
       SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,

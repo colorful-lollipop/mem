@@ -19,7 +19,7 @@ void SignalHandler(int) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        HLOGE("usage: vpsdemo_engine_sa <registry_socket> <service_socket>");
+        HILOGE("usage: vpsdemo_engine_sa <registry_socket> <service_socket>");
         return 1;
     }
     const std::string registrySocket = argv[1];
@@ -40,14 +40,14 @@ int main(int argc, char* argv[]) {
     // Publish to SA registry — framework auto-starts MockServiceSocket.
     stub->Publish(stub.get());
 
-    HLOGI("engine ready");
+    HILOGI("engine ready");
 
     // Run until signaled.
     while (!g_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    HLOGI("engine shutting down");
+    HILOGI("engine shutting down");
     stub->OnStop();
     return 0;
 }

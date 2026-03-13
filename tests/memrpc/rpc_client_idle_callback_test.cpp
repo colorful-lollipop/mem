@@ -16,7 +16,7 @@ using OHOS::Security::VirusProtectionService::MiniRpc::MiniRpcOpcode;
 namespace {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
   if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
   if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
   if (h.resp_event_fd >= 0) close(h.resp_event_fd);

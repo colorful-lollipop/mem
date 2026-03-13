@@ -32,7 +32,7 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
                 }
 
                 constexpr size_t FD_COUNT = 6;
-                reply->fds[0] = handles.shm_fd;
+                reply->fds[0] = handles.shmFd;
                 reply->fds[1] = handles.high_req_event_fd;
                 reply->fds[2] = handles.normal_req_event_fd;
                 reply->fds[3] = handles.resp_event_fd;

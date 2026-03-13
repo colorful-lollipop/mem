@@ -28,7 +28,7 @@ bool WaitForExit(pid_t pid, int timeout_ms, int* status) {
 }
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
   if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
   if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
   if (h.resp_event_fd >= 0) close(h.resp_event_fd);
@@ -45,9 +45,9 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), memrpc::StatusCode::Ok);
 
   struct stat file_stat {};
-  ASSERT_EQ(fstat(corrupt_handles.shm_fd, &file_stat), 0);
+  ASSERT_EQ(fstat(corrupt_handles.shmFd, &file_stat), 0);
   void* region = mmap(nullptr, static_cast<size_t>(file_stat.st_size), PROT_READ | PROT_WRITE,
-                      MAP_SHARED, corrupt_handles.shm_fd, 0);
+                      MAP_SHARED, corrupt_handles.shmFd, 0);
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<memrpc::SharedMemoryHeader*>(region);
   header->slot_size = 0;
@@ -68,9 +68,9 @@ TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
   ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), memrpc::StatusCode::Ok);
 
   struct stat file_stat {};
-  ASSERT_EQ(fstat(corrupt_handles.shm_fd, &file_stat), 0);
+  ASSERT_EQ(fstat(corrupt_handles.shmFd, &file_stat), 0);
   void* region = mmap(nullptr, static_cast<size_t>(file_stat.st_size), PROT_READ | PROT_WRITE,
-                      MAP_SHARED, corrupt_handles.shm_fd, 0);
+                      MAP_SHARED, corrupt_handles.shmFd, 0);
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<memrpc::SharedMemoryHeader*>(region);
   header->protocol_version = 0;

@@ -72,7 +72,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
 
     sock_fd_ = ConnectToService(service_socket_path_);
     if (sock_fd_ < 0) {
-        HLOGE("connect to %{public}s failed", service_socket_path_.c_str());
+        HILOGE("connect to %{public}s failed", service_socket_path_.c_str());
         return memrpc::StatusCode::PeerDisconnected;
     }
 
@@ -99,7 +99,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
         return memrpc::StatusCode::ProtocolMismatch;
     }
 
-    handles.shm_fd = fds[0];
+    handles.shmFd = fds[0];
     handles.high_req_event_fd = fds[1];
     handles.normal_req_event_fd = fds[2];
     handles.resp_event_fd = fds[3];

@@ -40,7 +40,7 @@ pid_t SpawnEngine(const std::string& enginePath) {
         execl(enginePath.c_str(), enginePath.c_str(),
               REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
               nullptr);
-        HLOGE("exec engine failed");
+        HILOGE("exec engine failed");
         _exit(1);
     }
     return pid;
@@ -57,10 +57,10 @@ void KillAndWait(pid_t pid) {
 #define DT_CHECK(expr, msg)                              \
     do {                                                 \
         if (!(expr)) {                                   \
-            HLOGE("FAIL: %s (%s:%d)", msg, __FILE__, __LINE__); \
+            HILOGE("FAIL: %s (%s:%d)", msg, __FILE__, __LINE__); \
             return 1;                                    \
         }                                                \
-        HLOGI("PASS: %s", msg);                          \
+        HILOGI("PASS: %s", msg);                          \
     } while (0)
 
 }  // namespace
@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
         if (sa_id != vpsdemo::VPS_BOOTSTRAP_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) return true;
-        HLOGI("load callback: spawning engine");
+        HILOGI("load callback: spawning engine");
         g_engine_pid = SpawnEngine(enginePath);
         if (g_engine_pid < 0) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
         g_engine_pid = SpawnEngine(enginePath);
         if (g_engine_pid > 0) {
             engineRestarts++;
-            HLOGI("engine respawned pid=%{public}d", g_engine_pid);
+            HILOGI("engine respawned pid=%{public}d", g_engine_pid);
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
         }
     });
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     DT_CHECK(initStatus == memrpc::StatusCode::Ok, "VpsClient Init ok");
 
     // === Step 1: normal scan ===
-    HLOGI("=== Step 1: normal scan ===");
+    HILOGI("=== Step 1: normal scan ===");
     {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean.apk", &reply);
@@ -152,17 +152,17 @@ int main(int argc, char* argv[]) {
     }
 
     // === Step 2: send crash sample ===
-    HLOGI("=== Step 2: send crash sample (engine will abort) ===");
+    HILOGI("=== Step 2: send crash sample (engine will abort) ===");
     {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_crash.apk", &reply);
         // The engine aborts — this request will fail.
-        HLOGI("step2: crash scan returned status=%{public}d (expected failure)",
+        HILOGI("step2: crash scan returned status=%{public}d (expected failure)",
               static_cast<int>(status));
     }
 
     // === Step 3: wait for death detection + restart ===
-    HLOGI("=== Step 3: waiting for engine restart ===");
+    HILOGI("=== Step 3: waiting for engine restart ===");
     {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (engineRestarts.load() == 0 &&
@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     // === Step 4: scan after recovery ===
-    HLOGI("=== Step 4: scan after recovery ===");
+    HILOGI("=== Step 4: scan after recovery ===");
     {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean_after.apk", &reply);
@@ -191,13 +191,13 @@ int main(int argc, char* argv[]) {
     }
 
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
-    HLOGI("=== Step 5: second crash + 10 sequential normal calls ===");
+    HILOGI("=== Step 5: second crash + 10 sequential normal calls ===");
     int prev = engineRestarts.load();
     {
         vpsdemo::ScanFileReply reply;
-        HLOGI("step5: sending crash...");
+        HILOGI("step5: sending crash...");
         auto status = client->ScanFile("/data/dt_crash2.apk", &reply);
-        HLOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
+        HILOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
     }
     // Wait for restart to complete.
     {
@@ -211,14 +211,14 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     for (int i = 0; i < 10; i++) {
-        HLOGI("step5: call %{public}d/10 ...", i + 1);
+        HILOGI("step5: call %{public}d/10 ...", i + 1);
         vpsdemo::ScanFileReply reply;
         const auto t0 = std::chrono::steady_clock::now();
         auto status = client->ScanFile(
             "/data/dt_post_recover_" + std::to_string(i) + ".apk", &reply);
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
-        HLOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
+        HILOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
               i + 1, static_cast<int>(status), reply.threat_level,
               static_cast<long long>(elapsed));
         DT_CHECK(status == memrpc::StatusCode::Ok,
@@ -226,7 +226,7 @@ int main(int argc, char* argv[]) {
     }
 
     // === Cleanup ===
-    HLOGI("=== Cleanup ===");
+    HILOGI("=== Cleanup ===");
     client->Shutdown();
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
     }
     registry.Stop();
 
-    HLOGI("=== DT crash recovery: ALL PASSED (restarts=%{public}d) ===",
+    HILOGI("=== DT crash recovery: ALL PASSED (restarts=%{public}d) ===",
           engineRestarts.load());
     return 0;
 }

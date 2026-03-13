@@ -231,16 +231,16 @@ StatusCode Session::TryAcquireClientSlot() {
 
 StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   Reset();
-  if (handles.shm_fd < 0) {
+  if (handles.shmFd < 0) {
     return StatusCode::InvalidArgument;
   }
 
-  StatusCode status = MapAndValidateHeader(handles.shm_fd);
+  StatusCode status = MapAndValidateHeader(handles.shmFd);
   if (status != StatusCode::Ok) {
     return status;
   }
 
-  status = RemapWithActualLayout(handles.shm_fd);
+  status = RemapWithActualLayout(handles.shmFd);
   if (status != StatusCode::Ok) {
     return status;
   }
@@ -268,8 +268,8 @@ void Session::Reset() {
   if (mapped_region_ != nullptr) {
     munmap(mapped_region_, mapped_size_);
   }
-  if (handles_.shm_fd >= 0) {
-    close(handles_.shm_fd);
+  if (handles_.shmFd >= 0) {
+    close(handles_.shmFd);
   }
   if (handles_.high_req_event_fd >= 0) {
     close(handles_.high_req_event_fd);
