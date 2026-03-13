@@ -1,4 +1,4 @@
-#include "virus_executor_service/transport/registry_server.h"
+#include "transport/registry_server.h"
 
 #include <cstring>
 #include <iostream>
@@ -6,7 +6,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "virus_executor_service/transport/registry_protocol.h"
+#include "transport/registry_protocol.h"
 
 namespace virus_executor_service {
 

@@ -3,9 +3,9 @@
 #include <type_traits>
 
 #include "memrpc/client/rpc_client.h"
-#include "virus_executor_service/testkit/testkit_client.h"
-#include "virus_executor_service/testkit/testkit_protocol.h"
-#include "virus_executor_service/testkit/testkit_types.h"
+#include "testkit/testkit_client.h"
+#include "testkit/testkit_protocol.h"
+#include "testkit/testkit_types.h"
 
 namespace virus_executor_service::testkit {
 

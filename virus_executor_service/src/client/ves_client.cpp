@@ -1,11 +1,11 @@
-#include "virus_executor_service/client/ves_client.h"
+#include "client/ves_client.h"
 
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
-#include "virus_executor_service/ves/ves_codec.h"
-#include "virus_executor_service/ves/ves_protocol.h"
+#include "transport/ves_bootstrap_interface.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
 #include "virus_protection_service_log.h"
 
 namespace virus_executor_service {

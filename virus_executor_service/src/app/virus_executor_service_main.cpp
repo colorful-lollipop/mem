@@ -3,8 +3,8 @@
 #include <thread>
 
 #include "iservice_registry.h"
-#include "virus_executor_service/transport/registry_backend.h"
-#include "virus_executor_service/virus_executor_service.h"
+#include "transport/registry_backend.h"
+#include "service/virus_executor_service.h"
 #include "virus_protection_service_log.h"
 
 namespace {

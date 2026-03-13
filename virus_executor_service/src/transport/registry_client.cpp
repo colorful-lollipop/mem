@@ -1,11 +1,11 @@
-#include "virus_executor_service/transport/registry_client.h"
+#include "transport/registry_client.h"
 
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "virus_executor_service/transport/registry_protocol.h"
+#include "transport/registry_protocol.h"
 
 namespace virus_executor_service {
 

@@ -1,10 +1,10 @@
-#include "virus_executor_service/ves/ves_session_service.h"
+#include "ves/ves_session_service.h"
 
 #include <utility>
 #include <unistd.h>
 
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/ves/ves_engine_service.h"
+#include "ves/ves_engine_service.h"
 #include "virus_protection_service_log.h"
 
 namespace virus_executor_service {

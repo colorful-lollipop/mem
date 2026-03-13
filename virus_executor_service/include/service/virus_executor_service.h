@@ -4,10 +4,10 @@
 #include <memory>
 
 #include "system_ability.h"
-#include "virus_executor_service/testkit/testkit_service.h"
-#include "virus_executor_service/transport/ves_bootstrap_stub.h"
-#include "virus_executor_service/ves/ves_engine_service.h"
-#include "virus_executor_service/ves/ves_session_service.h"
+#include "testkit/testkit_service.h"
+#include "transport/ves_bootstrap_stub.h"
+#include "ves/ves_engine_service.h"
+#include "ves/ves_session_service.h"
 
 namespace virus_executor_service {
 

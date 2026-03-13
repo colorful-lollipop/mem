@@ -9,7 +9,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/rpc_handler_registrar.h"
+#include "service/rpc_handler_registrar.h"
 
 namespace virus_executor_service {
 

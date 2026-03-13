@@ -4,9 +4,9 @@
 #include <thread>
 
 #include "iservice_registry.h"
-#include "virus_executor_service/transport/registry_backend.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
-#include "virus_executor_service/client/ves_client.h"
+#include "transport/registry_backend.h"
+#include "transport/ves_bootstrap_interface.h"
+#include "client/ves_client.h"
 #include "virus_protection_service_log.h"
 
 namespace {

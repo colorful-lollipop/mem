@@ -8,7 +8,7 @@
 
 #include "iremote_proxy.h"
 #include "memrpc/core/bootstrap.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
+#include "transport/ves_bootstrap_interface.h"
 
 namespace virus_executor_service {
 

@@ -5,7 +5,7 @@
 Current mainline work focuses on the shared-memory RPC framework and the Virus Executor Service app.
 
 - `memrpc/include/memrpc/`, `memrpc/src/`: framework code
-- `virus_executor_service/include/virus_executor_service/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`: mainline application code
+- `virus_executor_service/include/{client,service,transport,testkit,ves}/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`: mainline application code
 - `memrpc/tests/`: focused framework unit and integration tests
 - `virus_executor_service/tests/`: app-level tests split by type: `unit/`, `integration/`, `stress/`, `dt/`, `fuzz/`
 - `virus_executor_service/perf_baselines/`: app-owned perf/DT baselines
@@ -67,6 +67,13 @@ Use CMake as the source of truth during active development.
   - `memrpc/core/*`
   - `memrpc/client/*`
   - `memrpc/server/*`
+- Do not include headers from `memrpc/src/*` outside memrpc's own implementation/tests.
+- For app headers, include from the flattened app prefixes only:
+  - `client/*`
+  - `service/*`
+  - `transport/*`
+  - `testkit/*`
+  - `ves/*`
 
 New code must follow these rules. Older code may be cleaned up opportunistically when touched.
 

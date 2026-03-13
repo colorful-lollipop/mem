@@ -9,11 +9,11 @@
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/testkit/testkit_codec.h"
-#include "virus_executor_service/testkit/testkit_failure_monitor.h"
-#include "virus_executor_service/testkit/testkit_protocol.h"
+#include "testkit/testkit_codec.h"
+#include "testkit/testkit_failure_monitor.h"
+#include "testkit/testkit_protocol.h"
 #include "testkit_resilient_invoker.h"
-#include "virus_executor_service/testkit/testkit_service.h"
+#include "testkit/testkit_service.h"
 
 namespace virus_executor_service::testkit {
 namespace {

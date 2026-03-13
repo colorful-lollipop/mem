@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "memrpc/core/codec.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_types.h"
 
 namespace memrpc {
 

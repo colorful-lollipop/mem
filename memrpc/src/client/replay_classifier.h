@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/core/types.h"
 
 namespace memrpc {

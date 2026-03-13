@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "virus_executor_service/testkit/testkit_codec.h"
-#include "virus_executor_service/testkit/testkit_types.h"
+#include "testkit/testkit_codec.h"
+#include "testkit/testkit_types.h"
 
 namespace virus_executor_service::testkit {
 

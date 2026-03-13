@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/core/bootstrap.h"
 
 namespace memrpc {

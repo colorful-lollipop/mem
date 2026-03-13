@@ -1,14 +1,14 @@
-#include "virus_executor_service/ves/ves_engine_service.h"
+#include "ves/ves_engine_service.h"
 
 #include <chrono>
 #include <cstdlib>
 #include <thread>
 
 #include "memrpc/server/typed_handler.h"
-#include "virus_executor_service/ves/ves_codec.h"
-#include "virus_executor_service/ves/ves_protocol.h"
-#include "virus_executor_service/ves/ves_sample_rules.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
+#include "ves/ves_sample_rules.h"
+#include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
 
 namespace virus_executor_service {

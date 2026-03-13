@@ -1,8 +1,8 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_SERVICE_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_SERVICE_H_
 
-#include "virus_executor_service/rpc_handler_registrar.h"
-#include "virus_executor_service/testkit/testkit_codec.h"
+#include "service/rpc_handler_registrar.h"
+#include "testkit/testkit_codec.h"
 
 namespace virus_executor_service::testkit {
 

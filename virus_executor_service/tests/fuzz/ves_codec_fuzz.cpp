@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <string>
 
-#include "virus_executor_service/ves/ves_codec.h"
-#include "virus_executor_service/ves/ves_sample_rules.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_sample_rules.h"
+#include "ves/ves_types.h"
 
 namespace {
 

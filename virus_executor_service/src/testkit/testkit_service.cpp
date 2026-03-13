@@ -1,4 +1,4 @@
-#include "virus_executor_service/testkit/testkit_service.h"
+#include "testkit/testkit_service.h"
 
 #include <chrono>
 #include <thread>
@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "memrpc/server/typed_handler.h"
-#include "virus_executor_service/testkit/testkit_protocol.h"
+#include "testkit/testkit_protocol.h"
 
 namespace virus_executor_service::testkit {
 

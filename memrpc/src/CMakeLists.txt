@@ -13,8 +13,8 @@ add_library(memrpc_core
 target_include_directories(memrpc_core
   PUBLIC
     ${MEMRPC_MODULE_ROOT}/include
-    ${MEMRPC_MODULE_ROOT}/src
   PRIVATE
+    ${MEMRPC_MODULE_ROOT}/src
     ${PROJECT_SOURCE_DIR}/include
 )
 

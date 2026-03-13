@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "client/replay_classifier.h"
 
 namespace memrpc {

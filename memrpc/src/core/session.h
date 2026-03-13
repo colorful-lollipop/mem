@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "core/shm_layout.h"
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"

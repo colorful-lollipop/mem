@@ -1,4 +1,4 @@
-#include "virus_executor_service/transport/ves_bootstrap_proxy.h"
+#include "transport/ves_bootstrap_proxy.h"
 
 #include <cstring>
 #include <sys/socket.h>

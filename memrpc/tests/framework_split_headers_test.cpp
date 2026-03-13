@@ -26,7 +26,7 @@ TEST(FrameworkSplitHeadersTest, MainlineHeadersDoNotDependOnLegacyCompatPaths) {
   EXPECT_EQ(clientContent.find("minirpc"), std::string::npos);
 
   std::ifstream testkitHeader(
-      MEMRPC_REPO_PATH("/virus_executor_service/include/virus_executor_service/testkit/testkit_client.h"));
+      MEMRPC_REPO_PATH("/virus_executor_service/include/testkit/testkit_client.h"));
   ASSERT_TRUE(testkitHeader.is_open());
   std::string testkitContent((std::istreambuf_iterator<char>(testkitHeader)),
                              std::istreambuf_iterator<char>());

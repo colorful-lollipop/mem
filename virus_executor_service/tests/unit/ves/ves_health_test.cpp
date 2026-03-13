@@ -3,8 +3,8 @@
 #include <chrono>
 #include <thread>
 
-#include "virus_executor_service/ves/ves_engine_service.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_engine_service.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

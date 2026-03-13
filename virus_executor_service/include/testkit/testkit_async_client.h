@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "memrpc/client/typed_future.h"
-#include "virus_executor_service/testkit/testkit_codec.h"
+#include "testkit/testkit_codec.h"
 
 namespace virus_executor_service::testkit {
 

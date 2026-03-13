@@ -4,7 +4,7 @@
 #include <string>
 
 #include "isam_backend.h"
-#include "virus_executor_service/transport/registry_client.h"
+#include "transport/registry_client.h"
 
 namespace virus_executor_service {
 

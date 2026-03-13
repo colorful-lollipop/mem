@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "virus_executor_service/testkit/testkit_codec.h"
+#include "testkit/testkit_codec.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     std::vector<uint8_t> bytes(data, data + size);

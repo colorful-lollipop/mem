@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "virus_executor_service/testkit/testkit_async_client.h"
+#include "testkit/testkit_async_client.h"
 
 namespace virus_executor_service::testkit {
 

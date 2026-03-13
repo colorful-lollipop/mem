@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "virus_executor_service/ves/ves_codec.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

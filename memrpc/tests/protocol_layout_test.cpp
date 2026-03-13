@@ -3,7 +3,7 @@
 #include <cstddef>
 
 #include "memrpc/client/demo_bootstrap.h"
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "core/shm_layout.h"
 
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {

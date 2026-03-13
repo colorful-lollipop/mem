@@ -23,9 +23,9 @@ if (NOT TARGET memrpc_core)
   )
   target_include_directories(memrpc_core PUBLIC
       ${MEMRPC_MODULE_ROOT}/include
-      ${MEMRPC_MODULE_ROOT}/src
   )
   target_include_directories(memrpc_core PRIVATE
+      ${MEMRPC_MODULE_ROOT}/src
       ${MEMRPC_ROOT}/include
   )
   target_compile_features(memrpc_core PUBLIC cxx_std_17)

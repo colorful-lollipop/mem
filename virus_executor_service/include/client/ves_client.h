@@ -8,8 +8,8 @@
 
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
-#include "virus_executor_service/transport/ves_bootstrap_proxy.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "transport/ves_bootstrap_proxy.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

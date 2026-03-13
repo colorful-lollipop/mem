@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "virus_executor_service/testkit/testkit_service.h"
+#include "testkit/testkit_service.h"
 
 namespace virus_executor_service::testkit {
 

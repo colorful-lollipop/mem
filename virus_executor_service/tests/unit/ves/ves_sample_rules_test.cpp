@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "virus_executor_service/ves/ves_sample_rules.h"
+#include "ves/ves_sample_rules.h"
 
 namespace virus_executor_service {
 

@@ -15,9 +15,9 @@
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/testkit/testkit_codec.h"
-#include "virus_executor_service/testkit/testkit_protocol.h"
-#include "virus_executor_service/testkit/testkit_service.h"
+#include "testkit/testkit_codec.h"
+#include "testkit/testkit_protocol.h"
+#include "testkit/testkit_service.h"
 #include "testkit_stress_config.h"
 #include "virus_protection_service_log.h"
 

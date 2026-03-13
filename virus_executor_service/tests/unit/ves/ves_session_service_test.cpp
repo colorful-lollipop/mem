@@ -3,8 +3,8 @@
 #include <unistd.h>
 
 #include "memrpc/core/types.h"
-#include "virus_executor_service/ves/ves_session_service.h"
-#include "virus_executor_service/ves/ves_engine_service.h"
+#include "ves/ves_session_service.h"
+#include "ves/ves_engine_service.h"
 
 namespace virus_executor_service {
 

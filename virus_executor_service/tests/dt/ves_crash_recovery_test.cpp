@@ -11,11 +11,11 @@
 #include <unistd.h>
 
 #include "iservice_registry.h"
-#include "virus_executor_service/transport/registry_backend.h"
-#include "virus_executor_service/transport/registry_server.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
-#include "virus_executor_service/client/ves_client.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "transport/registry_backend.h"
+#include "transport/registry_server.h"
+#include "transport/ves_bootstrap_interface.h"
+#include "client/ves_client.h"
+#include "ves/ves_types.h"
 
 namespace {
 

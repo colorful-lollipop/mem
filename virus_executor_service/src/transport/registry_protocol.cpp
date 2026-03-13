@@ -1,4 +1,4 @@
-#include "virus_executor_service/transport/registry_protocol.h"
+#include "transport/registry_protocol.h"
 
 #include <cstring>
 #include <sys/socket.h>

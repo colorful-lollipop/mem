@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 
 namespace virus_executor_service::testkit {
 

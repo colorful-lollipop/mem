@@ -2,7 +2,7 @@
 
 #include <unistd.h>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/client/sa_bootstrap.h"
 
 TEST(SaBootstrapStubTest, DefaultConfigIsStable) {

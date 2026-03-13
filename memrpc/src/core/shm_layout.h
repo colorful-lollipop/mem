@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <pthread.h>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "core/slot_pool.h"
 
 namespace memrpc {

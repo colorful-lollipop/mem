@@ -5,10 +5,10 @@
 #include <thread>
 #include <unistd.h>
 
-#include "virus_executor_service/virus_executor_service.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
-#include "virus_executor_service/transport/ves_bootstrap_proxy.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "service/virus_executor_service.h"
+#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_bootstrap_proxy.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

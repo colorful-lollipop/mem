@@ -6,7 +6,7 @@
 #include "iremote_stub.h"
 #include "mock_ipc_types.h"
 #include "memrpc/core/bootstrap.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
+#include "transport/ves_bootstrap_interface.h"
 
 namespace virus_executor_service {
 

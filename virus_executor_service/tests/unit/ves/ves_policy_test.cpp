@@ -8,9 +8,9 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
-#include "virus_executor_service/ves/ves_codec.h"
-#include "virus_executor_service/ves/ves_protocol.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

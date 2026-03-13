@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "memrpc/core/codec.h"
-#include "virus_executor_service/testkit/testkit_types.h"
+#include "testkit/testkit_types.h"
 
 namespace memrpc {
 

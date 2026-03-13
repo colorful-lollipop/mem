@@ -15,10 +15,10 @@
 #include <unistd.h>
 
 #include "memrpc/client/demo_bootstrap.h"
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/testkit/testkit_client.h"
-#include "virus_executor_service/testkit/testkit_service.h"
+#include "testkit/testkit_client.h"
+#include "testkit/testkit_service.h"
 
 namespace virus_executor_service::testkit {
 namespace {

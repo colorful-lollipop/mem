@@ -5,8 +5,8 @@
 #include <string>
 
 #include "memrpc/server/rpc_server.h"
-#include "virus_executor_service/rpc_handler_registrar.h"
-#include "virus_executor_service/ves/ves_types.h"
+#include "service/rpc_handler_registrar.h"
+#include "ves/ves_types.h"
 
 namespace virus_executor_service {
 

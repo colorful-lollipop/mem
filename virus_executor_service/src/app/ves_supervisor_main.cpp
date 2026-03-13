@@ -5,8 +5,8 @@
 #include <thread>
 #include <unistd.h>
 
-#include "virus_executor_service/transport/registry_server.h"
-#include "virus_executor_service/transport/ves_bootstrap_interface.h"
+#include "transport/registry_server.h"
+#include "transport/ves_bootstrap_interface.h"
 #include "virus_protection_service_log.h"
 
 namespace {

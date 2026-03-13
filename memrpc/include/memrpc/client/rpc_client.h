@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 

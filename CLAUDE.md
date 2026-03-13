@@ -23,7 +23,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 **Layer structure:**
 
 - **Framework** (`memrpc/include/memrpc/`, `memrpc/src/`): Platform-agnostic RPC transport
-- **Application** (`virus_executor_service/include/virus_executor_service/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`): Mainline Virus Executor Service app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
+- **Application** (`virus_executor_service/include/{client,service,transport,testkit,ves}/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`): Mainline Virus Executor Service app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
 - **Tests** (`memrpc/tests/`, `virus_executor_service/tests/{unit,integration,stress,dt,fuzz}/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
 **Key abstractions:**
@@ -43,6 +43,8 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 - `UpperCamelCase` for types/functions/methods; `lowerCamelCase` for variables/parameters; `ALL_CAPS` for constants/macros
 - Simple explicit code over template-heavy or macro-heavy abstractions
 - Framework headers use layered paths: `memrpc/core/*`, `memrpc/client/*`, `memrpc/server/*`
+- Do not include `memrpc/src/*` from app code; memrpc internals stay private to the framework and its internal tests
+- App headers use the flattened prefixes: `client/*`, `service/*`, `transport/*`, `testkit/*`, `ves/*`
 - Logging: use `virus_protection_service_log.h` macros (`HILOGI`, `HILOGW`, `HILOGE`, `HILOGD`). Log only on state changes, failures, or recovery — never in hot paths
 - Keep business-specific compatibility layers out of the framework
 

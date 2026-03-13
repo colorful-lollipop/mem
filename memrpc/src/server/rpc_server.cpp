@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/protocol.h"
+#include "memrpc/core/protocol.h"
 #include "core/session.h"
 #include "core/slot_pool.h"
 #include "memrpc/core/task_executor.h"
