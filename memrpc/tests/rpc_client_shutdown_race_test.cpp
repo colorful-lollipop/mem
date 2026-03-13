@@ -1,0 +1,89 @@
+#include <gtest/gtest.h>
+
+#include <chrono>
+#include <memory>
+
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/core/bootstrap.h"
+
+namespace {
+
+constexpr MemRpc::Opcode kTestOpcode = 1u;
+constexpr int kShutdownRaceIterations = 200;
+constexpr auto kMaxShutdownDuration = std::chrono::milliseconds(200);
+
+class FailingBootstrapChannel final : public MemRpc::IBootstrapChannel {
+ public:
+  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
+    handles = MemRpc::BootstrapHandles{};
+    handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
+    handles.sessionId = 1;
+    return MemRpc::StatusCode::Ok;
+  }
+
+  MemRpc::StatusCode CloseSession() override {
+    return MemRpc::StatusCode::Ok;
+  }
+
+  void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
+    callback_ = std::move(callback);
+  }
+
+ private:
+  MemRpc::EngineDeathCallback callback_;
+};
+
+}  // namespace
+
+TEST(RpcClientShutdownRaceTest, InvokeAsyncFailureThenShutdownRemainsFast) {
+  for (int i = 0; i < kShutdownRaceIterations; ++i) {
+    auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+    MemRpc::RpcClient client(bootstrap);
+
+    MemRpc::RpcCall call;
+    call.opcode = kTestOpcode;
+
+    MemRpc::RpcFuture future = client.InvokeAsync(call);
+    ASSERT_TRUE(future.IsReady());
+
+    MemRpc::RpcReply reply;
+    EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+
+    const auto start = std::chrono::steady_clock::now();
+    client.Shutdown();
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_LT(elapsed, kMaxShutdownDuration);
+  }
+}
+
+TEST(RpcClientShutdownRaceTest, InitFailureThenShutdownRemainsFast) {
+  for (int i = 0; i < kShutdownRaceIterations; ++i) {
+    auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+    MemRpc::RpcClient client(bootstrap);
+
+    EXPECT_NE(client.Init(), MemRpc::StatusCode::Ok);
+
+    const auto start = std::chrono::steady_clock::now();
+    client.Shutdown();
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_LT(elapsed, kMaxShutdownDuration);
+  }
+}
+
+TEST(RpcClientShutdownRaceTest, SyncInvokeFailureThenShutdownRemainsFast) {
+  for (int i = 0; i < kShutdownRaceIterations; ++i) {
+    auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+    MemRpc::RpcSyncClient client(bootstrap);
+
+    MemRpc::RpcCall call;
+    call.opcode = kTestOpcode;
+
+    MemRpc::RpcReply reply;
+    EXPECT_NE(client.InvokeSync(call, &reply), MemRpc::StatusCode::Ok);
+
+    const auto start = std::chrono::steady_clock::now();
+    client.Shutdown();
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_LT(elapsed, kMaxShutdownDuration);
+  }
+}

@@ -1,3 +1,8 @@
+set(MEMRPC_DEFAULT_TEST_TIMEOUT_SEC 30 CACHE STRING
+  "Default timeout in seconds for memrpc tests")
+set(MEMRPC_DT_TEST_TIMEOUT_SEC 60 CACHE STRING
+  "Timeout in seconds for memrpc DT tests")
+
 function(memrpc_add_test target source)
   add_executable(${target} ${source})
   target_link_libraries(${target} PRIVATE memrpc GTest::gtest_main)
@@ -10,6 +15,7 @@ function(memrpc_add_test target source)
     MEMRPC_REPO_ROOT=\"${PROJECT_SOURCE_DIR}\"
   )
   add_test(NAME ${target} COMMAND ${target})
+  set_tests_properties(${target} PROPERTIES TIMEOUT ${MEMRPC_DEFAULT_TEST_TIMEOUT_SEC})
 endfunction()
 
 memrpc_add_test(memrpc_smoke_test smoke_test.cpp)
@@ -23,6 +29,7 @@ memrpc_add_test(memrpc_slot_pool_test slot_pool_test.cpp)
 memrpc_add_test(memrpc_session_test session_test.cpp)
 memrpc_add_test(memrpc_build_config_test build_config_test.cpp)
 memrpc_add_test(memrpc_rpc_client_api_test rpc_client_api_test.cpp)
+memrpc_add_test(memrpc_rpc_client_shutdown_race_test rpc_client_shutdown_race_test.cpp)
 memrpc_add_test(memrpc_rpc_server_api_test rpc_server_api_test.cpp)
 memrpc_add_test(memrpc_sa_bootstrap_stub_test sa_bootstrap_stub_test.cpp)
 memrpc_add_test(memrpc_replay_classifier_test replay_classifier_test.cpp)
@@ -38,7 +45,11 @@ memrpc_add_test(memrpc_rpc_client_recovery_policy_test rpc_client_recovery_polic
 
 if (MEMRPC_ENABLE_DT_TESTS)
   memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)
-  set_tests_properties(memrpc_dt_stability_test PROPERTIES LABELS "dt_stability")
+  set_tests_properties(memrpc_dt_stability_test PROPERTIES
+    LABELS "dt_stability"
+    TIMEOUT ${MEMRPC_DT_TEST_TIMEOUT_SEC})
   memrpc_add_test(memrpc_dt_perf_test dt_perf_test.cpp)
-  set_tests_properties(memrpc_dt_perf_test PROPERTIES LABELS "dt_perf")
+  set_tests_properties(memrpc_dt_perf_test PROPERTIES
+    LABELS "dt_perf"
+    TIMEOUT ${MEMRPC_DT_TEST_TIMEOUT_SEC})
 endif()

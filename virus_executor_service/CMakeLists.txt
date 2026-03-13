@@ -8,6 +8,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(MEMRPC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(MEMRPC_MODULE_ROOT ${MEMRPC_ROOT}/memrpc)
+include(${MEMRPC_ROOT}/cmake/ProjectOptions.cmake)
+memrpc_configure_project_options()
+
+set(VIRUS_EXECUTOR_SERVICE_DEFAULT_TEST_TIMEOUT_SEC 30 CACHE STRING
+    "Default timeout in seconds for virus_executor_service tests")
+set(VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC 60 CACHE STRING
+    "Timeout in seconds for virus_executor_service DT tests")
+set(VIRUS_EXECUTOR_SERVICE_STRESS_TEST_TIMEOUT_SEC 60 CACHE STRING
+    "Timeout in seconds for virus_executor_service stress/perf tests")
 
 if (NOT TARGET memrpc_core)
   add_library(memrpc_core
@@ -398,6 +407,37 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
   set_tests_properties(virus_executor_service_dt_crash_recovery_test PROPERTIES
       LABELS "dt"
       TIMEOUT 60)
+
+  set_tests_properties(
+      virus_executor_service_session_service_test
+      virus_executor_service_heartbeat_test
+      virus_executor_service_codec_test
+      virus_executor_service_testkit_headers_test
+      virus_executor_service_testkit_codec_test
+      virus_executor_service_testkit_service_test
+      virus_executor_service_testkit_baseline_test
+      virus_executor_service_testkit_client_test
+      virus_executor_service_testkit_dfx_test
+      virus_executor_service_testkit_backpressure_test
+      virus_executor_service_testkit_async_pipeline_test
+      virus_executor_service_testkit_latency_test
+      virus_executor_service_sample_rules_test
+      virus_executor_service_health_test
+      virus_executor_service_policy_test
+      virus_executor_service_crash_recovery_test
+      PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DEFAULT_TEST_TIMEOUT_SEC})
+
+  set_tests_properties(
+      virus_executor_service_testkit_throughput_test
+      virus_executor_service_testkit_stress_config_test
+      virus_executor_service_testkit_stress_smoke
+      virus_executor_service_stress_test
+      PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_STRESS_TEST_TIMEOUT_SEC})
+
+  set_tests_properties(
+      virus_executor_service_testkit_dt_stability_test
+      virus_executor_service_testkit_dt_perf_test
+      PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC})
 
   if (VIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ)
     add_subdirectory(tests/fuzz)

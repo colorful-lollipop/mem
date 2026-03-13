@@ -11,6 +11,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+include(${CMAKE_SOURCE_DIR}/cmake/ProjectOptions.cmake)
+memrpc_configure_project_options()
 execute_process(
   COMMAND ${CMAKE_COMMAND} -E create_symlink
           ${CMAKE_BINARY_DIR}/compile_commands.json

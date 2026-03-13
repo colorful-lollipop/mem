@@ -23,12 +23,30 @@ Keep business-specific compatibility layers out of the framework. Applications s
   Configure, build, and run the full repo test suite with `clang + ninja` into `build_ninja/`.
 - `tools/build_and_test.sh --clean`
   Recreate the default `build_ninja/` directory from scratch.
+- `tools/build_and_test.sh --strict`
+  Build with stricter warning flags enabled.
+- `tools/build_and_test.sh --strict --werror`
+  Escalate strict warnings into an error gate once the current warning backlog is reduced.
+- `tools/build_and_test.sh --asan`
+  Build into `build_asan/` with AddressSanitizer + UndefinedBehaviorSanitizer and leak detection.
+- `tools/build_and_test.sh --tsan`
+  Build into `build_tsan/` with ThreadSanitizer.
+- `tools/build_and_test.sh --repeat until-fail:100 --test-regex memrpc_engine_death_handler_test`
+  Re-run a high-risk test until it fails, useful for shutdown/deadlock race hunting.
+- `tools/build_and_test.sh --timeout 90`
+  Force a CTest per-test timeout from the script layer to avoid silent hangs.
 - `tools/build_and_test.sh --fuzz`
   Enable both memrpc and virus_executor_service fuzz targets, then build and test them.
 - `tools/build_and_test.sh --test-regex virus_executor_service`
   Build everything, then only run tests matching `virus_executor_service`.
 - `tools/build_and_test.sh --label stress`
   Build everything, then only run `ctest -L stress`.
+- `tools/ci_sweep.sh`
+  Run the practical local verification matrix: strict full suite, ASan/UBSan full suite, TSan concurrency subset, then repeated shutdown-race regressions.
+- `tools/push_gate.sh`
+  Run the pre-push gate. This is the canonical gate for non-trivial code changes.
+- `tools/push_gate.sh --deep`
+  Run the heavier pre-push gate with longer repeat counts on concurrency-sensitive tests.
 - `tools/build_and_test.sh --configure-only`
   Configure only.
 - `tools/build_and_test.sh --build-only`
@@ -48,10 +66,17 @@ Keep business-specific compatibility layers out of the framework. Applications s
 ### AI Quick Start
 
 - If you are an AI agent with no repo context, start with `tools/build_and_test.sh --help`, then use `tools/build_and_test.sh`.
+- For concurrency-sensitive changes in `memrpc/src/client/`, `memrpc/src/server/`, `memrpc/src/core/session.*`, or `virus_executor_service/tests/{dt,stress}/`, prefer:
+  `tools/ci_sweep.sh`
+- Before push or merge for any non-trivial change, run:
+  `tools/push_gate.sh`
+- For changes in lifecycle, shutdown, recovery, queueing, stress, DT, or fault injection paths, run:
+  `tools/push_gate.sh --deep`
 - Prefer the root build over ad-hoc per-module builds unless the task is isolated to `virus_executor_service/`.
 - Default build directory is `build_ninja/`. Do not reuse old `build/` directories configured with another generator.
 - This repo's meaningful tests use shared memory, Unix-domain sockets, and child processes. In sandboxed agent environments, `ctest` may fail with `shm_open ... errno=13` or registry start failures unless you request elevated permissions.
 - In Codex-style sandboxes, request escalation before running full or integration-heavy test commands. Typical cases: `tools/build_and_test.sh`, `ctest --test-dir build_ninja ...`, or any `virus_executor_service_*integration*`, `stress`, `dt`, or shared-memory session tests.
+- In Codex-style sandboxes, request escalation before `tools/ci_sweep.sh` and before any sanitizer or repeated CTest runs. These are intentionally heavier and may fork many child processes.
 
 Use CMake as the source of truth during active development.
 
@@ -90,6 +115,12 @@ Tests use GoogleTest via CMake. Name new tests by feature, for example `response
 - Add app tests only for thin integration paths
 
 Avoid broad end-to-end additions unless they protect a real regression.
+
+For deadlock/race regressions:
+- Add a focused GoogleTest that exercises the lifecycle directly.
+- Add a repeatable `ctest --repeat until-fail:N` path for the affected test.
+- Prefer explicit per-test timeouts over open-ended waits.
+- If a test hangs, capture thread stacks from the stuck process before changing code.
 
 ### virus_executor_service Tests
 
@@ -144,3 +175,14 @@ Follow the existing commit style:
 - `fix: ...`
 
 Keep commits scoped. Before opening a PR, run the full build and `ctest`, summarize the behavior change, and note any intentionally excluded directories or follow-up work.
+
+### Push Gate
+
+Treat these as push conditions for meaningful code changes:
+
+- Minimum push gate:
+  `tools/push_gate.sh`
+- Required for concurrency/lifecycle/recovery changes:
+  `tools/push_gate.sh --deep`
+- If a sandbox blocks shared memory, sockets, or child-process tests, request elevation rather than downgrading the gate.
+- Do not claim a change is validated if only a single non-sanitized build was run.
