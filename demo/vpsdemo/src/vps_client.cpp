@@ -96,7 +96,7 @@ memrpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* r
     request.filePath = path;
     return memrpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
         &client_,
-        static_cast<memrpc::Opcode>(DemoOpcode::ScanFile),
+        static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
         request, reply);
 }
 

@@ -88,7 +88,7 @@ void VesEngineService::RegisterHandlers(memrpc::RpcServer* server) {
     }
 
     memrpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
-        server, static_cast<memrpc::Opcode>(DemoOpcode::ScanFile),
+        server, static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
         [this](const ScanFileRequest& r) { return ScanFile(r); });
 }
 

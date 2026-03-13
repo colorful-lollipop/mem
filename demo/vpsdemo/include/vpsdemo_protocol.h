@@ -5,7 +5,7 @@
 
 namespace vpsdemo {
 
-enum class DemoOpcode : uint16_t {
+enum class VesOpcode : uint16_t {
     ScanFile = 102,
 };
 

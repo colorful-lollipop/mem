@@ -51,7 +51,7 @@ TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
     req.filePath = "/data/sleep50.bin";
 
     memrpc::RpcCall call;
-    call.opcode = static_cast<memrpc::Opcode>(DemoOpcode::ScanFile);
+    call.opcode = static_cast<memrpc::Opcode>(VesOpcode::ScanFile);
     call.exec_timeout_ms = 5;  // short timeout
     memrpc::CodecTraits<ScanFileRequest>::Encode(req, &call.payload);
 
