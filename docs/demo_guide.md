@@ -4,25 +4,29 @@
 
 ```bash
 cmake -S . -B build
-cmake --build build
+cmake --build build --target vpsdemo_supervisor vpsdemo_client vpsdemo_stress_client vpsdemo_testkit_stress_runner
 ```
 
 ## 运行
 
 ```bash
-./build/demo/memrpc_minirpc_demo
+./build/demo/vpsdemo/vpsdemo_supervisor
 ```
 
-当前主线 demo 只保留 `MiniRpc`，用于验证最小跨进程 RPC 主路径。
+推荐的自动化 smoke 方式：
 
-预期输出：
-
-- `echo: hello`
-- `add: 15`
+```bash
+ctest --test-dir build --output-on-failure -R vpsdemo_supervisor_integration_test
+```
 
 ## 当前验证点
 
-这个 demo 在 Linux 开发环境下使用 `fork()` 启动子进程，主要验证：
+当前主线 demo 是 `vpsdemo`。它在 Linux 开发环境下使用 supervisor 拉起 engine SA，并在同一条 `memrpc` 通道上同时承载：
+
+- `ves` 业务调用
+- `testkit` 的 `Echo/Add/Sleep` 与故障注入 RPC
+
+主要验证点：
 
 - 共享内存 + `eventfd` 的基础通信
 - 高优请求队列 / 普通请求队列
@@ -31,10 +35,15 @@ cmake --build build
 - 响应通过 response ring + response slot 返回
 - `Reply/Event` 共用响应队列的协议基础
 - `RpcClient` / `RpcServer` 公共接口
-- `MiniRpcAsyncClient` / `MiniRpcClient` 应用层写法
-- move-aware request/reply API 和 `Echo` 的 view-based decode
+- `VesClient` 与 `TestkitClient` 两类应用 facade 共用同一引擎服务端
+- 业务集成测试、testkit perf/stress/DT/fuzz 测试共用一套主线可执行体
 
-当前 demo 不再演示独立 notify 通道，也不再承担 VPS 复杂业务兼容验证。
+手动压测可直接运行：
+
+```bash
+./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
+./build/demo/vpsdemo/vpsdemo_testkit_stress_runner
+```
 
 ## 说明
 

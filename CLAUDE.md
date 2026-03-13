@@ -9,7 +9,7 @@ cmake -S . -B build                              # configure
 cmake --build build                              # build everything
 ctest --test-dir build --output-on-failure        # run all tests
 ctest --test-dir build --output-on-failure -R <pattern>  # run single test (e.g. -R slot_pool)
-./build/demo/memrpc_minirpc_demo                  # run the cross-process demo
+./build/demo/vpsdemo/vpsdemo_supervisor           # run the mainline VPS demo
 ```
 
 CMake is the source of truth during active development. GN (`BUILD.gn`) is maintained alongside for future HarmonyOS builds.
@@ -23,8 +23,8 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 **Layer structure:**
 
 - **Framework** (`include/memrpc/`, `src/core/`, `src/client/`, `src/server/`, `src/bootstrap/`): Platform-agnostic RPC transport
-- **Applications** (`include/apps/`, `src/apps/`): Thin layers that wire framework to business logic (e.g. `minirpc` demo, legacy `vps`)
-- **Tests** (`tests/memrpc/`, `tests/apps/`): Framework and app tests kept logically separated
+- **Application** (`demo/vpsdemo/include/`, `demo/vpsdemo/src/`): Mainline VPS app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
+- **Tests** (`tests/memrpc/`, `demo/vpsdemo/tests/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
 **Key abstractions:**
 
@@ -52,7 +52,7 @@ Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `chore:`. Keep commits
 
 ## Testing
 
-GoogleTest via CMake. Framework tests in `tests/memrpc/`, app tests in `tests/apps/`. Name tests by feature (e.g. `slot_pool_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
+GoogleTest via CMake. Framework tests live in `tests/memrpc/`; vpsdemo and testkit tests live in `demo/vpsdemo/tests/`. Name tests by feature (e.g. `slot_pool_test.cpp`, `testkit_client_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
 
 ## Dependencies
 

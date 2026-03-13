@@ -2,13 +2,13 @@
 
 ## Project Structure & Module Organization
 
-Current mainline work focuses on the shared-memory RPC framework and the minimal demo app.
+Current mainline work focuses on the shared-memory RPC framework and the VPS demo app.
 
 - `include/memrpc/`, `src/core/`, `src/client/`, `src/server/`, `src/bootstrap/`: framework code
-- `include/apps/minirpc/`, `src/apps/minirpc/`: minimal app used to validate cross-process RPC
-- `tests/`: focused unit and integration tests; keep framework and app tests logically separated
+- `demo/vpsdemo/include/`, `demo/vpsdemo/src/`: mainline application code (`ves`, transport, client, `testkit`)
+- `tests/memrpc/`: focused framework unit and integration tests
+- `demo/vpsdemo/tests/`: app-level unit, integration, stress, DT, and fuzz tests
 - `demo/`: runnable examples
-  - `memrpc_minirpc_demo`: minimal cross-process RPC demo
   - `vpsdemo/`: VPS (Virus Protection Service) demo application with supervisor, engine SA, and client
 - `docs/`: architecture, porting notes, and implementation plans
 
@@ -22,9 +22,10 @@ Keep business-specific compatibility layers out of the framework. Applications s
 - `cmake --build build`: build libraries, tests, and demos
 - `ctest --test-dir build --output-on-failure`: run the active test suite (count varies by options; includes vpsdemo tests)
 - `cmake -S . -B build_full -DMEMRPC_ENABLE_FUZZ=ON && cmake --build build_full && ctest --test-dir build_full --output-on-failure`: one-line full build + tests (includes memrpc + vpsdemo fuzz)
-- `./build/demo/memrpc_minirpc_demo`: run the minimal cross-process demo
 - `./build/demo/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
+- `./build/demo/vpsdemo/vpsdemo_client`: run the standalone VPS client
 - `./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
+- `./build/demo/vpsdemo/vpsdemo_testkit_stress_runner`: run the testkit stress runner directly
 - `cmake -S demo/vpsdemo -B build_vps -DVPSDEMO_ENABLE_TESTS=ON`: configure vpsdemo-only build (unit + integration + stress + dt)
 - `cmake --build build_vps`: build vpsdemo-only targets and tests
 - `ctest --test-dir build_vps --output-on-failure`: run vpsdemo-only test suite
@@ -55,7 +56,7 @@ Use `virus_protection_service_log.h` only. Prefer Harmony-style calls such as `H
 
 ## Testing Guidelines
 
-Tests use GoogleTest via CMake. Name new tests by feature, for example `response_queue_event_test.cpp` or `minirpc_client_test.cpp`.
+Tests use GoogleTest via CMake. Name new tests by feature, for example `response_queue_event_test.cpp` or `testkit_client_test.cpp`.
 
 - Keep tests focused on core behavior
 - Add framework tests for transport, session, queue, and recovery logic
@@ -72,6 +73,20 @@ The vpsdemo module includes both GoogleTest unit tests and executable integratio
 | vpsdemo_session_service_test | unit | `ctest -R vpsdemo_session` |
 | vpsdemo_heartbeat_test | unit | `ctest -R vpsdemo_heartbeat` |
 | vpsdemo_codec_test | unit | `ctest -R vpsdemo_codec` |
+| vpsdemo_testkit_headers_test | unit | `ctest -R vpsdemo_testkit_headers` |
+| vpsdemo_testkit_codec_test | unit | `ctest -R vpsdemo_testkit_codec` |
+| vpsdemo_testkit_service_test | unit | `ctest -R vpsdemo_testkit_service` |
+| vpsdemo_testkit_client_test | unit | `ctest -R vpsdemo_testkit_client` |
+| vpsdemo_testkit_dfx_test | unit | `ctest -R vpsdemo_testkit_dfx` |
+| vpsdemo_testkit_backpressure_test | unit | `ctest -R vpsdemo_testkit_backpressure` |
+| vpsdemo_testkit_async_pipeline_test | unit | `ctest -R vpsdemo_testkit_async_pipeline` |
+| vpsdemo_testkit_baseline_test | unit | `ctest -R vpsdemo_testkit_baseline` |
+| vpsdemo_testkit_latency_test | unit | `ctest -R vpsdemo_testkit_latency` |
+| vpsdemo_testkit_throughput_test | perf | `ctest -R vpsdemo_testkit_throughput` |
+| vpsdemo_testkit_dt_stability_test | dt | `ctest -R vpsdemo_testkit_dt_stability` |
+| vpsdemo_testkit_dt_perf_test | dt | `ctest -R vpsdemo_testkit_dt_perf` |
+| vpsdemo_testkit_stress_config_test | stress | `ctest -R vpsdemo_testkit_stress_config` |
+| vpsdemo_testkit_stress_smoke | stress | `ctest -R vpsdemo_testkit_stress_smoke` |
 | vpsdemo_sample_rules_test | unit | `ctest -R vpsdemo_sample` |
 | vpsdemo_health_test | unit | `ctest -R vpsdemo_health` |
 | vpsdemo_policy_test | unit | `ctest -R vpsdemo_policy` |
@@ -80,6 +95,7 @@ The vpsdemo module includes both GoogleTest unit tests and executable integratio
 | vpsdemo_stress_test | stress | `ctest -L stress` |
 | vpsdemo_dt_crash_recovery_test | dt | `ctest -L dt` |
 | vpsdemo_codec_fuzz_smoke | fuzz | `ctest -L fuzz` |
+| vpsdemo_testkit_codec_fuzz_smoke | fuzz | `ctest -L fuzz` |
 
 Run all vpsdemo tests: `ctest -R vpsdemo`
 

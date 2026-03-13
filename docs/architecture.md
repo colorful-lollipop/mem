@@ -1,13 +1,13 @@
 # MemRPC 架构说明
 
-`MemRpc` 是一套基于共享内存和 `eventfd` 的通用跨进程 RPC 框架。当前主线构建只关注两层：
+`MemRpc` 是一套基于共享内存和 `eventfd` 的通用跨进程 RPC 框架。当前主线构建只关注两个主体：
 
 - 框架层：`memrpc`
-- 最小应用样板：`apps/minirpc`
+- 应用层：`demo/vpsdemo`
+  - `ves` 业务协议与 client/service
+  - `testkit` 测试协议与 fault injection / perf / stress / fuzz 覆盖
 
-复杂业务层例如 VPS 不进入主库构建，但保留独立 codec 和单测，用来验证小 payload 降拷贝路径。
-
-仓库中的 `legacy/` 目录仅保留历史参考实现，不参与当前主线构建和测试。
+原独立测试样板的能力已经收编到 `demo/vpsdemo/testkit`，不再作为独立主线模块存在。
 
 框架公开头也只保留分层路径：
 
@@ -158,7 +158,7 @@ credit fd 采用“资源重新可写”语义：
 - `RpcServer::Start()`
 - `RpcServer::Stop()`
 
-框架层不再内置 `EngineClient/EngineServer` 这类业务兼容接口。应用如果需要兼容旧同步调用，应在自己的目录下实现同步 facade。
+框架层不再内置 `EngineClient/EngineServer` 这类业务兼容接口。应用如果需要兼容旧同步调用，应在自己的目录下实现同步 facade，例如 `VesClient` 或 `TestkitClient`。
 
 ## 调度与并发
 

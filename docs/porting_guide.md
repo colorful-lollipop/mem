@@ -20,15 +20,19 @@
 
 建议应用层按这个形态组织：
 
-- `apps/<app>/common`
+- `demo/<app>/include`
   - 请求/响应类型
   - codec
-- `apps/<app>/parent`
-  - 异步 client
-  - 同步兼容 facade
-- `apps/<app>/child`
-  - service
-  - handler 注册
+  - client facade
+  - service/handler 注册接口
+- `demo/<app>/src`
+  - client
+  - engine/service
+  - transport/bootstrap/registry
+- `demo/<app>/tests`
+  - unit
+  - integration
+  - stress / dt / fuzz
 
 框架层只保留：
 
@@ -52,18 +56,18 @@
 
 ## 当前样板
 
-当前仓库里已经有一个最小样板：
+当前仓库里的主线样板是：
 
-- `apps/minirpc`
+- `demo/vpsdemo`
 
-它展示了两层写法：
+它同时展示了两类协议如何共用同一条 `memrpc` 通道：
 
-- 内部异步层：`MiniRpcAsyncClient`
-- 对外同步层：`MiniRpcClient`
+- 业务层：`ves`
+- 测试层：`testkit`
 
-如果后续迁移 VPS，建议直接照这个模式组织，而不是把 VPS 业务细节塞回框架层。
+其中 `testkit` 继续保留了 `Echo/Add/Sleep`、故障注入、吞吐/延迟/DT/stress/fuzz 这些测试型能力；`ves` 负责业务调用。后续迁移新应用时，建议直接照这个模式组织，而不是把业务细节塞回框架层。
 
-仓库中的 `legacy/` 目录只用于参考旧实现，不应作为新迁移的落点。新的业务接入应直接放到 `apps/<app>/common|parent|child`。
+新的业务接入应直接放到 `demo/<app>/include|src|tests`。
 
 ## 事件模型
 
@@ -90,8 +94,8 @@
 
 - 定义 request/response 类型
 - 手写 codec
-- 应用层异步 client 增一个薄方法
-- 子进程 service 注册一个 handler
+- 应用层 client/facade 增一个薄方法
+- 服务端 service 注册一个 handler
 - 如果旧接口需要同步语义，再包一层 facade
 
 不需要再改：
