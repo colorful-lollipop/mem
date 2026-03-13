@@ -24,7 +24,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 
 - **Framework** (`memrpc/include/memrpc/`, `memrpc/src/`): Platform-agnostic RPC transport
 - **Application** (`vpsdemo/include/vpsdemo/`, `vpsdemo/src/{app,client,service,transport,testkit,ves}/`): Mainline VPS app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
-- **Tests** (`memrpc/tests/`, `vpsdemo/tests/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
+- **Tests** (`memrpc/tests/`, `vpsdemo/tests/{unit,integration,stress,dt,fuzz}/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
 **Key abstractions:**
 
