@@ -38,12 +38,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         return 0;
     }
 
-    req.file_path = SanitizePath(std::move(req.file_path));
-    (void)vpsdemo::EvaluateSamplePath(req.file_path);
+    req.filePath = SanitizePath(std::move(req.filePath));
+    (void)vpsdemo::EvaluateSamplePath(req.filePath);
 
     vpsdemo::ScanFileReply reply;
     reply.code = 0;
-    reply.threat_level = 0;
+    reply.threatLevel = 0;
 
     std::vector<uint8_t> bytes;
     if (memrpc::CodecTraits<vpsdemo::ScanFileReply>::Encode(reply, &bytes)) {

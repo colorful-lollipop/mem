@@ -14,7 +14,7 @@
 
 namespace vpsdemo {
 
-TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
+TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
     memrpc::BootstrapHandles unused{};
     ASSERT_EQ(bootstrap->OpenSession(unused), memrpc::StatusCode::Ok);

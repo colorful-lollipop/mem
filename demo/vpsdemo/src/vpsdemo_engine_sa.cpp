@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
 
-    // Create SA — self-creates VpsDemoService + EngineSessionService internally.
+    // Create SA — self-creates VirusExecutorService + EngineSessionService internally.
     auto stub = std::make_shared<vpsdemo::VirusExecutorService>();
     stub->AsObject()->SetServicePath(serviceSocket);
     stub->OnStart();

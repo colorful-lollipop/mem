@@ -20,7 +20,7 @@ struct VesClientOptions {
 };
 
 // Application-level client that owns the full connection to the engine:
-// IRemoteObject + VpsBootstrapProxy + RpcClient.
+// IRemoteObject + VesBootstrapProxy + RpcClient.
 // Provides typed VPS business methods.
 class VesClient {
  public:
@@ -31,8 +31,8 @@ class VesClient {
     VesClient(const VesClient&) = delete;
     VesClient& operator=(const VesClient&) = delete;
 
-    // Register VpsBootstrapProxy factory with BrokerRegistration.
-    // Call once before using iface_cast<IVpsBootstrap>.
+    // Register VesBootstrapProxy factory with BrokerRegistration.
+    // Call once before using iface_cast<IVesBootstrap>.
     static void RegisterProxyFactory();
 
     memrpc::StatusCode Init();

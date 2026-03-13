@@ -5,7 +5,7 @@
 
 namespace vpsdemo {
 
-TEST(VpsDemoCodecTest, ScanFileRequestRoundTrip) {
+TEST(VesDemoCodecTest, ScanFileRequestRoundTrip) {
     ScanFileRequest req;
     req.filePath = "/data/scan/clean.apk";
 
@@ -17,7 +17,7 @@ TEST(VpsDemoCodecTest, ScanFileRequestRoundTrip) {
     EXPECT_EQ(decoded.filePath, req.filePath);
 }
 
-TEST(VpsDemoCodecTest, ScanFileReplyRoundTrip) {
+TEST(VesDemoCodecTest, ScanFileReplyRoundTrip) {
     ScanFileReply reply;
     reply.code = 0;
     reply.threatLevel = 1;
@@ -31,7 +31,7 @@ TEST(VpsDemoCodecTest, ScanFileReplyRoundTrip) {
     EXPECT_EQ(decoded.threatLevel, reply.threatLevel);
 }
 
-TEST(VpsDemoCodecTest, DecodeRejectsTruncatedPayload) {
+TEST(VesDemoCodecTest, DecodeRejectsTruncatedPayload) {
     // Valid reply encoding is 8 bytes. Provide 4 bytes to force Decode failure.
     std::vector<uint8_t> truncated(4, 0);
     ScanFileReply decoded;

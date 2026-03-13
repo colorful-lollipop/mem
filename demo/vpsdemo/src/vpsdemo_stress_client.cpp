@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
         RespawnEngine(enginePath, &stats);
     });
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HILOGE("VpsClient init failed");
+        HILOGE("VesClient init failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;

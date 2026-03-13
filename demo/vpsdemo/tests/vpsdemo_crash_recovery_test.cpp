@@ -56,7 +56,7 @@ std::string EnginePathFromSelf() {
 
 }  // namespace
 
-TEST(VpsCrashRecoveryTest, CrashThenRecover) {
+TEST(VesCrashRecoveryTest, CrashThenRecover) {
     const std::string enginePath = EnginePathFromSelf();
 
     vpsdemo::RegistryServer registry(REGISTRY_SOCKET);

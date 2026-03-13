@@ -8,7 +8,7 @@
 
 namespace vpsdemo {
 
-TEST(VpsHealthTest, SnapshotIdleDefaults) {
+TEST(VesHealthTest, SnapshotIdleDefaults) {
     VesEngineService service;
     auto snapshot = service.GetHealthSnapshot();
     EXPECT_EQ(snapshot.inFlight, 0u);
@@ -16,7 +16,7 @@ TEST(VpsHealthTest, SnapshotIdleDefaults) {
     EXPECT_EQ(snapshot.lastTaskAgeMs, 0u);
 }
 
-TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
+TEST(VesHealthTest, SnapshotUpdatesAfterScan) {
     VesEngineService service;
     service.Initialize();
 
@@ -31,7 +31,7 @@ TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
     EXPECT_EQ(snapshot.currentTask, "idle");
 }
 
-TEST(VpsHealthTest, InFlightAndAgeDuringScan) {
+TEST(VesHealthTest, InFlightAndAgeDuringScan) {
     VesEngineService service;
     service.Initialize();
 

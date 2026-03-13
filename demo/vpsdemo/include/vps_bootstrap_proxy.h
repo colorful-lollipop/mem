@@ -26,7 +26,7 @@ class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
                       const std::string& serviceSocketPath);
     ~VesBootstrapProxy() override;
 
-    // Shared by both IVpsBootstrap and IBootstrapChannel.
+    // Shared by both IVesBootstrap and IBootstrapChannel.
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
     memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;

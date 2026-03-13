@@ -20,8 +20,8 @@ struct SessionMetadata {
 }  // namespace
 
 // Command dispatch layer — mirrors real OHOS XXXStub::OnRemoteRequest.
-// Maps IPC commands to IVpsBootstrap interface methods.
-class VpsBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
+// Maps IPC commands to IVesBootstrap interface methods.
+class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
  public:
     bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
         switch (command) {

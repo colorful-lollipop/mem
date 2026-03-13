@@ -12,7 +12,7 @@
 
 namespace vpsdemo {
 
-TEST(VpsHeartbeatTest, UnhealthyBeforeOpenSession) {
+TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
@@ -23,7 +23,7 @@ TEST(VpsHeartbeatTest, UnhealthyBeforeOpenSession) {
     service.OnStop();
 }
 
-TEST(VpsHeartbeatTest, OkAfterOpenSession) {
+TEST(VesHeartbeatTest, OkAfterOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
@@ -44,7 +44,7 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
     service.OnStop();
 }
 
-TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
+TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     const std::string socketPath = "/tmp/vpsdemo_hb_" + std::to_string(getpid());
 
     auto stub = std::make_shared<VirusExecutorService>();
@@ -66,7 +66,7 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStop();
 }
 
-TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
+TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     VirusExecutorService service;
     service.OnStart();
 

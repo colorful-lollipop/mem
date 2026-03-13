@@ -12,14 +12,14 @@ namespace vpsdemo {
 
 // Engine-side SA: pure business logic.
 // Transport is managed by the framework (SystemAbility::Publish auto-starts MockServiceSocket).
-// Command dispatch is handled by VpsBootstrapStub (OnRemoteRequest).
+// Command dispatch is handled by VesBootstrapStub (OnRemoteRequest).
 class VirusExecutorService : public OHOS::SystemAbility,
-                              public VpsBootstrapStub {
+                              public VesBootstrapStub {
  public:
     VirusExecutorService();
     ~VirusExecutorService() override = default;
 
-    // IVpsBootstrap — delegates to session_service_.
+    // IVesBootstrap — delegates to session_service_.
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
     memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;

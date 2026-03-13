@@ -31,14 +31,14 @@ memrpc::StatusCode VesClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
     auto bootstrap = OHOS::iface_cast<IVesBootstrap>(remote_);
     if (bootstrap == nullptr) {
-        HILOGE("iface_cast<IVpsBootstrap> failed");
+        HILOGE("iface_cast<IVesBootstrap> failed");
         return memrpc::StatusCode::InvalidArgument;
     }
 
-    // Alias shared_ptr to use VpsBootstrapProxy as IBootstrapChannel.
+    // Alias shared_ptr to use VesBootstrapProxy as IBootstrapChannel.
     proxy_ = std::dynamic_pointer_cast<VesBootstrapProxy>(bootstrap);
     if (proxy_ == nullptr) {
-        HILOGE("dynamic_pointer_cast to VpsBootstrapProxy failed");
+        HILOGE("dynamic_pointer_cast to VesBootstrapProxy failed");
         return memrpc::StatusCode::InvalidArgument;
     }
 

@@ -6,7 +6,7 @@
 // Step 4: engine respawned (via restart callback) → framework reconnects
 // Step 5: normal scan again → verify ok
 //
-// Uses the supervisor pattern: self-host registry, fork engine, VpsClient.
+// Uses the supervisor pattern: self-host registry, fork engine, VesClient.
 
 #include <atomic>
 #include <chrono>
@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
     });
 
     auto initStatus = client->Init();
-    DT_CHECK(initStatus == memrpc::StatusCode::Ok, "VpsClient Init ok");
+    DT_CHECK(initStatus == memrpc::StatusCode::Ok, "VesClient Init ok");
 
     // === Step 1: normal scan ===
     HILOGI("=== Step 1: normal scan ===");

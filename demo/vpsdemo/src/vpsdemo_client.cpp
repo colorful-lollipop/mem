@@ -29,7 +29,7 @@ std::unique_ptr<vpsdemo::VesClient> ConnectToEngine() {
 
     auto client = std::make_unique<vpsdemo::VesClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HILOGE("VpsClient init failed");
+        HILOGE("VesClient init failed");
         return nullptr;
     }
     return client;
@@ -53,7 +53,7 @@ std::unique_ptr<vpsdemo::VesClient> LoadAndConnectToEngine() {
 
     auto client = std::make_unique<vpsdemo::VesClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
-        HILOGE("VpsClient init failed");
+        HILOGE("VesClient init failed");
         return nullptr;
     }
     return client;

@@ -13,7 +13,7 @@ struct SampleBehavior {
 };
 
 // Evaluate a file path to determine scan behavior.
-// Shared between server (VpsDemoService) and stress client for deterministic validation.
+// Shared between server (VirusExecutorService) and stress client for deterministic validation.
 SampleBehavior EvaluateSamplePath(const std::string& path);
 
 }  // namespace vpsdemo
