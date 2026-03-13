@@ -5,10 +5,10 @@
 #include <thread>
 
 #include "memrpc/server/typed_handler.h"
-#include "vpsdemo_codec.h"
-#include "vpsdemo_protocol.h"
+#include "ves_codec.h"
+#include "ves_protocol.h"
 #include "vpsdemo_sample_rules.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {

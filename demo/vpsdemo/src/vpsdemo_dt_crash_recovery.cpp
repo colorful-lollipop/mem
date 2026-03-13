@@ -23,7 +23,7 @@
 #include "registry_server.h"
 #include "vps_bootstrap_interface.h"
 #include "vps_client.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 #include "virus_protection_service_log.h"
 
 namespace {

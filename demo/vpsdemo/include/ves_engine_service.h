@@ -5,7 +5,7 @@
 #include <string>
 
 #include "memrpc/server/rpc_server.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 
 namespace vpsdemo {
 

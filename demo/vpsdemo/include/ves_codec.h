@@ -1,11 +1,11 @@
-#ifndef VPSDEMO_VPSDEMO_CODEC_H_
-#define VPSDEMO_VPSDEMO_CODEC_H_
+#ifndef VPSDEMO_VES_CODEC_H_
+#define VPSDEMO_VES_CODEC_H_
 
 #include <cstddef>
 #include <vector>
 
 #include "memrpc/core/codec.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 
 namespace memrpc {
 
@@ -51,4 +51,4 @@ struct CodecTraits<vpsdemo::ScanFileReply> {
 
 }  // namespace memrpc
 
-#endif  // VPSDEMO_VPSDEMO_CODEC_H_
+#endif  // VPSDEMO_VES_CODEC_H_

@@ -9,7 +9,7 @@
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
 #include "vps_bootstrap_proxy.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 
 namespace vpsdemo {
 

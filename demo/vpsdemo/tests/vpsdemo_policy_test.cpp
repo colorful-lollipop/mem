@@ -8,9 +8,9 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
-#include "vpsdemo_codec.h"
-#include "vpsdemo_protocol.h"
-#include "vpsdemo_types.h"
+#include "ves_codec.h"
+#include "ves_protocol.h"
+#include "ves_types.h"
 
 namespace vpsdemo {
 

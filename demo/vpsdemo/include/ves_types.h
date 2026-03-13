@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPSDEMO_TYPES_H_
-#define VPSDEMO_VPSDEMO_TYPES_H_
+#ifndef VPSDEMO_VES_TYPES_H_
+#define VPSDEMO_VES_TYPES_H_
 
 #include <cstdint>
 #include <string>
@@ -21,4 +21,4 @@ struct ScanFileReply {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPSDEMO_TYPES_H_
+#endif  // VPSDEMO_VES_TYPES_H_

@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPSDEMO_PROTOCOL_H_
-#define VPSDEMO_VPSDEMO_PROTOCOL_H_
+#ifndef VPSDEMO_VES_PROTOCOL_H_
+#define VPSDEMO_VES_PROTOCOL_H_
 
 #include <cstdint>
 
@@ -11,4 +11,4 @@ enum class VesOpcode : uint16_t {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPSDEMO_PROTOCOL_H_
+#endif  // VPSDEMO_VES_PROTOCOL_H_

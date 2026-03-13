@@ -4,7 +4,7 @@
 #include <thread>
 
 #include "ves_engine_service.h"
-#include "vpsdemo_types.h"
+#include "ves_types.h"
 
 namespace vpsdemo {
 
