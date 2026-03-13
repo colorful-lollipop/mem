@@ -22,7 +22,7 @@ enum class SlotState : uint8_t {
 };
 
 struct SharedSlotPoolHeader {
-  std::atomic<uint64_t> top_tagged{0};  // {top_index:32, version:32} for ABA-safe CAS
+  std::atomic<uint64_t> topTagged{0};  // {top_index:32, version:32} for ABA-safe CAS
   uint32_t capacity = 0;
   uint32_t padding = 0;
 };

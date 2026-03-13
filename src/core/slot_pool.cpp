@@ -47,7 +47,7 @@ bool InitializeSharedSlotPool(void* region, uint32_t slot_count) {
     in_use_slots[i] = 0;
   }
   // Stack top = 0, version = 0
-  header->top_tagged.store(PackTagged(0, 0), std::memory_order_release);
+  header->topTagged.store(PackTagged(0, 0), std::memory_order_release);
   return true;
 }
 
@@ -68,7 +68,7 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
     return std::nullopt;
   }
 
-  uint64_t old_tagged = header_->top_tagged.load(std::memory_order_acquire);
+  uint64_t old_tagged = header_->topTagged.load(std::memory_order_acquire);
   while (true) {
     const uint32_t top = TaggedIndex(old_tagged);
     if (top == SHARED_EMPTY) {
@@ -80,7 +80,7 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
     const uint32_t next = freeSlots_[top];
     const uint32_t new_version = TaggedVersion(old_tagged) + 1;
     const uint64_t new_tagged = PackTagged(next, new_version);
-    if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
+    if (header_->topTagged.compare_exchange_weak(old_tagged, new_tagged,
                                                    std::memory_order_acq_rel,
                                                    std::memory_order_acquire)) {
       inUseSlots_[top] = 1;
@@ -99,12 +99,12 @@ bool SharedSlotPool::Release(uint32_t slot_index) {
 
   inUseSlots_[slot_index] = 0;
 
-  uint64_t old_tagged = header_->top_tagged.load(std::memory_order_relaxed);
+  uint64_t old_tagged = header_->topTagged.load(std::memory_order_relaxed);
   do {
     freeSlots_[slot_index] = TaggedIndex(old_tagged);
     const uint32_t new_version = TaggedVersion(old_tagged) + 1;
     const uint64_t new_tagged = PackTagged(slot_index, new_version);
-    if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
+    if (header_->topTagged.compare_exchange_weak(old_tagged, new_tagged,
                                                    std::memory_order_release,
                                                    std::memory_order_relaxed)) {
       return true;
@@ -122,7 +122,7 @@ uint32_t SharedSlotPool::Available() const {
   }
   // Walk the free list to count available slots.
   // This is O(n) but only used for stats/credit checks, not hot path.
-  uint64_t tagged = header_->top_tagged.load(std::memory_order_acquire);
+  uint64_t tagged = header_->topTagged.load(std::memory_order_acquire);
   uint32_t count = 0;
   uint32_t idx = TaggedIndex(tagged);
   while (idx != SHARED_EMPTY && idx < header_->capacity) {

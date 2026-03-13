@@ -234,7 +234,7 @@ struct RpcServer::Impl {
   }
 
   std::optional<uint32_t> ReserveResponseSlotWithRetry(std::chrono::milliseconds retry_budget) {
-    SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
+    SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
     if (!response_slot_pool.Valid()) {
       return std::nullopt;
     }
@@ -318,11 +318,11 @@ struct RpcServer::Impl {
   }
 
   bool FillResponseSlot(uint32_t response_slot_index, CompletionItem& item) {
-    ResponseSlotPayload* response_slot = session.responseSlotPayload(response_slot_index);
-    uint8_t* response_bytes = session.responseSlotBytes(response_slot_index);
+    ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(response_slot_index);
+    uint8_t* response_bytes = session.GetResponseSlotBytes(response_slot_index);
     if (response_slot == nullptr || response_bytes == nullptr ||
         item.payload.size() > session.Header()->maxResponseBytes) {
-      SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
+      SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
       response_slot_pool.Release(response_slot_index);
       CompleteItem(item.completion, StatusCode::ProtocolMismatch);
       if (item.break_session_on_failure) {
@@ -364,14 +364,14 @@ struct RpcServer::Impl {
         }
       }
     } else if (item.break_session_on_failure) {
-      SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
+      SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
       response_slot_pool.Release(item.entry.slotIndex);
       HILOGE("failed to enqueue rpc reply, status=%{public}d request_id=%{public}llu",
             static_cast<int>(status),
             static_cast<unsigned long long>(item.entry.requestId));
       MarkSessionBroken();
     } else {
-      SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
+      SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
       response_slot_pool.Release(item.entry.slotIndex);
       HILOGW("PushResponse for event failed, status=%{public}d", static_cast<int>(status));
     }
@@ -425,7 +425,7 @@ struct RpcServer::Impl {
       return;
     }
 
-    SlotPayload* request_slot = session.slotPayload(request_entry.slot_index);
+    SlotPayload* request_slot = session.GetSlotPayload(request_entry.slot_index);
     if (request_slot != nullptr) {
       request_slot->runtime.state = SlotRuntimeStateCode::Responding;
       request_slot->runtime.last_heartbeat_mono_ms = MonotonicNowMs();
@@ -459,7 +459,7 @@ struct RpcServer::Impl {
   }
 
   StatusCode PublishEvent(const RpcEvent& event) {
-    if (!session.valid() || session.Handles().respEventFd < 0 || session.Header() == nullptr) {
+    if (!session.Valid() || session.Handles().respEventFd < 0 || session.Header() == nullptr) {
       HILOGE("PublishEvent failed, session is not ready");
       return StatusCode::EngineInternalError;
     }
@@ -499,7 +499,7 @@ struct RpcServer::Impl {
     call.queue_timeout_ms = payload->request.queue_timeout_ms;
     call.exec_timeout_ms = payload->request.exec_timeout_ms;
     call.flags = payload->request.flags;
-    call.payload = PayloadView(session.slotRequestBytes(request_entry.slot_index),
+    call.payload = PayloadView(session.GetSlotRequestBytes(request_entry.slot_index),
                                payload->request.payload_size);
     return call;
   }
@@ -526,8 +526,8 @@ struct RpcServer::Impl {
   }
 
   void ProcessEntry(const RequestRingEntry& request_entry) {
-    SlotPayload* payload = session.slotPayload(request_entry.slot_index);
-    uint8_t* request_bytes = session.slotRequestBytes(request_entry.slot_index);
+    SlotPayload* payload = session.GetSlotPayload(request_entry.slot_index);
+    uint8_t* request_bytes = session.GetSlotRequestBytes(request_entry.slot_index);
     if (payload == nullptr || request_bytes == nullptr || session.Header() == nullptr) {
       return;
     }

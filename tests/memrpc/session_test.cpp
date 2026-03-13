@@ -267,7 +267,7 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   memrpc::Session session;
   ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
 
-  const memrpc::SlotPayload* slot = session.slotPayload(0);
+  const memrpc::SlotPayload* slot = session.GetSlotPayload(0);
   ASSERT_NE(slot, nullptr);
   EXPECT_EQ(slot->runtime.request_id, 0u);
   EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
@@ -276,7 +276,7 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   EXPECT_EQ(slot->runtime.start_exec_mono_ms, 0u);
   EXPECT_EQ(slot->runtime.last_heartbeat_mono_ms, 0u);
 
-  const memrpc::ResponseSlotPayload* response_slot = session.responseSlotPayload(0);
+  const memrpc::ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(0);
   ASSERT_NE(response_slot, nullptr);
   EXPECT_EQ(response_slot->runtime.request_id, 0u);
   EXPECT_EQ(response_slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);

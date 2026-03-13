@@ -43,17 +43,17 @@ class Session {
   StatusCode Attach(const BootstrapHandles& handles, AttachRole role = AttachRole::Client);
   void Reset();
 
-  bool valid() const;
+  bool Valid() const;
   const SharedMemoryHeader* Header() const;
   SharedMemoryHeader* mutableHeader();
   const BootstrapHandles& Handles() const;
   SessionState State() const;
   void SetState(SessionState state);
-  SlotPayload* slotPayload(uint32_t slot_index);
-  uint8_t* slotRequestBytes(uint32_t slot_index);
-  ResponseSlotPayload* responseSlotPayload(uint32_t slot_index);
-  uint8_t* responseSlotBytes(uint32_t slot_index);
-  void* responseSlotPoolRegion();
+  SlotPayload* GetSlotPayload(uint32_t slot_index);
+  uint8_t* GetSlotRequestBytes(uint32_t slot_index);
+  ResponseSlotPayload* GetResponseSlotPayload(uint32_t slot_index);
+  uint8_t* GetResponseSlotBytes(uint32_t slot_index);
+  void* GetResponseSlotPoolRegion();
 
   // Push/Pop 接口封装 ring + eventfd 对应的共享内存协议细节。
   StatusCode PushRequest(QueueKind queue, const RequestRingEntry& entry);

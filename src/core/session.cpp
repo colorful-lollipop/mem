@@ -294,7 +294,7 @@ void Session::Reset() {
   ownsClientSlot_ = false;
 }
 
-bool Session::valid() const {
+bool Session::Valid() const {
   return header_ != nullptr;
 }
 
@@ -323,7 +323,7 @@ void Session::SetState(SessionState state) {
   }
 }
 
-SlotPayload* Session::slotPayload(uint32_t slot_index) {
+SlotPayload* Session::GetSlotPayload(uint32_t slot_index) {
   if (header_ == nullptr || slot_index >= header_->slotCount) {
     return nullptr;
   }
@@ -340,8 +340,8 @@ SlotPayload* Session::slotPayload(uint32_t slot_index) {
                                         static_cast<std::size_t>(slot_index) * header_->slotSize);
 }
 
-uint8_t* Session::slotRequestBytes(uint32_t slot_index) {
-  SlotPayload* payload = slotPayload(slot_index);
+uint8_t* Session::GetSlotRequestBytes(uint32_t slot_index) {
+  SlotPayload* payload = GetSlotPayload(slot_index);
   if (payload == nullptr) {
     return nullptr;
   }
@@ -349,7 +349,7 @@ uint8_t* Session::slotRequestBytes(uint32_t slot_index) {
   return base + sizeof(SlotPayload);
 }
 
-ResponseSlotPayload* Session::responseSlotPayload(uint32_t slot_index) {
+ResponseSlotPayload* Session::GetResponseSlotPayload(uint32_t slot_index) {
   if (header_ == nullptr || slot_index >= header_->responseRingSize) {
     return nullptr;
   }
@@ -367,8 +367,8 @@ ResponseSlotPayload* Session::responseSlotPayload(uint32_t slot_index) {
       static_cast<std::size_t>(slot_index) * ComputeResponseSlotSize(header_->maxResponseBytes));
 }
 
-uint8_t* Session::responseSlotBytes(uint32_t slot_index) {
-  ResponseSlotPayload* payload = responseSlotPayload(slot_index);
+uint8_t* Session::GetResponseSlotBytes(uint32_t slot_index) {
+  ResponseSlotPayload* payload = GetResponseSlotPayload(slot_index);
   if (payload == nullptr) {
     return nullptr;
   }
@@ -376,7 +376,7 @@ uint8_t* Session::responseSlotBytes(uint32_t slot_index) {
   return base + sizeof(ResponseSlotPayload);
 }
 
-void* Session::responseSlotPoolRegion() {
+void* Session::GetResponseSlotPoolRegion() {
   if (header_ == nullptr || mappedRegion_ == nullptr) {
     return nullptr;
   }
