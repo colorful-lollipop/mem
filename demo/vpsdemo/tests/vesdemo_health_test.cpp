@@ -3,8 +3,8 @@
 #include <chrono>
 #include <thread>
 
-#include "ves_engine_service.h"
-#include "ves_types.h"
+#include "vpsdemo/ves/ves_engine_service.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace vpsdemo {
 

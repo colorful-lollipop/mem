@@ -8,7 +8,7 @@
 
 #include "iremote_proxy.h"
 #include "memrpc/core/bootstrap.h"
-#include "ves_bootstrap_interface.h"
+#include "vpsdemo/transport/ves_bootstrap_interface.h"
 
 namespace vpsdemo {
 

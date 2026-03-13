@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_C_COMPILER clang CACHE STRING "C compiler" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE STRING "C++ compiler" FORCE)
 
-project(memrpc LANGUAGES CXX)
+project(vpsdemo LANGUAGES CXX)
 
 CMAKE_POLICY(SET CMP0076 NEW)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -24,6 +24,8 @@ enable_testing()
 
 find_package(GTest REQUIRED)
 
+# memrpc remains a reusable dependency module, but the repository mainline is
+# the vpsdemo application and its test surface.
 add_subdirectory(src)
 add_subdirectory(tests)
 add_subdirectory(demo)

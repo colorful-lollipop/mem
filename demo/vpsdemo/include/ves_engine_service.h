@@ -5,8 +5,8 @@
 #include <string>
 
 #include "memrpc/server/rpc_server.h"
-#include "rpc_handler_registrar.h"
-#include "ves_types.h"
+#include "vpsdemo/rpc_handler_registrar.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace vpsdemo {
 

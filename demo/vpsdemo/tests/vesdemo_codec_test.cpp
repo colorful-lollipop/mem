@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "ves_codec.h"
-#include "ves_types.h"
+#include "vpsdemo/ves/ves_codec.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace vpsdemo {
 

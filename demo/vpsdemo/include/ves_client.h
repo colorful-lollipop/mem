@@ -8,8 +8,8 @@
 
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
-#include "ves_bootstrap_proxy.h"
-#include "ves_types.h"
+#include "vpsdemo/transport/ves_bootstrap_proxy.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace vpsdemo {
 

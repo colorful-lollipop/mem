@@ -1,9 +1,9 @@
-#include "testkit_async_client.h"
+#include "vpsdemo/testkit/testkit_async_client.h"
 
 #include <utility>
 
 #include "memrpc/client/typed_invoker.h"
-#include "testkit_protocol.h"
+#include "vpsdemo/testkit/testkit_protocol.h"
 
 namespace vpsdemo::testkit {
 

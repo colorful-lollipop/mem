@@ -1,4 +1,4 @@
-# vpsdemo - VPS demo application
+# vpsdemo is the repository mainline. memrpc is built as its dependency module.
 # Default to tests on; allow callers to override.
 set(VPSDEMO_ENABLE_TESTS ON CACHE BOOL "Build vpsdemo tests")
 # Tie vpsdemo fuzz to the top-level fuzz switch unless explicitly overridden.

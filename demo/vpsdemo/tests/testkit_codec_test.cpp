@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "testkit_codec.h"
-#include "testkit_types.h"
+#include "vpsdemo/testkit/testkit_codec.h"
+#include "vpsdemo/testkit/testkit_types.h"
 
 namespace vpsdemo::testkit {
 

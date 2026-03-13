@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "testkit_codec.h"
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_codec.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 namespace vpsdemo::testkit {
 namespace {

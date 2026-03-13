@@ -3,8 +3,8 @@
 #include <thread>
 
 #include "iservice_registry.h"
-#include "registry_backend.h"
-#include "virus_executor_service.h"
+#include "vpsdemo/transport/registry_backend.h"
+#include "vpsdemo/virus_executor_service.h"
 #include "virus_protection_service_log.h"
 
 namespace {

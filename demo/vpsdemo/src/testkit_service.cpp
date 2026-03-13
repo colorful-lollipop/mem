@@ -1,4 +1,4 @@
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 #include <chrono>
 #include <thread>
@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "memrpc/server/typed_handler.h"
-#include "testkit_protocol.h"
+#include "vpsdemo/testkit/testkit_protocol.h"
 
 namespace vpsdemo::testkit {
 

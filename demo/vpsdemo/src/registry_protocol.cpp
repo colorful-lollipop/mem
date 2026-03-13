@@ -1,4 +1,4 @@
-#include "registry_protocol.h"
+#include "vpsdemo/transport/registry_protocol.h"
 
 #include <cstring>
 #include <sys/socket.h>

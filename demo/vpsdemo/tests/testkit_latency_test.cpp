@@ -12,8 +12,8 @@
 
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
-#include "testkit_client.h"
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_client.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 namespace vpsdemo::testkit {
 namespace {

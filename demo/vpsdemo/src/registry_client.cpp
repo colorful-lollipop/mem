@@ -1,11 +1,11 @@
-#include "registry_client.h"
+#include "vpsdemo/transport/registry_client.h"
 
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "registry_protocol.h"
+#include "vpsdemo/transport/registry_protocol.h"
 
 namespace vpsdemo {
 

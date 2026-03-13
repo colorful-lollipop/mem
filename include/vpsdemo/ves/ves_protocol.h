@@ -1,0 +1,6 @@
+#ifndef INCLUDE_VPSDEMO_VES_VES_PROTOCOL_H_
+#define INCLUDE_VPSDEMO_VES_VES_PROTOCOL_H_
+
+#include <ves_protocol.h>
+
+#endif  // INCLUDE_VPSDEMO_VES_VES_PROTOCOL_H_

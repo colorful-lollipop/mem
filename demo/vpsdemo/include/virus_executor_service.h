@@ -4,10 +4,10 @@
 #include <memory>
 
 #include "system_ability.h"
-#include "testkit_service.h"
-#include "ves_bootstrap_stub.h"
-#include "ves_session_service.h"
-#include "ves_engine_service.h"
+#include "vpsdemo/testkit/testkit_service.h"
+#include "vpsdemo/transport/ves_bootstrap_stub.h"
+#include "vpsdemo/ves/ves_session_service.h"
+#include "vpsdemo/ves/ves_engine_service.h"
 
 namespace vpsdemo {
 

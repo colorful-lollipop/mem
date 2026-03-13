@@ -1,10 +1,10 @@
-#include "ves_session_service.h"
+#include "vpsdemo/ves/ves_session_service.h"
 
 #include <utility>
 #include <unistd.h>
 
 #include "memrpc/server/rpc_server.h"
-#include "ves_engine_service.h"
+#include "vpsdemo/ves/ves_engine_service.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {

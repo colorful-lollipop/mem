@@ -9,7 +9,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 #include "memrpc/server/rpc_server.h"
-#include "rpc_handler_registrar.h"
+#include "vpsdemo/rpc_handler_registrar.h"
 
 namespace vpsdemo {
 

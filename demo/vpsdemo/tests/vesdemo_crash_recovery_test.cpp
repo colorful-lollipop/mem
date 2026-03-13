@@ -11,11 +11,11 @@
 #include <unistd.h>
 
 #include "iservice_registry.h"
-#include "registry_backend.h"
-#include "registry_server.h"
-#include "ves_bootstrap_interface.h"
-#include "ves_client.h"
-#include "ves_types.h"
+#include "vpsdemo/transport/registry_backend.h"
+#include "vpsdemo/transport/registry_server.h"
+#include "vpsdemo/transport/ves_bootstrap_interface.h"
+#include "vpsdemo/client/ves_client.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace {
 

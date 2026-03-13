@@ -1,14 +1,14 @@
-#include "ves_engine_service.h"
+#include "vpsdemo/ves/ves_engine_service.h"
 
 #include <chrono>
 #include <cstdlib>
 #include <thread>
 
 #include "memrpc/server/typed_handler.h"
-#include "ves_codec.h"
-#include "ves_protocol.h"
-#include "vesdemo_sample_rules.h"
-#include "ves_types.h"
+#include "vpsdemo/ves/ves_codec.h"
+#include "vpsdemo/ves/ves_protocol.h"
+#include "vpsdemo/ves/vesdemo_sample_rules.h"
+#include "vpsdemo/ves/ves_types.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {

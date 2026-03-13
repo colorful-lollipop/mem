@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 namespace vpsdemo::testkit {
 

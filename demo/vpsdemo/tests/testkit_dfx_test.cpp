@@ -9,11 +9,11 @@
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
-#include "testkit_codec.h"
-#include "testkit_failure_monitor.h"
-#include "testkit_protocol.h"
+#include "vpsdemo/testkit/testkit_codec.h"
+#include "vpsdemo/testkit/testkit_failure_monitor.h"
+#include "vpsdemo/testkit/testkit_protocol.h"
 #include "testkit_resilient_invoker.h"
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 namespace vpsdemo::testkit {
 namespace {

@@ -13,11 +13,11 @@
 #include "memrpc/client/demo_bootstrap.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
-#include "testkit_async_client.h"
-#include "testkit_client.h"
-#include "testkit_codec.h"
-#include "testkit_protocol.h"
-#include "testkit_service.h"
+#include "vpsdemo/testkit/testkit_async_client.h"
+#include "vpsdemo/testkit/testkit_client.h"
+#include "vpsdemo/testkit/testkit_codec.h"
+#include "vpsdemo/testkit/testkit_protocol.h"
+#include "vpsdemo/testkit/testkit_service.h"
 
 namespace vpsdemo::testkit {
 namespace {

@@ -1,0 +1,6 @@
+#ifndef INCLUDE_VPSDEMO_VES_VES_CODEC_H_
+#define INCLUDE_VPSDEMO_VES_VES_CODEC_H_
+
+#include <ves_codec.h>
+
+#endif  // INCLUDE_VPSDEMO_VES_VES_CODEC_H_

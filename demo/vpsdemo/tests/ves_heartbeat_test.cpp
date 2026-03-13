@@ -5,10 +5,10 @@
 #include <thread>
 #include <unistd.h>
 
-#include "virus_executor_service.h"
-#include "ves_bootstrap_interface.h"
-#include "ves_bootstrap_proxy.h"
-#include "ves_types.h"
+#include "vpsdemo/virus_executor_service.h"
+#include "vpsdemo/transport/ves_bootstrap_interface.h"
+#include "vpsdemo/transport/ves_bootstrap_proxy.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace vpsdemo {
 

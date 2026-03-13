@@ -1,4 +1,4 @@
-#include "registry_server.h"
+#include "vpsdemo/transport/registry_server.h"
 
 #include <cstring>
 #include <iostream>
@@ -6,7 +6,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "registry_protocol.h"
+#include "vpsdemo/transport/registry_protocol.h"
 
 namespace vpsdemo {
 

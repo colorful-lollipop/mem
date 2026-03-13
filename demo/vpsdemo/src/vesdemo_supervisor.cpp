@@ -5,8 +5,8 @@
 #include <thread>
 #include <unistd.h>
 
-#include "registry_server.h"
-#include "ves_bootstrap_interface.h"
+#include "vpsdemo/transport/registry_server.h"
+#include "vpsdemo/transport/ves_bootstrap_interface.h"
 #include "virus_protection_service_log.h"
 
 namespace {

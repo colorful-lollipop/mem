@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "vesdemo_sample_rules.h"
+#include "vpsdemo/ves/vesdemo_sample_rules.h"
 
 namespace vpsdemo {
 

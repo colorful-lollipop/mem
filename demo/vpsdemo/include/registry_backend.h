@@ -4,7 +4,7 @@
 #include <string>
 
 #include "isam_backend.h"
-#include "registry_client.h"
+#include "vpsdemo/transport/registry_client.h"
 
 namespace vpsdemo {
 

@@ -3,9 +3,9 @@
 #include <type_traits>
 
 #include "memrpc/client/rpc_client.h"
-#include "testkit_client.h"
-#include "testkit_protocol.h"
-#include "testkit_types.h"
+#include "vpsdemo/testkit/testkit_client.h"
+#include "vpsdemo/testkit/testkit_protocol.h"
+#include "vpsdemo/testkit/testkit_types.h"
 
 namespace vpsdemo::testkit {
 

@@ -3,8 +3,8 @@
 #include <unistd.h>
 
 #include "memrpc/core/types.h"
-#include "ves_session_service.h"
-#include "ves_engine_service.h"
+#include "vpsdemo/ves/ves_session_service.h"
+#include "vpsdemo/ves/ves_engine_service.h"
 
 namespace vpsdemo {
 

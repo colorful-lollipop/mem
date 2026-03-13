@@ -1,11 +1,11 @@
-#include "ves_client.h"
+#include "vpsdemo/client/ves_client.h"
 
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
-#include "ves_bootstrap_interface.h"
-#include "ves_codec.h"
-#include "ves_protocol.h"
+#include "vpsdemo/transport/ves_bootstrap_interface.h"
+#include "vpsdemo/ves/ves_codec.h"
+#include "vpsdemo/ves/ves_protocol.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {

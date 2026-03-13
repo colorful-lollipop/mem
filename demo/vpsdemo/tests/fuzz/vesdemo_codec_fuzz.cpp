@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <string>
 
-#include "ves_codec.h"
-#include "vesdemo_sample_rules.h"
-#include "ves_types.h"
+#include "vpsdemo/ves/ves_codec.h"
+#include "vpsdemo/ves/vesdemo_sample_rules.h"
+#include "vpsdemo/ves/ves_types.h"
 
 namespace {
 
