@@ -1,4 +1,4 @@
-#include "vpsdemo_service.h"
+#include "ves_engine_service.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -27,7 +27,7 @@ void VesEngineService::Initialize() {
         return;
     }
     initialized_ = true;
-    HILOGI("VpsDemoService initialized");
+    HILOGI("VesEngineService initialized");
 }
 
 bool VesEngineService::initialized() const {
@@ -88,7 +88,7 @@ void VesEngineService::RegisterHandlers(memrpc::RpcServer* server) {
     }
 
     memrpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
-        server, static_cast<memrpc::Opcode>(DemoOpcode::DemoScanFile),
+        server, static_cast<memrpc::Opcode>(DemoOpcode::ScanFile),
         [this](const ScanFileRequest& r) { return ScanFile(r); });
 }
 

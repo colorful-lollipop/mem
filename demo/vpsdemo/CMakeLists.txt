@@ -52,7 +52,7 @@ add_library(vpsdemo_lib
     src/vps_client.cpp
     src/ves_session_service.cpp
     src/vpsdemo_sample_rules.cpp
-    src/vpsdemo_service.cpp
+    src/ves_engine_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

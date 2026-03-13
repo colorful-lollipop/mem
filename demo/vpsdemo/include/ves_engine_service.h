@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPSDEMO_SERVICE_H_
-#define VPSDEMO_VPSDEMO_SERVICE_H_
+#ifndef VPSDEMO_VES_ENGINE_SERVICE_H_
+#define VPSDEMO_VES_ENGINE_SERVICE_H_
 
 #include <mutex>
 #include <string>
@@ -34,4 +34,4 @@ class VesEngineService {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPSDEMO_SERVICE_H_
+#endif  // VPSDEMO_VES_ENGINE_SERVICE_H_

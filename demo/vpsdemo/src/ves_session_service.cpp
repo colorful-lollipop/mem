@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include "memrpc/server/rpc_server.h"
-#include "vpsdemo_service.h"
+#include "ves_engine_service.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {

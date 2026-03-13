@@ -3,7 +3,7 @@
 #include <chrono>
 #include <thread>
 
-#include "vpsdemo_service.h"
+#include "ves_engine_service.h"
 #include "vpsdemo_types.h"
 
 namespace vpsdemo {
