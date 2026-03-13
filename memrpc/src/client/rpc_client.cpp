@@ -432,28 +432,28 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     return {};
   }
 
-  void ExpireTimedOutSlot(size_t slot_index, StatusCode status, const SlotRuntimeState& rt) {
-    if (slot_index >= pending_info_slots.size()) {
+  void ExpireTimedOutSlot(size_t slotIndex, StatusCode status, const SlotRuntimeState& rt) {
+    if (slotIndex >= pending_info_slots.size()) {
       return;
     }
-    const std::optional<PendingInfo> timeout_info_opt = pending_info_slots[slot_index];
+    const std::optional<PendingInfo> timeout_info_opt = pending_info_slots[slotIndex];
     if (!timeout_info_opt.has_value()) {
       return;
     }
     PendingInfo timeout_info = timeout_info_opt.value_or(PendingInfo{});
     timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
     timeout_info.replay_hint = ClassifyReplayHint(rt.state);
-    auto pending = std::move(pending_slots[slot_index]);
-    pending_slots[slot_index].reset();
-    pending_info_slots[slot_index].reset();
+    auto pending = std::move(pending_slots[slotIndex]);
+    pending_slots[slotIndex].reset();
+    pending_info_slots[slotIndex].reset();
     pending_count.fetch_sub(1, std::memory_order_relaxed);
     FailAndResolve(timeout_info, status, FailureStage::Timeout, pending);
     if (slot_pool != nullptr) {
-      SlotPayload* mutable_payload = session.GetSlotPayload(static_cast<uint32_t>(slot_index));
+      SlotPayload* mutable_payload = session.GetSlotPayload(static_cast<uint32_t>(slotIndex));
       if (mutable_payload != nullptr) {
         std::memset(&mutable_payload->runtime, 0, sizeof(mutable_payload->runtime));
       }
-      slot_pool->Release(static_cast<uint32_t>(slot_index));
+      slot_pool->Release(static_cast<uint32_t>(slotIndex));
     }
   }
 
@@ -846,7 +846,8 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
       }
       const auto wait_result =
           PollEventFd(&poll_fd, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
-      if (wait_result == PollEventFdResult::Retry) {
+      if (wait_result == PollEventFdResult::Retry ||
+          wait_result == PollEventFdResult::Timeout) {
         continue;
       }
       return wait_result;
