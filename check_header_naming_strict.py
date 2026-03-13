@@ -153,7 +153,7 @@ def main():
     # Also scan include directories
     include_dirs = [
         Path('/root/code/demo/mem/include'),
-        Path('/root/code/demo/mem/demo/vpsdemo/include'),
+        Path('/root/code/demo/mem/memrpc/include'),
     ]
     for d in include_dirs:
         if d.exists():

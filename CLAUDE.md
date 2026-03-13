@@ -22,9 +22,9 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 
 **Layer structure:**
 
-- **Framework** (`include/memrpc/`, `src/core/`, `src/client/`, `src/server/`, `src/bootstrap/`): Platform-agnostic RPC transport
-- **Application** (`demo/vpsdemo/include/`, `demo/vpsdemo/src/`): Mainline VPS app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
-- **Tests** (`tests/memrpc/`, `demo/vpsdemo/tests/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
+- **Framework** (`memrpc/include/memrpc/`, `memrpc/src/`): Platform-agnostic RPC transport
+- **Application** (`include/vpsdemo/`, `demo/vpsdemo/src/`): Mainline VPS app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
+- **Tests** (`memrpc/tests/`, `demo/vpsdemo/tests/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
 **Key abstractions:**
 
@@ -52,7 +52,7 @@ Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `chore:`. Keep commits
 
 ## Testing
 
-GoogleTest via CMake. Framework tests live in `tests/memrpc/`; vpsdemo and testkit tests live in `demo/vpsdemo/tests/`. Name tests by feature (e.g. `slot_pool_test.cpp`, `testkit_client_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
+GoogleTest via CMake. Framework tests live in `memrpc/tests/`; vpsdemo and testkit tests live in `demo/vpsdemo/tests/`. Name tests by feature (e.g. `slot_pool_test.cpp`, `testkit_client_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
 
 ## Dependencies
 

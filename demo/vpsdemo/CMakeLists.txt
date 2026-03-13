@@ -66,7 +66,6 @@ add_library(vpsdemo_lib
 )
 target_include_directories(vpsdemo_lib PUBLIC
     ${MEMRPC_ROOT}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_link_libraries(vpsdemo_lib PUBLIC memrpc_core ohos_sa_mock)
 

@@ -4,9 +4,9 @@
 
 Current mainline work focuses on the shared-memory RPC framework and the VPS demo app.
 
-- `include/memrpc/`, `src/core/`, `src/client/`, `src/server/`, `src/bootstrap/`: framework code
-- `demo/vpsdemo/include/`, `demo/vpsdemo/src/`: mainline application code (`ves`, transport, client, `testkit`)
-- `tests/memrpc/`: focused framework unit and integration tests
+- `memrpc/include/memrpc/`, `memrpc/src/`: framework code
+- `include/vpsdemo/`, `demo/vpsdemo/src/`: mainline application code (`ves`, transport, client, `testkit`)
+- `memrpc/tests/`: focused framework unit and integration tests
 - `demo/vpsdemo/tests/`: app-level unit, integration, stress, DT, and fuzz tests
 - `demo/`: runnable examples
   - `vpsdemo/`: VPS (Virus Protection Service) demo application with supervisor, engine SA, and client
