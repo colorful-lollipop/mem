@@ -37,13 +37,13 @@ struct RpcReply {
 };
 
 struct RpcClientRuntimeStats {
-  uint32_t queued_submissions = 0;
-  uint32_t pending_calls = 0;
-  uint32_t request_slot_capacity = 0;
-  uint32_t high_request_ring_pending = 0;
-  uint32_t normal_request_ring_pending = 0;
-  uint32_t response_ring_pending = 0;
-  bool waiting_for_request_credit = false;
+  uint32_t queuedSubmissions = 0;
+  uint32_t pendingCalls = 0;
+  uint32_t requestSlotCapacity = 0;
+  uint32_t highRequestRingPending = 0;
+  uint32_t normalRequestRingPending = 0;
+  uint32_t responseRingPending = 0;
+  bool waitingForRequestCredit = false;
 };
 
 class RpcFuture {

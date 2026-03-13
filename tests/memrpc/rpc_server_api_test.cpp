@@ -25,8 +25,8 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
                            reply->payload = call.payload;
                          });
   MemRpc::RpcEvent event;
-  event.event_domain = 1;
-  event.event_type = 2;
+  event.eventDomain = 1;
+  event.eventType = 2;
   event.payload = {1, 2, 3};
 
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);

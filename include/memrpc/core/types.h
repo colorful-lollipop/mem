@@ -25,7 +25,7 @@ struct ScanOptions {
 
 
 struct ScanBehaviorRequest {
-  std::string behavior_text;
+  std::string behaviorText;
   ScanOptions options;
 };
 
@@ -59,15 +59,15 @@ struct ScanResult {
 struct ScanBehaviorResult {
   StatusCode status = StatusCode::Ok;
   ScanVerdict verdict = ScanVerdict::Unknown;
-  int32_t engine_code = 0;
-  int32_t detail_code = 0;
+  int32_t engineCode = 0;
+  int32_t detailCode = 0;
   std::string message;
 };
 
 struct RpcEvent {
   // event_domain/event_type 用于应用层自行划分事件命名空间。
-  uint32_t event_domain = 0;
-  uint32_t event_type = 0;
+  uint32_t eventDomain = 0;
+  uint32_t eventType = 0;
   uint32_t flags = 0;
   std::vector<uint8_t> payload;
 };

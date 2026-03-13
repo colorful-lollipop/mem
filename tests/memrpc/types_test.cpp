@@ -22,8 +22,8 @@ TEST(TypesTest, ScanBehaviorResultDefaultsAreStable) {
   const memrpc::ScanBehaviorResult result;
   EXPECT_EQ(result.status, memrpc::StatusCode::Ok);
   EXPECT_EQ(result.verdict, memrpc::ScanVerdict::Unknown);
-  EXPECT_EQ(result.engine_code, 0);
-  EXPECT_EQ(result.detail_code, 0);
+  EXPECT_EQ(result.engineCode, 0);
+  EXPECT_EQ(result.detailCode, 0);
   EXPECT_TRUE(result.message.empty());
 }
 

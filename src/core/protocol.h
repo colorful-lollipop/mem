@@ -33,12 +33,12 @@ enum class SlotRuntimeStateCode : uint32_t {
 
 struct RequestRingEntry {
   // Ring entry 只保存路由/定位信息，真正的请求体放在 slot payload 中。
-  uint64_t request_id = 0;
-  uint32_t slot_index = 0;
+  uint64_t requestId = 0;
+  uint32_t slotIndex = 0;
   uint16_t opcode = OPCODE_INVALID;
   uint16_t flags = 0;
-  uint32_t enqueue_mono_ms = 0;
-  uint32_t payload_size = 0;
+  uint32_t enqueueMonoMs = 0;
+  uint32_t payloadSize = 0;
   uint32_t reserved = 0;
 };
 
@@ -59,12 +59,12 @@ struct ResponseRingEntry {
 static_assert(sizeof(RequestRingEntry) == 32u, "RequestRingEntry size must stay fixed");
 
 struct SlotRuntimeState {
-  uint64_t request_id = 0;
+  uint64_t requestId = 0;
   SlotRuntimeStateCode state = SlotRuntimeStateCode::Free;
-  uint32_t worker_id = 0;
-  uint32_t enqueue_mono_ms = 0;
-  uint32_t start_exec_mono_ms = 0;
-  uint32_t last_heartbeat_mono_ms = 0;
+  uint32_t workerId = 0;
+  uint32_t enqueueMonoMs = 0;
+  uint32_t startExecMonoMs = 0;
+  uint32_t lastHeartbeatMonoMs = 0;
   uint32_t reserved = 0;
 };
 
@@ -72,13 +72,13 @@ static_assert(sizeof(SlotRuntimeState) == 32u, "SlotRuntimeState size must stay 
 
 struct RpcRequestHeader {
   // 这是 slot 内部请求头，和 RequestRingEntry 一起构成一次完整调用。
-  uint32_t queue_timeout_ms = 0;
-  uint32_t exec_timeout_ms = 0;
+  uint32_t queueTimeoutMs = 0;
+  uint32_t execTimeoutMs = 0;
   uint32_t flags = 0;
   uint32_t priority = 0;
   uint16_t opcode = 0;
   uint16_t reserved = 0;
-  uint32_t payload_size = 0;
+  uint32_t payloadSize = 0;
 };
 
 struct SlotPayload {
@@ -87,16 +87,16 @@ struct SlotPayload {
 };
 
 struct ResponseSlotHeader {
-  uint32_t request_slot_index = 0;
-  uint32_t payload_size = 0;
+  uint32_t requestSlotIndex = 0;
+  uint32_t payloadSize = 0;
 };
 
 struct ResponseSlotRuntimeState {
-  uint64_t request_id = 0;
+  uint64_t requestId = 0;
   SlotRuntimeStateCode state = SlotRuntimeStateCode::Free;
-  uint32_t request_slot_index = 0;
-  uint32_t publish_mono_ms = 0;
-  uint32_t last_update_mono_ms = 0;
+  uint32_t requestSlotIndex = 0;
+  uint32_t publishMonoMs = 0;
+  uint32_t lastUpdateMonoMs = 0;
   uint32_t reserved[2]{};
 };
 

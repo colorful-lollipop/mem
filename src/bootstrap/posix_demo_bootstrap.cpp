@@ -117,7 +117,7 @@ struct PosixDemoBootstrapChannel::Impl {
     std::memset(region, 0, layout.totalSize);
     auto* header = static_cast<SharedMemoryHeader*>(region);
     header->magic = SHARED_MEMORY_MAGIC;
-    header->protocol_version = PROTOCOL_VERSION;
+    header->protocolVersion = PROTOCOL_VERSION;
     header->sessionId = GenerateSessionId();
     header->sessionState = 0;
     header->highRingSize = config.highRingSize;

@@ -13,9 +13,9 @@ namespace OHOS::Security::VirusProtectionService::MiniRpc {
 class FailureMonitor {
  public:
   struct Options {
-    uint32_t window_ms = 60000;
-    uint32_t exec_timeout_threshold = 3;
-    bool trigger_on_disconnect = true;
+    uint32_t windowMs = 60000;
+    uint32_t execTimeoutThreshold = 3;
+    bool triggerOnDisconnect = true;
   };
 
   using ThresholdCallback = std::function<void()>;
@@ -32,7 +32,7 @@ class FailureMonitor {
 
   void Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
-    exec_timeouts_.clear();
+    execTimeouts_.clear();
   }
 
   void OnFailure(const MemRpc::RpcFailure& failure) {
@@ -41,23 +41,23 @@ class FailureMonitor {
     if (failure.status == MemRpc::StatusCode::PeerDisconnected ||
         failure.status == MemRpc::StatusCode::ProtocolMismatch) {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (options_.trigger_on_disconnect && callback_) {
+      if (options_.triggerOnDisconnect && callback_) {
         callback = callback_;
         fire = true;
       }
     } else if (failure.status == MemRpc::StatusCode::ExecTimeout) {
       const auto now = std::chrono::steady_clock::now();
       std::lock_guard<std::mutex> lock(mutex_);
-      exec_timeouts_.push_back(now);
-      while (!exec_timeouts_.empty() &&
-             std::chrono::duration_cast<std::chrono::milliseconds>(now - exec_timeouts_.front()).count() >
-                 options_.window_ms) {
-        exec_timeouts_.pop_front();
+      execTimeouts_.push_back(now);
+      while (!execTimeouts_.empty() &&
+             std::chrono::duration_cast<std::chrono::milliseconds>(now - execTimeouts_.front()).count() >
+                 options_.windowMs) {
+        execTimeouts_.pop_front();
       }
-      if (exec_timeouts_.size() >= options_.exec_timeout_threshold && callback_) {
+      if (execTimeouts_.size() >= options_.execTimeoutThreshold && callback_) {
         callback = callback_;
         fire = true;
-        exec_timeouts_.clear();
+        execTimeouts_.clear();
       }
     }
     if (fire && callback) {
@@ -69,7 +69,7 @@ class FailureMonitor {
   Options options_;
   ThresholdCallback callback_;
   std::mutex mutex_;
-  std::deque<std::chrono::steady_clock::time_point> exec_timeouts_;
+  std::deque<std::chrono::steady_clock::time_point> execTimeouts_;
 };
 
 }  // namespace OHOS::Security::VirusProtectionService::MiniRpc

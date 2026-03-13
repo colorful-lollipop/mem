@@ -50,7 +50,7 @@ inline uint32_t RingCount(const RingCursor& cursor) {
 
 struct SharedMemoryHeader {
   uint32_t magic = SHARED_MEMORY_MAGIC;
-  uint32_t protocol_version = PROTOCOL_VERSION;
+  uint32_t protocolVersion = PROTOCOL_VERSION;
   uint64_t sessionId = 0;
   uint32_t sessionState = 0;
   uint32_t clientAttached = 0;

@@ -414,8 +414,8 @@ struct RpcClient::Impl {
     switch (rt.state) {
       case SlotRuntimeStateCode::Admitted:
       case SlotRuntimeStateCode::Queued:
-        if (info.queue_timeout_ms > 0 && rt.enqueue_mono_ms > 0 &&
-            now_ms - rt.enqueue_mono_ms >= info.queue_timeout_ms) {
+        if (info.queue_timeout_ms > 0 && rt.enqueueMonoMs > 0 &&
+            now_ms - rt.enqueueMonoMs >= info.queue_timeout_ms) {
           result.timed_out = true;
           result.status = StatusCode::QueueTimeout;
         }
@@ -424,7 +424,7 @@ struct RpcClient::Impl {
       case SlotRuntimeStateCode::Responding: {
         if (info.exec_timeout_ms > 0) {
           const uint32_t ref_ms =
-              rt.start_exec_mono_ms > 0 ? rt.start_exec_mono_ms : rt.enqueue_mono_ms;
+              rt.startExecMonoMs > 0 ? rt.startExecMonoMs : rt.enqueueMonoMs;
           if (ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms) {
             result.timed_out = true;
             result.status = StatusCode::ExecTimeout;
@@ -517,8 +517,8 @@ struct RpcClient::Impl {
         // Recover payload from shared memory.
         const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
         const uint8_t* request_bytes = session.GetSlotRequestBytes(static_cast<uint32_t>(i));
-        if (payload != nullptr && request_bytes != nullptr && payload->request.payload_size > 0) {
-          ps.call.payload.assign(request_bytes, request_bytes + payload->request.payload_size);
+        if (payload != nullptr && request_bytes != nullptr && payload->request.payloadSize > 0) {
+          ps.call.payload.assign(request_bytes, request_bytes + payload->request.payloadSize);
         }
         ps.request_id = info.request_id;
         ps.session_id = info.session_id;
@@ -893,14 +893,14 @@ struct RpcClient::Impl {
   void FillSlotPayload(SlotPayload* payload, uint8_t* request_bytes,
                         const PendingSubmit& pending_submit) {
     std::memset(payload, 0, sizeof(SlotPayload));
-    payload->runtime.request_id = pending_submit.request_id;
+    payload->runtime.requestId = pending_submit.request_id;
     payload->runtime.state = SlotRuntimeStateCode::Admitted;
-    payload->request.queue_timeout_ms = pending_submit.call.queueTimeoutMs;
-    payload->request.exec_timeout_ms = pending_submit.call.execTimeoutMs;
+    payload->request.queueTimeoutMs = pending_submit.call.queueTimeoutMs;
+    payload->request.execTimeoutMs = pending_submit.call.execTimeoutMs;
     payload->request.flags = pending_submit.call.flags;
     payload->request.priority = static_cast<uint32_t>(pending_submit.call.priority);
     payload->request.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
-    payload->request.payload_size = static_cast<uint32_t>(pending_submit.call.payload.size());
+    payload->request.payloadSize = static_cast<uint32_t>(pending_submit.call.payload.size());
     if (!pending_submit.call.payload.empty()) {
       std::memcpy(request_bytes, pending_submit.call.payload.data(),
                   pending_submit.call.payload.size());
@@ -910,14 +910,14 @@ struct RpcClient::Impl {
   RequestRingEntry BuildRingEntry(const PendingSubmit& pending_submit, uint32_t slot,
                                    SlotPayload* payload) {
     RequestRingEntry entry;
-    entry.request_id = pending_submit.request_id;
-    entry.slot_index = slot;
+    entry.requestId = pending_submit.request_id;
+    entry.slotIndex = slot;
     entry.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
     entry.flags = static_cast<uint16_t>(pending_submit.call.flags);
-    entry.enqueue_mono_ms = MonotonicNowMs();
-    entry.payload_size = payload->request.payload_size;
-    payload->runtime.enqueue_mono_ms = entry.enqueue_mono_ms;
-    payload->runtime.last_heartbeat_mono_ms = entry.enqueue_mono_ms;
+    entry.enqueueMonoMs = MonotonicNowMs();
+    entry.payloadSize = payload->request.payloadSize;
+    payload->runtime.enqueueMonoMs = entry.enqueueMonoMs;
+    payload->runtime.lastHeartbeatMonoMs = entry.enqueueMonoMs;
     payload->runtime.state = SlotRuntimeStateCode::Queued;
     return entry;
   }
@@ -1055,7 +1055,7 @@ struct RpcClient::Impl {
     if (response_slot == nullptr) {
       return result;
     }
-    result.request_slot_idx = response_slot->response.request_slot_index;
+    result.request_slot_idx = response_slot->response.requestSlotIndex;
     if (result.request_slot_idx >= pending_slots.size()) {
       return result;
     }
@@ -1104,12 +1104,12 @@ struct RpcClient::Impl {
                              bool responseRing_became_not_full) {
     SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
     if (response_slot != nullptr && pending != nullptr) {
-      SlotPayload* request_slot = session.GetSlotPayload(response_slot->response.request_slot_index);
+      SlotPayload* request_slot = session.GetSlotPayload(response_slot->response.requestSlotIndex);
       if (request_slot != nullptr) {
         std::memset(&request_slot->runtime, 0, sizeof(request_slot->runtime));
       }
       const bool request_slot_became_available = slot_pool->available() == 0;
-      slot_pool->Release(response_slot->response.request_slot_index);
+      slot_pool->Release(response_slot->response.requestSlotIndex);
       SignalEventFdIfNeeded(session.Handles().reqCreditEventFd,
                             request_slot_became_available &&
                                 submitter_waiting_for_credit.load(std::memory_order_relaxed));
@@ -1137,7 +1137,7 @@ struct RpcClient::Impl {
 
     auto lookup = LookupPendingFuture(responseSlot);
 
-    if (responseSlot != nullptr && responseSlot->runtime.request_id != entry.requestId) {
+    if (responseSlot != nullptr && responseSlot->runtime.requestId != entry.requestId) {
       reply.status = StatusCode::ProtocolMismatch;
       if (lookup.info.has_value()) {
         NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
@@ -1155,7 +1155,7 @@ struct RpcClient::Impl {
     }
     if (responseSlot != nullptr) {
       responseSlot->runtime.state = SlotRuntimeStateCode::Consumed;
-      responseSlot->runtime.last_update_mono_ms = MonotonicNowMs();
+      responseSlot->runtime.lastUpdateMonoMs = MonotonicNowMs();
     }
     if (reply.status != StatusCode::Ok && lookup.info.has_value()) {
       NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
@@ -1171,15 +1171,15 @@ struct RpcClient::Impl {
   void DeliverEvent(const ResponseRingEntry& entry, bool responseRing_became_not_full) {
     SharedSlotPool response_slot_pool(session.GetResponseSlotPoolRegion());
     RpcEvent event;
-    event.event_domain = entry.eventDomain;
-    event.event_type = entry.eventType;
+    event.eventDomain = entry.eventDomain;
+    event.eventType = entry.eventType;
     event.flags = entry.flags;
     ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(entry.slotIndex);
     uint8_t* response_bytes = session.GetResponseSlotBytes(entry.slotIndex);
-    if (response_slot != nullptr && response_slot->runtime.request_id != entry.requestId) {
+    if (response_slot != nullptr && response_slot->runtime.requestId != entry.requestId) {
       HILOGW("drop mismatched event request_id, expected=%{public}llu slot=%{public}llu",
             static_cast<unsigned long long>(entry.requestId),
-            static_cast<unsigned long long>(response_slot->runtime.request_id));
+            static_cast<unsigned long long>(response_slot->runtime.requestId));
       session.SetState(Session::SessionState::Broken);
       HandleEngineDeath(current_session_id);
       return;
@@ -1204,7 +1204,7 @@ struct RpcClient::Impl {
       callback(event);
     }
     response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
-    response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
+    response_slot->runtime.lastUpdateMonoMs = MonotonicNowMs();
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     const bool response_slot_became_available = response_slot_pool.Available() == 0;
     response_slot_pool.Release(entry.slotIndex);
@@ -1386,21 +1386,21 @@ RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
 
   {
     std::lock_guard<std::mutex> lock(impl_->submit_mutex);
-    stats.queued_submissions = static_cast<uint32_t>(impl_->submit_queue.size());
+    stats.queuedSubmissions = static_cast<uint32_t>(impl_->submit_queue.size());
   }
-  stats.pending_calls = impl_->pending_count.load(std::memory_order_relaxed);
+  stats.pendingCalls = impl_->pending_count.load(std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lock(impl_->session_mutex);
     if (impl_->slot_pool != nullptr) {
-      stats.request_slot_capacity = impl_->slot_pool->capacity();
+      stats.requestSlotCapacity = impl_->slot_pool->capacity();
     }
     if (impl_->session.Header() != nullptr) {
-      stats.high_request_ring_pending = RingCount(impl_->session.Header()->highRing);
-      stats.normal_request_ring_pending = RingCount(impl_->session.Header()->normalRing);
-      stats.response_ring_pending = RingCount(impl_->session.Header()->responseRing);
+      stats.highRequestRingPending = RingCount(impl_->session.Header()->highRing);
+      stats.normalRequestRingPending = RingCount(impl_->session.Header()->normalRing);
+      stats.responseRingPending = RingCount(impl_->session.Header()->responseRing);
     }
   }
-  stats.waiting_for_request_credit =
+  stats.waitingForRequestCredit =
       impl_->submitter_waiting_for_credit.load(std::memory_order_relaxed);
   return stats;
 }

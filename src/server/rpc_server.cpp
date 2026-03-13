@@ -150,9 +150,9 @@ struct RpcServer::Impl {
 
   struct CompletionItem {
     ResponseRingEntry entry;
-    uint32_t request_slot_index = 0;
+    uint32_t requestSlotIndex = 0;
     std::vector<uint8_t> payload;
-    std::chrono::milliseconds retry_budget{0};
+    std::chrono::milliseconds retryBudget{0};
     bool break_session_on_failure = false;
     std::shared_ptr<CompletionState> completion;
   };
@@ -160,17 +160,17 @@ struct RpcServer::Impl {
   BootstrapHandles handles{};
   ServerOptions options{};
   Session session;
-  std::shared_ptr<TaskExecutor> high_executor;
-  std::shared_ptr<TaskExecutor> normal_executor;
-  std::mutex completion_mutex;
-  std::condition_variable completion_cv;
-  std::queue<CompletionItem> completion_queue;
+  std::shared_ptr<TaskExecutor> highExecutor;
+  std::shared_ptr<TaskExecutor> normalExecutor;
+  std::mutex completionMutex;
+  std::condition_variable completionCv;
+  std::queue<CompletionItem> completionQueue;
   uint32_t completion_queue_capacity = 0;
   uint32_t pending_completion_count = 0;
   std::thread response_writer_thread;
-  std::atomic<bool> response_writer_running{false};
-  std::atomic<bool> response_writer_waiting_for_credit{false};
-  std::thread dispatcher_thread;
+  std::atomic<bool> responseWriterRunning{false};
+  std::atomic<bool> responseWriterWaitingForCredit{false};
+  std::thread dispatcherThread;
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
 
@@ -180,28 +180,28 @@ struct RpcServer::Impl {
       return false;
     }
     pollfd poll_fd{fd, POLLIN, 0};
-    response_writer_waiting_for_credit.store(true);
-    while (response_writer_running.load()) {
+    responseWriterWaitingForCredit.store(true);
+    while (responseWriterRunning.load()) {
       const int64_t remaining_ms = RemainingTimeoutMs(deadline);
       if (remaining_ms <= 0) {
-        response_writer_waiting_for_credit.store(false);
+        responseWriterWaitingForCredit.store(false);
         return false;
       }
       const int poll_result = poll(&poll_fd, 1, static_cast<int>(remaining_ms));
-      if (!response_writer_running.load()) {
-        response_writer_waiting_for_credit.store(false);
+      if (!responseWriterRunning.load()) {
+        responseWriterWaitingForCredit.store(false);
         return false;
       }
       if (poll_result <= 0) {
-        response_writer_waiting_for_credit.store(false);
+        responseWriterWaitingForCredit.store(false);
         return false;
       }
       if ((poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        response_writer_waiting_for_credit.store(false);
+        responseWriterWaitingForCredit.store(false);
         return false;
       }
       if ((poll_fd.revents & POLLIN) == 0) {
-        response_writer_waiting_for_credit.store(false);
+        responseWriterWaitingForCredit.store(false);
         return false;
       }
       uint64_t counter = 0;
@@ -209,10 +209,10 @@ struct RpcServer::Impl {
       while (read(fd, &counter, sizeof(counter)) == sizeof(counter)) {
         drained = true;
       }
-      response_writer_waiting_for_credit.store(false);
+      responseWriterWaitingForCredit.store(false);
       return drained;
     }
-    response_writer_waiting_for_credit.store(false);
+    responseWriterWaitingForCredit.store(false);
     return false;
   }
 
@@ -276,8 +276,8 @@ struct RpcServer::Impl {
   void FailPendingCompletionItems(StatusCode status) {
     std::queue<CompletionItem> queued;
     {
-      std::lock_guard<std::mutex> lock(completion_mutex);
-      queued.swap(completion_queue);
+      std::lock_guard<std::mutex> lock(completionMutex);
+      queued.swap(completionQueue);
       pending_completion_count = 0;
     }
     while (!queued.empty()) {
@@ -287,12 +287,12 @@ struct RpcServer::Impl {
   }
 
   void StopResponseWriter() {
-    response_writer_running.store(false);
+    responseWriterRunning.store(false);
     if (session.Handles().respCreditEventFd >= 0) {
       const uint64_t signal_value = 1;
       write(session.Handles().respCreditEventFd, &signal_value, sizeof(signal_value));
     }
-    completion_cv.notify_all();
+    completionCv.notify_all();
     if (response_writer_thread.joinable()) {
       response_writer_thread.join();
     }
@@ -300,20 +300,20 @@ struct RpcServer::Impl {
   }
 
   void StartResponseWriter() {
-    response_writer_running.store(true);
+    responseWriterRunning.store(true);
     response_writer_thread = std::thread([this] { ResponseWriterLoop(); });
   }
 
   bool EnqueueCompletion(CompletionItem item) {
     {
-      std::lock_guard<std::mutex> lock(completion_mutex);
+      std::lock_guard<std::mutex> lock(completionMutex);
       if (completion_queue_capacity != 0 && pending_completion_count >= completion_queue_capacity) {
         return false;
       }
       ++pending_completion_count;
-      completion_queue.push(std::move(item));
+      completionQueue.push(std::move(item));
     }
-    completion_cv.notify_one();
+    completionCv.notify_one();
     return true;
   }
 
@@ -331,25 +331,25 @@ struct RpcServer::Impl {
       return false;
     }
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
-    response_slot->runtime.request_id = item.entry.requestId;
+    response_slot->runtime.requestId = item.entry.requestId;
     response_slot->runtime.state = SlotRuntimeStateCode::Responding;
-    response_slot->runtime.request_slot_index = item.request_slot_index;
-    response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
-    response_slot->response.request_slot_index = item.request_slot_index;
-    response_slot->response.payload_size = static_cast<uint32_t>(item.payload.size());
+    response_slot->runtime.requestSlotIndex = item.requestSlotIndex;
+    response_slot->runtime.lastUpdateMonoMs = MonotonicNowMs();
+    response_slot->response.requestSlotIndex = item.requestSlotIndex;
+    response_slot->response.payloadSize = static_cast<uint32_t>(item.payload.size());
     if (!item.payload.empty()) {
       std::memcpy(response_bytes, item.payload.data(), item.payload.size());
     }
     response_slot->runtime.state = SlotRuntimeStateCode::Ready;
-    response_slot->runtime.publish_mono_ms = MonotonicNowMs();
-    response_slot->runtime.last_update_mono_ms = response_slot->runtime.publish_mono_ms;
+    response_slot->runtime.publishMonoMs = MonotonicNowMs();
+    response_slot->runtime.lastUpdateMonoMs = response_slot->runtime.publishMonoMs;
     item.entry.slotIndex = response_slot_index;
     item.entry.resultSize = static_cast<uint32_t>(item.payload.size());
     return true;
   }
 
   void PushResponseAndSignal(CompletionItem& item) {
-    const StatusCode status = PushResponseWithRetry(item.entry, item.retry_budget);
+    const StatusCode status = PushResponseWithRetry(item.entry, item.retryBudget);
     if (status == StatusCode::Ok) {
       if (RingCountIsOneAfterPush(session.Header()->responseRing)) {
         const uint64_t signal_value = 1;
@@ -379,22 +379,22 @@ struct RpcServer::Impl {
   }
 
   void ResponseWriterLoop() {
-    while (response_writer_running.load()) {
+    while (responseWriterRunning.load()) {
       CompletionItem item;
       {
-        std::unique_lock<std::mutex> lock(completion_mutex);
-        completion_cv.wait(lock, [this] {
-          return !response_writer_running.load(std::memory_order_relaxed) ||
-                 !completion_queue.empty();
+        std::unique_lock<std::mutex> lock(completionMutex);
+        completionCv.wait(lock, [this] {
+          return !responseWriterRunning.load(std::memory_order_relaxed) ||
+                 !completionQueue.empty();
         });
-        if (!response_writer_running.load() && completion_queue.empty()) {
+        if (!responseWriterRunning.load() && completionQueue.empty()) {
           break;
       }
-        item = std::move(completion_queue.front());
-        completion_queue.pop();
+        item = std::move(completionQueue.front());
+        completionQueue.pop();
       }
 
-      const auto response_slot_index = ReserveResponseSlotWithRetry(item.retry_budget);
+      const auto response_slot_index = ReserveResponseSlotWithRetry(item.retryBudget);
       if (!response_slot_index.has_value()) {
         CompleteItem(item.completion, StatusCode::QueueFull);
         if (item.break_session_on_failure) {
@@ -412,7 +412,7 @@ struct RpcServer::Impl {
       }
       PushResponseAndSignal(item);
       {
-        std::lock_guard<std::mutex> lock(completion_mutex);
+        std::lock_guard<std::mutex> lock(completionMutex);
         if (pending_completion_count > 0) {
           --pending_completion_count;
         }
@@ -425,14 +425,14 @@ struct RpcServer::Impl {
       return;
     }
 
-    SlotPayload* request_slot = session.GetSlotPayload(request_entry.slot_index);
+    SlotPayload* request_slot = session.GetSlotPayload(request_entry.slotIndex);
     if (request_slot != nullptr) {
       request_slot->runtime.state = SlotRuntimeStateCode::Responding;
-      request_slot->runtime.last_heartbeat_mono_ms = MonotonicNowMs();
+      request_slot->runtime.lastHeartbeatMonoMs = MonotonicNowMs();
     }
 
     ResponseRingEntry response;
-    response.requestId = request_entry.request_id;
+    response.requestId = request_entry.requestId;
     response.statusCode = static_cast<uint32_t>(reply.status);
     response.engineErrno = reply.engineCode;
     response.detailCode = reply.detailCode;
@@ -443,17 +443,17 @@ struct RpcServer::Impl {
     }
     CompletionItem item;
     item.entry = response;
-    item.request_slot_index = request_entry.slot_index;
+    item.requestSlotIndex = request_entry.slotIndex;
     if (response.statusCode == static_cast<uint32_t>(StatusCode::EngineInternalError)) {
       item.payload.clear();
     } else {
       item.payload = reply.payload;
     }
-    item.retry_budget = RESPONSE_RETRY_BUDGET;
+    item.retryBudget = RESPONSE_RETRY_BUDGET;
     item.break_session_on_failure = true;
     if (!EnqueueCompletion(std::move(item))) {
       HILOGE("completion backlog full while enqueueing rpc reply, request_id=%{public}llu",
-            static_cast<unsigned long long>(request_entry.request_id));
+            static_cast<unsigned long long>(request_entry.requestId));
       MarkSessionBroken();
     }
   }
@@ -470,15 +470,15 @@ struct RpcServer::Impl {
 
     ResponseRingEntry entry;
     entry.messageKind = ResponseMessageKind::Event;
-    entry.eventDomain = event.event_domain;
-    entry.eventType = event.event_type;
+    entry.eventDomain = event.eventDomain;
+    entry.eventType = event.eventType;
     entry.flags = event.flags;
 
     auto completion = std::make_shared<CompletionState>();
     CompletionItem item;
     item.entry = entry;
     item.payload = event.payload;
-    item.retry_budget = EVENT_RETRY_BUDGET;
+    item.retryBudget = EVENT_RETRY_BUDGET;
     item.completion = completion;
     if (!EnqueueCompletion(std::move(item))) {
       return StatusCode::QueueFull;
@@ -496,11 +496,11 @@ struct RpcServer::Impl {
     call.priority = payload->request.priority == static_cast<uint32_t>(Priority::High)
                         ? Priority::High
                         : Priority::Normal;
-    call.queue_timeout_ms = payload->request.queue_timeout_ms;
-    call.exec_timeout_ms = payload->request.exec_timeout_ms;
+    call.queueTimeoutMs = payload->request.queueTimeoutMs;
+    call.execTimeoutMs = payload->request.execTimeoutMs;
     call.flags = payload->request.flags;
-    call.payload = PayloadView(session.GetSlotRequestBytes(request_entry.slot_index),
-                               payload->request.payload_size);
+    call.payload = PayloadView(session.GetSlotRequestBytes(request_entry.slotIndex),
+                               payload->request.payloadSize);
     return call;
   }
 
@@ -518,35 +518,35 @@ struct RpcServer::Impl {
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - start)
                              .count();
-    if (payload->request.exec_timeout_ms > 0 &&
-        elapsed > static_cast<long long>(payload->request.exec_timeout_ms)) {
+    if (payload->request.execTimeoutMs > 0 &&
+        elapsed > static_cast<long long>(payload->request.execTimeoutMs)) {
       reply.status = StatusCode::ExecTimeout;
     }
     return reply;
   }
 
   void ProcessEntry(const RequestRingEntry& request_entry) {
-    SlotPayload* payload = session.GetSlotPayload(request_entry.slot_index);
-    uint8_t* request_bytes = session.GetSlotRequestBytes(request_entry.slot_index);
+    SlotPayload* payload = session.GetSlotPayload(request_entry.slotIndex);
+    uint8_t* request_bytes = session.GetSlotRequestBytes(request_entry.slotIndex);
     if (payload == nullptr || request_bytes == nullptr || session.Header() == nullptr) {
       return;
     }
 
-    payload->runtime.request_id = request_entry.request_id;
+    payload->runtime.requestId = request_entry.requestId;
     payload->runtime.state = SlotRuntimeStateCode::Executing;
-    payload->runtime.worker_id = CurrentWorkerId();
-    payload->runtime.start_exec_mono_ms = MonotonicNowMs();
-    payload->runtime.last_heartbeat_mono_ms = payload->runtime.start_exec_mono_ms;
+    payload->runtime.workerId = CurrentWorkerId();
+    payload->runtime.startExecMonoMs = MonotonicNowMs();
+    payload->runtime.lastHeartbeatMonoMs = payload->runtime.startExecMonoMs;
 
     const uint32_t now_ms = MonotonicNowMs();
-    if (payload->request.queue_timeout_ms > 0 &&
-        now_ms - request_entry.enqueue_mono_ms > payload->request.queue_timeout_ms) {
+    if (payload->request.queueTimeoutMs > 0 &&
+        now_ms - request_entry.enqueueMonoMs > payload->request.queueTimeoutMs) {
       RpcServerReply reply;
       reply.status = StatusCode::QueueTimeout;
       WriteResponse(request_entry, reply);
       return;
     }
-    if (payload->request.payload_size > session.Header()->maxRequestBytes) {
+    if (payload->request.payloadSize > session.Header()->maxRequestBytes) {
       RpcServerReply reply;
       reply.status = StatusCode::ProtocolMismatch;
       WriteResponse(request_entry, reply);
@@ -581,16 +581,16 @@ struct RpcServer::Impl {
   bool HandleBackloggedQueues() {
     const bool high_backlogged = session.Header() != nullptr &&
                                  RingCount(session.Header()->highRing) > 0 &&
-                                 !high_executor->HasCapacity();
+                                 !highExecutor->HasCapacity();
     const bool normal_backlogged = session.Header() != nullptr &&
                                    RingCount(session.Header()->normalRing) > 0 &&
-                                   !normal_executor->HasCapacity();
+                                   !normalExecutor->HasCapacity();
     if (high_backlogged) {
-      high_executor->WaitForCapacity(std::chrono::milliseconds(100));
+      highExecutor->WaitForCapacity(std::chrono::milliseconds(100));
       return true;
     }
     if (normal_backlogged) {
-      normal_executor->WaitForCapacity(std::chrono::milliseconds(100));
+      normalExecutor->WaitForCapacity(std::chrono::milliseconds(100));
       return true;
     }
     return false;
@@ -620,9 +620,9 @@ struct RpcServer::Impl {
     };
 
     while (running.load()) {
-      bool high_work = DrainQueue(QueueKind::HighRequest, high_executor.get());
+      bool high_work = DrainQueue(QueueKind::HighRequest, highExecutor.get());
       if (!high_work) {
-        DrainQueue(QueueKind::NormalRequest, normal_executor.get());
+        DrainQueue(QueueKind::NormalRequest, normalExecutor.get());
       }
 
       if (HandleBackloggedQueues()) {
@@ -637,12 +637,12 @@ struct RpcServer::Impl {
       if (poll_result > 0 && (fds[0].revents & POLLIN) != 0) {
         while (read(fds[0].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        high_work = DrainQueue(QueueKind::HighRequest, high_executor.get());
+        high_work = DrainQueue(QueueKind::HighRequest, highExecutor.get());
       }
       if (poll_result > 0 && !high_work && (fds[1].revents & POLLIN) != 0) {
         while (read(fds[1].fd, &counter, sizeof(counter)) == sizeof(counter)) {
         }
-        DrainQueue(QueueKind::NormalRequest, normal_executor.get());
+        DrainQueue(QueueKind::NormalRequest, normalExecutor.get());
       }
     }
   }
@@ -696,13 +696,13 @@ StatusCode RpcServer::Start() {
           : impl_->options.completionQueueCapacity;
   impl_->pending_completion_count = 0;
   impl_->StartResponseWriter();
-  impl_->high_executor = impl_->options.highExecutor
+  impl_->highExecutor = impl_->options.highExecutor
       ? impl_->options.highExecutor
       : std::make_shared<ThreadPoolExecutor>(impl_->options.highWorkerThreads);
-  impl_->normal_executor = impl_->options.normalExecutor
+  impl_->normalExecutor = impl_->options.normalExecutor
       ? impl_->options.normalExecutor
       : std::make_shared<ThreadPoolExecutor>(impl_->options.normalWorkerThreads);
-  impl_->dispatcher_thread = std::thread([this] { impl_->DispatcherLoop(); });
+  impl_->dispatcherThread = std::thread([this] { impl_->DispatcherLoop(); });
   return StatusCode::Ok;
 }
 
@@ -724,7 +724,7 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
   }
 
   {
-    std::lock_guard<std::mutex> lock(impl_->completion_mutex);
+    std::lock_guard<std::mutex> lock(impl_->completionMutex);
     stats.completionBacklog = impl_->pending_completion_count;
     stats.completionBacklogCapacity = impl_->completion_queue_capacity;
   }
@@ -734,22 +734,22 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
     stats.responseRingPending = RingCount(impl_->session.Header()->responseRing);
   }
   stats.waitingForResponseCredit =
-      impl_->response_writer_waiting_for_credit.load(std::memory_order_relaxed);
+      impl_->responseWriterWaitingForCredit.load(std::memory_order_relaxed);
   return stats;
 }
 
 void RpcServer::Stop() {
   impl_->running.store(false);
-  if (impl_->dispatcher_thread.joinable()) {
-    impl_->dispatcher_thread.join();
+  if (impl_->dispatcherThread.joinable()) {
+    impl_->dispatcherThread.join();
   }
-  if (impl_->high_executor) {
-    impl_->high_executor->Stop();
-    impl_->high_executor.reset();
+  if (impl_->highExecutor) {
+    impl_->highExecutor->Stop();
+    impl_->highExecutor.reset();
   }
-  if (impl_->normal_executor) {
-    impl_->normal_executor->Stop();
-    impl_->normal_executor.reset();
+  if (impl_->normalExecutor) {
+    impl_->normalExecutor->Stop();
+    impl_->normalExecutor.reset();
   }
   impl_->StopResponseWriter();
   impl_->session.Reset();

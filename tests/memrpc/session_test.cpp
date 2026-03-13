@@ -73,7 +73,7 @@ TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
                       MAP_SHARED, corrupt_handles.shmFd, 0);
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<memrpc::SharedMemoryHeader*>(region);
-  header->protocol_version = 0;
+  header->protocolVersion = 0;
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
@@ -118,14 +118,14 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
             memrpc::StatusCode::Ok);
 
   memrpc::RequestRingEntry first;
-  first.request_id = 1;
-  first.slot_index = 0;
+  first.requestId = 1;
+  first.slotIndex = 0;
   memrpc::RequestRingEntry second;
-  second.request_id = 2;
-  second.slot_index = 1;
+  second.requestId = 2;
+  second.slotIndex = 1;
   memrpc::RequestRingEntry third;
-  third.request_id = 3;
-  third.slot_index = 0;
+  third.requestId = 3;
+  third.slotIndex = 0;
 
   ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, first),
             memrpc::StatusCode::Ok);
@@ -136,14 +136,14 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
 
   memrpc::RequestRingEntry observed;
   ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
-  EXPECT_EQ(observed.request_id, 1u);
+  EXPECT_EQ(observed.requestId, 1u);
 
   ASSERT_EQ(client_session.PushRequest(memrpc::QueueKind::NormalRequest, third),
             memrpc::StatusCode::Ok);
   ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
-  EXPECT_EQ(observed.request_id, 2u);
+  EXPECT_EQ(observed.requestId, 2u);
   ASSERT_TRUE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
-  EXPECT_EQ(observed.request_id, 3u);
+  EXPECT_EQ(observed.requestId, 3u);
   EXPECT_FALSE(server_session.PopRequest(memrpc::QueueKind::NormalRequest, &observed));
 }
 
@@ -215,13 +215,13 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
   ASSERT_EQ(session.Attach(handles), memrpc::StatusCode::Ok);
 
   memrpc::RequestRingEntry first;
-  first.request_id = 1;
-  first.slot_index = 0;
+  first.requestId = 1;
+  first.slotIndex = 0;
   EXPECT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, first), memrpc::StatusCode::Ok);
 
   memrpc::RequestRingEntry second;
-  second.request_id = 2;
-  second.slot_index = 0;
+  second.requestId = 2;
+  second.slotIndex = 0;
   EXPECT_EQ(session.PushRequest(memrpc::QueueKind::NormalRequest, second),
             memrpc::StatusCode::QueueFull);
 }
@@ -269,16 +269,16 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
 
   const memrpc::SlotPayload* slot = session.GetSlotPayload(0);
   ASSERT_NE(slot, nullptr);
-  EXPECT_EQ(slot->runtime.request_id, 0u);
+  EXPECT_EQ(slot->runtime.requestId, 0u);
   EXPECT_EQ(slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
-  EXPECT_EQ(slot->runtime.worker_id, 0u);
-  EXPECT_EQ(slot->runtime.enqueue_mono_ms, 0u);
-  EXPECT_EQ(slot->runtime.start_exec_mono_ms, 0u);
-  EXPECT_EQ(slot->runtime.last_heartbeat_mono_ms, 0u);
+  EXPECT_EQ(slot->runtime.workerId, 0u);
+  EXPECT_EQ(slot->runtime.enqueueMonoMs, 0u);
+  EXPECT_EQ(slot->runtime.startExecMonoMs, 0u);
+  EXPECT_EQ(slot->runtime.lastHeartbeatMonoMs, 0u);
 
   const memrpc::ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(0);
   ASSERT_NE(response_slot, nullptr);
-  EXPECT_EQ(response_slot->runtime.request_id, 0u);
+  EXPECT_EQ(response_slot->runtime.requestId, 0u);
   EXPECT_EQ(response_slot->runtime.state, memrpc::SlotRuntimeStateCode::Free);
 }
 

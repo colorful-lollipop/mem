@@ -161,7 +161,7 @@ StatusCode Session::MapAndValidateHeader(int shmFd) {
   }
 
   header_ = static_cast<SharedMemoryHeader*>(mappedRegion_);
-  if (header_->magic != SHARED_MEMORY_MAGIC || header_->protocol_version != PROTOCOL_VERSION) {
+  if (header_->magic != SHARED_MEMORY_MAGIC || header_->protocolVersion != PROTOCOL_VERSION) {
     Reset();
     return StatusCode::ProtocolMismatch;
   }

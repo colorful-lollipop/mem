@@ -53,8 +53,8 @@ inline bool operator==(const std::vector<uint8_t>& lhs, PayloadView rhs) {
 struct RpcServerCall {
   Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
-  uint32_t queue_timeout_ms = 0;
-  uint32_t exec_timeout_ms = 0;
+  uint32_t queueTimeoutMs = 0;
+  uint32_t execTimeoutMs = 0;
   uint32_t flags = 0;
   PayloadView payload;
 };

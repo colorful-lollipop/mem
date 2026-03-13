@@ -41,8 +41,8 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);
   client.SetEventCallback([](const MemRpc::RpcEvent& event) {
-    EXPECT_GE(event.event_domain, 0u);
-    EXPECT_GE(event.event_type, 0u);
+    EXPECT_GE(event.eventDomain, 0u);
+    EXPECT_GE(event.eventType, 0u);
   });
 
   MemRpc::RpcCall call;
@@ -52,7 +52,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   MemRpc::RpcReply reply;
   MemRpc::RpcClientRuntimeStats stats;
   EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
-  EXPECT_EQ(stats.pending_calls, 0u);
+  EXPECT_EQ(stats.pendingCalls, 0u);
   EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
   EXPECT_EQ(call.admissionTimeoutMs, 0u);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);

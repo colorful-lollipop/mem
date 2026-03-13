@@ -518,8 +518,8 @@ TEST(MiniRpcDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
 TEST(MiniRpcDfxTest, FailureMonitorTriggersAfterExecTimeoutThreshold) {
     int triggered = 0;
     FailureMonitor::Options options;
-    options.window_ms = 60000;
-    options.exec_timeout_threshold = 3;
+    options.windowMs = 60000;
+    options.execTimeoutThreshold = 3;
 
     FailureMonitor monitor(options, [&] { ++triggered; });
 
