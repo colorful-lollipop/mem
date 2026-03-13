@@ -21,7 +21,7 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
     handles = MemRpc::BootstrapHandles{};
-    handles.protocol_version = MemRpc::PROTOCOL_VERSION;
+    handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
     return MemRpc::StatusCode::Ok;
   }
 
@@ -194,10 +194,10 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   EXPECT_EQ(captured.opcode, call.opcode);
   EXPECT_EQ(captured.priority, call.priority);
   EXPECT_EQ(captured.flags, call.flags);
-  EXPECT_EQ(captured.admission_timeout_ms, call.admissionTimeoutMs);
-  EXPECT_EQ(captured.queue_timeout_ms, call.queueTimeoutMs);
-  EXPECT_EQ(captured.exec_timeout_ms, call.execTimeoutMs);
-  EXPECT_NE(captured.request_id, 0u);
-  EXPECT_EQ(captured.replay_hint, MemRpc::ReplayHint::Unknown);
-  EXPECT_EQ(captured.last_runtime_state, MemRpc::RpcRuntimeState::Unknown);
+  EXPECT_EQ(captured.admissionTimeoutMs, call.admissionTimeoutMs);
+  EXPECT_EQ(captured.queueTimeoutMs, call.queueTimeoutMs);
+  EXPECT_EQ(captured.execTimeoutMs, call.execTimeoutMs);
+  EXPECT_NE(captured.requestId, 0u);
+  EXPECT_EQ(captured.replayHint, MemRpc::ReplayHint::Unknown);
+  EXPECT_EQ(captured.lastRuntimeState, MemRpc::RpcRuntimeState::Unknown);
 }

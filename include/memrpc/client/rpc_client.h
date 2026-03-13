@@ -90,42 +90,42 @@ struct RpcFailure {
   Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
   uint32_t flags = 0;
-  uint32_t admission_timeout_ms = 0;
-  uint32_t queue_timeout_ms = 0;
-  uint32_t exec_timeout_ms = 0;
-  uint64_t request_id = 0;
-  uint64_t session_id = 0;
-  uint32_t monotonic_ms = 0;
+  uint32_t admissionTimeoutMs = 0;
+  uint32_t queueTimeoutMs = 0;
+  uint32_t execTimeoutMs = 0;
+  uint64_t requestId = 0;
+  uint64_t sessionId = 0;
+  uint32_t monotonicMs = 0;
   FailureStage stage = FailureStage::Admission;
-  ReplayHint replay_hint = ReplayHint::Unknown;
-  RpcRuntimeState last_runtime_state = RpcRuntimeState::Unknown;
+  ReplayHint replayHint = ReplayHint::Unknown;
+  RpcRuntimeState lastRuntimeState = RpcRuntimeState::Unknown;
 };
 
 struct EngineDeathReport {
-  uint64_t dead_session_id = 0;
-  uint32_t safe_to_replay_count = 0;
+  uint64_t deadSessionId = 0;
+  uint32_t safeToReplayCount = 0;
 
   struct PoisonPillSuspect {
-    uint64_t request_id = 0;
+    uint64_t requestId = 0;
     Opcode opcode = OPCODE_INVALID;
-    RpcRuntimeState last_state = RpcRuntimeState::Unknown;
+    RpcRuntimeState lastState = RpcRuntimeState::Unknown;
   };
-  std::vector<PoisonPillSuspect> poison_pill_suspects;
+  std::vector<PoisonPillSuspect> poisonPillSuspects;
 };
 
 enum class RecoveryAction { Ignore, Restart };
 
 struct RecoveryDecision {
   RecoveryAction action = RecoveryAction::Ignore;
-  uint32_t delay_ms = 0;
+  uint32_t delayMs = 0;
 };
 
 struct RecoveryPolicy {
   std::function<RecoveryDecision(const RpcFailure&)> onFailure;
   std::function<RecoveryDecision(uint64_t idle_ms)> onIdle;
   std::function<RecoveryDecision(const EngineDeathReport&)> onEngineDeath;
-  uint32_t idle_timeout_ms = 0;
-  uint32_t idle_notify_interval_ms = 0;
+  uint32_t idleTimeoutMs = 0;
+  uint32_t idleNotifyIntervalMs = 0;
 };
 
 class RpcClient {

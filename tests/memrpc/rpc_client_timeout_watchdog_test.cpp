@@ -56,7 +56,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
     got_failure.store(true);
     captured_stage = failure.stage;
     captured_status = failure.status;
-    captured_hint = failure.replay_hint;
+    captured_hint = failure.replayHint;
     return RecoveryDecision{RecoveryAction::Ignore, 0};
   };
   client.SetRecoveryPolicy(std::move(policy));
@@ -126,7 +126,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
     if (failure.stage == FailureStage::Timeout) {
       got_failure.store(true);
       captured_status = failure.status;
-      captured_hint = failure.replay_hint;
+      captured_hint = failure.replayHint;
     }
     return RecoveryDecision{RecoveryAction::Ignore, 0};
   };

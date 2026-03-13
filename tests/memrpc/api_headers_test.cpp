@@ -15,8 +15,8 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
     handles = MemRpc::BootstrapHandles{};
-    handles.protocol_version = 1;
-    handles.session_id = 1;
+    handles.protocolVersion = 1;
+    handles.sessionId = 1;
     return MemRpc::StatusCode::Ok;
   }
 
@@ -41,7 +41,7 @@ TEST(ApiHeadersTest, PublicHeadersCompose) {
   MemRpc::BootstrapHandles handles;
 
   EXPECT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-  EXPECT_EQ(handles.protocol_version, 1u);
+  EXPECT_EQ(handles.protocolVersion, 1u);
   EXPECT_EQ(bootstrap.CloseSession(), MemRpc::StatusCode::Ok);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);

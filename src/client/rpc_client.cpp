@@ -248,18 +248,18 @@ struct RpcClient::Impl {
     failure.opcode = info.opcode;
     failure.priority = info.priority;
     failure.flags = info.flags;
-    failure.admission_timeout_ms = info.admission_timeout_ms;
-    failure.queue_timeout_ms = info.queue_timeout_ms;
-    failure.exec_timeout_ms = info.exec_timeout_ms;
-    failure.request_id = info.request_id;
-    failure.session_id = info.session_id;
-    failure.monotonic_ms = MonotonicNowMs();
+    failure.admissionTimeoutMs = info.admission_timeout_ms;
+    failure.queueTimeoutMs = info.queue_timeout_ms;
+    failure.execTimeoutMs = info.exec_timeout_ms;
+    failure.requestId = info.request_id;
+    failure.sessionId = info.session_id;
+    failure.monotonicMs = MonotonicNowMs();
     failure.stage = stage;
-    failure.replay_hint = info.replay_hint;
-    failure.last_runtime_state = info.last_runtime_state;
+    failure.replayHint = info.replay_hint;
+    failure.lastRuntimeState = info.last_runtime_state;
     RecoveryDecision decision = on_failure(failure);
     if (decision.action == RecoveryAction::Restart) {
-      RequestForcedRestart(decision.delay_ms);
+      RequestForcedRestart(decision.delayMs);
     }
   }
 
@@ -373,8 +373,8 @@ struct RpcClient::Impl {
       uint32_t cur_idle_notify_interval_ms = 0;
       {
         std::lock_guard<std::mutex> lock(policy_mutex);
-        cur_idle_timeout_ms = recovery_policy.idle_timeout_ms;
-        cur_idle_notify_interval_ms = recovery_policy.idle_notify_interval_ms;
+        cur_idle_timeout_ms = recovery_policy.idleTimeoutMs;
+        cur_idle_notify_interval_ms = recovery_policy.idleNotifyIntervalMs;
       }
       if (cur_idle_timeout_ms > 0 && cur_idle_notify_interval_ms > 0) {
         const uint32_t now_ms = MonotonicNowMs();
@@ -392,7 +392,7 @@ struct RpcClient::Impl {
             if (on_idle) {
               RecoveryDecision decision = on_idle(idle_ms);
               if (decision.action == RecoveryAction::Restart) {
-                RequestForcedRestart(decision.delay_ms);
+                RequestForcedRestart(decision.delayMs);
               }
             }
           }
@@ -714,14 +714,14 @@ struct RpcClient::Impl {
 
     // Build report.
     EngineDeathReport report;
-    report.dead_session_id = dead_session_id;
-    report.safe_to_replay_count = static_cast<uint32_t>(snapshot.replay_list.size());
+    report.deadSessionId = dead_session_id;
+    report.safeToReplayCount = static_cast<uint32_t>(snapshot.replay_list.size());
     for (const auto& pe : snapshot.poison_list) {
       EngineDeathReport::PoisonPillSuspect suspect;
-      suspect.request_id = pe.info.request_id;
+      suspect.requestId = pe.info.request_id;
       suspect.opcode = pe.info.opcode;
-      suspect.last_state = pe.info.last_runtime_state;
-      report.poison_pill_suspects.push_back(suspect);
+      suspect.lastState = pe.info.last_runtime_state;
+      report.poisonPillSuspects.push_back(suspect);
     }
 
     // Call handler.
@@ -747,7 +747,7 @@ struct RpcClient::Impl {
     if (restart_thread.joinable()) {
       restart_thread.join();
     }
-    restart_thread = std::thread([this, delay = decision.delay_ms,
+    restart_thread = std::thread([this, delay = decision.delayMs,
                                   saved = std::move(snapshot.replay_list)]() mutable {
       RestartAfterDeath(delay, std::move(saved));
     });
@@ -793,7 +793,7 @@ struct RpcClient::Impl {
     slot_pool = std::make_unique<SlotPool>(session.Header()->slotCount);
     pending_slots.assign(session.Header()->slotCount, nullptr);
     pending_info_slots.assign(session.Header()->slotCount, std::nullopt);
-    current_session_id = handles.session_id;
+    current_session_id = handles.sessionId;
     session_dead = false;
     session_live.store(true, std::memory_order_release);
     TouchActivity();

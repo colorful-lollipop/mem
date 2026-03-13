@@ -23,7 +23,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {
   EXPECT_GE(handles.respEventFd, 0);
   EXPECT_GE(handles.reqCreditEventFd, 0);
   EXPECT_GE(handles.respCreditEventFd, 0);
-  EXPECT_EQ(handles.protocol_version, memrpc::PROTOCOL_VERSION);
+  EXPECT_EQ(handles.protocolVersion, memrpc::PROTOCOL_VERSION);
   EXPECT_EQ(channel.CloseSession(), memrpc::StatusCode::Ok);
 
   close(handles.shmFd);
@@ -52,7 +52,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   EXPECT_GE(handles.respEventFd, 0);
   EXPECT_GE(handles.reqCreditEventFd, 0);
   EXPECT_GE(handles.respCreditEventFd, 0);
-  EXPECT_EQ(handles.protocol_version, memrpc::PROTOCOL_VERSION);
+  EXPECT_EQ(handles.protocolVersion, memrpc::PROTOCOL_VERSION);
 
   close(handles.shmFd);
   close(handles.highReqEventFd);

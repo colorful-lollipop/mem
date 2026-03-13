@@ -18,8 +18,8 @@ struct BootstrapHandles {
   int respEventFd = -1;
   int reqCreditEventFd = -1;
   int respCreditEventFd = -1;
-  uint32_t protocol_version = 0;
-  uint64_t session_id = 0;
+  uint32_t protocolVersion = 0;
+  uint64_t sessionId = 0;
 };
 
 class IBootstrapChannel {

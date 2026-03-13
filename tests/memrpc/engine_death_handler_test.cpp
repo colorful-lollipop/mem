@@ -19,7 +19,7 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
     handles = MemRpc::BootstrapHandles{};
-    handles.protocol_version = MemRpc::PROTOCOL_VERSION;
+    handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
     return MemRpc::StatusCode::Ok;
   }
 
@@ -121,21 +121,21 @@ TEST(EngineDeathHandlerTest, CrashedDuringExecutionStatusCode) {
 // Verify EngineDeathReport struct layout.
 TEST(EngineDeathHandlerTest, EngineDeathReportLayout) {
   MemRpc::EngineDeathReport report;
-  EXPECT_EQ(report.dead_session_id, 0u);
-  EXPECT_EQ(report.safe_to_replay_count, 0u);
-  EXPECT_TRUE(report.poison_pill_suspects.empty());
+  EXPECT_EQ(report.deadSessionId, 0u);
+  EXPECT_EQ(report.safeToReplayCount, 0u);
+  EXPECT_TRUE(report.poisonPillSuspects.empty());
 
   MemRpc::EngineDeathReport::PoisonPillSuspect suspect;
-  EXPECT_EQ(suspect.request_id, 0u);
+  EXPECT_EQ(suspect.requestId, 0u);
   EXPECT_EQ(suspect.opcode, MemRpc::OPCODE_INVALID);
-  EXPECT_EQ(suspect.last_state, MemRpc::RpcRuntimeState::Unknown);
+  EXPECT_EQ(suspect.lastState, MemRpc::RpcRuntimeState::Unknown);
 }
 
 // Verify RecoveryDecision defaults.
 TEST(EngineDeathHandlerTest, RecoveryDecisionDefaults) {
   MemRpc::RecoveryDecision decision;
   EXPECT_EQ(decision.action, MemRpc::RecoveryAction::Ignore);
-  EXPECT_EQ(decision.delay_ms, 0u);
+  EXPECT_EQ(decision.delayMs, 0u);
 }
 
 // Verify SetRecoveryPolicy on RpcSyncClient compiles and runs.

@@ -45,8 +45,8 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   RpcClient client(bootstrap);
   std::atomic<int> idle_hits{0};
   RecoveryPolicy policy;
-  policy.idle_timeout_ms = 50;
-  policy.idle_notify_interval_ms = 20;
+  policy.idleTimeoutMs = 50;
+  policy.idleNotifyIntervalMs = 20;
   policy.onIdle = [&](uint64_t idle_ms) {
     if (idle_ms > 0) {
       idle_hits.fetch_add(1);
@@ -84,8 +84,8 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   RpcClient client(bootstrap);
   std::atomic<int> idle_hits{0};
   RecoveryPolicy policy;
-  policy.idle_timeout_ms = 50;
-  policy.idle_notify_interval_ms = 20;
+  policy.idleTimeoutMs = 50;
+  policy.idleNotifyIntervalMs = 20;
   policy.onIdle = [&](uint64_t) {
     idle_hits.fetch_add(1);
     return RecoveryDecision{RecoveryAction::Ignore, 0};

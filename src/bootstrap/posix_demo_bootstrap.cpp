@@ -56,8 +56,8 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) 
     }
     ++dup_count;
   }
-  target->protocol_version = source.protocol_version;
-  target->session_id = source.session_id;
+  target->protocolVersion = source.protocolVersion;
+  target->sessionId = source.sessionId;
   return true;
 }
 
@@ -88,8 +88,8 @@ struct PosixDemoBootstrapChannel::Impl {
     CloseFd(&handles.respEventFd);
     CloseFd(&handles.reqCreditEventFd);
     CloseFd(&handles.respCreditEventFd);
-    handles.protocol_version = 0;
-    handles.session_id = 0;
+    handles.protocolVersion = 0;
+    handles.sessionId = 0;
     initialized = false;
   }
 
@@ -202,8 +202,8 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
     }
 
     impl_->handles.shmFd = shmFd;
-    impl_->handles.protocol_version = PROTOCOL_VERSION;
-    impl_->handles.session_id = session_id;
+    impl_->handles.protocolVersion = PROTOCOL_VERSION;
+    impl_->handles.sessionId = session_id;
     impl_->initialized = impl_->CreateEventFds();
     if (!impl_->initialized) {
       HILOGE("eventfd initialization failed");
@@ -238,8 +238,8 @@ BootstrapHandles PosixDemoBootstrapChannel::serverHandles() const {
 
 void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
   const uint64_t dead_session_id =
-      session_id == 0 ? impl_->handles.session_id : session_id;
-  if (session_id == 0 || session_id == impl_->handles.session_id) {
+      session_id == 0 ? impl_->handles.sessionId : session_id;
+  if (session_id == 0 || session_id == impl_->handles.sessionId) {
     impl_->ResetHandles();
     if (!impl_->config.shm_name.empty()) {
       shm_unlink(impl_->config.shm_name.c_str());
