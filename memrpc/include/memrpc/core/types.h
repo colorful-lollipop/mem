@@ -93,12 +93,8 @@ enum class RpcRuntimeState {
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_CORE_TYPES_H_

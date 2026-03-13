@@ -41,14 +41,14 @@ class SharedSlotPool {
  public:
   explicit SharedSlotPool(void* region = nullptr);
 
-  std::optional<uint32_t> Reserve();
+  [[nodiscard]] std::optional<uint32_t> Reserve();
   bool Release(uint32_t slot_index);
-  uint32_t Capacity() const;
-  uint32_t Available() const;
-  bool Valid() const;
+  [[nodiscard]] uint32_t Capacity() const;
+  [[nodiscard]] uint32_t Available() const;
+  [[nodiscard]] bool Valid() const;
 
  private:
-  bool IsValidIndex(uint32_t slot_index) const;
+  [[nodiscard]] bool IsValidIndex(uint32_t slot_index) const;
 
   SharedSlotPoolHeader* header_ = nullptr;
   uint32_t* freeSlots_ = nullptr;
@@ -62,17 +62,17 @@ class SlotPool {
  public:
   explicit SlotPool(uint32_t slot_count);
 
-  std::optional<uint32_t> Reserve();
+  [[nodiscard]] std::optional<uint32_t> Reserve();
   bool Transition(uint32_t slot_index, SlotState next_state);
   bool Release(uint32_t slot_index);
-  SlotState GetState(uint32_t slot_index) const;
-  uint32_t capacity() const;
-  uint32_t available() const;
+  [[nodiscard]] SlotState GetState(uint32_t slot_index) const;
+  [[nodiscard]] uint32_t capacity() const;
+  [[nodiscard]] uint32_t available() const;
 
  private:
   static constexpr uint32_t EMPTY = UINT32_MAX;
-  bool IsValidIndex(uint32_t slot_index) const;
-  bool CanTransition(SlotState current, SlotState next) const;
+  [[nodiscard]] bool IsValidIndex(uint32_t slot_index) const;
+  [[nodiscard]] bool CanTransition(SlotState current, SlotState next) const;
 
   uint32_t slotCount_ = 0;
   std::vector<std::atomic<uint8_t>> states_;

@@ -14,6 +14,8 @@ class IRemoteStub : public T {
 
   virtual bool OnRemoteRequest(int command, MockIpcReply* reply)
   {
+    static_cast<void>(command);
+    static_cast<void>(reply);
     return false;
   }
 

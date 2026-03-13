@@ -53,7 +53,14 @@ void LogVPrint(LogLevel level, const char* file, int line, const char* format, v
   const std::string normalized = NormalizeLogFormat(format);
   va_list copied_args;
   va_copy(copied_args, args);
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
   const int required = std::vsnprintf(nullptr, 0, normalized.c_str(), copied_args);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
   va_end(copied_args);
   if (required < 0) {
     return;
@@ -61,7 +68,14 @@ void LogVPrint(LogLevel level, const char* file, int line, const char* format, v
 
   std::vector<char> buffer(static_cast<size_t>(required) + 1u, '\0');
   va_copy(copied_args, args);
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
   std::vsnprintf(buffer.data(), buffer.size(), normalized.c_str(), copied_args);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
   va_end(copied_args);
 
   std::fprintf(stderr, "[%c][%s][%s:%d] %s\n", LevelChar(level), LOG_TAG, file, line,

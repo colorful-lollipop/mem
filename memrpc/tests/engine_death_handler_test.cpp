@@ -72,7 +72,7 @@ TEST(EngineDeathHandlerTest, AbandonFailsAll) {
 
   bool handler_called = false;
   MemRpc::RecoveryPolicy policy;
-  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport& report) {
+  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport&) {
     handler_called = true;
     return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
   };
@@ -93,7 +93,7 @@ TEST(EngineDeathHandlerTest, RestartHandlerCallable) {
 
   std::atomic<bool> handler_called{false};
   MemRpc::RecoveryPolicy policy;
-  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport& report) {
+  policy.onEngineDeath = [&](const MemRpc::EngineDeathReport&) {
     handler_called.store(true);
     return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
   };

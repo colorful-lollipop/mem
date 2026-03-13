@@ -1,0 +1,49 @@
+---
+Checks: >-
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  readability-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-special-member-functions,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -concurrency-*,
+  -cert-*,
+  -cert-dcl21-cpp,
+  -cert-err58-cpp,
+  -readability-redundant-access-specifiers
+WarningsAsErrors: ''
+FormatStyle: none
+HeaderFilterRegex: '(.*/)?(memrpc|virus_executor_service|third_party/ohos_sa_mock)/(include|src|tests)/.*'
+CheckOptions:
+  - key: bugprone-dangling-handle.HandleClasses
+    value: 'std::basic_string_view;std::span'
+  - key: modernize-loop-convert.MinConfidence
+    value: reasonable
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '20'
+  - key: readability-function-size.LineThreshold
+    value: '50'
+  - key: readability-function-size.StatementThreshold
+    value: '30'
+  - key: readability-function-size.BranchThreshold
+    value: '10'
+  - key: readability-function-size.NestingThreshold
+    value: '4'
+  - key: readability-function-size.ParameterThreshold
+    value: '5'
+  - key: readability-function-size.VariableThreshold
+    value: '15'
+...

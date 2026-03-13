@@ -1,7 +1,7 @@
 # testkit throughput baseline
 add.threads=4.000
-add.threads=4=19463.000
+add.threads=4=16655.000
 echo.threads=4.000
-echo.threads=4=19063.000
+echo.threads=4=19081.000
 sleep.threads=4.000
-sleep.threads=4=19937.000
+sleep.threads=4=16793.000

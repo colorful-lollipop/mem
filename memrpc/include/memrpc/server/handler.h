@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <vector>
 
 #include "memrpc/core/protocol.h"
@@ -17,22 +18,24 @@ class PayloadView {
   PayloadView() = default;
   PayloadView(const uint8_t* data, std::size_t size) : data_(data), size_(size) {}
 
-  const uint8_t* data() const { return data_; }
-  std::size_t size() const { return size_; }
-  bool empty() const { return size_ == 0; }
-  const uint8_t& front() const { return data_[0]; }
-  const uint8_t* begin() const { return data_; }
-  const uint8_t* end() const { return data_ + size_; }
+  [[nodiscard]] const uint8_t* data() const { return data_; }
+  [[nodiscard]] std::size_t size() const { return size_; }
+  [[nodiscard]] bool empty() const { return size_ == 0; }
+  [[nodiscard]] const uint8_t& front() const { return *data_; }
+  [[nodiscard]] const uint8_t* begin() const { return data_; }
+  [[nodiscard]] const uint8_t* end() const {
+    return std::next(data_, static_cast<std::ptrdiff_t>(size_));
+  }
 
   // Compatibility aliases (PascalCase)
-  const uint8_t* Data() const { return data_; }
-  std::size_t Size() const { return size_; }
-  bool Empty() const { return empty(); }
-  const uint8_t& Rront() const { return front(); }
-  const uint8_t* Begin() const { return begin(); }
-  const uint8_t* End() const { return end(); }
+  [[nodiscard]] const uint8_t* Data() const { return data_; }
+  [[nodiscard]] std::size_t Size() const { return size_; }
+  [[nodiscard]] bool Empty() const { return empty(); }
+  [[nodiscard]] const uint8_t& Rront() const { return front(); }
+  [[nodiscard]] const uint8_t* Begin() const { return begin(); }
+  [[nodiscard]] const uint8_t* End() const { return end(); }
 
-  std::vector<uint8_t> ToVector() const { return std::vector<uint8_t>(Begin(), End()); }
+  [[nodiscard]] std::vector<uint8_t> ToVector() const { return {Begin(), End()}; }
 
   operator std::vector<uint8_t>() const { return ToVector(); }
 
@@ -71,12 +74,8 @@ using RpcHandler = std::function<void(const RpcServerCall&, RpcServerReply*)>;
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_SERVER_HANDLER_H_

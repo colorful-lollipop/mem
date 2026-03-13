@@ -17,7 +17,9 @@ Options:
   --build-dir DIR     Build directory (default: ./build_ninja)
   --jobs N            Parallel build/test jobs (default: auto-detect)
   --strict            Enable stricter warning flags for project code
+  --no-strict         Disable stricter warning flags for project code
   --werror            Treat warnings as errors for project code
+  --clang-tidy        Run clang-tidy during the build
   --asan              Enable AddressSanitizer + UndefinedBehaviorSanitizer
                       and leak detection at test time
   --ubsan             Enable UndefinedBehaviorSanitizer only
@@ -76,7 +78,8 @@ build_dir="${repo_root}/build_ninja"
 build_dir_explicit=0
 jobs="${JOBS:-$(detect_jobs)}"
 enable_fuzz="OFF"
-enable_strict="OFF"
+enable_strict="ON"
+enable_clang_tidy="OFF"
 warnings_as_errors="OFF"
 enable_asan="OFF"
 enable_ubsan="OFF"
@@ -90,6 +93,10 @@ test_label=""
 test_repeat=""
 test_timeout=""
 extra_cmake_args=()
+
+if [[ -n "${CI:-}" ]]; then
+    warnings_as_errors="ON"
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -108,8 +115,16 @@ while [[ $# -gt 0 ]]; do
             enable_strict="ON"
             shift
             ;;
+        --no-strict)
+            enable_strict="OFF"
+            shift
+            ;;
         --werror)
             warnings_as_errors="ON"
+            shift
+            ;;
+        --clang-tidy)
+            enable_clang_tidy="ON"
             shift
             ;;
         --asan)
@@ -224,6 +239,8 @@ cmake_args=(
     -DCMAKE_CXX_COMPILER=clang++
     -DMEMRPC_ENABLE_STRICT_WARNINGS="${enable_strict}"
     -DMEMRPC_WARNINGS_AS_ERRORS="${warnings_as_errors}"
+    -DMEMRPC_ENABLE_CLANG_TIDY="${enable_clang_tidy}"
+    -DMEMRPC_CLANG_TIDY_AS_ERRORS="${warnings_as_errors}"
     -DMEMRPC_ENABLE_ASAN="${enable_asan}"
     -DMEMRPC_ENABLE_UBSAN="${enable_ubsan}"
     -DMEMRPC_ENABLE_TSAN="${enable_tsan}"

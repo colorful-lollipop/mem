@@ -28,7 +28,7 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
   StatusCode CloseSession() override;
   void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
-  BootstrapHandles serverHandles() const;
+  [[nodiscard]] BootstrapHandles serverHandles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
  private:
@@ -38,12 +38,8 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_CLIENT_DEMO_BOOTSTRAP_H_

@@ -43,11 +43,11 @@ class Session {
   StatusCode Attach(const BootstrapHandles& handles, AttachRole role = AttachRole::Client);
   void Reset();
 
-  bool Valid() const;
-  const SharedMemoryHeader* Header() const;
+  [[nodiscard]] bool Valid() const;
+  [[nodiscard]] const SharedMemoryHeader* Header() const;
   SharedMemoryHeader* mutableHeader();
-  const BootstrapHandles& Handles() const;
-  SessionState State() const;
+  [[nodiscard]] const BootstrapHandles& Handles() const;
+  [[nodiscard]] SessionState State() const;
   void SetState(SessionState state);
   SlotPayload* GetSlotPayload(uint32_t slot_index);
   uint8_t* GetSlotRequestBytes(uint32_t slot_index);

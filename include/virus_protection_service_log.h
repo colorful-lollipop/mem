@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace MemRpc {
 
@@ -19,27 +20,25 @@ std::string NormalizeLogFormat(std::string_view format);
 void LogPrint(LogLevel level, const char* file, int line, const char* format, ...);
 void LogVPrint(LogLevel level, const char* file, int line, const char* format, va_list args);
 
+template <typename... Args>
+inline void LogWrite(LogLevel level, const char* file, int line, const char* format, Args&&... args)
+{
+  LogPrint(level, file, line, format, std::forward<Args>(args)...);
+}
+
 }  // namespace MemRpc
 
-#define HILOGD(format, ...)                                                                    \
-  ::MemRpc::LogPrint(                                                                         \
-      ::MemRpc::LogLevel::Debug, __FILE__, __LINE__,                                          \
-      format, ##__VA_ARGS__)
+#define HILOGD(...)                                                                            \
+  ::MemRpc::LogWrite(::MemRpc::LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGI(format, ...)                                                                   \
-  ::MemRpc::LogPrint(                                                                        \
-      ::MemRpc::LogLevel::Info, __FILE__, __LINE__,                                         \
-      format, ##__VA_ARGS__)
+#define HILOGI(...)                                                                            \
+  ::MemRpc::LogWrite(::MemRpc::LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGW(format, ...)                                                                   \
-  ::MemRpc::LogPrint(                                                                        \
-      ::MemRpc::LogLevel::Warn, __FILE__, __LINE__,                                         \
-      format, ##__VA_ARGS__)
+#define HILOGW(...)                                                                            \
+  ::MemRpc::LogWrite(::MemRpc::LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGE(format, ...)                                                                    \
-  ::MemRpc::LogPrint(                                                                         \
-      ::MemRpc::LogLevel::Error, __FILE__, __LINE__,                                          \
-      format, ##__VA_ARGS__)
+#define HILOGE(...)                                                                            \
+  ::MemRpc::LogWrite(::MemRpc::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
 
 namespace OHOS {
 namespace Security {

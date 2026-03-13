@@ -47,12 +47,12 @@ class RpcServer {
   void RegisterHandler(Opcode opcode, RpcHandler handler);
   void SetOptions(ServerOptions options);
   // PublishEvent 复用 response ring + response slot，把异步事件发给客户端。
-  StatusCode PublishEvent(const RpcEvent& event);
+  [[nodiscard]] StatusCode PublishEvent(const RpcEvent& event);
   // Start 负责 attach session、拉起 worker 池和请求分发线程。
-  StatusCode Start();
+  [[nodiscard]] StatusCode Start();
   // Run 用于 demo/守护式场景，内部会保持 server 存活直到 Stop。
   void Run();
-  RpcServerRuntimeStats GetRuntimeStats() const;
+  [[nodiscard]] RpcServerRuntimeStats GetRuntimeStats() const;
   void Stop();
 
  private:
@@ -62,12 +62,8 @@ class RpcServer {
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_SERVER_RPC_SERVER_H_

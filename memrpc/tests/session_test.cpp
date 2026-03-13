@@ -3,29 +3,12 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
-
-#include <chrono>
-#include <thread>
 
 #include "core/session.h"
 #include "memrpc/client/demo_bootstrap.h"
 
 namespace {
-
-bool WaitForExit(pid_t pid, int timeout_ms, int* status) {
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-  while (std::chrono::steady_clock::now() < deadline) {
-    const pid_t wait_result = waitpid(pid, status, WNOHANG);
-    if (wait_result == pid) {
-      return true;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return false;
-}
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
   if (h.shmFd >= 0) close(h.shmFd);

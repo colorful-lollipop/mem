@@ -1,10 +1,10 @@
 # testkit dt perf baseline
 testkit.add.threads=4.000
-testkit.add.threads=4.ops_per_sec=24085.667
-testkit.add.threads=4.p99_us=198.760
+testkit.add.threads=4.ops_per_sec=33084.000
+testkit.add.threads=4.p99_us=224.505
 testkit.echo_0B.threads=4.000
-testkit.echo_0B.threads=4.ops_per_sec=20186.000
-testkit.echo_0B.threads=4.p99_us=231.199
+testkit.echo_0B.threads=4.ops_per_sec=17609.667
+testkit.echo_0B.threads=4.p99_us=356.652
 testkit.echo_4KB.threads=4.000
-testkit.echo_4KB.threads=4.ops_per_sec=29722.667
-testkit.echo_4KB.threads=4.p99_us=447.284
+testkit.echo_4KB.threads=4.ops_per_sec=19775.667
+testkit.echo_4KB.threads=4.p99_us=196.790

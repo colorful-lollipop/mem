@@ -148,9 +148,17 @@ void SystemAbility::OnStart() {}
 
 void SystemAbility::OnStop() {}
 
-void SystemAbility::OnAddSystemAbility(int32_t systemAbilityId, const std::string& deviceId) {}
+void SystemAbility::OnAddSystemAbility(int32_t systemAbilityId, const std::string& deviceId)
+{
+  static_cast<void>(systemAbilityId);
+  static_cast<void>(deviceId);
+}
 
-void SystemAbility::OnRemoveSystemAbility(int32_t systemAbilityId, const std::string& deviceId) {}
+void SystemAbility::OnRemoveSystemAbility(int32_t systemAbilityId, const std::string& deviceId)
+{
+  static_cast<void>(systemAbilityId);
+  static_cast<void>(deviceId);
+}
 
 int32_t SystemAbility::GetSystemAbilityId() const
 {

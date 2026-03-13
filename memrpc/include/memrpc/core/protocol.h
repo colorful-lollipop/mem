@@ -1,15 +1,16 @@
 #ifndef MEMRPC_CORE_PROTOCOL_H_
 #define MEMRPC_CORE_PROTOCOL_H_
 
+#include <array>
 #include <cstdint>
 
 namespace MemRpc {
 
 // 共享内存头和 ring 布局版本号；双方必须严格一致。
-inline constexpr uint32_t SHARED_MEMORY_MAGIC = 0x4d454d52u;
-inline constexpr uint32_t PROTOCOL_VERSION = 3u;
-inline constexpr uint32_t DEFAULT_MAX_REQUEST_BYTES = 4u * 1024u;
-inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES = 4u * 1024u;
+inline constexpr uint32_t SHARED_MEMORY_MAGIC = 0x4d454d52U;
+inline constexpr uint32_t PROTOCOL_VERSION = 3U;
+inline constexpr uint32_t DEFAULT_MAX_REQUEST_BYTES = 4U * 1024U;
+inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES = 4U * 1024U;
 
 // Framework-level opcode type. Applications define their own typed enums and
 // cast to Opcode when building RpcCall / registering handlers.
@@ -56,7 +57,7 @@ struct ResponseRingEntry {
   uint32_t resultSize = 0;
 };
 
-static_assert(sizeof(RequestRingEntry) == 32u, "RequestRingEntry size must stay fixed");
+static_assert(sizeof(RequestRingEntry) == 32U, "RequestRingEntry size must stay fixed");
 
 struct SlotRuntimeState {
   uint64_t requestId = 0;
@@ -68,7 +69,7 @@ struct SlotRuntimeState {
   uint32_t reserved = 0;
 };
 
-static_assert(sizeof(SlotRuntimeState) == 32u, "SlotRuntimeState size must stay fixed");
+static_assert(sizeof(SlotRuntimeState) == 32U, "SlotRuntimeState size must stay fixed");
 
 struct RpcRequestHeader {
   // 这是 slot 内部请求头，和 RequestRingEntry 一起构成一次完整调用。
@@ -97,7 +98,7 @@ struct ResponseSlotRuntimeState {
   uint32_t requestSlotIndex = 0;
   uint32_t publishMonoMs = 0;
   uint32_t lastUpdateMonoMs = 0;
-  uint32_t reserved[2]{};
+  std::array<uint32_t, 2> reserved{};
 };
 
 struct ResponseSlotPayload {
@@ -105,14 +106,14 @@ struct ResponseSlotPayload {
   ResponseSlotHeader response{};
 };
 
-inline constexpr uint32_t ComputeSlotSize(uint32_t max_request_bytes,
-                                          uint32_t max_response_bytes) {
+constexpr uint32_t ComputeSlotSize(uint32_t max_request_bytes,
+                                   uint32_t max_response_bytes) {
   static_cast<void>(max_response_bytes);
   // 当前响应体直接写入 response ring，不占 slot 空间。
   return sizeof(SlotPayload) + max_request_bytes;
 }
 
-inline constexpr uint32_t ComputeResponseSlotSize(uint32_t max_response_bytes) {
+constexpr uint32_t ComputeResponseSlotSize(uint32_t max_response_bytes) {
   return sizeof(ResponseSlotPayload) + max_response_bytes;
 }
 

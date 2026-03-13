@@ -24,9 +24,9 @@ class SaBootstrapChannel : public IBootstrapChannel {
   SaBootstrapChannel(SaBootstrapChannel&&) noexcept = default;
   SaBootstrapChannel& operator=(SaBootstrapChannel&&) noexcept = default;
 
-  const SaBootstrapConfig& config() const;
-  const std::string& last_error() const;
-  BootstrapHandles server_handles() const;
+  [[nodiscard]] const SaBootstrapConfig& config() const;
+  [[nodiscard]] const std::string& last_error() const;
+  [[nodiscard]] BootstrapHandles server_handles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
   StatusCode OpenSession(BootstrapHandles& handles) override;
@@ -40,12 +40,8 @@ class SaBootstrapChannel : public IBootstrapChannel {
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_CLIENT_SA_BOOTSTRAP_H_

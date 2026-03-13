@@ -107,7 +107,8 @@ struct PerfStats {
 
 PerfStats ComputeStats(const std::vector<double>& latencies_us, double duration_sec, uint64_t ops) {
   PerfStats stats;
-  stats.ops_per_sec = duration_sec > 0.0 ? ops / duration_sec : 0.0;
+  stats.ops_per_sec =
+      duration_sec > 0.0 ? static_cast<double>(ops) / duration_sec : 0.0;
   if (!latencies_us.empty()) {
     std::vector<double> sorted = latencies_us;
     std::sort(sorted.begin(), sorted.end());
@@ -206,7 +207,10 @@ TEST(DtPerfTest, ShortPerfBaseline) {
       MemRpc::StatusCode status = future.Wait(&reply);
       const auto t1 = std::chrono::steady_clock::now();
       ASSERT_EQ(status, MemRpc::StatusCode::Ok);
-      const double us = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count() / 1000.0;
+      const double us =
+          static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0)
+                                  .count()) /
+          1000.0;
       latencies.push_back(us);
     }
 

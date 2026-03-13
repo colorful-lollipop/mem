@@ -1,7 +1,15 @@
 include_guard(GLOBAL)
 
-option(MEMRPC_ENABLE_STRICT_WARNINGS "Enable stricter warning flags for project code" OFF)
-option(MEMRPC_WARNINGS_AS_ERRORS "Treat warnings as errors for project code" OFF)
+set(MEMRPC_DEFAULT_ENABLE_STRICT_WARNINGS ON)
+set(MEMRPC_DEFAULT_WARNINGS_AS_ERRORS OFF)
+if (DEFINED ENV{CI} AND NOT "$ENV{CI}" STREQUAL "")
+  set(MEMRPC_DEFAULT_WARNINGS_AS_ERRORS ON)
+endif()
+
+option(MEMRPC_ENABLE_STRICT_WARNINGS "Enable stricter warning flags for project code" ${MEMRPC_DEFAULT_ENABLE_STRICT_WARNINGS})
+option(MEMRPC_WARNINGS_AS_ERRORS "Treat warnings as errors for project code" ${MEMRPC_DEFAULT_WARNINGS_AS_ERRORS})
+option(MEMRPC_ENABLE_CLANG_TIDY "Run clang-tidy during C++ compilation" OFF)
+option(MEMRPC_CLANG_TIDY_AS_ERRORS "Treat clang-tidy diagnostics as errors" ${MEMRPC_DEFAULT_WARNINGS_AS_ERRORS})
 option(MEMRPC_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(MEMRPC_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(MEMRPC_ENABLE_TSAN "Enable ThreadSanitizer instrumentation" OFF)
@@ -74,6 +82,31 @@ function(memrpc_configure_project_options)
   foreach(option IN LISTS project_link_options)
     add_link_options("${option}")
   endforeach()
+
+  if (MEMRPC_ENABLE_CLANG_TIDY)
+    find_program(MEMRPC_CLANG_TIDY_EXECUTABLE
+      NAMES
+        clang-tidy
+        clang-tidy-19
+        clang-tidy-18
+        clang-tidy-17
+        clang-tidy-16
+        clang-tidy-15
+        clang-tidy-14
+    )
+    if (NOT MEMRPC_CLANG_TIDY_EXECUTABLE)
+      message(FATAL_ERROR
+        "MEMRPC_ENABLE_CLANG_TIDY is ON, but no clang-tidy executable was found in PATH")
+    endif()
+
+    set(clang_tidy_command "${MEMRPC_CLANG_TIDY_EXECUTABLE}")
+    if (MEMRPC_CLANG_TIDY_AS_ERRORS)
+      list(APPEND clang_tidy_command "-warnings-as-errors=*")
+    endif()
+    set(CMAKE_CXX_CLANG_TIDY "${clang_tidy_command}" CACHE STRING
+        "clang-tidy command line for C++ targets" FORCE)
+    message(STATUS "clang-tidy enabled: ${MEMRPC_CLANG_TIDY_EXECUTABLE}")
+  endif()
 
   set(MEMRPC_PROJECT_OPTIONS_CONFIGURED TRUE CACHE INTERNAL
       "Whether global memrpc project options were already configured")
