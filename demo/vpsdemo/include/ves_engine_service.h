@@ -5,6 +5,7 @@
 #include <string>
 
 #include "memrpc/server/rpc_server.h"
+#include "rpc_handler_registrar.h"
 #include "ves_types.h"
 
 namespace vpsdemo {
@@ -15,9 +16,9 @@ struct VesHealthSnapshot {
     std::string currentTask = "idle";
 };
 
-class VesEngineService {
+class VesEngineService : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(memrpc::RpcServer* server);
+    void RegisterHandlers(memrpc::RpcServer* server) override;
     void Initialize();
     bool initialized() const;
 

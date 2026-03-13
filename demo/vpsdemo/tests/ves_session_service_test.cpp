@@ -30,13 +30,25 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
 }
 }  // namespace
 
-TEST(VesSessionServiceTest, OpenSessionInitializesService) {
+TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles) {
     VesEngineService service;
-    EngineSessionService sessionService(&service);
+    EngineSessionService sessionService({&service});
 
     memrpc::BootstrapHandles handles{};
     EXPECT_EQ(sessionService.OpenSession(handles), memrpc::StatusCode::Ok);
-    EXPECT_TRUE(service.initialized());
+
+    CloseHandles(&handles);
+}
+
+TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
+    VesEngineService service;
+    EXPECT_FALSE(service.initialized());
+
+    EngineSessionService sessionService({&service});
+    memrpc::BootstrapHandles handles{};
+
+    EXPECT_EQ(sessionService.OpenSession(handles), memrpc::StatusCode::Ok);
+    EXPECT_FALSE(service.initialized());
 
     CloseHandles(&handles);
 }

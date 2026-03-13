@@ -1,5 +1,6 @@
 #include "ves_session_service.h"
 
+#include <utility>
 #include <unistd.h>
 
 #include "memrpc/server/rpc_server.h"
@@ -28,8 +29,8 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
 }
 }  // namespace
 
-EngineSessionService::EngineSessionService(VesEngineService* service)
-    : service_(service) {}
+EngineSessionService::EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars)
+    : registrars_(std::move(registrars)) {}
 
 memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     std::lock_guard<std::mutex> lock(initMutex_);
@@ -52,8 +53,10 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
 
     const memrpc::BootstrapHandles serverHandles = bootstrap_->serverHandles();
     rpcServer_ = std::make_unique<memrpc::RpcServer>(serverHandles);
-    if (service_ != nullptr) {
-        service_->RegisterHandlers(rpcServer_.get());
+    for (auto* registrar : registrars_) {
+        if (registrar != nullptr) {
+            registrar->RegisterHandlers(rpcServer_.get());
+        }
     }
     const memrpc::StatusCode start_status = rpcServer_->Start();
     if (start_status != memrpc::StatusCode::Ok) {
@@ -61,9 +64,6 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
         return start_status;
     }
 
-    if (service_ != nullptr) {
-        service_->Initialize();
-    }
     initialized_ = true;
     HILOGI("EngineSessionService initialized");
     return memrpc::StatusCode::Ok;

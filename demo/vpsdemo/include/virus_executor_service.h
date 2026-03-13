@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "system_ability.h"
+#include "testkit_service.h"
 #include "ves_bootstrap_stub.h"
 #include "ves_session_service.h"
 #include "ves_engine_service.h"
@@ -32,6 +33,7 @@ class VirusExecutorService : public OHOS::SystemAbility,
 
  private:
     VesEngineService service_;
+    testkit::TestkitService testkitService_;
     std::shared_ptr<EngineSessionService> session_service_;
 };
 

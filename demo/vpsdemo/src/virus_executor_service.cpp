@@ -1,12 +1,23 @@
 #include "virus_executor_service.h"
 
+#include <cstdlib>
 #include <cstdio>
 #include <thread>
+#include <vector>
 
 #include "iservice_registry.h"
 #include "virus_protection_service_log.h"
 
 namespace vpsdemo {
+
+namespace {
+
+bool IsTestkitFaultInjectionEnabled() {
+    const char* value = std::getenv("VPSDEMO_ENABLE_TESTKIT_FAULTS");
+    return value != nullptr && value[0] == '1' && value[1] == '\0';
+}
+
+}  // namespace
 
 VirusExecutorService::VirusExecutorService()
     : OHOS::SystemAbility(VPS_BOOTSTRAP_SA_ID, true) {}
@@ -58,7 +69,11 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
 
 void VirusExecutorService::OnStart() {
     HILOGI("OnStart sa_id=%{public}d", GetSystemAbilityId());
-    session_service_ = std::make_shared<EngineSessionService>(&service_);
+    testkitService_.SetFaultInjectionEnabled(IsTestkitFaultInjectionEnabled());
+    session_service_ =
+        std::make_shared<EngineSessionService>(
+            std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
+    service_.Initialize();
 }
 
 void VirusExecutorService::OnStop() {

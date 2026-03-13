@@ -9,24 +9,29 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Root of the memrpc repo.
 set(MEMRPC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
-# --- memrpc core library ---
-add_library(memrpc_core
-    ${MEMRPC_ROOT}/src/client/rpc_client.cpp
-    ${MEMRPC_ROOT}/src/server/rpc_server.cpp
-    ${MEMRPC_ROOT}/src/bootstrap/posix_demo_bootstrap.cpp
-    ${MEMRPC_ROOT}/src/bootstrap/sa_bootstrap.cpp
-    ${MEMRPC_ROOT}/src/core/byte_reader.cpp
-    ${MEMRPC_ROOT}/src/core/byte_writer.cpp
-    ${MEMRPC_ROOT}/src/core/log.cpp
-    ${MEMRPC_ROOT}/src/core/slot_pool.cpp
-    ${MEMRPC_ROOT}/src/core/session.cpp
-)
-target_include_directories(memrpc_core PUBLIC
-    ${MEMRPC_ROOT}/include
-    ${MEMRPC_ROOT}/src
-)
-target_compile_features(memrpc_core PUBLIC cxx_std_17)
-target_link_libraries(memrpc_core PUBLIC pthread rt)
+if (NOT TARGET memrpc_core)
+  add_library(memrpc_core
+      ${MEMRPC_ROOT}/src/client/rpc_client.cpp
+      ${MEMRPC_ROOT}/src/server/rpc_server.cpp
+      ${MEMRPC_ROOT}/src/bootstrap/posix_demo_bootstrap.cpp
+      ${MEMRPC_ROOT}/src/bootstrap/sa_bootstrap.cpp
+      ${MEMRPC_ROOT}/src/core/byte_reader.cpp
+      ${MEMRPC_ROOT}/src/core/byte_writer.cpp
+      ${MEMRPC_ROOT}/src/core/log.cpp
+      ${MEMRPC_ROOT}/src/core/slot_pool.cpp
+      ${MEMRPC_ROOT}/src/core/session.cpp
+  )
+  target_include_directories(memrpc_core PUBLIC
+      ${MEMRPC_ROOT}/include
+      ${MEMRPC_ROOT}/src
+  )
+  target_compile_features(memrpc_core PUBLIC cxx_std_17)
+  target_link_libraries(memrpc_core PUBLIC pthread rt)
+endif()
+
+if (NOT TARGET memrpc)
+  add_library(memrpc ALIAS memrpc_core)
+endif()
 
 # --- ohos_sa_mock library ---
 add_library(ohos_sa_mock
@@ -53,6 +58,9 @@ add_library(vpsdemo_lib
     src/ves_session_service.cpp
     src/vesdemo_sample_rules.cpp
     src/ves_engine_service.cpp
+    src/testkit_service.cpp
+    src/testkit_async_client.cpp
+    src/testkit_client.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -92,6 +100,37 @@ if (VPSDEMO_ENABLE_TESTS)
   add_executable(vpsdemo_codec_test tests/vesdemo_codec_test.cpp)
   target_link_libraries(vpsdemo_codec_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_codec_test COMMAND vpsdemo_codec_test)
+
+  add_executable(vpsdemo_testkit_headers_test tests/testkit_headers_test.cpp)
+  target_link_libraries(vpsdemo_testkit_headers_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_headers_test COMMAND vpsdemo_testkit_headers_test)
+
+  add_executable(vpsdemo_testkit_codec_test tests/testkit_codec_test.cpp)
+  target_link_libraries(vpsdemo_testkit_codec_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_codec_test COMMAND vpsdemo_testkit_codec_test)
+
+  add_executable(vpsdemo_testkit_service_test tests/testkit_service_test.cpp)
+  target_link_libraries(vpsdemo_testkit_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_service_test COMMAND vpsdemo_testkit_service_test)
+
+  add_executable(vpsdemo_testkit_client_test tests/testkit_client_test.cpp)
+  target_link_libraries(vpsdemo_testkit_client_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_client_test COMMAND vpsdemo_testkit_client_test)
+
+  add_executable(vpsdemo_testkit_dfx_test
+    tests/testkit_dfx_test.cpp
+    tests/testkit_resilient_invoker.cpp
+  )
+  target_link_libraries(vpsdemo_testkit_dfx_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_dfx_test COMMAND vpsdemo_testkit_dfx_test)
+
+  add_executable(vpsdemo_testkit_backpressure_test tests/testkit_backpressure_test.cpp)
+  target_link_libraries(vpsdemo_testkit_backpressure_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_backpressure_test COMMAND vpsdemo_testkit_backpressure_test)
+
+  add_executable(vpsdemo_testkit_async_pipeline_test tests/testkit_async_pipeline_test.cpp)
+  target_link_libraries(vpsdemo_testkit_async_pipeline_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_async_pipeline_test COMMAND vpsdemo_testkit_async_pipeline_test)
 
   add_executable(vpsdemo_sample_rules_test tests/vesdemo_sample_rules_test.cpp)
   target_link_libraries(vpsdemo_sample_rules_test PRIVATE vpsdemo_lib GTest::gtest_main)
