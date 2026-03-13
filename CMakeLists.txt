@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
+# 强制使用 Clang 工具链
+set(CMAKE_C_COMPILER clang CACHE STRING "C compiler" FORCE)
+set(CMAKE_CXX_COMPILER clang++ CACHE STRING "C++ compiler" FORCE)
+
 project(memrpc LANGUAGES CXX)
 
 CMAKE_POLICY(SET CMP0076 NEW)
