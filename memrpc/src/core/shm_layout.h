@@ -9,7 +9,7 @@
 #include "memrpc/core/protocol.h"
 #include "core/slot_pool.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 struct LayoutConfig {
   uint32_t highRingSize = 32;
@@ -87,6 +87,6 @@ inline Layout ComputeLayout(const LayoutConfig& config) {
   return layout;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_SHM_LAYOUT_H_

@@ -9,12 +9,12 @@
 #include "memrpc/core/byte_writer.h"
 
 TEST(ByteCodecTest, RoundTripsIntegersAndStrings) {
-  memrpc::ByteWriter writer;
+  MemRpc::ByteWriter writer;
   EXPECT_TRUE(writer.WriteUint32(7u));
   EXPECT_TRUE(writer.WriteInt32(-9));
   EXPECT_TRUE(writer.WriteString("hello"));
 
-  memrpc::ByteReader reader(writer.bytes());
+  MemRpc::ByteReader reader(writer.bytes());
   uint32_t value_u32 = 0;
   int32_t value_i32 = 0;
   std::string text;
@@ -28,22 +28,22 @@ TEST(ByteCodecTest, RoundTripsIntegersAndStrings) {
 
 TEST(ByteCodecTest, FailsOnOutOfBoundsReads) {
   const std::vector<uint8_t> bytes = {1u, 2u, 3u};
-  memrpc::ByteReader reader(bytes);
+  MemRpc::ByteReader reader(bytes);
   uint32_t value = 0;
   EXPECT_FALSE(reader.ReadUint32(&value));
 }
 
 TEST(ByteCodecTest, ReadsStringAndBytesAsViews) {
-  memrpc::ByteWriter writer;
+  MemRpc::ByteWriter writer;
   const std::string text = "hello";
   const std::vector<uint8_t> bytes = {9u, 8u, 7u};
   ASSERT_TRUE(writer.WriteString(text));
   ASSERT_TRUE(writer.WriteUint32(static_cast<uint32_t>(bytes.size())));
   ASSERT_TRUE(writer.WriteBytes(bytes.data(), static_cast<uint32_t>(bytes.size())));
 
-  memrpc::ByteReader reader(writer.bytes());
+  MemRpc::ByteReader reader(writer.bytes());
   std::string_view text_view;
-  memrpc::ByteView bytes_view;
+  MemRpc::ByteView bytes_view;
   ASSERT_TRUE(reader.ReadStringView(&text_view));
   uint32_t size = 0;
   ASSERT_TRUE(reader.ReadUint32(&size));

@@ -22,8 +22,8 @@ struct StressConfig {
     int burstDurationMs = 200;
     int burstMultiplier = 3;
     int noProgressTimeoutSec = 30;
-    uint32_t maxRequestBytes = memrpc::DEFAULT_MAX_REQUEST_BYTES;
-    uint32_t maxResponseBytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES;
+    uint32_t maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+    uint32_t maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
     uint64_t seed = 0;
     std::vector<std::size_t> payloadSizes;
 };

@@ -9,7 +9,7 @@
 
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 enum class SlotState : uint8_t {
   Free = 0,
@@ -81,6 +81,6 @@ class SlotPool {
   std::atomic<uint32_t> freeCount_{0};
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_SLOT_POOL_H_

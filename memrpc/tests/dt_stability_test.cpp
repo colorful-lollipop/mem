@@ -18,9 +18,9 @@
 
 namespace {
 
-constexpr memrpc::Opcode kTestOpcode = 1u;
+constexpr MemRpc::Opcode kTestOpcode = 1u;
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
   if (handles.shmFd >= 0) close(handles.shmFd);
   if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
   if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -60,29 +60,29 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
   const uint32_t threadCount = GetThreadCount();
 
-  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  memrpc::ServerOptions options;
+  MemRpc::ServerOptions options;
   options.highWorkerThreads = threadCount;
   options.normalWorkerThreads = threadCount;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   std::atomic<uint64_t> success{0};
-  std::atomic<memrpc::StatusCode> first_error{memrpc::StatusCode::Ok};
+  std::atomic<MemRpc::StatusCode> first_error{MemRpc::StatusCode::Ok};
   std::atomic<int64_t> last_success_ms{0};
 
   const auto start = std::chrono::steady_clock::now();
@@ -103,14 +103,14 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
       const std::vector<size_t> sizes = {0, 128, 512, 2048, 4096};
       while (std::chrono::steady_clock::now() < deadline) {
         const size_t payload_size = sizes[rng() % sizes.size()];
-        memrpc::RpcCall call;
+        MemRpc::RpcCall call;
         call.opcode = kTestOpcode;
         call.payload = MakePayload(payload_size, static_cast<uint8_t>(i));
 
         auto future = client.InvokeAsync(call);
-        memrpc::RpcReply reply;
-        memrpc::StatusCode status = future.Wait(&reply);
-        if (status != memrpc::StatusCode::Ok) {
+        MemRpc::RpcReply reply;
+        MemRpc::StatusCode status = future.Wait(&reply);
+        if (status != MemRpc::StatusCode::Ok) {
           first_error.store(status);
           return;
         }
@@ -140,7 +140,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   client.Shutdown();
   server.Stop();
 
-  EXPECT_EQ(first_error.load(), memrpc::StatusCode::Ok);
+  EXPECT_EQ(first_error.load(), MemRpc::StatusCode::Ok);
   EXPECT_TRUE(progress_ok.load());
   EXPECT_GT(success.load(), 0u);
 }

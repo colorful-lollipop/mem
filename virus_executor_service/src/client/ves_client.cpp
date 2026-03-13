@@ -27,32 +27,32 @@ void VesClient::RegisterProxyFactory() {
         });
 }
 
-memrpc::StatusCode VesClient::Init() {
+MemRpc::StatusCode VesClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
     auto bootstrap = OHOS::iface_cast<IVesBootstrap>(remote_);
     if (bootstrap == nullptr) {
         HILOGE("iface_cast<IVesBootstrap> failed");
-        return memrpc::StatusCode::InvalidArgument;
+        return MemRpc::StatusCode::InvalidArgument;
     }
 
     // Alias shared_ptr to use VesBootstrapProxy as IBootstrapChannel.
     proxy_ = std::dynamic_pointer_cast<VesBootstrapProxy>(bootstrap);
     if (proxy_ == nullptr) {
         HILOGE("dynamic_pointer_cast to VesBootstrapProxy failed");
-        return memrpc::StatusCode::InvalidArgument;
+        return MemRpc::StatusCode::InvalidArgument;
     }
 
     // Set the bootstrap channel on the RpcClient.
-    client_.SetBootstrapChannel(std::static_pointer_cast<memrpc::IBootstrapChannel>(proxy_));
+    client_.SetBootstrapChannel(std::static_pointer_cast<MemRpc::IBootstrapChannel>(proxy_));
 
-    memrpc::RecoveryPolicy policy;
-    policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const memrpc::RpcFailure& failure) {
-        if (failure.status == memrpc::StatusCode::ExecTimeout) {
-            return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, delay};
+    MemRpc::RecoveryPolicy policy;
+    policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const MemRpc::RpcFailure& failure) {
+        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
         }
-        return memrpc::RecoveryDecision{memrpc::RecoveryAction::Ignore, 0};
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
     };
-    policy.onEngineDeath = [this](const memrpc::EngineDeathReport& report) {
+    policy.onEngineDeath = [this](const MemRpc::EngineDeathReport& report) {
         HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
               static_cast<unsigned long long>(report.deadSessionId),
               report.safeToReplayCount,
@@ -67,11 +67,11 @@ memrpc::StatusCode VesClient::Init() {
         if (restartCallback_) {
             restartCallback_();
         }
-        return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, options_.engineDeathRestartDelayMs};
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, options_.engineDeathRestartDelayMs};
     };
     if (options_.idleRestartDelayMs > 0) {
         policy.onIdle = [delay = options_.idleRestartDelayMs](uint64_t) {
-            return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, delay};
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
         };
     }
     client_.SetRecoveryPolicy(std::move(policy));
@@ -91,12 +91,12 @@ bool VesClient::EngineDied() const {
     return engineDied_.load();
 }
 
-memrpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* reply) {
+MemRpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* reply) {
     ScanFileRequest request;
     request.filePath = path;
-    return memrpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
+    return MemRpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
         &client_,
-        static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
+        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
         request, reply);
 }
 

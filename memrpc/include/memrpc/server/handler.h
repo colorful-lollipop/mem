@@ -10,7 +10,7 @@
 #include "memrpc/core/protocol.h"
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 class PayloadView {
  public:
@@ -69,12 +69,12 @@ struct RpcServerReply {
 
 using RpcHandler = std::function<void(const RpcServerCall&, RpcServerReply*)>;
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

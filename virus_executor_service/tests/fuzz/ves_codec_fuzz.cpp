@@ -34,7 +34,7 @@ std::string SanitizePath(std::string path) {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     virus_executor_service::ScanFileRequest req;
-    if (!memrpc::CodecTraits<virus_executor_service::ScanFileRequest>::Decode(data, size, &req)) {
+    if (!MemRpc::CodecTraits<virus_executor_service::ScanFileRequest>::Decode(data, size, &req)) {
         return 0;
     }
 
@@ -46,9 +46,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     reply.threatLevel = 0;
 
     std::vector<uint8_t> bytes;
-    if (memrpc::CodecTraits<virus_executor_service::ScanFileReply>::Encode(reply, &bytes)) {
+    if (MemRpc::CodecTraits<virus_executor_service::ScanFileReply>::Encode(reply, &bytes)) {
         virus_executor_service::ScanFileReply decoded;
-        (void)memrpc::CodecTraits<virus_executor_service::ScanFileReply>::Decode(bytes.data(), bytes.size(), &decoded);
+        (void)MemRpc::CodecTraits<virus_executor_service::ScanFileReply>::Decode(bytes.data(), bytes.size(), &decoded);
     }
 
     return 0;

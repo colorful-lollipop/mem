@@ -18,7 +18,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -82,19 +82,19 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
     const int iterations = GetEnvInt("MEMRPC_LATENCY_ITERATIONS", 2000);
     const int warmup = GetEnvInt("MEMRPC_LATENCY_WARMUP", 200);
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     struct PayloadCase {
         const char* name;
@@ -112,7 +112,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
     for (const auto& payloadCase : cases) {
         for (int i = 0; i < warmup; ++i) {
             EchoReply reply;
-            ASSERT_EQ(client.Echo(payloadCase.text, &reply), memrpc::StatusCode::Ok);
+            ASSERT_EQ(client.Echo(payloadCase.text, &reply), MemRpc::StatusCode::Ok);
         }
 
         std::vector<double> latencies;
@@ -122,7 +122,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
             const auto start = std::chrono::steady_clock::now();
             const auto status = client.Echo(payloadCase.text, &reply);
             const auto end = std::chrono::steady_clock::now();
-            ASSERT_EQ(status, memrpc::StatusCode::Ok);
+            ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() /
                 1000.0);

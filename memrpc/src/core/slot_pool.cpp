@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-namespace memrpc {
+namespace MemRpc {
 
 namespace {
 
@@ -255,4 +255,4 @@ bool SlotPool::CanTransition(SlotState current, SlotState next) const {
   return false;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

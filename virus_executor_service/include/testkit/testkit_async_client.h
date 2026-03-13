@@ -10,7 +10,7 @@ namespace virus_executor_service::testkit {
 
 class TestkitAsyncClient {
  public:
-    explicit TestkitAsyncClient(std::shared_ptr<memrpc::IBootstrapChannel> bootstrap = nullptr);
+    explicit TestkitAsyncClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap = nullptr);
     ~TestkitAsyncClient();
 
     TestkitAsyncClient(const TestkitAsyncClient&) = delete;
@@ -18,18 +18,18 @@ class TestkitAsyncClient {
     TestkitAsyncClient(TestkitAsyncClient&&) noexcept = default;
     TestkitAsyncClient& operator=(TestkitAsyncClient&&) noexcept = default;
 
-    void SetBootstrapChannel(std::shared_ptr<memrpc::IBootstrapChannel> bootstrap);
-    memrpc::StatusCode Init();
-    memrpc::TypedFuture<EchoReply> EchoAsync(const EchoRequest& request);
-    memrpc::TypedFuture<AddReply> AddAsync(const AddRequest& request);
-    memrpc::TypedFuture<SleepReply> SleepAsync(
+    void SetBootstrapChannel(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap);
+    MemRpc::StatusCode Init();
+    MemRpc::TypedFuture<EchoReply> EchoAsync(const EchoRequest& request);
+    MemRpc::TypedFuture<AddReply> AddAsync(const AddRequest& request);
+    MemRpc::TypedFuture<SleepReply> SleepAsync(
         const SleepRequest& request,
-        memrpc::Priority priority = memrpc::Priority::Normal,
+        MemRpc::Priority priority = MemRpc::Priority::Normal,
         uint32_t execTimeoutMs = 30000);
     void Shutdown();
 
  private:
-    memrpc::RpcClient client_;
+    MemRpc::RpcClient client_;
 };
 
 }  // namespace virus_executor_service::testkit

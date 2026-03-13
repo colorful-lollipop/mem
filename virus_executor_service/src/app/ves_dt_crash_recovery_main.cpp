@@ -134,20 +134,20 @@ int main(int argc, char* argv[]) {
     });
 
     auto initStatus = client->Init();
-    DT_CHECK(initStatus == memrpc::StatusCode::Ok, "VesClient Init ok");
+    DT_CHECK(initStatus == MemRpc::StatusCode::Ok, "VesClient Init ok");
 
     // === Step 1: normal scan ===
     HILOGI("=== Step 1: normal scan ===");
     {
         virus_executor_service::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean.apk", &reply);
-        DT_CHECK(status == memrpc::StatusCode::Ok, "step1: clean scan RPC ok");
+        DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: clean scan RPC ok");
         DT_CHECK(reply.threatLevel == 0, "step1: clean file threat=0");
     }
     {
         virus_executor_service::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus.apk", &reply);
-        DT_CHECK(status == memrpc::StatusCode::Ok, "step1: virus scan RPC ok");
+        DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: virus scan RPC ok");
         DT_CHECK(reply.threatLevel == 1, "step1: virus file threat=1");
     }
 
@@ -180,13 +180,13 @@ int main(int argc, char* argv[]) {
     {
         virus_executor_service::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean_after.apk", &reply);
-        DT_CHECK(status == memrpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
+        DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
         DT_CHECK(reply.threatLevel == 0, "step4: post-recovery threat=0");
     }
     {
         virus_executor_service::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus_after.apk", &reply);
-        DT_CHECK(status == memrpc::StatusCode::Ok, "step4: post-recovery virus scan ok");
+        DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery virus scan ok");
         DT_CHECK(reply.threatLevel == 1, "step4: post-recovery threat=1");
     }
 
@@ -221,7 +221,7 @@ int main(int argc, char* argv[]) {
         HILOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
               i + 1, static_cast<int>(status), reply.threatLevel,
               static_cast<long long>(elapsed));
-        DT_CHECK(status == memrpc::StatusCode::Ok,
+        DT_CHECK(status == MemRpc::StatusCode::Ok,
                  ("step5: call " + std::to_string(i + 1) + " ok").c_str());
     }
 

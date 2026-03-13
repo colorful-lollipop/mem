@@ -4,7 +4,7 @@
 
 #include "memrpc/client/demo_bootstrap.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 struct SaBootstrapChannel::Impl {
   explicit Impl(SaBootstrapConfig value)
@@ -71,4 +71,4 @@ void SaBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
   }
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

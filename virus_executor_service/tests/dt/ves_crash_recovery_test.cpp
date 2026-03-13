@@ -110,10 +110,10 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
         }
     });
 
-    ASSERT_EQ(client->Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
 
     virus_executor_service::ScanFileReply reply;
-    ASSERT_EQ(client->ScanFile("/data/clean.apk", &reply), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile("/data/clean.apk", &reply), MemRpc::StatusCode::Ok);
 
     // Crash request
     (void)client->ScanFile("/data/crash.apk", &reply);
@@ -125,7 +125,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     ASSERT_GT(engineRestarts.load(), 0);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    ASSERT_EQ(client->ScanFile("/data/clean_after.apk", &reply), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile("/data/clean_after.apk", &reply), MemRpc::StatusCode::Ok);
 
     client->Shutdown();
     registry.Stop();

@@ -37,19 +37,19 @@ SleepReply TestkitService::Sleep(const SleepRequest& request) const {
     return reply;
 }
 
-void TestkitService::RegisterHandlers(memrpc::RpcServer* server) {
+void TestkitService::RegisterHandlers(MemRpc::RpcServer* server) {
     if (server == nullptr) {
         return;
     }
 
-    memrpc::RegisterTypedHandler<EchoRequest, EchoReply>(
-        server, static_cast<memrpc::Opcode>(TestkitOpcode::Echo),
+    MemRpc::RegisterTypedHandler<EchoRequest, EchoReply>(
+        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Echo),
         [this](const EchoRequest& request) { return Echo(request); });
-    memrpc::RegisterTypedHandler<AddRequest, AddReply>(
-        server, static_cast<memrpc::Opcode>(TestkitOpcode::Add),
+    MemRpc::RegisterTypedHandler<AddRequest, AddReply>(
+        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Add),
         [this](const AddRequest& request) { return Add(request); });
-    memrpc::RegisterTypedHandler<SleepRequest, SleepReply>(
-        server, static_cast<memrpc::Opcode>(TestkitOpcode::Sleep),
+    MemRpc::RegisterTypedHandler<SleepRequest, SleepReply>(
+        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Sleep),
         [this](const SleepRequest& request) { return Sleep(request); });
 
     if (!options_.enableFaultInjection) {
@@ -59,20 +59,20 @@ void TestkitService::RegisterHandlers(memrpc::RpcServer* server) {
     // Fault injection stays opt-in so the default demo engine does not expose
     // crash endpoints unless tests explicitly request them.
     server->RegisterHandler(
-        static_cast<memrpc::Opcode>(TestkitOpcode::CrashForTest),
-        [](const memrpc::RpcServerCall&, memrpc::RpcServerReply*) { _exit(99); });
+        static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
 
     server->RegisterHandler(
-        static_cast<memrpc::Opcode>(TestkitOpcode::HangForTest),
-        [](const memrpc::RpcServerCall&, memrpc::RpcServerReply*) {
+        static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
             while (true) {
                 std::this_thread::sleep_for(std::chrono::hours(1));
             }
         });
 
     server->RegisterHandler(
-        static_cast<memrpc::Opcode>(TestkitOpcode::OomForTest),
-        [](const memrpc::RpcServerCall&, memrpc::RpcServerReply*) {
+        static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
             std::vector<std::vector<char>> leaks;
             while (true) {
                 leaks.emplace_back(64 * 1024 * 1024, 'X');
@@ -80,8 +80,8 @@ void TestkitService::RegisterHandlers(memrpc::RpcServer* server) {
         });
 
     server->RegisterHandler(
-        static_cast<memrpc::Opcode>(TestkitOpcode::StackOverflowForTest),
-        [](const memrpc::RpcServerCall&, memrpc::RpcServerReply*) {
+        static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
             struct Recurse {
                 static void Go(volatile int depth) { Go(depth + 1); }
             };

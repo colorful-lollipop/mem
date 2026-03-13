@@ -8,7 +8,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 enum class QueueKind {
   HighRequest,
@@ -76,6 +76,6 @@ class Session {
   bool ownsClientSlot_ = false;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_SESSION_H_

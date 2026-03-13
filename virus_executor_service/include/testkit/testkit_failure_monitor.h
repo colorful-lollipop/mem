@@ -36,17 +36,17 @@ class FailureMonitor {
         execTimeouts_.clear();
     }
 
-    void OnFailure(const memrpc::RpcFailure& failure) {
+    void OnFailure(const MemRpc::RpcFailure& failure) {
         ThresholdCallback callback;
         bool fire = false;
-        if (failure.status == memrpc::StatusCode::PeerDisconnected ||
-            failure.status == memrpc::StatusCode::ProtocolMismatch) {
+        if (failure.status == MemRpc::StatusCode::PeerDisconnected ||
+            failure.status == MemRpc::StatusCode::ProtocolMismatch) {
             std::lock_guard<std::mutex> lock(mutex_);
             if (options_.triggerOnDisconnect && callback_) {
                 callback = callback_;
                 fire = true;
             }
-        } else if (failure.status == memrpc::StatusCode::ExecTimeout) {
+        } else if (failure.status == MemRpc::StatusCode::ExecTimeout) {
             const auto now = std::chrono::steady_clock::now();
             std::lock_guard<std::mutex> lock(mutex_);
             execTimeouts_.push_back(now);

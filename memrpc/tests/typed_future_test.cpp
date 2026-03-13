@@ -18,8 +18,8 @@
 
 namespace {
 
-constexpr memrpc::Opcode kEchoOpcode = 1u;
-constexpr memrpc::Opcode kBadOpcode = 2u;
+constexpr MemRpc::Opcode kEchoOpcode = 1u;
+constexpr MemRpc::Opcode kBadOpcode = 2u;
 
 // A trivial message type for testing.
 struct TestMsg {
@@ -28,7 +28,7 @@ struct TestMsg {
 
 }  // namespace
 
-namespace memrpc {
+namespace MemRpc {
 
 template <>
 struct CodecTraits<TestMsg> {
@@ -45,32 +45,32 @@ struct CodecTraits<TestMsg> {
   }
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace {
 
 TEST(TypedFutureTest, WaitDecodesReply) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.RegisterHandler(kEchoOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   TestMsg request{42};
-  auto future = memrpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
+  auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
   TestMsg reply;
-  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
   EXPECT_EQ(reply.value, 42);
 
   client.Shutdown();
@@ -78,31 +78,31 @@ TEST(TypedFutureTest, WaitDecodesReply) {
 }
 
 TEST(TypedFutureTest, ThenDecodesReply) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.RegisterHandler(kEchoOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   TestMsg request{99};
-  auto future = memrpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
+  auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
   std::atomic<bool> called{false};
   std::mutex mutex;
   TestMsg received;
 
-  future.Then([&](memrpc::StatusCode status, TestMsg reply) {
-    EXPECT_EQ(status, memrpc::StatusCode::Ok);
+  future.Then([&](MemRpc::StatusCode status, TestMsg reply) {
+    EXPECT_EQ(status, MemRpc::StatusCode::Ok);
     std::lock_guard<std::mutex> lock(mutex);
     received = reply;
     called.store(true);
@@ -123,60 +123,60 @@ TEST(TypedFutureTest, ThenDecodesReply) {
 }
 
 TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   // Return garbage payload that won't decode as TestMsg.
   server.RegisterHandler(kBadOpcode,
-                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = {0xFF};  // too short for int32
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   // Send an empty call (opcode-only), server returns garbage.
-  memrpc::RpcCall call;
+  MemRpc::RpcCall call;
   call.opcode = kBadOpcode;
-  memrpc::TypedFuture<TestMsg> future(client.InvokeAsync(call));
+  MemRpc::TypedFuture<TestMsg> future(client.InvokeAsync(call));
 
   TestMsg reply;
-  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::ProtocolMismatch);
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ProtocolMismatch);
 
   client.Shutdown();
   server.Stop();
 }
 
 TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.RegisterHandler(kBadOpcode,
-                         [](const memrpc::RpcServerCall&, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = {0xFF};
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcCall call;
+  MemRpc::RpcCall call;
   call.opcode = kBadOpcode;
-  memrpc::TypedFuture<TestMsg> future(client.InvokeAsync(call));
+  MemRpc::TypedFuture<TestMsg> future(client.InvokeAsync(call));
 
   std::atomic<bool> called{false};
-  memrpc::StatusCode received_status = memrpc::StatusCode::Ok;
+  MemRpc::StatusCode received_status = MemRpc::StatusCode::Ok;
 
-  future.Then([&](memrpc::StatusCode status, TestMsg) {
+  future.Then([&](MemRpc::StatusCode status, TestMsg) {
     received_status = status;
     called.store(true);
   });
@@ -186,35 +186,35 @@ TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   EXPECT_TRUE(called.load());
-  EXPECT_EQ(received_status, memrpc::StatusCode::ProtocolMismatch);
+  EXPECT_EQ(received_status, MemRpc::StatusCode::ProtocolMismatch);
 
   client.Shutdown();
   server.Stop();
 }
 
 TEST(TypedFutureTest, IsReadyDelegates) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   server.RegisterHandler(kEchoOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   TestMsg request{7};
-  auto future = memrpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
+  auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
   // Wait for completion, then check IsReady.
   TestMsg reply;
-  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::Ok);
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
 
   client.Shutdown();
   server.Stop();

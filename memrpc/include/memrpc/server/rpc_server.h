@@ -7,7 +7,7 @@
 #include "memrpc/core/types.h"
 #include "memrpc/server/handler.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 class TaskExecutor;
 
@@ -60,12 +60,12 @@ class RpcServer {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

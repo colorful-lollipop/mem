@@ -6,25 +6,25 @@
 #include "memrpc/client/sa_bootstrap.h"
 
 TEST(SaBootstrapStubTest, DefaultConfigIsStable) {
-  const memrpc::SaBootstrapConfig config;
+  const MemRpc::SaBootstrapConfig config;
   EXPECT_TRUE(config.serviceName.empty());
   EXPECT_TRUE(config.instanceName.empty());
   EXPECT_FALSE(config.lazyConnect);
 }
 
 TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {
-  memrpc::SaBootstrapChannel channel;
-  memrpc::BootstrapHandles handles;
+  MemRpc::SaBootstrapChannel channel;
+  MemRpc::BootstrapHandles handles;
 
-  EXPECT_EQ(channel.OpenSession(handles), memrpc::StatusCode::Ok);
+  EXPECT_EQ(channel.OpenSession(handles), MemRpc::StatusCode::Ok);
   EXPECT_GE(handles.shmFd, 0);
   EXPECT_GE(handles.highReqEventFd, 0);
   EXPECT_GE(handles.normalReqEventFd, 0);
   EXPECT_GE(handles.respEventFd, 0);
   EXPECT_GE(handles.reqCreditEventFd, 0);
   EXPECT_GE(handles.respCreditEventFd, 0);
-  EXPECT_EQ(handles.protocolVersion, memrpc::PROTOCOL_VERSION);
-  EXPECT_EQ(channel.CloseSession(), memrpc::StatusCode::Ok);
+  EXPECT_EQ(handles.protocolVersion, MemRpc::PROTOCOL_VERSION);
+  EXPECT_EQ(channel.CloseSession(), MemRpc::StatusCode::Ok);
 
   close(handles.shmFd);
   close(handles.highReqEventFd);
@@ -35,9 +35,9 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {
 }
 
 TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
-  memrpc::SaBootstrapChannel channel;
-  memrpc::BootstrapHandles unused;
-  ASSERT_EQ(channel.OpenSession(unused), memrpc::StatusCode::Ok);
+  MemRpc::SaBootstrapChannel channel;
+  MemRpc::BootstrapHandles unused;
+  ASSERT_EQ(channel.OpenSession(unused), MemRpc::StatusCode::Ok);
   close(unused.shmFd);
   close(unused.highReqEventFd);
   close(unused.normalReqEventFd);
@@ -45,14 +45,14 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   close(unused.reqCreditEventFd);
   close(unused.respCreditEventFd);
 
-  const memrpc::BootstrapHandles handles = channel.server_handles();
+  const MemRpc::BootstrapHandles handles = channel.server_handles();
   EXPECT_GE(handles.shmFd, 0);
   EXPECT_GE(handles.highReqEventFd, 0);
   EXPECT_GE(handles.normalReqEventFd, 0);
   EXPECT_GE(handles.respEventFd, 0);
   EXPECT_GE(handles.reqCreditEventFd, 0);
   EXPECT_GE(handles.respCreditEventFd, 0);
-  EXPECT_EQ(handles.protocolVersion, memrpc::PROTOCOL_VERSION);
+  EXPECT_EQ(handles.protocolVersion, MemRpc::PROTOCOL_VERSION);
 
   close(handles.shmFd);
   close(handles.highReqEventFd);

@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace memrpc {
+namespace MemRpc {
 namespace {
 
 constexpr const char* LOG_TAG = "MemRpc";
@@ -75,4 +75,4 @@ void LogPrint(LogLevel level, const char* file, int line, const char* format, ..
   va_end(args);
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

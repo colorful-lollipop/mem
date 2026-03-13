@@ -6,7 +6,7 @@
 
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 using EngineDeathCallback = std::function<void(uint64_t)>;
 
@@ -34,12 +34,12 @@ class IBootstrapChannel {
   virtual void SetEngineDeathCallback(EngineDeathCallback callback) = 0;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

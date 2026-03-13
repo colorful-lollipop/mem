@@ -4,8 +4,8 @@
 #include "memrpc/server/rpc_server.h"
 
 TEST(SmokeTest, TypesConstruct) {
-  memrpc::RpcClient client;
-  memrpc::RpcServer server;
+  MemRpc::RpcClient client;
+  MemRpc::RpcServer server;
   (void)client;
   (void)server;
 }

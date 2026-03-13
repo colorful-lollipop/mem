@@ -30,20 +30,20 @@ class VesClient {
 
     static void RegisterProxyFactory();
 
-    memrpc::StatusCode Init();
+    MemRpc::StatusCode Init();
     void Shutdown();
 
     using EngineRestartCallback = std::function<void()>;
     void SetEngineRestartCallback(EngineRestartCallback callback);
 
-    memrpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
+    MemRpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
 
     bool EngineDied() const;
 
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     std::shared_ptr<VesBootstrapProxy> proxy_;
-    memrpc::RpcClient client_;
+    MemRpc::RpcClient client_;
     VesClientOptions options_;
     std::atomic<bool> engineDied_{false};
     EngineRestartCallback restartCallback_;

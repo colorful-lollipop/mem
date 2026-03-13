@@ -19,7 +19,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -55,26 +55,26 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
     const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
     const uint32_t threadCount = GetThreadCount();
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    memrpc::ServerOptions options;
+    MemRpc::ServerOptions options;
     options.highWorkerThreads = threadCount;
     options.normalWorkerThreads = threadCount;
     server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     std::atomic<uint64_t> success{0};
-    std::atomic<memrpc::StatusCode> firstError{memrpc::StatusCode::Ok};
+    std::atomic<MemRpc::StatusCode> firstError{MemRpc::StatusCode::Ok};
     std::atomic<int64_t> lastSuccessMs{0};
 
     const auto start = std::chrono::steady_clock::now();
@@ -94,7 +94,7 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
             std::mt19937 rng(static_cast<uint32_t>(i + 7));
             while (std::chrono::steady_clock::now() < deadline) {
                 const int choice = static_cast<int>(rng() % 100);
-                memrpc::StatusCode status = memrpc::StatusCode::Ok;
+                MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
                 if (choice < 70) {
                     EchoReply reply;
                     status = client.Echo("ping", &reply);
@@ -105,7 +105,7 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
                     SleepReply reply;
                     status = client.Sleep(1, &reply);
                 }
-                if (status != memrpc::StatusCode::Ok) {
+                if (status != MemRpc::StatusCode::Ok) {
                     firstError.store(status);
                     return;
                 }
@@ -135,7 +135,7 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
     client.Shutdown();
     server.Stop();
 
-    EXPECT_EQ(firstError.load(), memrpc::StatusCode::Ok);
+    EXPECT_EQ(firstError.load(), MemRpc::StatusCode::Ok);
     EXPECT_TRUE(progressOk.load());
     EXPECT_GT(success.load(), 0u);
 }

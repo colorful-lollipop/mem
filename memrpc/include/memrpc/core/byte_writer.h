@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace memrpc {
+namespace MemRpc {
 
 class ByteWriter {
  public:
@@ -22,6 +22,6 @@ class ByteWriter {
   std::vector<uint8_t> bytes_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_BYTE_WRITER_H_

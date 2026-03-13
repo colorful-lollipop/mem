@@ -82,13 +82,13 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     return snapshot;
 }
 
-void VesEngineService::RegisterHandlers(memrpc::RpcServer* server) {
+void VesEngineService::RegisterHandlers(MemRpc::RpcServer* server) {
     if (server == nullptr) {
         return;
     }
 
-    memrpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
-        server, static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
+    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+        server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
         [this](const ScanFileRequest& r) { return ScanFile(r); });
 }
 

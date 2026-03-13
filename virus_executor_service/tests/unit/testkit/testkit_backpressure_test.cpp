@@ -15,7 +15,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -39,28 +39,28 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs) {
 }  // namespace
 
 TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
-    memrpc::DemoBootstrapConfig config;
+    MemRpc::DemoBootstrapConfig config;
     config.slotCount = 4;
     config.highRingSize = 8;
     config.normalRingSize = 8;
     config.responseRingSize = 8;
-    config.maxRequestBytes = memrpc::DEFAULT_MAX_REQUEST_BYTES;
-    config.maxResponseBytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES;
+    config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+    config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     server.SetOptions({.highWorkerThreads = 4, .normalWorkerThreads = 4});
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     std::vector<std::thread> callers;
     std::atomic<int> completed{0};
@@ -68,7 +68,7 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
         callers.emplace_back([&client, &completed]() {
             SleepReply reply;
             const auto status = client.Sleep(500, &reply);
-            if (status == memrpc::StatusCode::Ok) {
+            if (status == MemRpc::StatusCode::Ok) {
                 completed.fetch_add(1);
             }
         });
@@ -78,8 +78,8 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
 
     EchoReply reply;
     const auto status = client.Echo("under_pressure", &reply);
-    EXPECT_EQ(status, memrpc::StatusCode::Ok);
-    if (status == memrpc::StatusCode::Ok) {
+    EXPECT_EQ(status, MemRpc::StatusCode::Ok);
+    if (status == MemRpc::StatusCode::Ok) {
         EXPECT_EQ(reply.text, "under_pressure");
     }
 
@@ -90,7 +90,7 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
     EXPECT_EQ(completed.load(), 4);
 
     EchoReply recoveredReply;
-    EXPECT_EQ(client.Echo("recovered", &recoveredReply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(client.Echo("recovered", &recoveredReply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(recoveredReply.text, "recovered");
 
     client.Shutdown();
@@ -98,31 +98,31 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
 }
 
 TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
-    memrpc::DemoBootstrapConfig config;
+    MemRpc::DemoBootstrapConfig config;
     config.slotCount = 2;
     config.highRingSize = 4;
     config.normalRingSize = 4;
     config.responseRingSize = 4;
-    config.maxRequestBytes = memrpc::DEFAULT_MAX_REQUEST_BYTES;
-    config.maxResponseBytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES;
+    config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+    config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     server.SetOptions({.highWorkerThreads = 2, .normalWorkerThreads = 2});
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     std::vector<std::thread> callers;
-    std::vector<memrpc::StatusCode> results(2, memrpc::StatusCode::InvalidArgument);
+    std::vector<MemRpc::StatusCode> results(2, MemRpc::StatusCode::InvalidArgument);
     for (int i = 0; i < 2; ++i) {
         callers.emplace_back([&client, &results, i]() {
             SleepReply reply;
@@ -133,7 +133,7 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::atomic<bool> thirdDone{false};
-    memrpc::StatusCode thirdStatus = memrpc::StatusCode::InvalidArgument;
+    MemRpc::StatusCode thirdStatus = MemRpc::StatusCode::InvalidArgument;
     std::thread thirdThread([&]() {
         EchoReply reply;
         thirdStatus = client.Echo("third", &reply);
@@ -146,12 +146,12 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
         caller.join();
     }
     for (const auto result : results) {
-        EXPECT_EQ(result, memrpc::StatusCode::Ok);
+        EXPECT_EQ(result, MemRpc::StatusCode::Ok);
     }
 
     ASSERT_TRUE(WaitForCondition([&thirdDone] { return thirdDone.load(); }, 2000));
     thirdThread.join();
-    EXPECT_EQ(thirdStatus, memrpc::StatusCode::Ok);
+    EXPECT_EQ(thirdStatus, MemRpc::StatusCode::Ok);
 
     client.Shutdown();
     server.Stop();

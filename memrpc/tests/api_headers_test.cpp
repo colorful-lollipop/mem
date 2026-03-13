@@ -7,8 +7,6 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 
-namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
-
 namespace {
 
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {

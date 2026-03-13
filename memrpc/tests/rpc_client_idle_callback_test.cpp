@@ -11,9 +11,9 @@
 
 namespace {
 
-constexpr memrpc::Opcode kTestEchoOpcode = static_cast<memrpc::Opcode>(200);
+constexpr MemRpc::Opcode kTestEchoOpcode = static_cast<MemRpc::Opcode>(200);
 
-void CloseHandles(memrpc::BootstrapHandles& h) {
+void CloseHandles(MemRpc::BootstrapHandles& h) {
   if (h.shmFd >= 0) close(h.shmFd);
   if (h.highReqEventFd >= 0) close(h.highReqEventFd);
   if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
@@ -24,7 +24,7 @@ void CloseHandles(memrpc::BootstrapHandles& h) {
 
 }  // namespace
 
-namespace memrpc {
+namespace MemRpc {
 
 TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
@@ -106,4 +106,4 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   server.Stop();
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

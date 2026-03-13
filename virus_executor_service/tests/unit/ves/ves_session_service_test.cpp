@@ -9,7 +9,7 @@
 namespace virus_executor_service {
 
 namespace {
-void CloseHandles(memrpc::BootstrapHandles* handles) {
+void CloseHandles(MemRpc::BootstrapHandles* handles) {
     if (handles == nullptr) {
         return;
     }
@@ -34,8 +34,8 @@ TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles) {
     VesEngineService service;
     EngineSessionService sessionService({&service});
 
-    memrpc::BootstrapHandles handles{};
-    EXPECT_EQ(sessionService.OpenSession(handles), memrpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles handles{};
+    EXPECT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     CloseHandles(&handles);
 }
@@ -45,9 +45,9 @@ TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
     EXPECT_FALSE(service.initialized());
 
     EngineSessionService sessionService({&service});
-    memrpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles{};
 
-    EXPECT_EQ(sessionService.OpenSession(handles), memrpc::StatusCode::Ok);
+    EXPECT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
     EXPECT_FALSE(service.initialized());
 
     CloseHandles(&handles);

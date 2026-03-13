@@ -8,7 +8,7 @@
 #include "memrpc/client/typed_future.h"
 #include "memrpc/core/codec.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 // Encode request, build RpcCall, and invoke asynchronously.
 template <typename Req>
@@ -88,6 +88,6 @@ StatusCode InvokeTypedSync(RpcClient* client,
         InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms), reply);
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CLIENT_TYPED_INVOKER_H_

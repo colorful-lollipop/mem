@@ -4,7 +4,7 @@
 #include <chrono>
 #include <functional>
 
-namespace memrpc {
+namespace MemRpc {
 
 class TaskExecutor {
  public:
@@ -18,6 +18,6 @@ class TaskExecutor {
   virtual void Stop() = 0;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_TASK_EXECUTOR_H_

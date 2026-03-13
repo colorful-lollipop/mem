@@ -24,7 +24,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-namespace Mem = ::memrpc;
+namespace Mem = ::MemRpc;
 
 uint64_t MonotonicNowMs() {
     return static_cast<uint64_t>(

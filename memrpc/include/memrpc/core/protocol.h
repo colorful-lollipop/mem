@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace memrpc {
+namespace MemRpc {
 
 // 共享内存头和 ring 布局版本号；双方必须严格一致。
 inline constexpr uint32_t SHARED_MEMORY_MAGIC = 0x4d454d52u;
@@ -116,6 +116,6 @@ inline constexpr uint32_t ComputeResponseSlotSize(uint32_t max_response_bytes) {
   return sizeof(ResponseSlotPayload) + max_response_bytes;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_PROTOCOL_H_

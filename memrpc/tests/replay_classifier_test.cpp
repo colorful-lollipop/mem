@@ -3,7 +3,7 @@
 #include "memrpc/core/protocol.h"
 #include "client/replay_classifier.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 TEST(ReplayClassifierTest, MapsRuntimeStates) {
   EXPECT_EQ(ClassifyReplayHint(SlotRuntimeStateCode::Admitted), ReplayHint::SafeToReplay);
@@ -25,4 +25,4 @@ TEST(ReplayClassifierTest, ConvertsToRpcRuntimeState) {
   EXPECT_EQ(ToRpcRuntimeState(SlotRuntimeStateCode::Consumed), RpcRuntimeState::Consumed);
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

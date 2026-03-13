@@ -22,17 +22,17 @@ bool IsTestkitFaultInjectionEnabled() {
 VirusExecutorService::VirusExecutorService()
     : OHOS::SystemAbility(VES_BOOTSTRAP_SA_ID, true) {}
 
-memrpc::StatusCode VirusExecutorService::OpenSession(memrpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& handles) {
     if (!session_service_) {
         HILOGE("session service not initialized");
-        return memrpc::StatusCode::InvalidArgument;
+        return MemRpc::StatusCode::InvalidArgument;
     }
     return session_service_->OpenSession(handles);
 }
 
-memrpc::StatusCode VirusExecutorService::CloseSession() {
+MemRpc::StatusCode VirusExecutorService::CloseSession() {
     if (!session_service_) {
-        return memrpc::StatusCode::Ok;
+        return MemRpc::StatusCode::Ok;
     }
     auto status = session_service_->CloseSession();
 
@@ -49,10 +49,10 @@ memrpc::StatusCode VirusExecutorService::CloseSession() {
     return status;
 }
 
-memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
+MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
     reply = VesHeartbeatReply{};
     if (!session_service_) {
-        return memrpc::StatusCode::Ok;
+        return MemRpc::StatusCode::Ok;
     }
     reply.sessionId = session_service_->session_id();
     const auto snapshot = service_.GetHealthSnapshot();
@@ -64,7 +64,7 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
     const bool healthy = service_.initialized() && reply.sessionId != 0;
     reply.status = static_cast<uint32_t>(healthy ? VesHeartbeatStatus::Ok
                                                  : VesHeartbeatStatus::Unhealthy);
-    return memrpc::StatusCode::Ok;
+    return MemRpc::StatusCode::Ok;
 }
 
 void VirusExecutorService::OnStart() {

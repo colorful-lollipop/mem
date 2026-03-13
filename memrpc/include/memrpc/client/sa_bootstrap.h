@@ -6,7 +6,7 @@
 
 #include "memrpc/core/bootstrap.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 struct SaBootstrapConfig {
   std::string serviceName;
@@ -38,12 +38,12 @@ class SaBootstrapChannel : public IBootstrapChannel {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

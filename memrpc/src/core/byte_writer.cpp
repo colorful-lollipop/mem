@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-namespace memrpc {
+namespace MemRpc {
 
 bool ByteWriter::WriteUint32(uint32_t value) {
   return WriteBytes(&value, sizeof(value));
@@ -33,4 +33,4 @@ const std::vector<uint8_t>& ByteWriter::bytes() const {
   return bytes_;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

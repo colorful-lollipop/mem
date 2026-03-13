@@ -21,7 +21,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -102,15 +102,15 @@ bool InvokeOnce(TestkitClient* client,
                 EchoReply* echoReply,
                 AddReply* addReply,
                 SleepReply* sleepReply,
-                memrpc::StatusCode* status) {
+                MemRpc::StatusCode* status) {
     if (client == nullptr) {
         if (status != nullptr) {
-            *status = memrpc::StatusCode::InvalidArgument;
+            *status = MemRpc::StatusCode::InvalidArgument;
         }
         return false;
     }
 
-    memrpc::StatusCode callStatus = memrpc::StatusCode::InvalidArgument;
+    MemRpc::StatusCode callStatus = MemRpc::StatusCode::InvalidArgument;
     switch (kind) {
         case RpcKind::Echo:
             callStatus = client->Echo(echoText, echoReply);
@@ -125,18 +125,18 @@ bool InvokeOnce(TestkitClient* client,
     if (status != nullptr) {
         *status = callStatus;
     }
-    return callStatus == memrpc::StatusCode::Ok;
+    return callStatus == MemRpc::StatusCode::Ok;
 }
 
 struct WorkerResult {
     uint64_t ops = 0;
     bool ok = true;
-    memrpc::StatusCode status = memrpc::StatusCode::Ok;
+    MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
 };
 
 bool MeasureOpsPerSecond(const PerfConfig& config,
                          RpcKind kind,
-                         const std::shared_ptr<memrpc::IBootstrapChannel>& bootstrap,
+                         const std::shared_ptr<MemRpc::IBootstrapChannel>& bootstrap,
                          double* opsPerSec,
                          std::string* error) {
     if (opsPerSec == nullptr) {
@@ -149,7 +149,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     const int threadCount = std::max(1, config.threads);
     TestkitClient client(bootstrap);
     const auto initStatus = client.Init();
-    if (initStatus != memrpc::StatusCode::Ok) {
+    if (initStatus != MemRpc::StatusCode::Ok) {
         if (error != nullptr) {
             std::ostringstream stream;
             stream << "client init failed status=" << static_cast<int>(initStatus);
@@ -231,9 +231,9 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     const int threadCount = std::max(1, config.threads);
     const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles handles{};
-    if (bootstrap->OpenSession(handles) != memrpc::StatusCode::Ok) {
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles handles{};
+    if (bootstrap->OpenSession(handles) != MemRpc::StatusCode::Ok) {
         for (const auto kind : kinds) {
             results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "bootstrap start failed"});
         }
@@ -241,15 +241,15 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     }
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    memrpc::ServerOptions options;
+    MemRpc::ServerOptions options;
     options.highWorkerThreads = static_cast<uint32_t>(threadCount);
     options.normalWorkerThreads = static_cast<uint32_t>(threadCount);
     server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
-    if (server.Start() != memrpc::StatusCode::Ok) {
+    if (server.Start() != MemRpc::StatusCode::Ok) {
         for (const auto kind : kinds) {
             results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "server start failed"});
         }

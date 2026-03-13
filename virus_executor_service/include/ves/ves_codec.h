@@ -7,7 +7,7 @@
 #include "memrpc/core/codec.h"
 #include "ves/ves_types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 template <>
 struct CodecTraits<virus_executor_service::InitReply> {
@@ -49,6 +49,6 @@ struct CodecTraits<virus_executor_service::ScanFileReply> {
     }
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_CODEC_H_

@@ -4,7 +4,7 @@
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 // Convenience wrapper that auto-decodes the request and encodes the reply,
 // so applications only need to provide a function: Req -> Rep.
@@ -22,6 +22,6 @@ void RegisterTypedHandler(RpcServer* server, Opcode opcode, Handler handler) {
         });
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_SERVER_TYPED_HANDLER_H_

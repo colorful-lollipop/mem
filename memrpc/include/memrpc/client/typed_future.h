@@ -8,7 +8,7 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/codec.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 // TypedFuture<Rep> wraps an RpcFuture and performs owning decode at consumption
 // time (Wait/WaitFor/Then). The raw payload stays undecoded until the caller
@@ -82,6 +82,6 @@ class TypedFuture {
   RpcFuture future_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CLIENT_TYPED_FUTURE_H_

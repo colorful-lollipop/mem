@@ -7,7 +7,7 @@
 #include "memrpc/core/byte_reader.h"
 #include "memrpc/core/byte_writer.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 namespace detail {
 
@@ -42,6 +42,6 @@ bool DecodeMessageView(const BytesLike& bytes, View* value) {
   return ViewTraits<View>::Decode(bytes.data(), bytes.size(), value);
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_CODEC_H_

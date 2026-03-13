@@ -7,7 +7,7 @@
 #include "memrpc/core/codec.h"
 #include "testkit/testkit_types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 using virus_executor_service::testkit::AddReply;
 using virus_executor_service::testkit::AddRequest;
@@ -113,6 +113,6 @@ struct CodecTraits<SleepReply> {
     }
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_CODEC_H_

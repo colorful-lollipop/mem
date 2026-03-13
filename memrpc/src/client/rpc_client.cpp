@@ -20,7 +20,7 @@
 #include "client/replay_classifier.h"
 #include "virus_protection_service_log.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 #ifndef MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS
 #define MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS 50
@@ -311,7 +311,10 @@ struct RpcClient::Impl {
   }
 
   void StopSubmitter() {
-    submit_running.store(false);
+    {
+      std::lock_guard<std::mutex> lock(submit_mutex);
+      submit_running.store(false, std::memory_order_release);
+    }
     SignalEventFdIfNeeded(session.Handles().reqCreditEventFd, true);
     submit_cv.notify_all();
     if (submit_thread.joinable() && std::this_thread::get_id() != submit_thread.get_id()) {
@@ -320,7 +323,7 @@ struct RpcClient::Impl {
   }
 
   void StartSubmitter() {
-    if (submit_running.exchange(true)) {
+    if (submit_running.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
     submit_thread = std::thread([this] { SubmitLoop(); });
@@ -842,14 +845,14 @@ struct RpcClient::Impl {
   }
 
   void SubmitLoop() {
-    while (submit_running.load()) {
+    while (submit_running.load(std::memory_order_acquire)) {
       PendingSubmit pending_submit;
       {
         std::unique_lock<std::mutex> lock(submit_mutex);
         submit_cv.wait(lock, [this] {
-          return !submit_running.load(std::memory_order_relaxed) || !submit_queue.empty();
+          return !submit_running.load(std::memory_order_acquire) || !submit_queue.empty();
         });
-        if (!submit_running.load() && submit_queue.empty()) {
+        if (!submit_running.load(std::memory_order_acquire) && submit_queue.empty()) {
           break;
         }
         pending_submit = std::move(submit_queue.front());
@@ -1289,7 +1292,6 @@ struct RpcClient::Impl {
   }
 
   RpcFuture InvokeAsync(RpcCall call) {
-    StartSubmitter();
     const uint64_t request_id = next_request_id.fetch_add(1);
     const StatusCode ensure_status = EnsureLiveSession();
     if (ensure_status != StatusCode::Ok) {
@@ -1320,6 +1322,8 @@ struct RpcClient::Impl {
         return this->MakeReadyFuture(StatusCode::InvalidArgument);
       }
     }
+
+    StartSubmitter();
 
     const uint64_t session_id = current_session_id.load(std::memory_order_relaxed);
     std::shared_ptr<RpcFuture::State> pending;
@@ -1379,9 +1383,9 @@ StatusCode RpcClient::Init() {
   impl_->shutting_down.store(false);
   impl_->bootstrap->SetEngineDeathCallback(
       [this](uint64_t session_id) { impl_->HandleEngineDeath(session_id); });
-  impl_->StartSubmitter();
   const StatusCode status = impl_->EnsureLiveSession();
   if (status == StatusCode::Ok) {
+    impl_->StartSubmitter();
     impl_->StartWatchdog();
   }
   return status;
@@ -1492,4 +1496,4 @@ void RpcSyncClient::Shutdown() {
   client_.Shutdown();
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

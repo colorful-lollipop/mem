@@ -13,17 +13,17 @@
 namespace virus_executor_service {
 
 class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
-                          public memrpc::IBootstrapChannel {
+                          public MemRpc::IBootstrapChannel {
  public:
     VesBootstrapProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                       const std::string& serviceSocketPath);
     ~VesBootstrapProxy() override;
 
-    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
-    memrpc::StatusCode CloseSession() override;
-    memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
+    MemRpc::StatusCode CloseSession() override;
+    MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 
-    void SetEngineDeathCallback(memrpc::EngineDeathCallback callback) override;
+    void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
     void MonitorSocket();
@@ -33,7 +33,7 @@ class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
     std::atomic<bool> stop_monitor_{false};
     std::thread monitor_thread_;
     uint64_t sessionId_ = 0;
-    memrpc::EngineDeathCallback deathCallback_;
+    MemRpc::EngineDeathCallback deathCallback_;
     std::mutex callbackMutex_;
 };
 

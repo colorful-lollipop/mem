@@ -56,7 +56,7 @@ VesBootstrapProxy::~VesBootstrapProxy() {
     }
 }
 
-memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesBootstrapProxy::OpenSession(MemRpc::BootstrapHandles& handles) {
     // Clean up any previous connection (reconnect after engine death).
     stop_monitor_ = true;
     if (monitor_thread_.joinable()) {
@@ -73,7 +73,7 @@ memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     sock_fd_ = ConnectToService(service_socket_path_);
     if (sock_fd_ < 0) {
         HILOGE("connect to %{public}s failed", service_socket_path_.c_str());
-        return memrpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::PeerDisconnected;
     }
 
     // Send "open_session" command (just 1 byte).
@@ -81,7 +81,7 @@ memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     if (send(sock_fd_, &cmd, 1, MSG_NOSIGNAL) != 1) {
         close(sock_fd_);
         sock_fd_ = -1;
-        return memrpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::PeerDisconnected;
     }
 
     // Receive 6 FDs + metadata via SCM_RIGHTS.
@@ -96,7 +96,7 @@ memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
         }
         close(sock_fd_);
         sock_fd_ = -1;
-        return memrpc::StatusCode::ProtocolMismatch;
+        return MemRpc::StatusCode::ProtocolMismatch;
     }
 
     handles.shmFd = fds[0];
@@ -113,20 +113,20 @@ memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     stop_monitor_ = false;
     monitor_thread_ = std::thread(&VesBootstrapProxy::MonitorSocket, this);
 
-    return memrpc::StatusCode::Ok;
+    return MemRpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
+MemRpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
     // Use a short-lived connection for heartbeat (server closes after reply).
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
-        return memrpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::PeerDisconnected;
     }
 
     char cmd = 3;
     if (send(hb_fd, &cmd, 1, MSG_NOSIGNAL) != 1) {
         close(hb_fd);
-        return memrpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::PeerDisconnected;
     }
 
     VesHeartbeatReply buf{};
@@ -134,13 +134,13 @@ memrpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
     close(hb_fd);
 
     if (n != static_cast<ssize_t>(sizeof(buf))) {
-        return memrpc::StatusCode::ProtocolMismatch;
+        return MemRpc::StatusCode::ProtocolMismatch;
     }
     reply = buf;
-    return memrpc::StatusCode::Ok;
+    return MemRpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode VesBootstrapProxy::CloseSession() {
+MemRpc::StatusCode VesBootstrapProxy::CloseSession() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {
         shutdown(sock_fd_, SHUT_RDWR);
@@ -152,10 +152,10 @@ memrpc::StatusCode VesBootstrapProxy::CloseSession() {
         close(sock_fd_);
         sock_fd_ = -1;
     }
-    return memrpc::StatusCode::Ok;
+    return MemRpc::StatusCode::Ok;
 }
 
-void VesBootstrapProxy::SetEngineDeathCallback(memrpc::EngineDeathCallback callback) {
+void VesBootstrapProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
     std::lock_guard<std::mutex> lock(callbackMutex_);
     deathCallback_ = std::move(callback);
 }

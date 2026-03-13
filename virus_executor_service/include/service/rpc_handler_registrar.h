@@ -8,7 +8,7 @@ namespace virus_executor_service {
 class RpcHandlerRegistrar {
  public:
     virtual ~RpcHandlerRegistrar() = default;
-    virtual void RegisterHandlers(memrpc::RpcServer* server) = 0;
+    virtual void RegisterHandlers(MemRpc::RpcServer* server) = 0;
 };
 
 }  // namespace virus_executor_service

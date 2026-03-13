@@ -21,9 +21,9 @@
 
 namespace {
 
-constexpr memrpc::Opcode kTestOpcode = 1u;
+constexpr MemRpc::Opcode kTestOpcode = 1u;
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
   if (handles.shmFd >= 0) close(handles.shmFd);
   if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
   if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -93,7 +93,7 @@ bool WriteBaseline(const std::filesystem::path& path,
   if (!output.is_open()) {
     return false;
   }
-  output << "# memrpc dt perf baseline\n";
+  output << "# MemRpc dt perf baseline\n";
   for (const auto& entry : baseline) {
     output << entry.first << "=" << std::fixed << std::setprecision(3) << entry.second << "\n";
   }
@@ -125,26 +125,26 @@ TEST(DtPerfTest, ShortPerfBaseline) {
   const int max_p99_us = GetEnvInt("MEMRPC_DT_MAX_P99_US", 20000);
   const uint32_t threadCount = GetThreadCount();
 
-  auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  memrpc::ServerOptions options;
+  MemRpc::ServerOptions options;
   options.highWorkerThreads = threadCount;
   options.normalWorkerThreads = threadCount;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
-                           reply->status = memrpc::StatusCode::Ok;
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
   const std::vector<std::pair<const char*, size_t>> cases = {
       {"echo_0B", 0},
@@ -160,11 +160,11 @@ TEST(DtPerfTest, ShortPerfBaseline) {
 
     const auto warmup_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(warmup_ms);
     while (std::chrono::steady_clock::now() < warmup_end) {
-      memrpc::RpcCall call;
+      MemRpc::RpcCall call;
       call.opcode = kTestOpcode;
       call.payload.assign(payload_size, static_cast<uint8_t>('x'));
       auto future = client.InvokeAsync(call);
-      memrpc::RpcReply reply;
+      MemRpc::RpcReply reply;
       (void)future.Wait(&reply);
     }
 
@@ -178,12 +178,12 @@ TEST(DtPerfTest, ShortPerfBaseline) {
     for (uint32_t i = 0; i < threadCount; ++i) {
       workers.emplace_back([&, i]() {
         while (std::chrono::steady_clock::now() < end) {
-          memrpc::RpcCall call;
+          MemRpc::RpcCall call;
           call.opcode = kTestOpcode;
           call.payload.assign(payload_size, static_cast<uint8_t>('a' + (i % 8)));
           auto future = client.InvokeAsync(call);
-          memrpc::RpcReply reply;
-          if (future.Wait(&reply) == memrpc::StatusCode::Ok) {
+          MemRpc::RpcReply reply;
+          if (future.Wait(&reply) == MemRpc::StatusCode::Ok) {
             ++ops;
           }
         }
@@ -197,15 +197,15 @@ TEST(DtPerfTest, ShortPerfBaseline) {
     std::vector<double> latencies;
     latencies.reserve(500);
     for (int i = 0; i < 500; ++i) {
-      memrpc::RpcCall call;
+      MemRpc::RpcCall call;
       call.opcode = kTestOpcode;
       call.payload.assign(payload_size, static_cast<uint8_t>('x'));
       const auto t0 = std::chrono::steady_clock::now();
       auto future = client.InvokeAsync(call);
-      memrpc::RpcReply reply;
-      memrpc::StatusCode status = future.Wait(&reply);
+      MemRpc::RpcReply reply;
+      MemRpc::StatusCode status = future.Wait(&reply);
       const auto t1 = std::chrono::steady_clock::now();
-      ASSERT_EQ(status, memrpc::StatusCode::Ok);
+      ASSERT_EQ(status, MemRpc::StatusCode::Ok);
       const double us = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count() / 1000.0;
       latencies.push_back(us);
     }
@@ -213,8 +213,8 @@ TEST(DtPerfTest, ShortPerfBaseline) {
     const double duration_sec = std::max(1, durationMs) / 1000.0;
     const PerfStats stats = ComputeStats(latencies, duration_sec, ops.load());
 
-    const std::string ops_key = "memrpc." + case_name + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
-    const std::string p99_key = "memrpc." + case_name + ".threads=" + std::to_string(threadCount) + ".p99_us";
+    const std::string ops_key = "MemRpc." + case_name + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
+    const std::string p99_key = "MemRpc." + case_name + ".threads=" + std::to_string(threadCount) + ".p99_us";
 
     EXPECT_GE(stats.ops_per_sec, static_cast<double>(min_ops));
     EXPECT_LE(stats.p99_us, static_cast<double>(max_p99_us));

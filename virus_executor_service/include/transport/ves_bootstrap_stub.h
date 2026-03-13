@@ -24,8 +24,8 @@ class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
     bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
         switch (command) {
             case 1: {
-                memrpc::BootstrapHandles handles{};
-                if (OpenSession(handles) != memrpc::StatusCode::Ok) {
+                MemRpc::BootstrapHandles handles{};
+                if (OpenSession(handles) != MemRpc::StatusCode::Ok) {
                     return false;
                 }
 
@@ -46,10 +46,10 @@ class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
                 return true;
             }
             case 2:
-                return CloseSession() == memrpc::StatusCode::Ok;
+                return CloseSession() == MemRpc::StatusCode::Ok;
             case 3: {
                 VesHeartbeatReply hb{};
-                if (Heartbeat(hb) != memrpc::StatusCode::Ok) {
+                if (Heartbeat(hb) != MemRpc::StatusCode::Ok) {
                     return false;
                 }
                 std::memcpy(reply->data, &hb, sizeof(hb));

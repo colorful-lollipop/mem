@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-namespace memrpc {
+namespace MemRpc {
 
 ByteReader::ByteReader(const std::vector<uint8_t>& bytes) : bytes_(bytes.data()), size_(bytes.size()) {}
 
@@ -60,4 +60,4 @@ bool ByteReader::ReadStringView(std::string_view* value) {
   return true;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

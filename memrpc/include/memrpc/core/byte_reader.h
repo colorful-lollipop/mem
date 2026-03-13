@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace memrpc {
+namespace MemRpc {
 
 using ByteView = std::basic_string_view<uint8_t>;
 
@@ -29,6 +29,6 @@ class ByteReader {
   std::size_t offset_ = 0;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_BYTE_READER_H_

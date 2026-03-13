@@ -28,7 +28,7 @@ std::unique_ptr<virus_executor_service::VesClient> ConnectToEngine() {
     HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
     auto client = std::make_unique<virus_executor_service::VesClient>(remote);
-    if (client->Init() != memrpc::StatusCode::Ok) {
+    if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
     }
@@ -52,7 +52,7 @@ std::unique_ptr<virus_executor_service::VesClient> LoadAndConnectToEngine() {
     HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
     auto client = std::make_unique<virus_executor_service::VesClient>(remote);
-    if (client->Init() != memrpc::StatusCode::Ok) {
+    if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
     }

@@ -10,7 +10,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 using RpcThenExecutor = std::function<void(std::function<void()>)>;
 
@@ -176,12 +176,12 @@ class RpcSyncClient {
   RpcClient client_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

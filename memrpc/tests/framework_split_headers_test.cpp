@@ -6,8 +6,6 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
-namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
-
 #define MEMRPC_SOURCE_PATH(rel) MEMRPC_SOURCE_DIR rel
 #define MEMRPC_REPO_PATH(rel) MEMRPC_REPO_ROOT rel
 

@@ -5,16 +5,16 @@
 namespace virus_executor_service::testkit {
 
 ResilientBatchInvoker::ResilientBatchInvoker(
-    std::shared_ptr<memrpc::IBootstrapChannel> bootstrap,
+    std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
     ReplayPolicy policy)
     : client_(std::move(bootstrap)), policy_(std::move(policy)) {}
 
-memrpc::StatusCode ResilientBatchInvoker::Init() {
+MemRpc::StatusCode ResilientBatchInvoker::Init() {
     return client_.Init();
 }
 
 std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::SubmitBatch(
-    const std::vector<memrpc::RpcCall>& calls) {
+    const std::vector<MemRpc::RpcCall>& calls) {
     std::vector<TrackedFuture> tracked;
     tracked.reserve(calls.size());
     for (const auto& call : calls) {
@@ -33,15 +33,15 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::SubmitB
     return tracked;
 }
 
-void ResilientBatchInvoker::CollectResults(std::vector<memrpc::RpcReply>* completedReplies) {
+void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* completedReplies) {
     if (completedReplies == nullptr) {
         return;
     }
 
     for (auto& activeCall : activeCalls_) {
-        memrpc::RpcReply reply;
+        MemRpc::RpcReply reply;
         const auto status = activeCall.future.WaitAndTake(&reply);
-        if (status == memrpc::StatusCode::Ok) {
+        if (status == MemRpc::StatusCode::Ok) {
             completedReplies->push_back(std::move(reply));
         } else {
             FailedCallRecord record;
@@ -74,7 +74,7 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayF
             continue;
         }
 
-        memrpc::RpcCall call;
+        MemRpc::RpcCall call;
         call.opcode = record.opcode;
         call.payload = record.payload;
 

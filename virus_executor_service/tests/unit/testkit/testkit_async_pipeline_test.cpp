@@ -17,7 +17,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -51,25 +51,25 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
     const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    memrpc::ServerOptions options;
+    MemRpc::ServerOptions options;
     options.highWorkerThreads = 4;
     options.normalWorkerThreads = 4;
     server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     double syncOpsPerSec = 0;
     {
         TestkitClient syncClient(bootstrap);
-        ASSERT_EQ(syncClient.Init(), memrpc::StatusCode::Ok);
+        ASSERT_EQ(syncClient.Init(), MemRpc::StatusCode::Ok);
 
         const auto warmupEnd =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
@@ -84,7 +84,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         while (std::chrono::steady_clock::now() < endTime) {
             EchoReply reply;
             const auto status = syncClient.Echo("ping", &reply);
-            ASSERT_EQ(status, memrpc::StatusCode::Ok);
+            ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             ++syncOps;
         }
         const double durationSec = std::max(1, durationMs) / 1000.0;
@@ -93,7 +93,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
     }
 
     TestkitAsyncClient asyncClient(bootstrap);
-    ASSERT_EQ(asyncClient.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
 
     const std::vector<int> batchSizes = {1, 8, 32, 64};
     std::vector<PipelineResult> results;
@@ -106,7 +106,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         while (std::chrono::steady_clock::now() < warmupEnd) {
             EchoRequest request;
             request.text = "ping";
-            std::vector<memrpc::TypedFuture<EchoReply>> futures;
+            std::vector<MemRpc::TypedFuture<EchoReply>> futures;
             futures.reserve(batchSize);
             for (int i = 0; i < batchSize; ++i) {
                 futures.push_back(asyncClient.EchoAsync(request));
@@ -123,7 +123,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         while (std::chrono::steady_clock::now() < endTime) {
             EchoRequest request;
             request.text = "ping";
-            std::vector<memrpc::TypedFuture<EchoReply>> futures;
+            std::vector<MemRpc::TypedFuture<EchoReply>> futures;
             futures.reserve(batchSize);
             for (int i = 0; i < batchSize; ++i) {
                 futures.push_back(asyncClient.EchoAsync(request));
@@ -132,7 +132,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
             for (auto& future : futures) {
                 EchoReply reply;
                 const auto status = future.Wait(&reply);
-                if (status != memrpc::StatusCode::Ok) {
+                if (status != MemRpc::StatusCode::Ok) {
                     allOk = false;
                 }
             }

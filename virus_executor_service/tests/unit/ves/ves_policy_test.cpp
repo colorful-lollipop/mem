@@ -15,13 +15,13 @@
 namespace virus_executor_service {
 
 TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles unused{};
-    ASSERT_EQ(bootstrap->OpenSession(unused), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles unused{};
+    ASSERT_EQ(bootstrap->OpenSession(unused), MemRpc::StatusCode::Ok);
 
-    memrpc::RpcServer server(bootstrap->serverHandles());
-    memrpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
-        &server, static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
+    MemRpc::RpcServer server(bootstrap->serverHandles());
+    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+        &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
         [](const ScanFileRequest& req) {
             // Force exec timeout by sleeping longer than client timeout.
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -31,35 +31,35 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
             (void)req;
             return reply;
         });
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     std::atomic<bool> failureCalled{false};
-    memrpc::RpcClient client(bootstrap);
+    MemRpc::RpcClient client(bootstrap);
 
-    memrpc::RecoveryPolicy policy;
-    policy.onFailure = [&](const memrpc::RpcFailure& failure) {
-        if (failure.status == memrpc::StatusCode::ExecTimeout) {
+    MemRpc::RecoveryPolicy policy;
+    policy.onFailure = [&](const MemRpc::RpcFailure& failure) {
+        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
             failureCalled.store(true);
         }
-        return memrpc::RecoveryDecision{memrpc::RecoveryAction::Ignore, 0};
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
     };
     client.SetRecoveryPolicy(std::move(policy));
 
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     ScanFileRequest req;
     req.filePath = "/data/sleep50.bin";
 
-    memrpc::RpcCall call;
-    call.opcode = static_cast<memrpc::Opcode>(VesOpcode::ScanFile);
+    MemRpc::RpcCall call;
+    call.opcode = static_cast<MemRpc::Opcode>(VesOpcode::ScanFile);
     call.execTimeoutMs = 5;  // short timeout
-    memrpc::CodecTraits<ScanFileRequest>::Encode(req, &call.payload);
+    MemRpc::CodecTraits<ScanFileRequest>::Encode(req, &call.payload);
 
     auto future = client.InvokeAsync(call);
-    memrpc::RpcReply reply;
+    MemRpc::RpcReply reply;
     auto status = future.Wait(&reply);
 
-    EXPECT_EQ(status, memrpc::StatusCode::ExecTimeout);
+    EXPECT_EQ(status, MemRpc::StatusCode::ExecTimeout);
     EXPECT_TRUE(failureCalled.load());
 
     client.Shutdown();

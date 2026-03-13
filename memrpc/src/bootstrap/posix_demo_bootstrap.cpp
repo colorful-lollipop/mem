@@ -12,7 +12,7 @@
 #include "core/shm_layout.h"
 #include "virus_protection_service_log.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 namespace {
 
@@ -167,7 +167,7 @@ PosixDemoBootstrapChannel::PosixDemoBootstrapChannel(DemoBootstrapConfig config)
     : impl_(std::make_shared<Impl>()) {
   impl_->config = std::move(config);
   if (impl_->config.shmName.empty()) {
-    impl_->config.shmName = "/memrpc-demo-" + std::to_string(::getpid());
+    impl_->config.shmName = "/MemRpc-demo-" + std::to_string(::getpid());
   }
 }
 
@@ -250,4 +250,4 @@ void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) 
   }
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

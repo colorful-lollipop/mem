@@ -17,9 +17,9 @@ class VirusExecutorService : public OHOS::SystemAbility,
     VirusExecutorService();
     ~VirusExecutorService() override = default;
 
-    memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
-    memrpc::StatusCode CloseSession() override;
-    memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
+    MemRpc::StatusCode CloseSession() override;
+    MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 
     void OnStart() override;
     void OnStop() override;

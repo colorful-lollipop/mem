@@ -15,11 +15,11 @@
 #include "memrpc/core/task_executor.h"
 #include "memrpc/server/rpc_server.h"
 
-constexpr memrpc::Opcode kTestOpcode = 1u;
+constexpr MemRpc::Opcode kTestOpcode = 1u;
 
 namespace {
 
-class TestExecutor final : public memrpc::TaskExecutor {
+class TestExecutor final : public MemRpc::TaskExecutor {
  public:
   explicit TestExecutor(uint32_t max_inflight) : max_inflight_(max_inflight) {}
 
@@ -92,30 +92,30 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
 }  // namespace
 
 TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
-  auto bootstrap = std::make_shared<memrpc::SaBootstrapChannel>();
-  memrpc::BootstrapHandles unused_handles;
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), memrpc::StatusCode::Ok);
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcServer server;
+  MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
 
   auto executor = std::make_shared<TestExecutor>(0);
-  memrpc::ServerOptions options;
+  MemRpc::ServerOptions options;
   options.highExecutor = executor;
   options.normalExecutor = executor;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
-                         [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
+                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
                            ASSERT_NE(reply, nullptr);
-                           reply->status = memrpc::StatusCode::Ok;
+                           reply->status = MemRpc::StatusCode::Ok;
                            reply->payload = call.payload;
                          });
-  ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-  memrpc::RpcCall call;
+  MemRpc::RpcCall call;
   call.opcode = kTestOpcode;
   call.payload = std::vector<uint8_t>{1, 2, 3};
 
@@ -123,8 +123,8 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
   EXPECT_FALSE(WaitForCondition([&future] { return future.IsReady(); }, 20));
 
   executor->SetMaxInflight(1);
-  memrpc::RpcReply reply;
-  EXPECT_EQ(future.Wait(&reply), memrpc::StatusCode::Ok);
+  MemRpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
   EXPECT_EQ(reply.payload, call.payload);
 
   client.Shutdown();

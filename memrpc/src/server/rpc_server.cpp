@@ -22,7 +22,7 @@
 #include "memrpc/core/task_executor.h"
 #include "virus_protection_service_log.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 namespace {
 
@@ -755,4 +755,4 @@ void RpcServer::Stop() {
   impl_->session.Reset();
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

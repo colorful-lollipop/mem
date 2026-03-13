@@ -29,9 +29,9 @@ struct VesHeartbeatReply {
 class IVesBootstrap : public OHOS::IRemoteBroker {
  public:
     ~IVesBootstrap() override = default;
-    virtual memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) = 0;
-    virtual memrpc::StatusCode CloseSession() = 0;
-    virtual memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
+    virtual MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) = 0;
+    virtual MemRpc::StatusCode CloseSession() = 0;
+    virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
 };
 
 }  // namespace virus_executor_service

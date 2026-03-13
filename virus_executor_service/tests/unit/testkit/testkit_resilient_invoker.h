@@ -13,9 +13,9 @@ namespace virus_executor_service::testkit {
 
 struct FailedCallRecord {
     uint64_t sequenceId = 0;
-    memrpc::Opcode opcode = memrpc::OPCODE_INVALID;
+    MemRpc::Opcode opcode = MemRpc::OPCODE_INVALID;
     std::vector<uint8_t> payload;
-    memrpc::StatusCode failureStatus = memrpc::StatusCode::PeerDisconnected;
+    MemRpc::StatusCode failureStatus = MemRpc::StatusCode::PeerDisconnected;
     std::chrono::steady_clock::time_point failedAt;
 };
 
@@ -25,19 +25,19 @@ using ReplayPolicy = std::function<ReplayDecision(const FailedCallRecord&)>;
 class ResilientBatchInvoker {
  public:
     explicit ResilientBatchInvoker(
-        std::shared_ptr<memrpc::IBootstrapChannel> bootstrap,
+        std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
         ReplayPolicy policy = nullptr);
 
-    memrpc::StatusCode Init();
+    MemRpc::StatusCode Init();
 
     struct TrackedFuture {
         uint64_t sequenceId = 0;
-        memrpc::RpcFuture future;
+        MemRpc::RpcFuture future;
     };
 
-    std::vector<TrackedFuture> SubmitBatch(const std::vector<memrpc::RpcCall>& calls);
+    std::vector<TrackedFuture> SubmitBatch(const std::vector<MemRpc::RpcCall>& calls);
 
-    void CollectResults(std::vector<memrpc::RpcReply>* completedReplies);
+    void CollectResults(std::vector<MemRpc::RpcReply>* completedReplies);
 
     const std::vector<FailedCallRecord>& GetFailedCalls() const;
 
@@ -50,11 +50,11 @@ class ResilientBatchInvoker {
  private:
     struct ActiveCall {
         uint64_t sequenceId = 0;
-        memrpc::RpcCall originalCall;
-        memrpc::RpcFuture future;
+        MemRpc::RpcCall originalCall;
+        MemRpc::RpcFuture future;
     };
 
-    memrpc::RpcClient client_;
+    MemRpc::RpcClient client_;
     ReplayPolicy policy_;
     uint64_t nextSequenceId_ = 1;
     std::vector<ActiveCall> activeCalls_;

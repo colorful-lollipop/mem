@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace memrpc {
+namespace MemRpc {
 
 enum class Priority {
   Normal = 0,
@@ -91,12 +91,12 @@ enum class RpcRuntimeState {
   Consumed,
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

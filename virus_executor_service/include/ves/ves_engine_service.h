@@ -18,7 +18,7 @@ struct VesHealthSnapshot {
 
 class VesEngineService : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(memrpc::RpcServer* server) override;
+    void RegisterHandlers(MemRpc::RpcServer* server) override;
     void Initialize();
     bool initialized() const;
 

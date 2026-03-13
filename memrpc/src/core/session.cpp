@@ -9,7 +9,7 @@
 #include <ctime>
 #include <cstring>
 
-namespace memrpc {
+namespace MemRpc {
 
 namespace {
 
@@ -432,4 +432,4 @@ Session::RingAccess Session::ResolveRing(QueueKind queue) {
   return {};
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

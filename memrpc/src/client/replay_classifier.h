@@ -3,7 +3,7 @@
 #include "memrpc/core/protocol.h"
 #include "memrpc/core/types.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 inline RpcRuntimeState ToRpcRuntimeState(SlotRuntimeStateCode state) {
   switch (state) {
@@ -33,4 +33,4 @@ inline ReplayHint ClassifyReplayHint(SlotRuntimeStateCode state) {
   return ReplayHint::Unknown;
 }
 
-}  // namespace memrpc
+}  // namespace MemRpc

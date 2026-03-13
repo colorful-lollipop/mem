@@ -75,14 +75,14 @@ TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
             request.text = "ping";
             while (std::chrono::steady_clock::now() < endTime) {
                 std::vector<uint8_t> encoded;
-                memrpc::EncodeMessage(request, &encoded);
+                MemRpc::EncodeMessage(request, &encoded);
                 EchoRequest decoded;
-                memrpc::DecodeMessage(encoded, &decoded);
+                MemRpc::DecodeMessage(encoded, &decoded);
                 EchoReply reply = service.Echo(decoded);
                 std::vector<uint8_t> replyEncoded;
-                memrpc::EncodeMessage(reply, &replyEncoded);
+                MemRpc::EncodeMessage(reply, &replyEncoded);
                 EchoReply replyDecoded;
-                memrpc::DecodeMessage(replyEncoded, &replyDecoded);
+                MemRpc::DecodeMessage(replyEncoded, &replyDecoded);
                 (void)replyDecoded;
                 ++current.ops;
             }

@@ -10,7 +10,7 @@ namespace virus_executor_service::testkit {
 
 class TestkitClient {
  public:
-    explicit TestkitClient(std::shared_ptr<memrpc::IBootstrapChannel> bootstrap = nullptr);
+    explicit TestkitClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap = nullptr);
     ~TestkitClient();
 
     TestkitClient(const TestkitClient&) = delete;
@@ -18,14 +18,14 @@ class TestkitClient {
     TestkitClient(TestkitClient&&) noexcept = default;
     TestkitClient& operator=(TestkitClient&&) noexcept = default;
 
-    void SetBootstrapChannel(std::shared_ptr<memrpc::IBootstrapChannel> bootstrap);
-    memrpc::StatusCode Init();
-    memrpc::StatusCode Echo(const std::string& text, EchoReply* reply);
-    memrpc::StatusCode Add(int32_t lhs, int32_t rhs, AddReply* reply);
-    memrpc::StatusCode Sleep(
+    void SetBootstrapChannel(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap);
+    MemRpc::StatusCode Init();
+    MemRpc::StatusCode Echo(const std::string& text, EchoReply* reply);
+    MemRpc::StatusCode Add(int32_t lhs, int32_t rhs, AddReply* reply);
+    MemRpc::StatusCode Sleep(
         uint32_t delayMs,
         SleepReply* reply,
-        memrpc::Priority priority = memrpc::Priority::Normal,
+        MemRpc::Priority priority = MemRpc::Priority::Normal,
         uint32_t execTimeoutMs = 30000);
     void Shutdown();
 

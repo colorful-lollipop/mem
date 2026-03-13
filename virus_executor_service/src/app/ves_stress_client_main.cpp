@@ -115,7 +115,7 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
         auto status = client->ScanFile(path, &reply);
         stats->total++;
 
-        if (status != memrpc::StatusCode::Ok) {
+        if (status != MemRpc::StatusCode::Ok) {
             stats->rpcError++;
             continue;
         }
@@ -239,7 +239,7 @@ int main(int argc, char* argv[]) {
     client->SetEngineRestartCallback([&]() {
         RespawnEngine(enginePath, &stats);
     });
-    if (client->Init() != memrpc::StatusCode::Ok) {
+    if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);

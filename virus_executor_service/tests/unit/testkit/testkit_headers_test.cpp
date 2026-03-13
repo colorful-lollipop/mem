@@ -12,7 +12,7 @@ namespace virus_executor_service::testkit {
 TEST(TestkitHeadersTest, HeaderLayoutComposes) {
     EXPECT_TRUE((std::is_default_constructible_v<EchoRequest>));
     EXPECT_TRUE((std::is_class_v<TestkitClient>));
-    EXPECT_FALSE((std::is_copy_constructible_v<memrpc::RpcClient>));
+    EXPECT_FALSE((std::is_copy_constructible_v<MemRpc::RpcClient>));
 }
 
 TEST(TestkitHeadersTest, ProtocolHeaderCompiles) {

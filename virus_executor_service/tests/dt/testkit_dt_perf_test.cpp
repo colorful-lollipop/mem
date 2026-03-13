@@ -23,7 +23,7 @@
 namespace virus_executor_service::testkit {
 namespace {
 
-void CloseHandles(memrpc::BootstrapHandles& handles) {
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
     if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
@@ -129,26 +129,26 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
     const int maxP99Us = GetEnvInt("MEMRPC_DT_MAX_P99_US", 20000);
     const uint32_t threadCount = GetThreadCount();
 
-    auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(bootstrap->OpenSession(handles), memrpc::StatusCode::Ok);
+    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
-    memrpc::RpcServer server;
+    MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    memrpc::ServerOptions options;
+    MemRpc::ServerOptions options;
     options.highWorkerThreads = threadCount;
     options.normalWorkerThreads = threadCount;
     server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
-    ASSERT_EQ(server.Start(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     const size_t maxEchoPayload =
-        memrpc::DEFAULT_MAX_REQUEST_BYTES > 4 ? memrpc::DEFAULT_MAX_REQUEST_BYTES - 4 : 0;
+        MemRpc::DEFAULT_MAX_REQUEST_BYTES > 4 ? MemRpc::DEFAULT_MAX_REQUEST_BYTES - 4 : 0;
     const size_t echoLargePayload = std::min<size_t>(4096, maxEchoPayload);
     const std::vector<std::pair<const char*, size_t>> cases = {
         {"echo_0B", 0},
@@ -185,7 +185,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
         for (uint32_t i = 0; i < threadCount; ++i) {
             workers.emplace_back([&, i]() {
                 while (std::chrono::steady_clock::now() < end) {
-                    memrpc::StatusCode status = memrpc::StatusCode::Ok;
+                    MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
                     if (caseName == "add") {
                         AddReply reply;
                         status = client.Add(1, 2, &reply);
@@ -194,7 +194,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
                         std::string payload(payloadSize, static_cast<char>('a' + (i % 8)));
                         status = client.Echo(payload, &reply);
                     }
-                    if (status == memrpc::StatusCode::Ok) {
+                    if (status == MemRpc::StatusCode::Ok) {
                         ++ops;
                     }
                 }
@@ -208,7 +208,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
         latencies.reserve(500);
         for (int i = 0; i < 500; ++i) {
             const auto t0 = std::chrono::steady_clock::now();
-            memrpc::StatusCode status = memrpc::StatusCode::Ok;
+            MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
             if (caseName == "add") {
                 AddReply reply;
                 status = client.Add(1, 2, &reply);
@@ -218,7 +218,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
                 status = client.Echo(payload, &reply);
             }
             const auto t1 = std::chrono::steady_clock::now();
-            ASSERT_EQ(status, memrpc::StatusCode::Ok);
+            ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count() /
                 1000.0);

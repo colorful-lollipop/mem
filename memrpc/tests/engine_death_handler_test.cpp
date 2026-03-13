@@ -9,11 +9,9 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
 
-namespace MemRpc = OHOS::Security::VirusProtectionService::MemRpc;
-
 namespace {
 
-constexpr memrpc::Opcode kTestOpcode = 1u;
+constexpr MemRpc::Opcode kTestOpcode = 1u;
 
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:

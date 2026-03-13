@@ -7,7 +7,7 @@
 #include "memrpc/core/protocol.h"
 #include "memrpc/core/bootstrap.h"
 
-namespace memrpc {
+namespace MemRpc {
 
 struct DemoBootstrapConfig {
   uint32_t highRingSize = 32;
@@ -36,12 +36,12 @@ class PosixDemoBootstrapChannel : public IBootstrapChannel {
   std::shared_ptr<Impl> impl_;
 };
 
-}  // namespace memrpc
+}  // namespace MemRpc
 
 namespace OHOS {
 namespace Security {
 namespace VirusProtectionService {
-namespace MemRpc = ::memrpc;
+namespace MemRpc = ::MemRpc;
 }  // namespace VirusProtectionService
 }  // namespace Security
 }  // namespace OHOS

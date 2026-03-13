@@ -17,7 +17,7 @@ TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
     service.OnStart();
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy));
 
     service.OnStop();
@@ -27,12 +27,12 @@ TEST(VesHeartbeatTest, OkAfterOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.sessionId, session_id);
     EXPECT_STREQ(reply.currentTask, "idle");
@@ -53,12 +53,12 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     ASSERT_TRUE(stub->Publish(stub.get()));
 
     VesBootstrapProxy proxy(stub->AsObject(), socketPath);
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(proxy.OpenSession(handles), memrpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(proxy.Heartbeat(reply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(proxy.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.sessionId, session_id);
 
@@ -70,8 +70,8 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     VirusExecutorService service;
     service.OnStart();
 
-    memrpc::BootstrapHandles handles{};
-    ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
@@ -86,7 +86,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     }
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
+    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_GE(reply.inFlight, 1u);
     EXPECT_STRNE(reply.currentTask, "idle");
 
