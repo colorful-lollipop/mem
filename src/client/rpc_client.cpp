@@ -28,6 +28,8 @@ namespace memrpc {
 
 namespace {
 
+constexpr size_t MAX_SUBMIT_QUEUE_SIZE = 3000;
+
 uint32_t MonotonicNowMs() {
   const auto now = std::chrono::steady_clock::now().time_since_epoch();
   return static_cast<uint32_t>(
@@ -1319,14 +1321,29 @@ struct RpcClient::Impl {
       }
     }
 
-    auto pending = std::make_shared<RpcFuture::State>();
-    PendingSubmit submit;
-    submit.call = std::move(call);
-    submit.request_id = request_id;
-    submit.future = pending;
-    submit.session_id = current_session_id.load(std::memory_order_relaxed);
+    const uint64_t session_id = current_session_id.load(std::memory_order_relaxed);
+    std::shared_ptr<RpcFuture::State> pending;
     {
       std::lock_guard<std::mutex> lock(submit_mutex);
+      if (submit_queue.size() >= MAX_SUBMIT_QUEUE_SIZE) {
+        PendingInfo info;
+        info.opcode = call.opcode;
+        info.priority = call.priority;
+        info.flags = call.flags;
+        info.admission_timeout_ms = call.admissionTimeoutMs;
+        info.queue_timeout_ms = call.queueTimeoutMs;
+        info.exec_timeout_ms = call.execTimeoutMs;
+        info.request_id = request_id;
+        info.session_id = session_id;
+        NotifyFailure(info, StatusCode::QueueFull, FailureStage::Admission);
+        return this->MakeReadyFuture(StatusCode::QueueFull);
+      }
+      pending = std::make_shared<RpcFuture::State>();
+      PendingSubmit submit;
+      submit.call = std::move(call);
+      submit.request_id = request_id;
+      submit.future = pending;
+      submit.session_id = session_id;
       submit_queue.push_back(std::move(submit));
     }
     submit_cv.notify_one();

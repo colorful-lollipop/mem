@@ -9,9 +9,9 @@
 namespace memrpc {
 
 struct SaBootstrapConfig {
-  std::string service_name;
-  std::string instance_name;
-  bool lazy_connect = false;
+  std::string serviceName;
+  std::string instanceName;
+  bool lazyConnect = false;
 };
 
 class SaBootstrapChannel : public IBootstrapChannel {

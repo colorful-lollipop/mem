@@ -45,10 +45,10 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
     }
     reply.sessionId = session_service_->session_id();
     const auto snapshot = service_.GetHealthSnapshot();
-    reply.inFlight = snapshot.in_flight;
-    reply.lastTaskAgeMs = snapshot.last_task_age_ms;
+    reply.inFlight = snapshot.inFlight;
+    reply.lastTaskAgeMs = snapshot.lastTaskAgeMs;
     std::snprintf(reply.currentTask, sizeof(reply.currentTask), "%s",
-                  snapshot.current_task.c_str());
+                  snapshot.currentTask.c_str());
 
     const bool healthy = service_.initialized() && reply.sessionId != 0;
     reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok

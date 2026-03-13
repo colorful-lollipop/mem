@@ -7,9 +7,9 @@
 
 TEST(SaBootstrapStubTest, DefaultConfigIsStable) {
   const memrpc::SaBootstrapConfig config;
-  EXPECT_TRUE(config.service_name.empty());
-  EXPECT_TRUE(config.instance_name.empty());
-  EXPECT_FALSE(config.lazy_connect);
+  EXPECT_TRUE(config.serviceName.empty());
+  EXPECT_TRUE(config.instanceName.empty());
+  EXPECT_FALSE(config.lazyConnect);
 }
 
 TEST(SaBootstrapStubTest, FakeSaBootstrapConnectsViaOpenSession) {

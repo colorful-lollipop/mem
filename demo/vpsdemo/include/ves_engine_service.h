@@ -10,9 +10,9 @@
 namespace vpsdemo {
 
 struct VesHealthSnapshot {
-    uint32_t in_flight = 0;
-    uint32_t last_task_age_ms = 0;
-    std::string current_task = "idle";
+    uint32_t inFlight = 0;
+    uint32_t lastTaskAgeMs = 0;
+    std::string currentTask = "idle";
 };
 
 class VesEngineService {

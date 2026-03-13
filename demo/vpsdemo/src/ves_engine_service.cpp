@@ -74,10 +74,10 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
 VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     std::lock_guard<std::mutex> lock(healthMutex_);
     VesHealthSnapshot snapshot;
-    snapshot.in_flight = inFlight_;
-    snapshot.current_task = currentTask_;
+    snapshot.inFlight = inFlight_;
+    snapshot.currentTask = currentTask_;
     if (inFlight_ > 0 && lastTaskStartMonoMs_ > 0) {
-        snapshot.last_task_age_ms = MonotonicNowMs() - lastTaskStartMonoMs_;
+        snapshot.lastTaskAgeMs = MonotonicNowMs() - lastTaskStartMonoMs_;
     }
     return snapshot;
 }
