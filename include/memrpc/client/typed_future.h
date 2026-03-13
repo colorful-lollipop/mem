@@ -75,8 +75,8 @@ class TypedFuture {
   }
 
   // Access the underlying RpcFuture for low-level use.
-  RpcFuture& raw_future() { return future_; }
-  const RpcFuture& raw_future() const { return future_; }
+  RpcFuture& RawFuture() { return future_; }
+  const RpcFuture& RawFuture() const { return future_; }
 
  private:
   RpcFuture future_;

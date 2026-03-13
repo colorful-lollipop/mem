@@ -24,7 +24,7 @@ RpcFuture InvokeTyped(RpcClient* client,
     RpcCall call;
     call.opcode = opcode;
     call.priority = priority;
-    call.exec_timeout_ms = exec_timeout_ms;
+    call.execTimeoutMs = exec_timeout_ms;
     call.payload = std::move(payload);
     return client->InvokeAsync(std::move(call));
 }

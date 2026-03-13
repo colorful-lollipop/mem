@@ -56,9 +56,9 @@ std::vector<uint8_t> MakePayload(size_t size, uint8_t seed) {
 }  // namespace
 
 TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
-  const int duration_ms = GetEnvInt("MEMRPC_DT_DURATION_MS", 3000);
-  const int progress_timeout_ms = GetEnvInt("MEMRPC_DT_PROGRESS_TIMEOUT_MS", 200);
-  const uint32_t thread_count = GetThreadCount();
+  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
+  const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
+  const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
@@ -68,8 +68,8 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   memrpc::ServerOptions options;
-  options.highWorkerThreads = thread_count;
-  options.normalWorkerThreads = thread_count;
+  options.highWorkerThreads = threadCount;
+  options.normalWorkerThreads = threadCount;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
@@ -86,7 +86,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::atomic<int64_t> last_success_ms{0};
 
   const auto start = std::chrono::steady_clock::now();
-  const auto deadline = start + std::chrono::milliseconds(duration_ms);
+  const auto deadline = start + std::chrono::milliseconds(durationMs);
 
   auto now_ms = []() -> int64_t {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -96,8 +96,8 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   last_success_ms.store(now_ms());
 
   std::vector<std::thread> workers;
-  workers.reserve(thread_count);
-  for (uint32_t i = 0; i < thread_count; ++i) {
+  workers.reserve(threadCount);
+  for (uint32_t i = 0; i < threadCount; ++i) {
     workers.emplace_back([&, i]() {
       std::mt19937 rng(static_cast<uint32_t>(i + 1));
       const std::vector<size_t> sizes = {0, 128, 512, 2048, 4096};
@@ -124,7 +124,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::thread watchdog([&]() {
     while (std::chrono::steady_clock::now() < deadline) {
       const int64_t last = last_success_ms.load();
-      if (now_ms() - last > progress_timeout_ms) {
+      if (now_ms() - last > progressTimeoutMs) {
         progress_ok.store(false);
         return;
       }

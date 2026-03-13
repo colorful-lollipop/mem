@@ -134,7 +134,7 @@ TEST(MiniRpcClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
 
   MemRpc::RpcCall sleep_call;
   sleep_call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep);
-  sleep_call.exec_timeout_ms = 5000;
+  sleep_call.execTimeoutMs = 5000;
   sleep_call.payload = sleep_payload;
   auto sleep_future = client.InvokeAsync(sleep_call);
 

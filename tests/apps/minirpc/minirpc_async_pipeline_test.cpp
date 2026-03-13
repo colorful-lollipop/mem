@@ -45,7 +45,7 @@ struct PipelineResult {
 };
 
 TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
-  const int duration_ms = GetEnvInt("MEMRPC_PERF_DURATION_MS", 1000);
+  const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
   const int warmup_ms = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
@@ -81,14 +81,14 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
 
     uint64_t sync_ops = 0;
     const auto end_time =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(duration_ms);
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
     while (std::chrono::steady_clock::now() < end_time) {
       EchoReply reply;
       MemRpc::StatusCode status = sync_client.Echo("ping", &reply);
       ASSERT_EQ(status, MemRpc::StatusCode::Ok);
       ++sync_ops;
     }
-    const double duration_sec = std::max(1, duration_ms) / 1000.0;
+    const double duration_sec = std::max(1, durationMs) / 1000.0;
     sync_ops_per_sec = sync_ops / duration_sec;
     sync_client.Shutdown();
   }
@@ -125,7 +125,7 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
     // Measurement phase.
     uint64_t total_ops = 0;
     const auto end_time =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(duration_ms);
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
     while (std::chrono::steady_clock::now() < end_time) {
       EchoRequest req;
       req.text = "ping";
@@ -149,7 +149,7 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
       total_ops += batch_size;
     }
 
-    const double duration_sec = std::max(1, duration_ms) / 1000.0;
+    const double duration_sec = std::max(1, durationMs) / 1000.0;
     PipelineResult result;
     result.batch_size = batch_size;
     result.total_ops = total_ops;

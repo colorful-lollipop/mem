@@ -54,7 +54,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
   EXPECT_EQ(stats.pending_calls, 0u);
   EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
-  EXPECT_EQ(call.admission_timeout_ms, 0u);
+  EXPECT_EQ(call.admissionTimeoutMs, 0u);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
 
   auto future = client.InvokeAsync(call);
@@ -78,13 +78,13 @@ TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis) {
 
 TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
   MemRpc::RpcCall call;
-  call.admission_timeout_ms = 0;
-  call.queue_timeout_ms = 250;
-  call.exec_timeout_ms = 500;
+  call.admissionTimeoutMs = 0;
+  call.queueTimeoutMs = 250;
+  call.execTimeoutMs = 500;
 
-  EXPECT_EQ(call.admission_timeout_ms, 0u);
-  EXPECT_EQ(call.queue_timeout_ms, 250u);
-  EXPECT_EQ(call.exec_timeout_ms, 500u);
+  EXPECT_EQ(call.admissionTimeoutMs, 0u);
+  EXPECT_EQ(call.queueTimeoutMs, 250u);
+  EXPECT_EQ(call.execTimeoutMs, 500u);
 }
 
 TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds) {
@@ -179,9 +179,9 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   MemRpc::RpcCall call;
   call.opcode = kTestOpcode;
   call.priority = MemRpc::Priority::Normal;
-  call.admission_timeout_ms = 1000;
-  call.queue_timeout_ms = 0;
-  call.exec_timeout_ms = 1000;
+  call.admissionTimeoutMs = 1000;
+  call.queueTimeoutMs = 0;
+  call.execTimeoutMs = 1000;
 
   auto future = client.InvokeAsync(call);
   MemRpc::RpcReply reply;
@@ -194,9 +194,9 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   EXPECT_EQ(captured.opcode, call.opcode);
   EXPECT_EQ(captured.priority, call.priority);
   EXPECT_EQ(captured.flags, call.flags);
-  EXPECT_EQ(captured.admission_timeout_ms, call.admission_timeout_ms);
-  EXPECT_EQ(captured.queue_timeout_ms, call.queue_timeout_ms);
-  EXPECT_EQ(captured.exec_timeout_ms, call.exec_timeout_ms);
+  EXPECT_EQ(captured.admission_timeout_ms, call.admissionTimeoutMs);
+  EXPECT_EQ(captured.queue_timeout_ms, call.queueTimeoutMs);
+  EXPECT_EQ(captured.exec_timeout_ms, call.execTimeoutMs);
   EXPECT_NE(captured.request_id, 0u);
   EXPECT_EQ(captured.replay_hint, MemRpc::ReplayHint::Unknown);
   EXPECT_EQ(captured.last_runtime_state, MemRpc::RpcRuntimeState::Unknown);

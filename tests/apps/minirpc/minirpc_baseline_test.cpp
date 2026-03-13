@@ -27,7 +27,7 @@ int GetEnvInt(const char* name, int default_value) {
 }
 
 TEST(MiniRpcBaselineTest, DirectHandlerCallOpsPerSec) {
-  const int duration_ms = GetEnvInt("MEMRPC_PERF_DURATION_MS", 1000);
+  const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
   const int warmup_ms = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
   MiniRpcService service;
@@ -52,7 +52,7 @@ TEST(MiniRpcBaselineTest, DirectHandlerCallOpsPerSec) {
 
   for (auto& c : cases) {
     const auto end_time =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(duration_ms);
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
     if (std::string(c.name) == "echo") {
       EchoRequest req;
       req.text = "ping";
@@ -89,7 +89,7 @@ TEST(MiniRpcBaselineTest, DirectHandlerCallOpsPerSec) {
     }
   }
 
-  const double duration_sec = std::max(1, duration_ms) / 1000.0;
+  const double duration_sec = std::max(1, durationMs) / 1000.0;
   std::cout << "\n=== In-Process Baseline (no RPC overhead) ===" << std::endl;
   for (const auto& c : cases) {
     const double ops_per_sec = c.ops / duration_sec;

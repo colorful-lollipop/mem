@@ -63,8 +63,8 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
 
   RpcCall call;
   call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
-  call.queue_timeout_ms = 5000;
-  call.exec_timeout_ms = 100;  // Short exec timeout.
+  call.queueTimeoutMs = 5000;
+  call.execTimeoutMs = 100;  // Short exec timeout.
   auto future = client.InvokeAsync(call);
 
   RpcReply reply;
@@ -106,8 +106,8 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   // First request: blocks the server worker.
   RpcCall blocker;
   blocker.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
-  blocker.queue_timeout_ms = 10000;
-  blocker.exec_timeout_ms = 10000;
+  blocker.queueTimeoutMs = 10000;
+  blocker.execTimeoutMs = 10000;
   auto blocker_future = client.InvokeAsync(blocker);
 
   // Wait until server picks up the blocker.
@@ -134,8 +134,8 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
 
   RpcCall queued_call;
   queued_call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
-  queued_call.queue_timeout_ms = 100;  // Short queue timeout.
-  queued_call.exec_timeout_ms = 5000;
+  queued_call.queueTimeoutMs = 100;  // Short queue timeout.
+  queued_call.execTimeoutMs = 5000;
   auto queued_future = client.InvokeAsync(queued_call);
 
   RpcReply reply;

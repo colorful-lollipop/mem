@@ -19,11 +19,11 @@ struct RpcCall {
   Priority priority = Priority::Normal;
   // admission_timeout_ms 作用在 client 等待 slot / request ring 可写阶段。
   // 0 = 无限等待（slot 耗尽时阻塞直到可用）。
-  uint32_t admission_timeout_ms = 0;
+  uint32_t admissionTimeoutMs = 0;
   // queue_timeout_ms 作用在服务端排队阶段。0 = 无限等待。
-  uint32_t queue_timeout_ms = 0;
+  uint32_t queueTimeoutMs = 0;
   // exec_timeout_ms 作用在服务端 handler 执行阶段；当前为软超时，不强杀 handler。
-  uint32_t exec_timeout_ms = 30000;
+  uint32_t execTimeoutMs = 30000;
   uint32_t flags = 0;
   std::vector<uint8_t> payload;
 };
@@ -31,8 +31,8 @@ struct RpcCall {
 struct RpcReply {
   // status 是框架层结果；engine_code/detail_code 由业务 handler 自行定义。
   StatusCode status = StatusCode::Ok;
-  int32_t engine_code = 0;
-  int32_t detail_code = 0;
+  int32_t engineCode = 0;
+  int32_t detailCode = 0;
   std::vector<uint8_t> payload;
 };
 

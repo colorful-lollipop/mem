@@ -198,7 +198,7 @@ Expected: FAIL，因为测试尚未注册到构建系统，且基线逻辑未实
 - 有基线：低于 10% FAIL，高于基线则更新为更高值
 - 环境变量：
   - `MEMRPC_PERF_THREADS`
-  - `MEMRPC_PERF_DURATION_MS`
+  - `MEMRPC_PERF_durationMs`
   - `MEMRPC_PERF_WARMUP_MS`
   - `MEMRPC_PERF_BASELINE_PATH`
 

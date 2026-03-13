@@ -32,7 +32,7 @@ void CloseHandles(MemRpc::BootstrapHandles& h) {
 
 struct PerfConfig {
   int threads = 1;
-  int duration_ms = 1000;
+  int durationMs = 1000;
   int warmup_ms = 200;
   std::filesystem::path baseline_path;
 };
@@ -72,7 +72,7 @@ PerfConfig LoadPerfConfig() {
   const int default_threads = std::max(1, static_cast<int>(std::min(4u, normalized_hw)));
   PerfConfig config;
   config.threads = GetEnvInt("MEMRPC_PERF_THREADS", default_threads);
-  config.duration_ms = GetEnvInt("MEMRPC_PERF_DURATION_MS", 1000);
+  config.durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
   config.warmup_ms = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
   config.baseline_path = GetBaselinePath();
   return config;
@@ -145,7 +145,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     return false;
   }
 
-  const int thread_count = std::max(1, config.threads);
+  const int threadCount = std::max(1, config.threads);
   MiniRpcClient client(bootstrap);
   const MemRpc::StatusCode init_status = client.Init();
   if (init_status != MemRpc::StatusCode::Ok) {
@@ -156,16 +156,16 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     }
     return false;
   }
-  std::vector<WorkerResult> worker_results(thread_count);
+  std::vector<WorkerResult> worker_results(threadCount);
   std::vector<std::thread> workers;
-  workers.reserve(thread_count);
+  workers.reserve(threadCount);
 
   const auto start_time =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
   const auto warmup_end = start_time + std::chrono::milliseconds(config.warmup_ms);
-  const auto end_time = warmup_end + std::chrono::milliseconds(config.duration_ms);
+  const auto end_time = warmup_end + std::chrono::milliseconds(config.durationMs);
 
-  for (int i = 0; i < thread_count; ++i) {
+  for (int i = 0; i < threadCount; ++i) {
     workers.emplace_back([&, i]() {
       WorkerResult& result = worker_results[i];
 
@@ -214,7 +214,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     }
   }
 
-  const double duration_seconds = static_cast<double>(std::max(1, config.duration_ms)) / 1000.0;
+  const double duration_seconds = static_cast<double>(std::max(1, config.durationMs)) / 1000.0;
   uint64_t total_ops = 0;
   for (const auto& result : worker_results) {
     total_ops += result.ops;
@@ -225,7 +225,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
 
 std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   std::vector<PerfCaseResult> results;
-  const int thread_count = std::max(1, config.threads);
+  const int threadCount = std::max(1, config.threads);
   const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
@@ -233,7 +233,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     MemRpc::BootstrapHandles unused_handles;
     if (bootstrap->OpenSession(unused_handles) != MemRpc::StatusCode::Ok) {
       for (const auto kind : kinds) {
-        results.push_back({MakeBaselineKey(kind, thread_count), 0.0,
+        results.push_back({MakeBaselineKey(kind, threadCount), 0.0,
                            "bootstrap start failed"});
       }
       return results;
@@ -244,22 +244,22 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   MemRpc::ServerOptions options;
-  options.highWorkerThreads = static_cast<uint32_t>(thread_count);
-  options.normalWorkerThreads = static_cast<uint32_t>(thread_count);
+  options.highWorkerThreads = static_cast<uint32_t>(threadCount);
+  options.normalWorkerThreads = static_cast<uint32_t>(threadCount);
   server.SetOptions(options);
   MiniRpcService service;
   service.RegisterHandlers(&server);
   if (server.Start() != MemRpc::StatusCode::Ok) {
     for (const auto kind : kinds) {
       results.push_back(
-          {MakeBaselineKey(kind, thread_count), 0.0, "server start failed"});
+          {MakeBaselineKey(kind, threadCount), 0.0, "server start failed"});
     }
     return results;
   }
 
   for (const auto kind : kinds) {
     PerfCaseResult result;
-    result.key = MakeBaselineKey(kind, thread_count);
+    result.key = MakeBaselineKey(kind, threadCount);
     if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.ops_per_sec, &result.error)) {
       if (result.error.empty()) {
         result.error = "measurement failed";

@@ -247,8 +247,8 @@ git commit -m "feat: add task executor interface and options"
 ```cpp
 class ThreadPoolExecutor final : public TaskExecutor {
  public:
-  explicit ThreadPoolExecutor(uint32_t thread_count) {
-    const uint32_t threads = std::max(1u, thread_count);
+  explicit ThreadPoolExecutor(uint32_t threadCount) {
+    const uint32_t threads = std::max(1u, threadCount);
     queue_capacity_ = threads;
     running_ = true;
     for (uint32_t i = 0; i < threads; ++i) {

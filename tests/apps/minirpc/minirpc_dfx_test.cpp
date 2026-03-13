@@ -72,7 +72,7 @@ MemRpc::RpcCall MakeSleepCall(uint32_t delay_ms) {
     EncodeMessage<SleepRequest>(request, &payload);
     MemRpc::RpcCall call;
     call.opcode = static_cast<MemRpc::Opcode>(MiniRpcOpcode::MiniSleep);
-    call.exec_timeout_ms = 5000;
+    call.execTimeoutMs = 5000;
     call.payload = std::move(payload);
     return call;
 }

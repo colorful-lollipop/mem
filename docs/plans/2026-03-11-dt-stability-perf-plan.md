@@ -139,9 +139,9 @@ std::vector<uint8_t> MakePayload(size_t size, uint8_t seed) {
 }  // namespace
 
 TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
-  const int duration_ms = GetEnvInt("MEMRPC_DT_DURATION_MS", 3000);
-  const int progress_timeout_ms = GetEnvInt("MEMRPC_DT_PROGRESS_TIMEOUT_MS", 200);
-  const uint32_t thread_count = GetThreadCount();
+  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
+  const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
+  const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
@@ -151,8 +151,8 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   memrpc::ServerOptions options;
-  options.high_worker_threads = thread_count;
-  options.normal_worker_threads = thread_count;
+  options.high_worker_threads = threadCount;
+  options.normal_worker_threads = threadCount;
   server.SetOptions(options);
   server.RegisterHandler(memrpc::Opcode::ScanFile,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
@@ -169,7 +169,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::atomic<int64_t> last_success_ms{0};
 
   const auto start = std::chrono::steady_clock::now();
-  const auto deadline = start + std::chrono::milliseconds(duration_ms);
+  const auto deadline = start + std::chrono::milliseconds(durationMs);
 
   auto now_ms = []() -> int64_t {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -179,8 +179,8 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   last_success_ms.store(now_ms());
 
   std::vector<std::thread> workers;
-  workers.reserve(thread_count);
-  for (uint32_t i = 0; i < thread_count; ++i) {
+  workers.reserve(threadCount);
+  for (uint32_t i = 0; i < threadCount; ++i) {
     workers.emplace_back([&, i]() {
       std::mt19937 rng(static_cast<uint32_t>(i + 1));
       const std::vector<size_t> sizes = {0, 128, 512, 2048, 4096};
@@ -207,7 +207,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::thread watchdog([&]() {
     while (std::chrono::steady_clock::now() < deadline) {
       const int64_t last = last_success_ms.load();
-      if (now_ms() - last > progress_timeout_ms) {
+      if (now_ms() - last > progressTimeoutMs) {
         progress_ok.store(false);
         return;
       }
@@ -406,11 +406,11 @@ PerfStats ComputeStats(const std::vector<double>& latencies_us, double duration_
 }  // namespace
 
 TEST(DtPerfTest, ShortPerfBaseline) {
-  const int duration_ms = GetEnvInt("MEMRPC_DT_DURATION_MS", 3000);
+  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
   const int warmup_ms = GetEnvInt("MEMRPC_DT_WARMUP_MS", 200);
   const int min_ops = GetEnvInt("MEMRPC_DT_MIN_OPS", 50);
   const int max_p99_us = GetEnvInt("MEMRPC_DT_MAX_P99_US", 20000);
-  const uint32_t thread_count = GetThreadCount();
+  const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>();
   memrpc::BootstrapHandles unused_handles;
@@ -420,8 +420,8 @@ TEST(DtPerfTest, ShortPerfBaseline) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   memrpc::ServerOptions options;
-  options.high_worker_threads = thread_count;
-  options.normal_worker_threads = thread_count;
+  options.high_worker_threads = threadCount;
+  options.normal_worker_threads = threadCount;
   server.SetOptions(options);
   server.RegisterHandler(memrpc::Opcode::ScanFile,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {
@@ -458,12 +458,12 @@ TEST(DtPerfTest, ShortPerfBaseline) {
 
     std::atomic<uint64_t> ops{0};
     std::vector<std::thread> workers;
-    workers.reserve(thread_count);
+    workers.reserve(threadCount);
 
     const auto start = std::chrono::steady_clock::now();
-    const auto end = start + std::chrono::milliseconds(duration_ms);
+    const auto end = start + std::chrono::milliseconds(durationMs);
 
-    for (uint32_t i = 0; i < thread_count; ++i) {
+    for (uint32_t i = 0; i < threadCount; ++i) {
       workers.emplace_back([&, i]() {
         while (std::chrono::steady_clock::now() < end) {
           memrpc::RpcCall call;
@@ -498,11 +498,11 @@ TEST(DtPerfTest, ShortPerfBaseline) {
       latencies.push_back(us);
     }
 
-    const double duration_sec = std::max(1, duration_ms) / 1000.0;
+    const double duration_sec = std::max(1, durationMs) / 1000.0;
     const PerfStats stats = ComputeStats(latencies, duration_sec, ops.load());
 
-    const std::string ops_key = "memrpc." + case_name + ".threads=" + std::to_string(thread_count) + ".ops_per_sec";
-    const std::string p99_key = "memrpc." + case_name + ".threads=" + std::to_string(thread_count) + ".p99_us";
+    const std::string ops_key = "memrpc." + case_name + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
+    const std::string p99_key = "memrpc." + case_name + ".threads=" + std::to_string(threadCount) + ".p99_us";
 
     EXPECT_GE(stats.ops_per_sec, static_cast<double>(min_ops));
     EXPECT_LE(stats.p99_us, static_cast<double>(max_p99_us));
@@ -643,9 +643,9 @@ uint32_t GetThreadCount() {
 }  // namespace
 
 TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
-  const int duration_ms = GetEnvInt("MEMRPC_DT_DURATION_MS", 3000);
-  const int progress_timeout_ms = GetEnvInt("MEMRPC_DT_PROGRESS_TIMEOUT_MS", 200);
-  const uint32_t thread_count = GetThreadCount();
+  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
+  const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
+  const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
   MemRpc::BootstrapHandles unused_handles;
@@ -655,8 +655,8 @@ TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   MemRpc::ServerOptions options;
-  options.high_worker_threads = thread_count;
-  options.normal_worker_threads = thread_count;
+  options.high_worker_threads = threadCount;
+  options.normal_worker_threads = threadCount;
   server.SetOptions(options);
   MiniRpcService service;
   service.RegisterHandlers(&server);
@@ -670,7 +670,7 @@ TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::atomic<int64_t> last_success_ms{0};
 
   const auto start = std::chrono::steady_clock::now();
-  const auto deadline = start + std::chrono::milliseconds(duration_ms);
+  const auto deadline = start + std::chrono::milliseconds(durationMs);
 
   auto now_ms = []() -> int64_t {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -680,8 +680,8 @@ TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
   last_success_ms.store(now_ms());
 
   std::vector<std::thread> workers;
-  workers.reserve(thread_count);
-  for (uint32_t i = 0; i < thread_count; ++i) {
+  workers.reserve(threadCount);
+  for (uint32_t i = 0; i < threadCount; ++i) {
     workers.emplace_back([&, i]() {
       std::mt19937 rng(static_cast<uint32_t>(i + 7));
       while (std::chrono::steady_clock::now() < deadline) {
@@ -711,7 +711,7 @@ TEST(MiniRpcDtStabilityTest, ShortRandomLoadStaysHealthy) {
   std::thread watchdog([&]() {
     while (std::chrono::steady_clock::now() < deadline) {
       const int64_t last = last_success_ms.load();
-      if (now_ms() - last > progress_timeout_ms) {
+      if (now_ms() - last > progressTimeoutMs) {
         progress_ok.store(false);
         return;
       }
@@ -908,11 +908,11 @@ PerfStats ComputeStats(const std::vector<double>& latencies_us, double duration_
 }  // namespace
 
 TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
-  const int duration_ms = GetEnvInt("MEMRPC_DT_DURATION_MS", 3000);
+  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
   const int warmup_ms = GetEnvInt("MEMRPC_DT_WARMUP_MS", 200);
   const int min_ops = GetEnvInt("MEMRPC_DT_MIN_OPS", 50);
   const int max_p99_us = GetEnvInt("MEMRPC_DT_MAX_P99_US", 20000);
-  const uint32_t thread_count = GetThreadCount();
+  const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
   MemRpc::BootstrapHandles unused_handles;
@@ -922,8 +922,8 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->server_handles());
   MemRpc::ServerOptions options;
-  options.high_worker_threads = thread_count;
-  options.normal_worker_threads = thread_count;
+  options.high_worker_threads = threadCount;
+  options.normal_worker_threads = threadCount;
   server.SetOptions(options);
   MiniRpcService service;
   service.RegisterHandlers(&server);
@@ -959,12 +959,12 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
 
     std::atomic<uint64_t> ops{0};
     std::vector<std::thread> workers;
-    workers.reserve(thread_count);
+    workers.reserve(threadCount);
 
     const auto start = std::chrono::steady_clock::now();
-    const auto end = start + std::chrono::milliseconds(duration_ms);
+    const auto end = start + std::chrono::milliseconds(durationMs);
 
-    for (uint32_t i = 0; i < thread_count; ++i) {
+    for (uint32_t i = 0; i < threadCount; ++i) {
       workers.emplace_back([&, i]() {
         while (std::chrono::steady_clock::now() < end) {
           MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
@@ -1006,11 +1006,11 @@ TEST(MiniRpcDtPerfTest, ShortPerfBaseline) {
       latencies.push_back(us);
     }
 
-    const double duration_sec = std::max(1, duration_ms) / 1000.0;
+    const double duration_sec = std::max(1, durationMs) / 1000.0;
     const PerfStats stats = ComputeStats(latencies, duration_sec, ops.load());
 
-    const std::string ops_key = "minirpc." + case_name + ".threads=" + std::to_string(thread_count) + ".ops_per_sec";
-    const std::string p99_key = "minirpc." + case_name + ".threads=" + std::to_string(thread_count) + ".p99_us";
+    const std::string ops_key = "minirpc." + case_name + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
+    const std::string p99_key = "minirpc." + case_name + ".threads=" + std::to_string(threadCount) + ".p99_us";
 
     EXPECT_GE(stats.ops_per_sec, static_cast<double>(min_ops));
     EXPECT_LE(stats.p99_us, static_cast<double>(max_p99_us));

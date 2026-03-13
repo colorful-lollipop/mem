@@ -223,9 +223,9 @@ struct RpcClient::Impl {
     info.opcode = submit.call.opcode;
     info.priority = submit.call.priority;
     info.flags = submit.call.flags;
-    info.admission_timeout_ms = submit.call.admission_timeout_ms;
-    info.queue_timeout_ms = submit.call.queue_timeout_ms;
-    info.exec_timeout_ms = submit.call.exec_timeout_ms;
+    info.admission_timeout_ms = submit.call.admissionTimeoutMs;
+    info.queue_timeout_ms = submit.call.queueTimeoutMs;
+    info.exec_timeout_ms = submit.call.execTimeoutMs;
     info.request_id = submit.request_id;
     info.session_id = submit.session_id;
     return info;
@@ -511,9 +511,9 @@ struct RpcClient::Impl {
         ps.call.opcode = info.opcode;
         ps.call.priority = info.priority;
         ps.call.flags = info.flags;
-        ps.call.admission_timeout_ms = info.admission_timeout_ms;
-        ps.call.queue_timeout_ms = info.queue_timeout_ms;
-        ps.call.exec_timeout_ms = info.exec_timeout_ms;
+        ps.call.admissionTimeoutMs = info.admission_timeout_ms;
+        ps.call.queueTimeoutMs = info.queue_timeout_ms;
+        ps.call.execTimeoutMs = info.exec_timeout_ms;
         // Recover payload from shared memory.
         const SlotPayload* payload = session.slotPayload(static_cast<uint32_t>(i));
         const uint8_t* request_bytes = session.slotRequestBytes(static_cast<uint32_t>(i));
@@ -909,8 +909,8 @@ struct RpcClient::Impl {
     std::memset(payload, 0, sizeof(SlotPayload));
     payload->runtime.request_id = pending_submit.request_id;
     payload->runtime.state = SlotRuntimeStateCode::Admitted;
-    payload->request.queue_timeout_ms = pending_submit.call.queue_timeout_ms;
-    payload->request.exec_timeout_ms = pending_submit.call.exec_timeout_ms;
+    payload->request.queue_timeout_ms = pending_submit.call.queueTimeoutMs;
+    payload->request.exec_timeout_ms = pending_submit.call.execTimeoutMs;
     payload->request.flags = pending_submit.call.flags;
     payload->request.priority = static_cast<uint32_t>(pending_submit.call.priority);
     payload->request.opcode = static_cast<uint16_t>(pending_submit.call.opcode);
@@ -1013,11 +1013,11 @@ struct RpcClient::Impl {
   }
 
   void SubmitOne(const PendingSubmit& pending_submit) {
-    const bool infinite_admission_wait = pending_submit.call.admission_timeout_ms == 0;
+    const bool infinite_admission_wait = pending_submit.call.admissionTimeoutMs == 0;
     const auto admission_deadline = infinite_admission_wait
                                     ? std::chrono::steady_clock::time_point::max()
                                     : std::chrono::steady_clock::now() +
-                                      std::chrono::milliseconds(pending_submit.call.admission_timeout_ms);
+                                      std::chrono::milliseconds(pending_submit.call.admissionTimeoutMs);
     const PendingInfo info = MakePendingInfo(pending_submit);
 
     while (submit_running.load() && !shutting_down.load()) {
@@ -1144,8 +1144,8 @@ struct RpcClient::Impl {
 
     RpcReply reply;
     reply.status = static_cast<StatusCode>(entry.statusCode);
-    reply.engine_code = entry.engineErrno;
-    reply.detail_code = entry.detailCode;
+    reply.engineCode = entry.engineErrno;
+    reply.detailCode = entry.detailCode;
     ResponseSlotPayload* response_slot = session.responseSlotPayload(entry.slotIndex);
     uint8_t* response_bytes = session.responseSlotBytes(entry.slotIndex);
 
@@ -1309,9 +1309,9 @@ struct RpcClient::Impl {
       info.opcode = call.opcode;
       info.priority = call.priority;
       info.flags = call.flags;
-      info.admission_timeout_ms = call.admission_timeout_ms;
-      info.queue_timeout_ms = call.queue_timeout_ms;
-      info.exec_timeout_ms = call.exec_timeout_ms;
+      info.admission_timeout_ms = call.admissionTimeoutMs;
+      info.queue_timeout_ms = call.queueTimeoutMs;
+      info.exec_timeout_ms = call.execTimeoutMs;
       info.request_id = request_id;
       NotifyFailure(info, ensure_status, FailureStage::Admission);
       return this->MakeReadyFuture(ensure_status);
@@ -1324,9 +1324,9 @@ struct RpcClient::Impl {
         info.opcode = call.opcode;
         info.priority = call.priority;
         info.flags = call.flags;
-        info.admission_timeout_ms = call.admission_timeout_ms;
-        info.queue_timeout_ms = call.queue_timeout_ms;
-        info.exec_timeout_ms = call.exec_timeout_ms;
+        info.admission_timeout_ms = call.admissionTimeoutMs;
+        info.queue_timeout_ms = call.queueTimeoutMs;
+        info.exec_timeout_ms = call.execTimeoutMs;
         info.request_id = request_id;
         NotifyFailure(info, StatusCode::InvalidArgument, FailureStage::Admission);
         return this->MakeReadyFuture(StatusCode::InvalidArgument);
@@ -1472,12 +1472,12 @@ StatusCode RpcSyncClient::InvokeSync(const RpcCall& call, RpcReply* reply) {
     return StatusCode::InvalidArgument;
   }
   RpcFuture future = client_.InvokeAsync(call);
-  if (call.admission_timeout_ms == 0 && call.queue_timeout_ms == 0 && call.exec_timeout_ms == 0) {
+  if (call.admissionTimeoutMs == 0 && call.queueTimeoutMs == 0 && call.execTimeoutMs == 0) {
     return future.Wait(reply);
   }
   const auto wait_budget = std::chrono::milliseconds(
-      static_cast<int64_t>(call.admission_timeout_ms) +
-      static_cast<int64_t>(call.queue_timeout_ms) + static_cast<int64_t>(call.exec_timeout_ms));
+      static_cast<int64_t>(call.admissionTimeoutMs) +
+      static_cast<int64_t>(call.queueTimeoutMs) + static_cast<int64_t>(call.execTimeoutMs));
   return future.WaitFor(reply, wait_budget);
 }
 

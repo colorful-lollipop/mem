@@ -37,7 +37,7 @@
 ### memrpc_dt_stability
 - 启动 server/client，注册基础 handler。
 - 多线程短时循环发起请求，统计成功/失败计数。
-- 进度监测：若超过 `MEMRPC_DT_PROGRESS_TIMEOUT_MS` 无成功请求，判定为停滞失败。
+- 进度监测：若超过 `MEMRPC_DT_progressTimeoutMs` 无成功请求，判定为停滞失败。
 - 断言：
   - 全程 `StatusCode::Ok`。
   - 无 `ProtocolMismatch/QueueTimeout/ExecTimeout`。
@@ -81,10 +81,10 @@
 > 说明：绝对底线设置为保守值，主要防止“完全失速”类回归；精细回归由基线兜底。
 
 ## 环境变量与开关
-- `MEMRPC_DT_DURATION_MS`：默认 3000
+- `MEMRPC_DT_durationMs`：默认 3000
 - `MEMRPC_DT_WARMUP_MS`：默认 200
 - `MEMRPC_DT_THREADS`：默认 `min(4, hw_threads)`
-- `MEMRPC_DT_PROGRESS_TIMEOUT_MS`：默认 200
+- `MEMRPC_DT_progressTimeoutMs`：默认 200
 - `MEMRPC_DT_MIN_OPS`：默认 50
 - `MEMRPC_DT_MAX_P99_US`：默认 20000
 - `MEMRPC_DT_EXTENDED=1`：延长时长（如 10000ms）并扩大样本

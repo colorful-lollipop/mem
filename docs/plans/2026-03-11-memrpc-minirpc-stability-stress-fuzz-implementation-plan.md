@@ -258,7 +258,7 @@ StressConfig ParseStressConfigFromEnv() {
   config.maxSleepMs = GetEnvInt("MEMRPC_STRESS_MAX_SLEEP_MS", config.maxSleepMs);
   config.highPriorityPct = GetEnvInt("MEMRPC_STRESS_HIGH_PRIORITY_PCT", config.highPriorityPct);
   config.burstIntervalMs = GetEnvInt("MEMRPC_STRESS_BURST_INTERVAL_MS", config.burstIntervalMs);
-  config.burstDurationMs = GetEnvInt("MEMRPC_STRESS_BURST_DURATION_MS", config.burstDurationMs);
+  config.burstDurationMs = GetEnvInt("MEMRPC_STRESS_BURST_durationMs", config.burstDurationMs);
   config.burstMultiplier = GetEnvInt("MEMRPC_STRESS_BURST_MULTIPLIER", config.burstMultiplier);
   config.noProgressTimeoutSec = GetEnvInt("MEMRPC_STRESS_NO_PROGRESS_SEC", config.noProgressTimeoutSec);
   config.maxRequestBytes = static_cast<uint32_t>(
@@ -947,7 +947,7 @@ cmake --build build_fuzz
 - `MEMRPC_STRESS_PAYLOAD_SIZES`
 - `MEMRPC_STRESS_HIGH_PRIORITY_PCT`
 - `MEMRPC_STRESS_MAX_SLEEP_MS`
-- `MEMRPC_STRESS_BURST_INTERVAL_MS` / `MEMRPC_STRESS_BURST_DURATION_MS` / `MEMRPC_STRESS_BURST_MULTIPLIER`
+- `MEMRPC_STRESS_BURST_INTERVAL_MS` / `MEMRPC_STRESS_BURST_durationMs` / `MEMRPC_STRESS_BURST_MULTIPLIER`
 - `MEMRPC_STRESS_NO_PROGRESS_SEC`
 - `MEMRPC_STRESS_PID_FILE`
 ```

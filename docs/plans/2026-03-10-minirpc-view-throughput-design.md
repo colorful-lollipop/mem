@@ -68,7 +68,7 @@
 通过环境变量控制测试稳定性：
 
 - `MEMRPC_PERF_THREADS`：并发线程数
-- `MEMRPC_PERF_DURATION_MS`：测量时长（不含 warmup）
+- `MEMRPC_PERF_durationMs`：测量时长（不含 warmup）
 - `MEMRPC_PERF_WARMUP_MS`：预热时长
 - `MEMRPC_PERF_BASELINE_PATH`：基线文件路径
 
