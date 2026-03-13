@@ -10,13 +10,13 @@
 namespace memrpc {
 
 struct DemoBootstrapConfig {
-  uint32_t high_ring_size = 32;
-  uint32_t normal_ring_size = 32;
-  uint32_t response_ring_size = 64;
-  uint32_t slot_count = 64;
-  uint32_t max_request_bytes = DEFAULT_MAX_REQUEST_BYTES;
-  uint32_t max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
-  std::string shm_name;
+  uint32_t highRingSize = 32;
+  uint32_t normalRingSize = 32;
+  uint32_t responseRingSize = 64;
+  uint32_t slotCount = 64;
+  uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
+  uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
+  std::string shmName;
 };
 
 class PosixDemoBootstrapChannel : public IBootstrapChannel {

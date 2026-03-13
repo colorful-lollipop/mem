@@ -94,14 +94,14 @@ struct PosixDemoBootstrapChannel::Impl {
   }
 
   StatusCode InitializeSharedMemory(int shmFd, uint64_t* out_session_id) {
-    const LayoutConfig layout_config{config.high_ring_size,
-                                     config.normal_ring_size,
-                                     config.response_ring_size,
-                                     config.slot_count,
-                                     ComputeSlotSize(config.max_request_bytes,
-                                                     config.max_response_bytes),
-                                     config.max_request_bytes,
-                                     config.max_response_bytes};
+    const LayoutConfig layout_config{config.highRingSize,
+                                     config.normalRingSize,
+                                     config.responseRingSize,
+                                     config.slotCount,
+                                     ComputeSlotSize(config.maxRequestBytes,
+                                                     config.maxResponseBytes),
+                                     config.maxRequestBytes,
+                                     config.maxResponseBytes};
     const Layout layout = ComputeLayout(layout_config);
     if (ftruncate(shmFd, static_cast<off_t>(layout.totalSize)) != 0) {
       HILOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.totalSize, errno);
@@ -120,20 +120,20 @@ struct PosixDemoBootstrapChannel::Impl {
     header->protocol_version = PROTOCOL_VERSION;
     header->sessionId = GenerateSessionId();
     header->sessionState = 0;
-    header->highRingSize = config.high_ring_size;
-    header->normalRingSize = config.normal_ring_size;
-    header->responseRingSize = config.response_ring_size;
-    header->slotCount = config.slot_count;
-    header->slotSize = ComputeSlotSize(config.max_request_bytes, config.max_response_bytes);
-    header->maxRequestBytes = config.max_request_bytes;
-    header->maxResponseBytes = config.max_response_bytes;
-    header->highRing.capacity = config.high_ring_size;
-    header->normalRing.capacity = config.normal_ring_size;
-    header->responseRing.capacity = config.response_ring_size;
+    header->highRingSize = config.highRingSize;
+    header->normalRingSize = config.normalRingSize;
+    header->responseRingSize = config.responseRingSize;
+    header->slotCount = config.slotCount;
+    header->slotSize = ComputeSlotSize(config.maxRequestBytes, config.maxResponseBytes);
+    header->maxRequestBytes = config.maxRequestBytes;
+    header->maxResponseBytes = config.maxResponseBytes;
+    header->highRing.capacity = config.highRingSize;
+    header->normalRing.capacity = config.normalRingSize;
+    header->responseRing.capacity = config.responseRingSize;
     *out_session_id = header->sessionId;
     if (!InitMutex(&header->clientStateMutex) ||
         !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.responseSlotPoolOffset,
-                                  config.response_ring_size)) {
+                                  config.responseRingSize)) {
       HILOGE("InitMutex failed");
       munmap(region, layout.totalSize);
       return StatusCode::EngineInternalError;
@@ -157,8 +157,8 @@ struct PosixDemoBootstrapChannel::Impl {
 
   ~Impl() {
     ResetHandles();
-    if (!config.shm_name.empty()) {
-      shm_unlink(config.shm_name.c_str());
+    if (!config.shmName.empty()) {
+      shm_unlink(config.shmName.c_str());
     }
   }
 };
@@ -166,8 +166,8 @@ struct PosixDemoBootstrapChannel::Impl {
 PosixDemoBootstrapChannel::PosixDemoBootstrapChannel(DemoBootstrapConfig config)
     : impl_(std::make_shared<Impl>()) {
   impl_->config = std::move(config);
-  if (impl_->config.shm_name.empty()) {
-    impl_->config.shm_name = "/memrpc-demo-" + std::to_string(::getpid());
+  if (impl_->config.shmName.empty()) {
+    impl_->config.shmName = "/memrpc-demo-" + std::to_string(::getpid());
   }
 }
 
@@ -175,20 +175,20 @@ PosixDemoBootstrapChannel::~PosixDemoBootstrapChannel() = default;
 
 StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (!impl_->initialized) {
-    if (impl_->config.max_request_bytes == 0 ||
-        impl_->config.max_response_bytes == 0 ||
-        impl_->config.max_response_bytes > DEFAULT_MAX_RESPONSE_BYTES) {
+    if (impl_->config.maxRequestBytes == 0 ||
+        impl_->config.maxResponseBytes == 0 ||
+        impl_->config.maxResponseBytes > DEFAULT_MAX_RESPONSE_BYTES) {
       HILOGE("invalid bootstrap config, request=%{public}u response=%{public}u",
-            impl_->config.max_request_bytes, impl_->config.max_response_bytes);
+            impl_->config.maxRequestBytes, impl_->config.maxResponseBytes);
       return StatusCode::InvalidArgument;
     }
 
     impl_->ResetHandles();
 
     const int shmFd =
-        shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
+        shm_open(impl_->config.shmName.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (shmFd < 0) {
-      HILOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shm_name.c_str(),
+      HILOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shmName.c_str(),
             errno);
       return StatusCode::EngineInternalError;
     }
@@ -197,7 +197,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
     const StatusCode init_status = impl_->InitializeSharedMemory(shmFd, &session_id);
     if (init_status != StatusCode::Ok) {
       close(shmFd);
-      shm_unlink(impl_->config.shm_name.c_str());
+      shm_unlink(impl_->config.shmName.c_str());
       return init_status;
     }
 
@@ -208,7 +208,7 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
     if (!impl_->initialized) {
       HILOGE("eventfd initialization failed");
       impl_->ResetHandles();
-      shm_unlink(impl_->config.shm_name.c_str());
+      shm_unlink(impl_->config.shmName.c_str());
       return StatusCode::EngineInternalError;
     }
   }
@@ -241,8 +241,8 @@ void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) 
       session_id == 0 ? impl_->handles.sessionId : session_id;
   if (session_id == 0 || session_id == impl_->handles.sessionId) {
     impl_->ResetHandles();
-    if (!impl_->config.shm_name.empty()) {
-      shm_unlink(impl_->config.shm_name.c_str());
+    if (!impl_->config.shmName.empty()) {
+      shm_unlink(impl_->config.shmName.c_str());
     }
   }
   if (impl_->death_callback) {

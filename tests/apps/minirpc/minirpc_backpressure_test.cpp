@@ -39,12 +39,12 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
 TEST(MiniRpcBackpressureTest, SlotExhaustionAndRecovery) {
   // Use few slots and a slow handler (Sleep) to exhaust capacity.
   MemRpc::DemoBootstrapConfig config;
-  config.slot_count = 4;
-  config.high_ring_size = 8;
-  config.normal_ring_size = 8;
-  config.response_ring_size = 8;
-  config.max_request_bytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
-  config.max_response_bytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
+  config.slotCount = 4;
+  config.highRingSize = 8;
+  config.normalRingSize = 8;
+  config.responseRingSize = 8;
+  config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+  config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
   MemRpc::BootstrapHandles unused_handles;
@@ -108,12 +108,12 @@ TEST(MiniRpcBackpressureTest, SlotExhaustionAndRecovery) {
 
 TEST(MiniRpcBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
   MemRpc::DemoBootstrapConfig config;
-  config.slot_count = 2;
-  config.high_ring_size = 4;
-  config.normal_ring_size = 4;
-  config.response_ring_size = 4;
-  config.max_request_bytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
-  config.max_response_bytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
+  config.slotCount = 2;
+  config.highRingSize = 4;
+  config.normalRingSize = 4;
+  config.responseRingSize = 4;
+  config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
+  config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
   auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
   MemRpc::BootstrapHandles unused_handles;

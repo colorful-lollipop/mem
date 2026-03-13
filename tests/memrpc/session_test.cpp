@@ -99,10 +99,10 @@ TEST(SessionTest, DefaultsToFourKilobytePayloadLimits) {
 
 TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
   memrpc::DemoBootstrapConfig config;
-  config.high_ring_size = 2;
-  config.normal_ring_size = 2;
-  config.response_ring_size = 2;
-  config.slot_count = 2;
+  config.highRingSize = 2;
+  config.normalRingSize = 2;
+  config.responseRingSize = 2;
+  config.slotCount = 2;
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
 
@@ -149,10 +149,10 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
 
 TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
   memrpc::DemoBootstrapConfig config;
-  config.high_ring_size = 2;
-  config.normal_ring_size = 2;
-  config.response_ring_size = 2;
-  config.slot_count = 2;
+  config.highRingSize = 2;
+  config.normalRingSize = 2;
+  config.responseRingSize = 2;
+  config.slotCount = 2;
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
 
@@ -192,7 +192,7 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
 
 TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   memrpc::DemoBootstrapConfig config;
-  config.max_response_bytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES + 1;
+  config.maxResponseBytes = memrpc::DEFAULT_MAX_RESPONSE_BYTES + 1;
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
   memrpc::BootstrapHandles invalid_handles;
@@ -201,10 +201,10 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
 
 TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
   memrpc::DemoBootstrapConfig config;
-  config.high_ring_size = 1;
-  config.normal_ring_size = 1;
-  config.response_ring_size = 1;
-  config.slot_count = 1;
+  config.highRingSize = 1;
+  config.normalRingSize = 1;
+  config.responseRingSize = 1;
+  config.slotCount = 1;
 
   auto bootstrap = std::make_shared<memrpc::PosixDemoBootstrapChannel>(config);
 

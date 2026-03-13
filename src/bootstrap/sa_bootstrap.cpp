@@ -13,7 +13,7 @@ struct SaBootstrapChannel::Impl {
 
   SaBootstrapConfig config;
   std::shared_ptr<PosixDemoBootstrapChannel> fallback;
-  std::string last_error;
+  std::string lastError;
 };
 
 SaBootstrapChannel::SaBootstrapChannel(SaBootstrapConfig config)
@@ -26,7 +26,7 @@ const SaBootstrapConfig& SaBootstrapChannel::config() const {
 }
 
 const std::string& SaBootstrapChannel::last_error() const {
-  return impl_->last_error;
+  return impl_->lastError;
 }
 
 BootstrapHandles SaBootstrapChannel::server_handles() const {
@@ -45,21 +45,21 @@ void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
 StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (impl_->fallback == nullptr) {
     handles = BootstrapHandles{};
-    impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
+    impl_->lastError = "Fake SA bootstrap has no POSIX fallback channel.";
     return StatusCode::EngineInternalError;
   }
   const StatusCode status = impl_->fallback->OpenSession(handles);
   if (status != StatusCode::Ok) {
-    impl_->last_error = "Fake SA bootstrap OpenSession failed on POSIX fallback.";
+    impl_->lastError = "Fake SA bootstrap OpenSession failed on POSIX fallback.";
   } else {
-    impl_->last_error.clear();
+    impl_->lastError.clear();
   }
   return status;
 }
 
 StatusCode SaBootstrapChannel::CloseSession() {
   if (impl_->fallback == nullptr) {
-    impl_->last_error = "Fake SA bootstrap has no POSIX fallback channel.";
+    impl_->lastError = "Fake SA bootstrap has no POSIX fallback channel.";
     return StatusCode::EngineInternalError;
   }
   return impl_->fallback->CloseSession();

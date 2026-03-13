@@ -32,10 +32,10 @@ TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {
   memrpc::DemoBootstrapConfig config;
-  EXPECT_EQ(config.high_ring_size, 32u);
-  EXPECT_EQ(config.normal_ring_size, 32u);
-  EXPECT_EQ(config.response_ring_size, 64u);
-  EXPECT_EQ(config.slot_count, 64u);
+  EXPECT_EQ(config.highRingSize, 32u);
+  EXPECT_EQ(config.normalRingSize, 32u);
+  EXPECT_EQ(config.responseRingSize, 64u);
+  EXPECT_EQ(config.slotCount, 64u);
 }
 
 TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {

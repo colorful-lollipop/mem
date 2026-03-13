@@ -1146,12 +1146,12 @@ struct RpcClient::Impl {
     reply.status = static_cast<StatusCode>(entry.statusCode);
     reply.engineCode = entry.engineErrno;
     reply.detailCode = entry.detailCode;
-    ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(entry.slotIndex);
-    uint8_t* response_bytes = session.GetResponseSlotBytes(entry.slotIndex);
+    ResponseSlotPayload* responseSlot = session.GetResponseSlotPayload(entry.slotIndex);
+    uint8_t* responseBytes = session.GetResponseSlotBytes(entry.slotIndex);
 
-    auto lookup = LookupPendingFuture(response_slot);
+    auto lookup = LookupPendingFuture(responseSlot);
 
-    if (response_slot != nullptr && response_slot->runtime.request_id != entry.requestId) {
+    if (responseSlot != nullptr && responseSlot->runtime.request_id != entry.requestId) {
       reply.status = StatusCode::ProtocolMismatch;
       if (lookup.info.has_value()) {
         NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
@@ -1161,15 +1161,15 @@ struct RpcClient::Impl {
       HandleEngineDeath(current_session_id);
       return;
     }
-    if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
+    if (session.Header() == nullptr || responseSlot == nullptr || responseBytes == nullptr ||
         entry.resultSize > session.Header()->maxResponseBytes) {
       reply.status = StatusCode::ProtocolMismatch;
     } else {
-      reply.payload.assign(response_bytes, response_bytes + entry.resultSize);
+      reply.payload.assign(responseBytes, responseBytes + entry.resultSize);
     }
-    if (response_slot != nullptr) {
-      response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
-      response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
+    if (responseSlot != nullptr) {
+      responseSlot->runtime.state = SlotRuntimeStateCode::Consumed;
+      responseSlot->runtime.last_update_mono_ms = MonotonicNowMs();
     }
     if (reply.status != StatusCode::Ok && lookup.info.has_value()) {
       NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
@@ -1178,7 +1178,7 @@ struct RpcClient::Impl {
     if (lookup.future != nullptr) {
       TouchActivity();
     }
-    CleanupCompletedSlots(response_slot, lookup.future, entry.slotIndex,
+    CleanupCompletedSlots(responseSlot, lookup.future, entry.slotIndex,
                           responseRing_became_not_full);
   }
 
