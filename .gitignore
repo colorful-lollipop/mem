@@ -1,12 +1,5 @@
 build/
-build_test/
-build_stress/
-build_fuzz/
-build_asan/
-build-warn/
-build-dt/
-build_vps/
-build_vps_fuzz/
+build_*/
 stress_out/
 out/
 dist/
