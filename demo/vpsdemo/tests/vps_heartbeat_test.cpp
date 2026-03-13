@@ -34,11 +34,11 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
     VpsHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
-    EXPECT_EQ(reply.session_id, session_id);
-    EXPECT_STREQ(reply.current_task, "idle");
+    EXPECT_EQ(reply.sessionId, session_id);
+    EXPECT_STREQ(reply.currentTask, "idle");
     EXPECT_EQ(reply.version, 1u);
-    EXPECT_EQ(reply.in_flight, 0u);
-    EXPECT_EQ(reply.last_task_age_ms, 0u);
+    EXPECT_EQ(reply.inFlight, 0u);
+    EXPECT_EQ(reply.lastTaskAgeMs, 0u);
 
     service.CloseSession();
     service.OnStop();
@@ -60,7 +60,7 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
     VpsHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), memrpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
-    EXPECT_EQ(reply.session_id, session_id);
+    EXPECT_EQ(reply.sessionId, session_id);
 
     proxy.CloseSession();
     stub->OnStop();
@@ -87,8 +87,8 @@ TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
 
     VpsHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_GE(reply.in_flight, 1u);
-    EXPECT_STRNE(reply.current_task, "idle");
+    EXPECT_GE(reply.inFlight, 1u);
+    EXPECT_STRNE(reply.currentTask, "idle");
 
     worker.join();
     service.CloseSession();

@@ -74,11 +74,11 @@ class SlotPool {
   bool IsValidIndex(uint32_t slot_index) const;
   bool CanTransition(SlotState current, SlotState next) const;
 
-  uint32_t slot_count_ = 0;
+  uint32_t slotCount_ = 0;
   std::vector<std::atomic<uint8_t>> states_;
-  std::vector<uint32_t> next_free_;
-  std::atomic<uint32_t> free_top_{EMPTY};
-  std::atomic<uint32_t> free_count_{0};
+  std::vector<uint32_t> nextFree_;
+  std::atomic<uint32_t> freeTop_{EMPTY};
+  std::atomic<uint32_t> freeCount_{0};
 };
 
 }  // namespace memrpc

@@ -49,12 +49,12 @@ TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {
       memrpc::DEFAULT_MAX_RESPONSE_BYTES,
   };
   const memrpc::Layout layout = memrpc::ComputeLayout(config);
-  EXPECT_LT(layout.high_ring_offset, layout.normal_ring_offset);
-  EXPECT_LT(layout.normal_ring_offset, layout.response_ring_offset);
-  EXPECT_LT(layout.response_ring_offset, layout.slot_pool_offset);
-  EXPECT_LT(layout.slot_pool_offset, layout.response_slot_pool_offset);
-  EXPECT_LT(layout.response_slot_pool_offset, layout.response_slots_offset);
-  EXPECT_LT(layout.response_slots_offset, layout.total_size);
+  EXPECT_LT(layout.highRingOffset, layout.normalRingOffset);
+  EXPECT_LT(layout.normalRingOffset, layout.responseRingOffset);
+  EXPECT_LT(layout.responseRingOffset, layout.slotPoolOffset);
+  EXPECT_LT(layout.slotPoolOffset, layout.responseSlotPoolOffset);
+  EXPECT_LT(layout.responseSlotPoolOffset, layout.responseSlotsOffset);
+  EXPECT_LT(layout.responseSlotsOffset, layout.totalSize);
 }
 
 TEST(ProtocolLayoutTest, RingCursorLayoutMatchesSpscHeadTailModel) {

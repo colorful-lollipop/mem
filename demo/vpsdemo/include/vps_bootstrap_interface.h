@@ -20,10 +20,10 @@ enum class VpsHeartbeatStatus : uint32_t {
 struct VpsHeartbeatReply {
     uint32_t version = 1;
     uint32_t status = static_cast<uint32_t>(VpsHeartbeatStatus::Unhealthy);
-    uint64_t session_id = 0;
-    uint32_t in_flight = 0;
-    uint32_t last_task_age_ms = 0;
-    char current_task[64] = {};
+    uint64_t sessionId = 0;
+    uint32_t inFlight = 0;
+    uint32_t lastTaskAgeMs = 0;
+    char currentTask[64] = {};
     uint32_t reserved[4] = {};
 };
 

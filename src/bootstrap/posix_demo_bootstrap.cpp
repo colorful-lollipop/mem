@@ -103,18 +103,18 @@ struct PosixDemoBootstrapChannel::Impl {
                                      config.max_request_bytes,
                                      config.max_response_bytes};
     const Layout layout = ComputeLayout(layout_config);
-    if (ftruncate(shmFd, static_cast<off_t>(layout.total_size)) != 0) {
-      HILOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+    if (ftruncate(shmFd, static_cast<off_t>(layout.totalSize)) != 0) {
+      HILOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.totalSize, errno);
       return StatusCode::EngineInternalError;
     }
 
     void* region =
-        mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
+        mmap(nullptr, layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (region == MAP_FAILED) {
-      HILOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
+      HILOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.totalSize, errno);
       return StatusCode::EngineInternalError;
     }
-    std::memset(region, 0, layout.total_size);
+    std::memset(region, 0, layout.totalSize);
     auto* header = static_cast<SharedMemoryHeader*>(region);
     header->magic = SHARED_MEMORY_MAGIC;
     header->protocol_version = PROTOCOL_VERSION;
@@ -132,13 +132,13 @@ struct PosixDemoBootstrapChannel::Impl {
     header->response_ring.capacity = config.response_ring_size;
     *out_session_id = header->session_id;
     if (!InitMutex(&header->client_state_mutex) ||
-        !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.response_slot_pool_offset,
+        !InitializeSharedSlotPool(static_cast<uint8_t*>(region) + layout.responseSlotPoolOffset,
                                   config.response_ring_size)) {
       HILOGE("InitMutex failed");
-      munmap(region, layout.total_size);
+      munmap(region, layout.totalSize);
       return StatusCode::EngineInternalError;
     }
-    munmap(region, layout.total_size);
+    munmap(region, layout.totalSize);
     return StatusCode::Ok;
   }
 

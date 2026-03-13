@@ -43,14 +43,14 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
     if (!session_service_) {
         return memrpc::StatusCode::Ok;
     }
-    reply.session_id = session_service_->session_id();
+    reply.sessionId = session_service_->session_id();
     const auto snapshot = service_.GetHealthSnapshot();
-    reply.in_flight = snapshot.in_flight;
-    reply.last_task_age_ms = snapshot.last_task_age_ms;
-    std::snprintf(reply.current_task, sizeof(reply.current_task), "%s",
+    reply.inFlight = snapshot.in_flight;
+    reply.lastTaskAgeMs = snapshot.last_task_age_ms;
+    std::snprintf(reply.currentTask, sizeof(reply.currentTask), "%s",
                   snapshot.current_task.c_str());
 
-    const bool healthy = service_.initialized() && reply.session_id != 0;
+    const bool healthy = service_.initialized() && reply.sessionId != 0;
     reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok
                                                  : VpsHeartbeatStatus::Unhealthy);
     return memrpc::StatusCode::Ok;

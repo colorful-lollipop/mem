@@ -107,7 +107,7 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     handles.respCreditEventFd = fds[5];
     handles.protocol_version = meta.protocol_version;
     handles.session_id = meta.session_id;
-    session_id_ = meta.session_id;
+    sessionId_ = meta.session_id;
 
     // Start monitoring the socket for disconnect (death detection).
     stop_monitor_ = false;
@@ -156,8 +156,8 @@ memrpc::StatusCode VpsBootstrapProxy::CloseSession() {
 }
 
 void VpsBootstrapProxy::SetEngineDeathCallback(memrpc::EngineDeathCallback callback) {
-    std::lock_guard<std::mutex> lock(callback_mutex_);
-    death_callback_ = std::move(callback);
+    std::lock_guard<std::mutex> lock(callbackMutex_);
+    deathCallback_ = std::move(callback);
 }
 
 void VpsBootstrapProxy::MonitorSocket() {
@@ -175,9 +175,9 @@ void VpsBootstrapProxy::MonitorSocket() {
                 // Peer disconnected.
                 // Framework path — RpcClient will clean up session and fail pending futures.
                 {
-                    std::lock_guard<std::mutex> lock(callback_mutex_);
-                    if (death_callback_) {
-                        death_callback_(session_id_);
+                    std::lock_guard<std::mutex> lock(callbackMutex_);
+                    if (deathCallback_) {
+                        deathCallback_(sessionId_);
                     }
                 }
                 // OHOS path — trigger DeathRecipients registered on the remote object.

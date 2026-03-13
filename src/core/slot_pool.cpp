@@ -144,35 +144,35 @@ bool SharedSlotPool::IsValidIndex(uint32_t slot_index) const {
 // --- SlotPool (lock-free Treiber stack) ---
 
 SlotPool::SlotPool(uint32_t slot_count)
-    : slot_count_(slot_count),
+    : slotCount_(slot_count),
       states_(slot_count),
-      next_free_(slot_count) {
+      nextFree_(slot_count) {
   for (uint32_t i = 0; i < slot_count; ++i) {
     states_[i].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
   }
   // Build the free list as a linked stack: 0 → 1 → 2 → ... → (n-1) → EMPTY
   for (uint32_t i = 0; i < slot_count; ++i) {
-    next_free_[i] = (i + 1 < slot_count) ? i + 1 : EMPTY;
+    nextFree_[i] = (i + 1 < slot_count) ? i + 1 : EMPTY;
   }
-  free_top_.store(slot_count > 0 ? 0 : EMPTY, std::memory_order_relaxed);
-  free_count_.store(slot_count, std::memory_order_relaxed);
+  freeTop_.store(slot_count > 0 ? 0 : EMPTY, std::memory_order_relaxed);
+  freeCount_.store(slot_count, std::memory_order_relaxed);
 }
 
 std::optional<uint32_t> SlotPool::Reserve() {
-  const uint32_t count = free_count_.load(std::memory_order_acquire);
+  const uint32_t count = freeCount_.load(std::memory_order_acquire);
   if (count == 0) {
     return std::nullopt;
   }
 
   // Pop from the Treiber stack. Single consumer (submit thread), so ABA is not possible.
-  uint32_t top = free_top_.load(std::memory_order_acquire);
+  uint32_t top = freeTop_.load(std::memory_order_acquire);
   while (top != EMPTY) {
-    const uint32_t next = next_free_[top];
-    if (free_top_.compare_exchange_weak(top, next,
+    const uint32_t next = nextFree_[top];
+    if (freeTop_.compare_exchange_weak(top, next,
                                          std::memory_order_acq_rel,
                                          std::memory_order_acquire)) {
       states_[top].store(static_cast<uint8_t>(SlotState::Reserved), std::memory_order_relaxed);
-      free_count_.fetch_sub(1, std::memory_order_release);
+      freeCount_.fetch_sub(1, std::memory_order_release);
       return top;
     }
     // CAS failed — a concurrent Release changed top, retry.
@@ -207,13 +207,13 @@ bool SlotPool::Release(uint32_t slot_index) {
   states_[slot_index].store(static_cast<uint8_t>(SlotState::Free), std::memory_order_relaxed);
 
   // Push onto the Treiber stack (lock-free, safe for concurrent pushers).
-  uint32_t top = free_top_.load(std::memory_order_relaxed);
+  uint32_t top = freeTop_.load(std::memory_order_relaxed);
   do {
-    next_free_[slot_index] = top;
-  } while (!free_top_.compare_exchange_weak(top, slot_index,
+    nextFree_[slot_index] = top;
+  } while (!freeTop_.compare_exchange_weak(top, slot_index,
                                              std::memory_order_release,
                                              std::memory_order_relaxed));
-  free_count_.fetch_add(1, std::memory_order_release);
+  freeCount_.fetch_add(1, std::memory_order_release);
   return true;
 }
 
@@ -225,15 +225,15 @@ SlotState SlotPool::GetState(uint32_t slot_index) const {
 }
 
 uint32_t SlotPool::capacity() const {
-  return slot_count_;
+  return slotCount_;
 }
 
 uint32_t SlotPool::available() const {
-  return free_count_.load(std::memory_order_relaxed);
+  return freeCount_.load(std::memory_order_relaxed);
 }
 
 bool SlotPool::IsValidIndex(uint32_t slot_index) const {
-  return slot_index < slot_count_;
+  return slot_index < slotCount_;
 }
 
 bool SlotPool::CanTransition(SlotState current, SlotState next) const {

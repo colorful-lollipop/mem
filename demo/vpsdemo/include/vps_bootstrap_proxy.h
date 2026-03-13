@@ -41,9 +41,9 @@ class VpsBootstrapProxy : public OHOS::IRemoteProxy<IVpsBootstrap>,
     int sock_fd_ = -1;
     std::atomic<bool> stop_monitor_{false};
     std::thread monitor_thread_;
-    uint64_t session_id_ = 0;
-    memrpc::EngineDeathCallback death_callback_;
-    std::mutex callback_mutex_;
+    uint64_t sessionId_ = 0;
+    memrpc::EngineDeathCallback deathCallback_;
+    std::mutex callbackMutex_;
 };
 
 }  // namespace vpsdemo
