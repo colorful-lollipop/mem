@@ -110,6 +110,28 @@ if (VPSDEMO_ENABLE_TESTS)
   add_test(NAME vpsdemo_crash_recovery_test COMMAND vpsdemo_crash_recovery_test)
   set_tests_properties(vpsdemo_crash_recovery_test PROPERTIES LABELS "dt")
 
+  # Integration tests (executables that are themselves tests)
+  add_test(NAME vpsdemo_supervisor_integration_test 
+           COMMAND vpsdemo_supervisor
+           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  set_tests_properties(vpsdemo_supervisor_integration_test PROPERTIES
+                       LABELS "integration"
+                       TIMEOUT 30)
+
+  add_test(NAME vpsdemo_stress_test 
+           COMMAND vpsdemo_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
+           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  set_tests_properties(vpsdemo_stress_test PROPERTIES
+                       LABELS "stress"
+                       TIMEOUT 30)
+
+  add_test(NAME vpsdemo_dt_crash_recovery_test 
+           COMMAND vpsdemo_dt_crash_recovery
+           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  set_tests_properties(vpsdemo_dt_crash_recovery_test PROPERTIES
+                       LABELS "dt"
+                       TIMEOUT 60)
+
   if (VPSDEMO_ENABLE_FUZZ)
     add_subdirectory(tests/fuzz)
   endif()

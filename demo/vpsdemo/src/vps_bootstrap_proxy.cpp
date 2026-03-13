@@ -30,8 +30,8 @@ int ConnectToService(const std::string& path) {
 
 // Metadata sent alongside SCM_RIGHTS fds.
 struct SessionMetadata {
-    uint32_t protocol_version = 0;
-    uint64_t session_id = 0;
+    uint32_t protocolVersion = 0;
+    uint64_t sessionId = 0;
 };
 
 }  // namespace
@@ -105,9 +105,9 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     handles.respEventFd = fds[3];
     handles.reqCreditEventFd = fds[4];
     handles.respCreditEventFd = fds[5];
-    handles.protocolVersion = meta.protocol_version;
-    handles.sessionId = meta.session_id;
-    sessionId_ = meta.session_id;
+    handles.protocolVersion = meta.protocolVersion;
+    handles.sessionId = meta.sessionId;
+    sessionId_ = meta.sessionId;
 
     // Start monitoring the socket for disconnect (death detection).
     stop_monitor_ = false;

@@ -32,7 +32,7 @@ EngineSessionService::EngineSessionService(VesEngineService* service)
     : service_(service) {}
 
 memrpc::StatusCode EngineSessionService::EnsureInitialized() {
-    std::lock_guard<std::mutex> lock(init_mutex_);
+    std::lock_guard<std::mutex> lock(initMutex_);
     if (initialized_) {
         return memrpc::StatusCode::Ok;
     }
@@ -51,11 +51,11 @@ memrpc::StatusCode EngineSessionService::EnsureInitialized() {
     CloseHandles(&throwaway);
 
     const memrpc::BootstrapHandles serverHandles = bootstrap_->serverHandles();
-    rpc_server_ = std::make_unique<memrpc::RpcServer>(serverHandles);
+    rpcServer_ = std::make_unique<memrpc::RpcServer>(serverHandles);
     if (service_ != nullptr) {
-        service_->RegisterHandlers(rpc_server_.get());
+        service_->RegisterHandlers(rpcServer_.get());
     }
-    const memrpc::StatusCode start_status = rpc_server_->Start();
+    const memrpc::StatusCode start_status = rpcServer_->Start();
     if (start_status != memrpc::StatusCode::Ok) {
         HILOGE("RpcServer start failed");
         return start_status;
@@ -76,29 +76,29 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles& h
     }
     auto status = bootstrap_->OpenSession(handles);
     if (status == memrpc::StatusCode::Ok) {
-        session_id_ = handles.sessionId;
+        sessionId_ = handles.sessionId;
     }
     return status;
 }
 
 memrpc::StatusCode EngineSessionService::CloseSession() {
-    std::lock_guard<std::mutex> lock(init_mutex_);
+    std::lock_guard<std::mutex> lock(initMutex_);
     if (!initialized_) {
         return memrpc::StatusCode::Ok;
     }
-    if (rpc_server_) {
-        rpc_server_->Stop();
-        rpc_server_.reset();
+    if (rpcServer_) {
+        rpcServer_->Stop();
+        rpcServer_.reset();
     }
     bootstrap_.reset();
     initialized_ = false;
-    session_id_ = 0;
+    sessionId_ = 0;
     HILOGI("EngineSessionService closed");
     return memrpc::StatusCode::Ok;
 }
 
 uint64_t EngineSessionService::session_id() const {
-    return session_id_;
+    return sessionId_;
 }
 
 }  // namespace vpsdemo

@@ -34,10 +34,10 @@ class EngineSessionService final : public VesSessionProvider {
 
     VesEngineService* service_ = nullptr;
     std::shared_ptr<memrpc::PosixDemoBootstrapChannel> bootstrap_;
-    std::unique_ptr<memrpc::RpcServer> rpc_server_;
-    std::mutex init_mutex_;
+    std::unique_ptr<memrpc::RpcServer> rpcServer_;
+    std::mutex initMutex_;
     bool initialized_ = false;
-    uint64_t session_id_ = 0;
+    uint64_t sessionId_ = 0;
 };
 
 }  // namespace vpsdemo
