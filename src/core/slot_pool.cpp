@@ -56,15 +56,15 @@ SharedSlotPool::SharedSlotPool(void* region) {
     return;
   }
   header_ = static_cast<SharedSlotPoolHeader*>(region);
-  free_slots_ =
+  freeSlots_ =
       reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader));
-  in_use_slots_ = reinterpret_cast<uint8_t*>(
+  inUseSlots_ = reinterpret_cast<uint8_t*>(
       static_cast<uint8_t*>(region) + sizeof(SharedSlotPoolHeader) +
       sizeof(uint32_t) * header_->capacity);
 }
 
 std::optional<uint32_t> SharedSlotPool::Reserve() {
-  if (!valid()) {
+  if (!Valid()) {
     return std::nullopt;
   }
 
@@ -74,34 +74,34 @@ std::optional<uint32_t> SharedSlotPool::Reserve() {
     if (top == SHARED_EMPTY) {
       return std::nullopt;
     }
-    if (!IsValidIndex(top) || in_use_slots_[top] != 0) {
+    if (!IsValidIndex(top) || inUseSlots_[top] != 0) {
       return std::nullopt;
     }
-    const uint32_t next = free_slots_[top];
+    const uint32_t next = freeSlots_[top];
     const uint32_t new_version = TaggedVersion(old_tagged) + 1;
     const uint64_t new_tagged = PackTagged(next, new_version);
     if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
                                                    std::memory_order_acq_rel,
                                                    std::memory_order_acquire)) {
-      in_use_slots_[top] = 1;
+      inUseSlots_[top] = 1;
       return top;
     }
   }
 }
 
 bool SharedSlotPool::Release(uint32_t slot_index) {
-  if (!valid()) {
+  if (!Valid()) {
     return false;
   }
-  if (!IsValidIndex(slot_index) || in_use_slots_[slot_index] == 0) {
+  if (!IsValidIndex(slot_index) || inUseSlots_[slot_index] == 0) {
     return false;
   }
 
-  in_use_slots_[slot_index] = 0;
+  inUseSlots_[slot_index] = 0;
 
   uint64_t old_tagged = header_->top_tagged.load(std::memory_order_relaxed);
   do {
-    free_slots_[slot_index] = TaggedIndex(old_tagged);
+    freeSlots_[slot_index] = TaggedIndex(old_tagged);
     const uint32_t new_version = TaggedVersion(old_tagged) + 1;
     const uint64_t new_tagged = PackTagged(slot_index, new_version);
     if (header_->top_tagged.compare_exchange_weak(old_tagged, new_tagged,
@@ -112,12 +112,12 @@ bool SharedSlotPool::Release(uint32_t slot_index) {
   } while (true);
 }
 
-uint32_t SharedSlotPool::capacity() const {
-  return valid() ? header_->capacity : 0;
+uint32_t SharedSlotPool::Capacity() const {
+  return Valid() ? header_->capacity : 0;
 }
 
-uint32_t SharedSlotPool::available() const {
-  if (!valid()) {
+uint32_t SharedSlotPool::Available() const {
+  if (!Valid()) {
     return 0;
   }
   // Walk the free list to count available slots.
@@ -127,13 +127,13 @@ uint32_t SharedSlotPool::available() const {
   uint32_t idx = TaggedIndex(tagged);
   while (idx != SHARED_EMPTY && idx < header_->capacity) {
     ++count;
-    idx = free_slots_[idx];
+    idx = freeSlots_[idx];
   }
   return count;
 }
 
-bool SharedSlotPool::valid() const {
-  return header_ != nullptr && free_slots_ != nullptr && in_use_slots_ != nullptr &&
+bool SharedSlotPool::Valid() const {
+  return header_ != nullptr && freeSlots_ != nullptr && inUseSlots_ != nullptr &&
          header_->capacity != 0;
 }
 

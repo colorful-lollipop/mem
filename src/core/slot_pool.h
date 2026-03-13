@@ -43,16 +43,16 @@ class SharedSlotPool {
 
   std::optional<uint32_t> Reserve();
   bool Release(uint32_t slot_index);
-  uint32_t capacity() const;
-  uint32_t available() const;
-  bool valid() const;
+  uint32_t Capacity() const;
+  uint32_t Available() const;
+  bool Valid() const;
 
  private:
   bool IsValidIndex(uint32_t slot_index) const;
 
   SharedSlotPoolHeader* header_ = nullptr;
-  uint32_t* free_slots_ = nullptr;
-  uint8_t* in_use_slots_ = nullptr;
+  uint32_t* freeSlots_ = nullptr;
+  uint8_t* inUseSlots_ = nullptr;
 };
 
 // Lock-free slot pool for single-process use.

@@ -62,8 +62,8 @@ struct RpcServerCall {
 struct RpcServerReply {
   StatusCode status = StatusCode::Ok;
   ScanVerdict verdict = ScanVerdict::Unknown;
-  int32_t engine_code = 0;
-  int32_t detail_code = 0;
+  int32_t engineCode = 0;
+  int32_t detailCode = 0;
   std::vector<uint8_t> payload;
 };
 

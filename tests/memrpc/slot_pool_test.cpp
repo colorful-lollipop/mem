@@ -75,7 +75,7 @@ TEST(SlotPoolTest, SharedSlotPoolRejectsReleaseOfNeverReservedSlot) {
 
   const uint32_t other_slot = *reserved == 0 ? 1u : 0u;
   EXPECT_FALSE(pool.Release(other_slot));
-  EXPECT_EQ(pool.available(), 1u);
+  EXPECT_EQ(pool.Available(), 1u);
 }
 
 TEST(SlotPoolTest, SharedSlotPoolRejectsDuplicateReleaseBeforeCapacityIsFull) {
@@ -90,5 +90,5 @@ TEST(SlotPoolTest, SharedSlotPoolRejectsDuplicateReleaseBeforeCapacityIsFull) {
 
   ASSERT_TRUE(pool.Release(*first));
   EXPECT_FALSE(pool.Release(*first));
-  EXPECT_EQ(pool.available(), 1u);
+  EXPECT_EQ(pool.Available(), 1u);
 }

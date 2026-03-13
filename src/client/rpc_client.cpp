@@ -1131,7 +1131,7 @@ struct RpcClient::Impl {
     if (response_slot != nullptr) {
       std::memset(const_cast<ResponseSlotPayload*>(response_slot), 0, sizeof(ResponseSlotPayload));
     }
-    const bool response_slot_became_available = response_slot_pool.available() == 0;
+    const bool response_slot_became_available = response_slot_pool.Available() == 0;
     response_slot_pool.Release(response_slot_index);
     SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
                           responseRing_became_not_full || response_slot_became_available);
@@ -1201,7 +1201,7 @@ struct RpcClient::Impl {
     if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
         entry.resultSize > session.Header()->maxResponseBytes) {
       HILOGW("drop invalid event, size=%{public}u", entry.resultSize);
-      const bool response_slot_became_available = response_slot_pool.available() == 0;
+      const bool response_slot_became_available = response_slot_pool.Available() == 0;
       response_slot_pool.Release(entry.slotIndex);
       SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
                             responseRing_became_not_full || response_slot_became_available);
@@ -1220,7 +1220,7 @@ struct RpcClient::Impl {
     response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
     response_slot->runtime.last_update_mono_ms = MonotonicNowMs();
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
-    const bool response_slot_became_available = response_slot_pool.available() == 0;
+    const bool response_slot_became_available = response_slot_pool.Available() == 0;
     response_slot_pool.Release(entry.slotIndex);
     SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
                           responseRing_became_not_full || response_slot_became_available);

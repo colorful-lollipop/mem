@@ -235,7 +235,7 @@ struct RpcServer::Impl {
 
   std::optional<uint32_t> ReserveResponseSlotWithRetry(std::chrono::milliseconds retry_budget) {
     SharedSlotPool response_slot_pool(session.responseSlotPoolRegion());
-    if (!response_slot_pool.valid()) {
+    if (!response_slot_pool.Valid()) {
       return std::nullopt;
     }
 
@@ -434,8 +434,8 @@ struct RpcServer::Impl {
     ResponseRingEntry response;
     response.requestId = request_entry.request_id;
     response.statusCode = static_cast<uint32_t>(reply.status);
-    response.engineErrno = reply.engine_code;
-    response.detailCode = reply.detail_code;
+    response.engineErrno = reply.engineCode;
+    response.detailCode = reply.detailCode;
     if (reply.payload.size() > session.Header()->maxResponseBytes) {
       response.statusCode = static_cast<uint32_t>(StatusCode::EngineInternalError);
       response.engineErrno = 0;
