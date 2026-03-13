@@ -17,12 +17,12 @@ inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES = 4U * 1024U;
 using Opcode = uint16_t;
 inline constexpr Opcode OPCODE_INVALID = 0;
 
-enum class ResponseMessageKind : uint16_t {
+enum class ResponseMessageKind : uint16_t {  // NOLINT(performance-enum-size)
   Reply = 0,
   Event = 1,
 };
 
-enum class SlotRuntimeStateCode : uint32_t {
+enum class SlotRuntimeStateCode : uint32_t {  // NOLINT(performance-enum-size)
   Free = 0,
   Admitted = 1,
   Queued = 2,

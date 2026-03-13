@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <signal.h>
+#include <csignal>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -11,12 +11,24 @@
 namespace {
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shmFd >= 0) close(h.shmFd);
-  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
-  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
-  if (h.respEventFd >= 0) close(h.respEventFd);
-  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
-  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
+  if (h.shmFd >= 0) {
+    close(h.shmFd);
+  }
+  if (h.highReqEventFd >= 0) {
+    close(h.highReqEventFd);
+  }
+  if (h.normalReqEventFd >= 0) {
+    close(h.normalReqEventFd);
+  }
+  if (h.respEventFd >= 0) {
+    close(h.respEventFd);
+  }
+  if (h.reqCreditEventFd >= 0) {
+    close(h.reqCreditEventFd);
+  }
+  if (h.respCreditEventFd >= 0) {
+    close(h.respCreditEventFd);
+  }
 }
 
 }  // namespace

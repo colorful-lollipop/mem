@@ -39,7 +39,7 @@ TEST(ApiHeadersTest, PublicHeadersCompose) {
   MemRpc::BootstrapHandles handles;
 
   EXPECT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-  EXPECT_EQ(handles.protocolVersion, 1u);
+  EXPECT_EQ(handles.protocolVersion, 1U);
   EXPECT_EQ(bootstrap.CloseSession(), MemRpc::StatusCode::Ok);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);

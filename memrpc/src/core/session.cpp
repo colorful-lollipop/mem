@@ -1,6 +1,6 @@
 #include "core/session.h"
 
-#include <signal.h>
+#include <csignal>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -13,8 +13,17 @@ namespace MemRpc {
 
 namespace {
 
-constexpr uint32_t MAX_RING_ENTRIES = 1u << 20;
-constexpr uint32_t MAX_SLOT_COUNT = 1u << 20;
+constexpr uint32_t MAX_RING_ENTRIES = 1U << 20;
+constexpr uint32_t MAX_SLOT_COUNT = 1U << 20;
+constexpr long LOCK_TIMEOUT_NS = 100L * 1000L * 1000L;
+constexpr long NS_PER_SECOND = 1000L * 1000L * 1000L;
+
+void CloseFd(int* fd) {
+  if (fd != nullptr && *fd >= 0) {
+    close(*fd);
+    *fd = -1;
+  }
+}
 
 StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
   if (mutex == nullptr) {
@@ -25,10 +34,10 @@ StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
   if (clock_gettime(CLOCK_REALTIME, &deadline) != 0) {
     return StatusCode::EngineInternalError;
   }
-  deadline.tv_nsec += 100 * 1000 * 1000;
-  if (deadline.tv_nsec >= 1000 * 1000 * 1000) {
+  deadline.tv_nsec += LOCK_TIMEOUT_NS;
+  if (deadline.tv_nsec >= NS_PER_SECOND) {
     deadline.tv_sec += 1;
-    deadline.tv_nsec -= 1000 * 1000 * 1000;
+    deadline.tv_nsec -= NS_PER_SECOND;
   }
 
   const int rc = pthread_mutex_timedlock(mutex, &deadline);
@@ -84,17 +93,14 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
   }
 
   const Layout layout = ComputeLayout(config);
-  if (layout.totalSize < sizeof(SharedMemoryHeader) || layout.totalSize > file_size) {
-    return false;
-  }
-  return true;
+  return layout.totalSize >= sizeof(SharedMemoryHeader) && layout.totalSize <= file_size;
 }
 
 bool ProcessIsAlive(uint32_t pid_value) {
   if (pid_value == 0) {
     return false;
   }
-  const pid_t pid = static_cast<pid_t>(pid_value);
+  const auto pid = static_cast<pid_t>(pid_value);
   if (kill(pid, 0) == 0) {
     return true;
   }
@@ -113,7 +119,7 @@ StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry) {
   }
   auto* entries = static_cast<EntryType*>(access.entries);
   entries[tail % access.cursor->capacity] = entry;
-  access.cursor->tail.store(tail + 1u, std::memory_order_release);
+  access.cursor->tail.store(tail + 1U, std::memory_order_release);
   return StatusCode::Ok;
 }
 
@@ -129,7 +135,7 @@ bool PopRingEntry(Session::RingAccess access, EntryType* entry) {
   }
   auto* entries = static_cast<EntryType*>(access.entries);
   *entry = entries[head % access.cursor->capacity];
-  access.cursor->head.store(head + 1u, std::memory_order_release);
+  access.cursor->head.store(head + 1U, std::memory_order_release);
   return true;
 }
 
@@ -257,39 +263,40 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   return StatusCode::Ok;
 }
 
-void Session::Reset() {
-  if (header_ != nullptr && ownsClientSlot_) {
-    if (LockSharedMutex(&header_->clientStateMutex) == StatusCode::Ok) {
-      header_->clientAttached = 0;
-      header_->activeClientPid = 0;
-      pthread_mutex_unlock(&header_->clientStateMutex);
-    }
+void ReleaseClientSlot(SharedMemoryHeader* header, bool owns_client_slot) {
+  if (header == nullptr || !owns_client_slot) {
+    return;
   }
+  if (LockSharedMutex(&header->clientStateMutex) != StatusCode::Ok) {
+    return;
+  }
+  header->clientAttached = 0;
+  header->activeClientPid = 0;
+  pthread_mutex_unlock(&header->clientStateMutex);
+}
+
+void CloseHandles(BootstrapHandles* handles) {
+  if (handles == nullptr) {
+    return;
+  }
+  CloseFd(&handles->shmFd);
+  CloseFd(&handles->highReqEventFd);
+  CloseFd(&handles->normalReqEventFd);
+  CloseFd(&handles->respEventFd);
+  CloseFd(&handles->reqCreditEventFd);
+  CloseFd(&handles->respCreditEventFd);
+}
+
+void Session::Reset() {
+  ReleaseClientSlot(header_, ownsClientSlot_);
   if (mappedRegion_ != nullptr) {
     munmap(mappedRegion_, mappedSize_);
   }
-  if (handles_.shmFd >= 0) {
-    close(handles_.shmFd);
-  }
-  if (handles_.highReqEventFd >= 0) {
-    close(handles_.highReqEventFd);
-  }
-  if (handles_.normalReqEventFd >= 0) {
-    close(handles_.normalReqEventFd);
-  }
-  if (handles_.respEventFd >= 0) {
-    close(handles_.respEventFd);
-  }
-  if (handles_.reqCreditEventFd >= 0) {
-    close(handles_.reqCreditEventFd);
-  }
-  if (handles_.respCreditEventFd >= 0) {
-    close(handles_.respCreditEventFd);
-  }
+  CloseHandles(&handles_);
+  handles_ = {};
   mappedSize_ = 0;
   mappedRegion_ = nullptr;
   header_ = nullptr;
-  handles_ = {};
   attachRole_ = AttachRole::Server;
   ownsClientSlot_ = false;
 }

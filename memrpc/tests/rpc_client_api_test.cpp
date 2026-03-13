@@ -35,6 +35,8 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
 
 }  // namespace
 
+// GTest matcher macros inflate cognitive-complexity counts in this API composition check.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST(RpcClientApiTest, PublicHeaderComposes) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);
@@ -59,6 +61,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes) {
   EXPECT_TRUE(future.IsReady());
   EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
 }
+// NOLINTEND(readability-function-cognitive-complexity)
 
 TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();

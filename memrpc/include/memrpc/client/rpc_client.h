@@ -57,7 +57,7 @@ class RpcFuture {
   RpcFuture& operator=(RpcFuture&&) noexcept = default;
 
   // IsReady 只表示 reply 已经落地，不区分成功或失败。
-  bool IsReady() const;
+  [[nodiscard]] bool IsReady() const;
   // Wait 会阻塞到 reply 就绪，并返回 reply.status。
   StatusCode Wait(RpcReply* reply);
   // WaitAndTake 会阻塞到 reply 就绪，并把内部 reply move 给调用方。
@@ -113,7 +113,10 @@ struct EngineDeathReport {
   std::vector<PoisonPillSuspect> poisonPillSuspects;
 };
 
-enum class RecoveryAction { Ignore, Restart };
+enum class RecoveryAction {  // NOLINT(performance-enum-size)
+  Ignore,
+  Restart,
+};
 
 struct RecoveryDecision {
   RecoveryAction action = RecoveryAction::Ignore;
@@ -146,7 +149,7 @@ class RpcClient {
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。
   RpcFuture InvokeAsync(const RpcCall& call);
   RpcFuture InvokeAsync(RpcCall&& call);
-  RpcClientRuntimeStats GetRuntimeStats() const;
+  [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
   void Shutdown();
 
  private:
@@ -169,7 +172,7 @@ class RpcSyncClient {
   void SetRecoveryPolicy(RecoveryPolicy policy);
   StatusCode Init();
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
-  RpcClientRuntimeStats GetRuntimeStats() const;
+  [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
   void Shutdown();
 
  private:
@@ -178,12 +181,8 @@ class RpcSyncClient {
 
 }  // namespace MemRpc
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
+namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
+}  // namespace OHOS::Security::VirusProtectionService
 
 #endif  // MEMRPC_CLIENT_RPC_CLIENT_H_
