@@ -36,7 +36,7 @@ The reply is written into `MockIpcReply::data` and does not send any fds.
 
 ## Data Flow
 1. Client calls `OpenSession` (existing flow) and starts monitoring.
-2. Every 10s, `VpsBootstrapProxy::MonitorSocket()` opens a short-lived connection to the SA socket, sends cmd=3, receives `VpsHeartbeatReply`, closes the connection.
+2. Every 10s, `VpsBootstrapProxy::MonitorSocket()` opens a short-lived connection to the SA socket, sends cmd=3, receives `VesHeartbeatReply`, closes the connection.
 3. Server `MockServiceSocket` accepts, dispatches to `VpsBootstrapStub::OnRemoteRequest`, which calls `VirusExecutorService::Heartbeat()` to fill the reply and sends it back.
 4. Client validates reply. If timeout (no reply within 10s), size mismatch, `status != OK`, or `session_id` mismatch, it triggers restart (see below).
 

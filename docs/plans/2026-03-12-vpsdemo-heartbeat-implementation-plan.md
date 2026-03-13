@@ -39,9 +39,9 @@ TEST(VpsHeartbeatTest, UnhealthyBeforeOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Unhealthy));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy));
 
     service.OnStop();
 }
@@ -64,21 +64,21 @@ Run:
 - `cmake --build build/vpsdemo`
 - `ctest --test-dir build/vpsdemo --output-on-failure`
 
-Expected: compile failure because `VpsHeartbeatReply` / `Heartbeat` do not exist.
+Expected: compile failure because `VesHeartbeatReply` / `Heartbeat` do not exist.
 
 **Step 3: Write minimal implementation**
 
 In `demo/vpsdemo/include/vps_bootstrap_interface.h` add:
 
 ```cpp
-enum class VpsHeartbeatStatus : uint32_t {
+enum class VesHeartbeatStatus : uint32_t {
     Ok = 0,
     Unhealthy = 1,
 };
 
-struct VpsHeartbeatReply {
+struct VesHeartbeatReply {
     uint32_t version = 1;
-    uint32_t status = static_cast<uint32_t>(VpsHeartbeatStatus::Unhealthy);
+    uint32_t status = static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy);
     uint64_t session_id = 0;
     uint32_t in_flight = 0;
     uint32_t last_task_age_ms = 0;
@@ -90,23 +90,23 @@ struct VpsHeartbeatReply {
 Extend `IVpsBootstrap` with:
 
 ```cpp
-virtual memrpc::StatusCode Heartbeat(VpsHeartbeatReply& reply) = 0;
+virtual memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
 ```
 
 In `demo/vpsdemo/include/virus_executor_service.h` add:
 
 ```cpp
-memrpc::StatusCode Heartbeat(VpsHeartbeatReply& reply) override;
+memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 ```
 
 In `demo/vpsdemo/src/virus_executor_service.cpp` implement:
 
 ```cpp
-memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
-    reply = VpsHeartbeatReply{};
+memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
+    reply = VesHeartbeatReply{};
     const bool healthy = (session_service_ != nullptr) && service_.initialized();
-    reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok
-                                                : VpsHeartbeatStatus::Unhealthy);
+    reply.status = static_cast<uint32_t>(healthy ? VesHeartbeatStatus::Ok
+                                                : VesHeartbeatStatus::Unhealthy);
     return memrpc::StatusCode::Ok;
 }
 ```
@@ -174,9 +174,9 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
     ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
     const uint64_t session_id = handles.session_id;
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.session_id, session_id);
     EXPECT_STREQ(reply.current_task, "idle");
 
@@ -238,8 +238,8 @@ Set `session_id_ = handles.session_id` on `OpenSession`, reset to 0 on `CloseSes
 Update `VirusExecutorService::Heartbeat` to populate reply:
 
 ```cpp
-memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
-    reply = VpsHeartbeatReply{};
+memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
+    reply = VesHeartbeatReply{};
     if (!session_service_) {
         return memrpc::StatusCode::Ok;
     }
@@ -251,8 +251,8 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
                   snapshot.current_task.c_str());
 
     const bool healthy = service_.initialized() && reply.session_id != 0;
-    reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok
-                                                : VpsHeartbeatStatus::Unhealthy);
+    reply.status = static_cast<uint32_t>(healthy ? VesHeartbeatStatus::Ok
+                                                : VesHeartbeatStatus::Unhealthy);
     return memrpc::StatusCode::Ok;
 }
 ```
@@ -312,9 +312,9 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
     ASSERT_EQ(proxy.OpenSession(handles), memrpc::StatusCode::Ok);
     const uint64_t session_id = handles.session_id;
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.session_id, session_id);
 
     proxy.CloseSession();
@@ -365,7 +365,7 @@ Add cmd=3 handling in `demo/vpsdemo/include/vps_bootstrap_stub.h`:
 
 ```cpp
 case 3: {  // Heartbeat
-    VpsHeartbeatReply hb{};
+    VesHeartbeatReply hb{};
     if (Heartbeat(hb) != memrpc::StatusCode::Ok) {
         return false;
     }
@@ -381,7 +381,7 @@ Implement `Heartbeat` in `VpsBootstrapProxy` and integrate into `MonitorSocket`:
 `demo/vpsdemo/include/vps_bootstrap_proxy.h`
 
 ```cpp
-memrpc::StatusCode Heartbeat(VpsHeartbeatReply& reply) override;
+memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 ```
 
 `demo/vpsdemo/src/vps_bootstrap_proxy.cpp`:

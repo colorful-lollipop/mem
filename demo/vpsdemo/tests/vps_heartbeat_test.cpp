@@ -16,9 +16,9 @@ TEST(VpsHeartbeatTest, UnhealthyBeforeOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Unhealthy));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy));
 
     service.OnStop();
 }
@@ -31,9 +31,9 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
     ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.sessionId, session_id);
     EXPECT_STREQ(reply.currentTask, "idle");
     EXPECT_EQ(reply.version, 1u);
@@ -52,14 +52,14 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    VpsBootstrapProxy proxy(stub->AsObject(), socketPath);
+    VesBootstrapProxy proxy(stub->AsObject(), socketPath);
     memrpc::BootstrapHandles handles{};
     ASSERT_EQ(proxy.OpenSession(handles), memrpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), memrpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VpsHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
     EXPECT_EQ(reply.sessionId, session_id);
 
     proxy.CloseSession();
@@ -85,7 +85,7 @@ TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
     EXPECT_GE(reply.inFlight, 1u);
     EXPECT_STRNE(reply.currentTask, "idle");

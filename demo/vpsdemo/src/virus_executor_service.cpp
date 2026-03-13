@@ -38,8 +38,8 @@ memrpc::StatusCode VirusExecutorService::CloseSession() {
     return status;
 }
 
-memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
-    reply = VpsHeartbeatReply{};
+memrpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
+    reply = VesHeartbeatReply{};
     if (!session_service_) {
         return memrpc::StatusCode::Ok;
     }
@@ -51,8 +51,8 @@ memrpc::StatusCode VirusExecutorService::Heartbeat(VpsHeartbeatReply& reply) {
                   snapshot.currentTask.c_str());
 
     const bool healthy = service_.initialized() && reply.sessionId != 0;
-    reply.status = static_cast<uint32_t>(healthy ? VpsHeartbeatStatus::Ok
-                                                 : VpsHeartbeatStatus::Unhealthy);
+    reply.status = static_cast<uint32_t>(healthy ? VesHeartbeatStatus::Ok
+                                                 : VesHeartbeatStatus::Unhealthy);
     return memrpc::StatusCode::Ok;
 }
 

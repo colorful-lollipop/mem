@@ -11,7 +11,7 @@
 namespace vpsdemo {
 
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
-                     VpsClientOptions options)
+                     VesClientOptions options)
     : remote_(remote),
       client_(),
       options_(options) {}
@@ -23,20 +23,20 @@ void VesClient::RegisterProxyFactory() {
         VPS_BOOTSTRAP_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
             std::string servicePath = remote->GetServicePath();
-            return std::make_shared<VpsBootstrapProxy>(remote, servicePath);
+            return std::make_shared<VesBootstrapProxy>(remote, servicePath);
         });
 }
 
 memrpc::StatusCode VesClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
-    auto bootstrap = OHOS::iface_cast<IVpsBootstrap>(remote_);
+    auto bootstrap = OHOS::iface_cast<IVesBootstrap>(remote_);
     if (bootstrap == nullptr) {
         HILOGE("iface_cast<IVpsBootstrap> failed");
         return memrpc::StatusCode::InvalidArgument;
     }
 
     // Alias shared_ptr to use VpsBootstrapProxy as IBootstrapChannel.
-    proxy_ = std::dynamic_pointer_cast<VpsBootstrapProxy>(bootstrap);
+    proxy_ = std::dynamic_pointer_cast<VesBootstrapProxy>(bootstrap);
     if (proxy_ == nullptr) {
         HILOGE("dynamic_pointer_cast to VpsBootstrapProxy failed");
         return memrpc::StatusCode::InvalidArgument;

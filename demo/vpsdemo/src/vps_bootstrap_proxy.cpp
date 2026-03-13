@@ -36,13 +36,13 @@ struct SessionMetadata {
 
 }  // namespace
 
-VpsBootstrapProxy::VpsBootstrapProxy(
+VesBootstrapProxy::VesBootstrapProxy(
     const OHOS::sptr<OHOS::IRemoteObject>& remote,
     const std::string& serviceSocketPath)
-    : OHOS::IRemoteProxy<IVpsBootstrap>(remote),
+    : OHOS::IRemoteProxy<IVesBootstrap>(remote),
       service_socket_path_(serviceSocketPath) {}
 
-VpsBootstrapProxy::~VpsBootstrapProxy() {
+VesBootstrapProxy::~VesBootstrapProxy() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {
         shutdown(sock_fd_, SHUT_RDWR);
@@ -56,7 +56,7 @@ VpsBootstrapProxy::~VpsBootstrapProxy() {
     }
 }
 
-memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& handles) {
+memrpc::StatusCode VesBootstrapProxy::OpenSession(memrpc::BootstrapHandles& handles) {
     // Clean up any previous connection (reconnect after engine death).
     stop_monitor_ = true;
     if (monitor_thread_.joinable()) {
@@ -111,12 +111,12 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
 
     // Start monitoring the socket for disconnect (death detection).
     stop_monitor_ = false;
-    monitor_thread_ = std::thread(&VpsBootstrapProxy::MonitorSocket, this);
+    monitor_thread_ = std::thread(&VesBootstrapProxy::MonitorSocket, this);
 
     return memrpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& reply) {
+memrpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
     // Use a short-lived connection for heartbeat (server closes after reply).
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
@@ -129,7 +129,7 @@ memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& reply) {
         return memrpc::StatusCode::PeerDisconnected;
     }
 
-    VpsHeartbeatReply buf{};
+    VesHeartbeatReply buf{};
     ssize_t n = recv(hb_fd, &buf, sizeof(buf), MSG_WAITALL);
     close(hb_fd);
 
@@ -140,7 +140,7 @@ memrpc::StatusCode VpsBootstrapProxy::Heartbeat(VpsHeartbeatReply& reply) {
     return memrpc::StatusCode::Ok;
 }
 
-memrpc::StatusCode VpsBootstrapProxy::CloseSession() {
+memrpc::StatusCode VesBootstrapProxy::CloseSession() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {
         shutdown(sock_fd_, SHUT_RDWR);
@@ -155,12 +155,12 @@ memrpc::StatusCode VpsBootstrapProxy::CloseSession() {
     return memrpc::StatusCode::Ok;
 }
 
-void VpsBootstrapProxy::SetEngineDeathCallback(memrpc::EngineDeathCallback callback) {
+void VesBootstrapProxy::SetEngineDeathCallback(memrpc::EngineDeathCallback callback) {
     std::lock_guard<std::mutex> lock(callbackMutex_);
     deathCallback_ = std::move(callback);
 }
 
-void VpsBootstrapProxy::MonitorSocket() {
+void VesBootstrapProxy::MonitorSocket() {
     struct pollfd pfd{};
     pfd.fd = sock_fd_;
     pfd.events = POLLIN | POLLHUP | POLLERR;

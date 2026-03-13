@@ -439,7 +439,7 @@ TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    VpsHeartbeatReply reply{};
+    VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
     EXPECT_GE(reply.in_flight, 1u);
     EXPECT_STRNE(reply.current_task, "idle");

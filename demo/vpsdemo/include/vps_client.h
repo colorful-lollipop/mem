@@ -13,7 +13,7 @@
 
 namespace vpsdemo {
 
-struct VpsClientOptions {
+struct VesClientOptions {
     uint32_t execTimeoutRestartDelayMs = 200;
     uint32_t engineDeathRestartDelayMs = 200;
     uint32_t idleRestartDelayMs = 0;
@@ -25,7 +25,7 @@ struct VpsClientOptions {
 class VesClient {
  public:
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
-                       VpsClientOptions options = {});
+                       VesClientOptions options = {});
     ~VesClient();
 
     VesClient(const VesClient&) = delete;
@@ -50,9 +50,9 @@ class VesClient {
 
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;
-    std::shared_ptr<VpsBootstrapProxy> proxy_;
+    std::shared_ptr<VesBootstrapProxy> proxy_;
     memrpc::RpcClient client_;
-    VpsClientOptions options_;
+    VesClientOptions options_;
     std::atomic<bool> engineDied_{false};
     EngineRestartCallback restartCallback_;
 };

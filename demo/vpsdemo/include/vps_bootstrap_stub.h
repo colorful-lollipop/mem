@@ -21,7 +21,7 @@ struct SessionMetadata {
 
 // Command dispatch layer — mirrors real OHOS XXXStub::OnRemoteRequest.
 // Maps IPC commands to IVpsBootstrap interface methods.
-class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
+class VpsBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
  public:
     bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
         switch (command) {
@@ -50,7 +50,7 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
             case 2:  // CloseSession
                 return CloseSession() == memrpc::StatusCode::Ok;
             case 3: {  // Heartbeat
-                VpsHeartbeatReply hb{};
+                VesHeartbeatReply hb{};
                 if (Heartbeat(hb) != memrpc::StatusCode::Ok) {
                     return false;
                 }

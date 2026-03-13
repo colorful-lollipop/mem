@@ -19,17 +19,17 @@ namespace vpsdemo {
 // Implements both the OHOS IRemoteProxy interface (for SA compatibility)
 // and memrpc::IBootstrapChannel (so RpcClient can use it directly and
 // receive engine death notifications through the framework path).
-class VpsBootstrapProxy : public OHOS::IRemoteProxy<IVpsBootstrap>,
+class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
                           public memrpc::IBootstrapChannel {
  public:
-    VpsBootstrapProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+    VesBootstrapProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                       const std::string& serviceSocketPath);
-    ~VpsBootstrapProxy() override;
+    ~VesBootstrapProxy() override;
 
     // Shared by both IVpsBootstrap and IBootstrapChannel.
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
-    memrpc::StatusCode Heartbeat(VpsHeartbeatReply& reply) override;
+    memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 
     // IBootstrapChannel — framework death callback.
     void SetEngineDeathCallback(memrpc::EngineDeathCallback callback) override;
