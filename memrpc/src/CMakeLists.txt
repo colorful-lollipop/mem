@@ -13,7 +13,8 @@ add_library(memrpc_core
 target_include_directories(memrpc_core
   PUBLIC
     ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src
+    ${MEMRPC_MODULE_ROOT}/include
+    ${MEMRPC_MODULE_ROOT}/src
 )
 
 target_compile_features(memrpc_core PUBLIC cxx_std_17)

@@ -1,23 +1,31 @@
 import("memrpc.gni")
 
 config("memrpc_config") {
-  include_dirs = [ "include", "src" ]
+  include_dirs = [
+    "include",
+    "memrpc/include",
+    "memrpc/src",
+  ]
   cflags_cc = [ "-std=c++17" ]
 }
 
 config("memrpc_test_config") {
-  include_dirs = [ "include", "src" ]
+  include_dirs = [
+    "include",
+    "memrpc/include",
+    "memrpc/src",
+  ]
   cflags_cc = [ "-std=c++17" ]
 }
 
 group("memrpc_libs") {
-  deps = [ "//src:memrpc" ]
+  deps = [ "//memrpc/src:memrpc" ]
 }
 
 if (memrpc_enable_tests) {
   group("memrpc_tests") {
     testonly = true
-    deps = [ "//tests/memrpc:memrpc_tests" ]
+    deps = [ "//memrpc/tests:memrpc_tests" ]
   }
 }
 

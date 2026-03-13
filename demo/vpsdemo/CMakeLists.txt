@@ -8,22 +8,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Root of the memrpc repo.
 set(MEMRPC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set(MEMRPC_MODULE_ROOT ${MEMRPC_ROOT}/memrpc)
 
 if (NOT TARGET memrpc_core)
   add_library(memrpc_core
-      ${MEMRPC_ROOT}/src/client/rpc_client.cpp
-      ${MEMRPC_ROOT}/src/server/rpc_server.cpp
-      ${MEMRPC_ROOT}/src/bootstrap/posix_demo_bootstrap.cpp
-      ${MEMRPC_ROOT}/src/bootstrap/sa_bootstrap.cpp
-      ${MEMRPC_ROOT}/src/core/byte_reader.cpp
-      ${MEMRPC_ROOT}/src/core/byte_writer.cpp
-      ${MEMRPC_ROOT}/src/core/log.cpp
-      ${MEMRPC_ROOT}/src/core/slot_pool.cpp
-      ${MEMRPC_ROOT}/src/core/session.cpp
+      ${MEMRPC_MODULE_ROOT}/src/client/rpc_client.cpp
+      ${MEMRPC_MODULE_ROOT}/src/server/rpc_server.cpp
+      ${MEMRPC_MODULE_ROOT}/src/bootstrap/posix_demo_bootstrap.cpp
+      ${MEMRPC_MODULE_ROOT}/src/bootstrap/sa_bootstrap.cpp
+      ${MEMRPC_MODULE_ROOT}/src/core/byte_reader.cpp
+      ${MEMRPC_MODULE_ROOT}/src/core/byte_writer.cpp
+      ${MEMRPC_MODULE_ROOT}/src/core/log.cpp
+      ${MEMRPC_MODULE_ROOT}/src/core/slot_pool.cpp
+      ${MEMRPC_MODULE_ROOT}/src/core/session.cpp
   )
   target_include_directories(memrpc_core PUBLIC
       ${MEMRPC_ROOT}/include
-      ${MEMRPC_ROOT}/src
+      ${MEMRPC_MODULE_ROOT}/include
+      ${MEMRPC_MODULE_ROOT}/src
   )
   target_compile_features(memrpc_core PUBLIC cxx_std_17)
   target_link_libraries(memrpc_core PUBLIC pthread rt)

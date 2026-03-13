@@ -1,16 +1,23 @@
 import("//memrpc.gni")
 
+memrpc_source_dir = get_path_info("//memrpc", "abspath")
+memrpc_repo_root = get_path_info("//", "abspath")
+
 template("memrpc_test") {
   executable(target_name) {
     testonly = true
     sources = invoker.sources
     deps = [
-      "//src:memrpc",
+      "//memrpc/src:memrpc",
       memrpc_gtest_main_target,
     ]
     configs += [ "//:memrpc_test_config" ]
+    defines = [
+      "MEMRPC_SOURCE_DIR=\"${memrpc_source_dir}\"",
+      "MEMRPC_REPO_ROOT=\"${memrpc_repo_root}\"",
+    ]
     if (defined(invoker.defines)) {
-      defines = invoker.defines
+      defines += invoker.defines
     }
   }
 }

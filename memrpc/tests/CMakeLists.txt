@@ -1,7 +1,10 @@
 function(memrpc_add_test target source)
   add_executable(${target} ${source})
   target_link_libraries(${target} PRIVATE memrpc GTest::gtest_main)
-  target_compile_definitions(${target} PRIVATE MEMRPC_SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\")
+  target_compile_definitions(${target} PRIVATE
+    MEMRPC_SOURCE_DIR=\"${MEMRPC_MODULE_ROOT}\"
+    MEMRPC_REPO_ROOT=\"${PROJECT_SOURCE_DIR}\"
+  )
   add_test(NAME ${target} COMMAND ${target})
 endfunction()
 

@@ -4,9 +4,10 @@
 #include <string>
 
 #define MEMRPC_SOURCE_PATH(rel) MEMRPC_SOURCE_DIR rel
+#define MEMRPC_REPO_PATH(rel) MEMRPC_REPO_ROOT rel
 
 TEST(BuildConfigTest, ExportCompileCommandsIsEnabled) {
-  std::ifstream stream(MEMRPC_SOURCE_PATH("/CMakeLists.txt"));
+  std::ifstream stream(MEMRPC_REPO_PATH("/CMakeLists.txt"));
   ASSERT_TRUE(stream.is_open());
 
   std::string content((std::istreambuf_iterator<char>(stream)),
@@ -15,7 +16,7 @@ TEST(BuildConfigTest, ExportCompileCommandsIsEnabled) {
 }
 
 TEST(BuildConfigTest, CMakeExplicitlyRequiresCpp17) {
-  std::ifstream stream(MEMRPC_SOURCE_PATH("/CMakeLists.txt"));
+  std::ifstream stream(MEMRPC_REPO_PATH("/CMakeLists.txt"));
   ASSERT_TRUE(stream.is_open());
 
   std::string content((std::istreambuf_iterator<char>(stream)),
@@ -26,9 +27,10 @@ TEST(BuildConfigTest, CMakeExplicitlyRequiresCpp17) {
 
 TEST(BuildConfigTest, ParentRepoDoesNotDependOnOhosSaMock) {
   const char* kFiles[] = {
+      MEMRPC_REPO_PATH("/CMakeLists.txt"),
       MEMRPC_SOURCE_PATH("/CMakeLists.txt"),
       MEMRPC_SOURCE_PATH("/src/CMakeLists.txt"),
-      MEMRPC_SOURCE_PATH("/BUILD.gn"),
+      MEMRPC_REPO_PATH("/BUILD.gn"),
   };
 
   for (const char* path : kFiles) {
@@ -58,9 +60,9 @@ TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndVpsdemo) {
         "vps_demo",
         "apps/vps/",
         nullptr}},
-      {MEMRPC_SOURCE_PATH("/tests/CMakeLists.txt"),
-       {"add_subdirectory(apps/minirpc)", "add_subdirectory(fuzz)", nullptr}},
-      {MEMRPC_SOURCE_PATH("/demo/CMakeLists.txt"),
+      {MEMRPC_REPO_PATH("/CMakeLists.txt"),
+       {"add_subdirectory(src)", "add_subdirectory(tests)", nullptr}},
+      {MEMRPC_REPO_PATH("/demo/CMakeLists.txt"),
        {"memrpc_minirpc_demo", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
   };
 
@@ -81,15 +83,16 @@ TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndVpsdemo) {
 }
 
 TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndVpsdemoDirectories) {
-  std::ifstream root_stream(MEMRPC_SOURCE_PATH("/tests/CMakeLists.txt"));
+  std::ifstream root_stream(MEMRPC_REPO_PATH("/CMakeLists.txt"));
   ASSERT_TRUE(root_stream.is_open());
 
   std::string root_content((std::istreambuf_iterator<char>(root_stream)),
                            std::istreambuf_iterator<char>());
   EXPECT_NE(root_content.find("add_subdirectory(memrpc)"), std::string::npos);
-  EXPECT_EQ(root_content.find("add_subdirectory(apps/minirpc)"), std::string::npos);
+  EXPECT_EQ(root_content.find("add_subdirectory(src)"), std::string::npos);
+  EXPECT_EQ(root_content.find("add_subdirectory(tests)"), std::string::npos);
 
-  std::ifstream memrpc_stream(MEMRPC_SOURCE_PATH("/tests/memrpc/CMakeLists.txt"));
+  std::ifstream memrpc_stream(MEMRPC_SOURCE_PATH("/tests/CMakeLists.txt"));
   ASSERT_TRUE(memrpc_stream.is_open());
 
   std::string memrpc_content((std::istreambuf_iterator<char>(memrpc_stream)),
@@ -97,7 +100,7 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndVpsdemoDirectories) {
   EXPECT_NE(memrpc_content.find("memrpc_smoke_test"), std::string::npos);
   EXPECT_NE(memrpc_content.find("memrpc_session_test"), std::string::npos);
 
-  std::ifstream vpsdemo_stream(MEMRPC_SOURCE_PATH("/demo/vpsdemo/CMakeLists.txt"));
+  std::ifstream vpsdemo_stream(MEMRPC_REPO_PATH("/demo/vpsdemo/CMakeLists.txt"));
   ASSERT_TRUE(vpsdemo_stream.is_open());
 
   std::string vpsdemo_content((std::istreambuf_iterator<char>(vpsdemo_stream)),
