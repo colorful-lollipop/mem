@@ -58,7 +58,7 @@
 
 当前仓库里的主线样板是：
 
-- `vpsdemo`
+- `virus_executor_service`
 
 它同时展示了两类协议如何共用同一条 `memrpc` 通道：
 

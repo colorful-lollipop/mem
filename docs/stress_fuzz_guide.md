@@ -3,8 +3,8 @@
 ## Build (Release + Stress)
 
 ```bash
-cmake -S vpsdemo -B build_vps_stress -DVPSDEMO_ENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build_vps_stress --target vpsdemo_testkit_stress_runner
+cmake -S virus_executor_service -B build_ves_stress -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build_ves_stress --target virus_executor_service_testkit_stress_runner
 ```
 
 ## Run 2h Random Stress
@@ -17,46 +17,46 @@ MEMRPC_STRESS_ECHO_WEIGHT=70 \
 MEMRPC_STRESS_ADD_WEIGHT=20 \
 MEMRPC_STRESS_SLEEP_WEIGHT=10 \
 MEMRPC_STRESS_PAYLOAD_SIZES=0,16,128,512,1024,2048 \
-./build_vps_stress/vpsdemo_testkit_stress_runner
+./build_ves_stress/virus_executor_service_testkit_stress_runner
 ```
 
 ## ASan/UBSan/LSan Build
 
 ```bash
-cmake -S vpsdemo -B build_vps_asan -DVPSDEMO_ENABLE_TESTS=ON \
+cmake -S virus_executor_service -B build_ves_asan -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build_vps_asan
-ctest --test-dir build_vps_asan -L stress --output-on-failure
+cmake --build build_ves_asan
+ctest --test-dir build_ves_asan -L stress --output-on-failure
 ```
 
 ## TSan Build
 
 ```bash
-cmake -S vpsdemo -B build_vps_tsan -DVPSDEMO_ENABLE_TESTS=ON \
+cmake -S virus_executor_service -B build_ves_tsan -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build_vps_tsan
-ctest --test-dir build_vps_tsan -L stress --output-on-failure
+cmake --build build_ves_tsan
+ctest --test-dir build_ves_tsan -L stress --output-on-failure
 ```
 
 ## Fuzz Build (Clang)
 
 ```bash
-cmake -S vpsdemo -B build_vps_fuzz \
-  -DVPSDEMO_ENABLE_TESTS=ON \
-  -DVPSDEMO_ENABLE_FUZZ=ON \
+cmake -S virus_executor_service -B build_ves_fuzz \
+  -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
+  -DVIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ=ON \
   -DCMAKE_CXX_COMPILER=clang++
-cmake --build build_vps_fuzz --target vpsdemo_codec_fuzz vpsdemo_testkit_codec_fuzz
-./build_vps_fuzz/tests/fuzz/vpsdemo_testkit_codec_fuzz -max_total_time=300
+cmake --build build_ves_fuzz --target virus_executor_service_codec_fuzz virus_executor_service_testkit_codec_fuzz
+./build_ves_fuzz/tests/fuzz/virus_executor_service_testkit_codec_fuzz -max_total_time=300
 ```
 
 也可以直接跑 fuzz smoke：
 
 ```bash
-ctest --test-dir build_vps_fuzz -L fuzz --output-on-failure
+ctest --test-dir build_ves_fuzz -L fuzz --output-on-failure
 ```
 
 ## PID / Log Sampling
@@ -65,7 +65,7 @@ ctest --test-dir build_vps_fuzz -L fuzz --output-on-failure
 mkdir -p stress_out
 MEMRPC_STRESS_DURATION_SEC=3600 \
 MEMRPC_STRESS_PID_FILE=stress_out/pids.txt \
-./build_vps_stress/vpsdemo_testkit_stress_runner | tee stress_out/stress.log
+./build_ves_stress/virus_executor_service_testkit_stress_runner | tee stress_out/stress.log
 ```
 
 ## Environment Variables

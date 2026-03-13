@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-检查 vpsdemo 和 memrpc 代码中函数命名是否符合 UpperCamelCase 风格。
+检查 virus_executor_service 和 memrpc 代码中函数命名是否符合 UpperCamelCase 风格。
 使用 compile_commands.json 获取准确的编译参数。
 """
 
@@ -167,7 +167,7 @@ def main():
     print("=" * 80)
     print()
     
-    base_dir = Path('/root/code/demo/mem')
+    base_dir = Path('/root/mem')
     
     # 加载 compile_commands.json
     compile_commands = {}
@@ -185,8 +185,8 @@ def main():
     # 筛选需要检查的文件
     source_files = {}
     for file_path, cmd in compile_commands.items():
-        # 只检查项目内的 vpsdemo 和 memrpc 代码
-        if ('vpsdemo' in file_path or '/src/' in file_path or '/include/' in file_path):
+        # 只检查项目内的 virus_executor_service 和 memrpc 代码
+        if ('virus_executor_service' in file_path or '/src/' in file_path or '/include/' in file_path):
             # 跳过测试文件和第三方代码
             if '/tests/' not in file_path and '/third_party/' not in file_path:
                 source_files[file_path] = cmd
@@ -194,10 +194,14 @@ def main():
     print(f"找到 {len(source_files)} 个源文件需要检查")
     
     # 分类统计
-    vpsdemo_files = {k: v for k, v in source_files.items() if 'vpsdemo' in k}
-    memrpc_files = {k: v for k, v in source_files.items() if 'vpsdemo' not in k}
+    virus_executor_service_files = {
+        k: v for k, v in source_files.items() if 'virus_executor_service' in k
+    }
+    memrpc_files = {
+        k: v for k, v in source_files.items() if 'virus_executor_service' not in k
+    }
     
-    print(f"  - vpsdemo: {len(vpsdemo_files)} 个文件")
+    print(f"  - virus_executor_service: {len(virus_executor_service_files)} 个文件")
     print(f"  - memrpc:  {len(memrpc_files)} 个文件")
     print()
     
@@ -240,7 +244,7 @@ def main():
     
     # 按文件分组显示
     current_file = None
-    vpsdemo_count = 0
+    virus_executor_service_count = 0
     memrpc_count = 0
     
     for file_path, func_name, line, func_type in sorted(unique_violations):
@@ -249,15 +253,15 @@ def main():
             current_file = file_path
         print(f"  第 {line:4d} 行 | {func_type:12s} | {func_name}")
         
-        if 'vpsdemo' in file_path:
-            vpsdemo_count += 1
+        if 'virus_executor_service' in file_path:
+            virus_executor_service_count += 1
         else:
             memrpc_count += 1
     
     print()
     print("=" * 80)
     print(f"总计发现 {len(unique_violations)} 处命名不规范:")
-    print(f"  - vpsdemo: {vpsdemo_count} 处")
+    print(f"  - virus_executor_service: {virus_executor_service_count} 处")
     print(f"  - memrpc:  {memrpc_count} 处")
     print("=" * 80)
     

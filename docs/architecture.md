@@ -3,11 +3,11 @@
 `MemRpc` 是一套基于共享内存和 `eventfd` 的通用跨进程 RPC 框架。当前主线构建只关注两个主体：
 
 - 框架层：`memrpc`
-- 应用层：`vpsdemo`
+- 应用层：`virus_executor_service`
   - `ves` 业务协议与 client/service
   - `testkit` 测试协议与 fault injection / perf / stress / fuzz 覆盖
 
-原独立测试样板的能力已经收编到 `vpsdemo/testkit`，不再作为独立主线模块存在。
+原独立测试样板的能力已经收编到 `virus_executor_service/testkit`，不再作为独立主线模块存在。
 
 框架公开头也只保留分层路径：
 
@@ -227,7 +227,7 @@ credit fd 采用“资源重新可写”语义：
 
 ## Testkit 样板
 
-`testkit` 是 `vpsdemo` 内建的测试型 RPC 组合，用来验证框架主路径和应用侧回归面。
+`testkit` 是 `virus_executor_service` 内建的测试型 RPC 组合，用来验证框架主路径和应用侧回归面。
 
 当前保留三个基础 RPC：
 

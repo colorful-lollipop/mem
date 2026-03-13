@@ -4,24 +4,24 @@
 
 ```bash
 cmake -S . -B build
-cmake --build build --target vpsdemo_supervisor vpsdemo_client vpsdemo_stress_client vpsdemo_testkit_stress_runner
+cmake --build build --target virus_executor_service_supervisor virus_executor_service_client virus_executor_service_stress_client virus_executor_service_testkit_stress_runner
 ```
 
 ## 运行
 
 ```bash
-./build/vpsdemo/vpsdemo_supervisor
+./build/virus_executor_service/virus_executor_service_supervisor
 ```
 
 推荐的自动化 smoke 方式：
 
 ```bash
-ctest --test-dir build --output-on-failure -R vpsdemo_supervisor_integration_test
+ctest --test-dir build --output-on-failure -R virus_executor_service_supervisor_integration_test
 ```
 
 ## 当前验证点
 
-当前主线 demo 是 `vpsdemo`。它在 Linux 开发环境下使用 supervisor 拉起 engine SA，并在同一条 `memrpc` 通道上同时承载：
+当前主线 demo 是 `virus_executor_service`。它在 Linux 开发环境下使用 supervisor 拉起 engine SA，并在同一条 `memrpc` 通道上同时承载：
 
 - `ves` 业务调用
 - `testkit` 的 `Echo/Add/Sleep` 与故障注入 RPC
@@ -41,8 +41,8 @@ ctest --test-dir build --output-on-failure -R vpsdemo_supervisor_integration_tes
 手动压测可直接运行：
 
 ```bash
-./build/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
-./build/vpsdemo/vpsdemo_testkit_stress_runner
+./build/virus_executor_service/virus_executor_service_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
+./build/virus_executor_service/virus_executor_service_testkit_stress_runner
 ```
 
 ## 说明

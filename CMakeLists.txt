@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_C_COMPILER clang CACHE STRING "C compiler" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE STRING "C++ compiler" FORCE)
 
-project(vpsdemo LANGUAGES CXX)
+project(virus_executor_service LANGUAGES CXX)
 
 CMAKE_POLICY(SET CMP0076 NEW)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -25,6 +25,6 @@ enable_testing()
 find_package(GTest REQUIRED)
 
 # memrpc is a reusable dependency module, while the repository mainline is the
-# vpsdemo application and its test surface.
+# virus_executor_service application and its test surface.
 add_subdirectory(memrpc)
-add_subdirectory(vpsdemo)
+add_subdirectory(virus_executor_service)

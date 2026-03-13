@@ -16,7 +16,7 @@ Notes:
 Options:
   --build-dir DIR     Build directory (default: ./build_ninja)
   --jobs N            Parallel build/test jobs (default: auto-detect)
-  --fuzz              Enable memrpc + vpsdemo fuzz targets
+  --fuzz              Enable memrpc + virus_executor_service fuzz targets
   --clean             Remove the build directory before configuring
   --configure-only    Configure only
   --build-only        Configure and build, but do not run tests
@@ -27,7 +27,7 @@ Options:
 Examples:
   tools/build_and_test.sh
   tools/build_and_test.sh --clean --build-dir build_full --fuzz
-  tools/build_and_test.sh --test-regex vpsdemo
+  tools/build_and_test.sh --test-regex virus_executor_service
   tools/build_and_test.sh --label fuzz --fuzz
 EOF
 }
@@ -158,8 +158,8 @@ cmake_args=(
     -G Ninja
     -DCMAKE_C_COMPILER=clang
     -DCMAKE_CXX_COMPILER=clang++
-    -DVPSDEMO_ENABLE_TESTS=ON
-    -DVPSDEMO_ENABLE_FUZZ="${enable_fuzz}"
+    -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON
+    -DVIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ="${enable_fuzz}"
     -DMEMRPC_ENABLE_DT_TESTS=ON
     -DMEMRPC_ENABLE_STRESS_TESTS=ON
     -DMEMRPC_ENABLE_FUZZ="${enable_fuzz}"

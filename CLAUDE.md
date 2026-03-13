@@ -9,7 +9,7 @@ cmake -S . -B build                              # configure
 cmake --build build                              # build everything
 ctest --test-dir build --output-on-failure        # run all tests
 ctest --test-dir build --output-on-failure -R <pattern>  # run single test (e.g. -R slot_pool)
-./build/vpsdemo/vpsdemo_supervisor                # run the mainline VPS demo
+./build/virus_executor_service/virus_executor_service_supervisor                # run the mainline Virus Executor Service demo
 ```
 
 CMake is the source of truth during active development. GN (`BUILD.gn`) is maintained alongside for future HarmonyOS builds.
@@ -23,8 +23,8 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 **Layer structure:**
 
 - **Framework** (`memrpc/include/memrpc/`, `memrpc/src/`): Platform-agnostic RPC transport
-- **Application** (`vpsdemo/include/vpsdemo/`, `vpsdemo/src/{app,client,service,transport,testkit,ves}/`): Mainline VPS app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
-- **Tests** (`memrpc/tests/`, `vpsdemo/tests/{unit,integration,stress,dt,fuzz}/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
+- **Application** (`virus_executor_service/include/virus_executor_service/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`): Mainline Virus Executor Service app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
+- **Tests** (`memrpc/tests/`, `virus_executor_service/tests/{unit,integration,stress,dt,fuzz}/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
 **Key abstractions:**
 
@@ -52,7 +52,7 @@ Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `chore:`. Keep commits
 
 ## Testing
 
-GoogleTest via CMake. Framework tests live in `memrpc/tests/`; vpsdemo and testkit tests live in `vpsdemo/tests/`. Name tests by feature (e.g. `slot_pool_test.cpp`, `testkit_client_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
+GoogleTest via CMake. Framework tests live in `memrpc/tests/`; virus_executor_service and testkit tests live in `virus_executor_service/tests/`. Name tests by feature (e.g. `slot_pool_test.cpp`, `testkit_client_test.cpp`). Keep tests focused on core behavior; avoid broad e2e tests unless protecting a real regression.
 
 ## Dependencies
 
