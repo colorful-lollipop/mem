@@ -18,10 +18,17 @@ Keep business-specific compatibility layers out of the framework. Applications s
 
 - `cmake -S . -B build`: configure the project
 - `cmake --build build`: build libraries, tests, and demos
-- `ctest --test-dir build --output-on-failure`: run the active test suite (44 tests)
+- `ctest --test-dir build --output-on-failure`: run the active test suite (count varies by options; includes vpsdemo tests)
+- `cmake -S . -B build_full -DMEMRPC_ENABLE_FUZZ=ON -DCMAKE_CXX_COMPILER=clang++ && cmake --build build_full && ctest --test-dir build_full --output-on-failure`: one-line full build + tests (includes memrpc + vpsdemo fuzz; Clang required)
 - `./build/demo/memrpc_minirpc_demo`: run the minimal cross-process demo
 - `./build/demo/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
 - `./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
+- `cmake -S demo/vpsdemo -B build_vps -DVPSDEMO_ENABLE_TESTS=ON`: configure vpsdemo-only build (unit + integration + stress + dt)
+- `cmake --build build_vps`: build vpsdemo-only targets and tests
+- `ctest --test-dir build_vps --output-on-failure`: run vpsdemo-only test suite
+- `cmake -S demo/vpsdemo -B build_vps_fuzz -DVPSDEMO_ENABLE_TESTS=ON -DVPSDEMO_ENABLE_FUZZ=ON -DCMAKE_CXX_COMPILER=clang++`: configure vpsdemo fuzz build (Clang required)
+- `cmake --build build_vps_fuzz`: build vpsdemo fuzz targets
+- `ctest --test-dir build_vps_fuzz -L fuzz --output-on-failure`: run vpsdemo fuzz smoke test
 
 Use CMake as the source of truth during active development.
 
@@ -70,6 +77,7 @@ The vpsdemo module includes both GoogleTest unit tests and executable integratio
 | vpsdemo_supervisor_integration_test | integration | `ctest -L integration` |
 | vpsdemo_stress_test | stress | `ctest -L stress` |
 | vpsdemo_dt_crash_recovery_test | dt | `ctest -L dt` |
+| vpsdemo_codec_fuzz_smoke | fuzz | `ctest -L fuzz` |
 
 Run all vpsdemo tests: `ctest -R vpsdemo`
 
@@ -77,6 +85,11 @@ Run by label:
 - `ctest -L dt` - DT (Deterministic Testing) tests
 - `ctest -L integration` - Integration tests
 - `ctest -L stress` - Stress tests
+- `ctest -L fuzz` - Fuzz smoke tests (requires Clang build)
+
+Notes:
+- Top-level builds default vpsdemo tests to ON via `demo/CMakeLists.txt` (override with `-DVPSDEMO_ENABLE_TESTS=OFF`).
+- Setting `-DMEMRPC_ENABLE_FUZZ=ON` enables both memrpc fuzz and vpsdemo fuzz in top-level builds (Clang required).
 
 ## Commit Guidelines
 
