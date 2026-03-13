@@ -113,6 +113,10 @@ if (VPSDEMO_ENABLE_TESTS)
   target_link_libraries(vpsdemo_testkit_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_testkit_service_test COMMAND vpsdemo_testkit_service_test)
 
+  add_executable(vpsdemo_testkit_baseline_test tests/testkit_baseline_test.cpp)
+  target_link_libraries(vpsdemo_testkit_baseline_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_baseline_test COMMAND vpsdemo_testkit_baseline_test)
+
   add_executable(vpsdemo_testkit_client_test tests/testkit_client_test.cpp)
   target_link_libraries(vpsdemo_testkit_client_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_testkit_client_test COMMAND vpsdemo_testkit_client_test)
@@ -131,6 +135,53 @@ if (VPSDEMO_ENABLE_TESTS)
   add_executable(vpsdemo_testkit_async_pipeline_test tests/testkit_async_pipeline_test.cpp)
   target_link_libraries(vpsdemo_testkit_async_pipeline_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_testkit_async_pipeline_test COMMAND vpsdemo_testkit_async_pipeline_test)
+
+  add_executable(vpsdemo_testkit_latency_test tests/testkit_latency_test.cpp)
+  target_link_libraries(vpsdemo_testkit_latency_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_latency_test COMMAND vpsdemo_testkit_latency_test)
+
+  add_executable(vpsdemo_testkit_throughput_test tests/testkit_throughput_test.cpp)
+  target_link_libraries(vpsdemo_testkit_throughput_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_throughput_test COMMAND vpsdemo_testkit_throughput_test)
+  set_tests_properties(vpsdemo_testkit_throughput_test PROPERTIES
+    ENVIRONMENT
+      "MEMRPC_PERF_BASELINE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/perf_baselines/testkit_throughput.baseline"
+  )
+
+  add_executable(vpsdemo_testkit_dt_stability_test tests/testkit_dt_stability_test.cpp)
+  target_link_libraries(vpsdemo_testkit_dt_stability_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_dt_stability_test COMMAND vpsdemo_testkit_dt_stability_test)
+  set_tests_properties(vpsdemo_testkit_dt_stability_test PROPERTIES LABELS "dt_stability")
+
+  add_executable(vpsdemo_testkit_dt_perf_test tests/testkit_dt_perf_test.cpp)
+  target_link_libraries(vpsdemo_testkit_dt_perf_test PRIVATE vpsdemo_lib GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_dt_perf_test COMMAND vpsdemo_testkit_dt_perf_test)
+  set_tests_properties(vpsdemo_testkit_dt_perf_test PROPERTIES
+    LABELS "dt_perf"
+    ENVIRONMENT
+      "MEMRPC_DT_BASELINE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/perf_baselines"
+  )
+
+  add_library(vpsdemo_testkit_stress_config tests/testkit_stress_config.cpp)
+  target_link_libraries(vpsdemo_testkit_stress_config PUBLIC vpsdemo_lib)
+  target_compile_features(vpsdemo_testkit_stress_config PUBLIC cxx_std_17)
+
+  add_executable(vpsdemo_testkit_stress_config_test tests/testkit_stress_config_test.cpp)
+  target_link_libraries(
+    vpsdemo_testkit_stress_config_test PRIVATE vpsdemo_testkit_stress_config GTest::gtest_main)
+  add_test(NAME vpsdemo_testkit_stress_config_test COMMAND vpsdemo_testkit_stress_config_test)
+  set_tests_properties(vpsdemo_testkit_stress_config_test PROPERTIES LABELS "stress")
+
+  add_executable(vpsdemo_testkit_stress_runner tests/testkit_stress_runner.cpp)
+  target_link_libraries(vpsdemo_testkit_stress_runner PRIVATE vpsdemo_testkit_stress_config vpsdemo_lib)
+  target_compile_features(vpsdemo_testkit_stress_runner PRIVATE cxx_std_17)
+
+  add_test(NAME vpsdemo_testkit_stress_smoke COMMAND vpsdemo_testkit_stress_runner)
+  set_tests_properties(vpsdemo_testkit_stress_smoke PROPERTIES
+    LABELS "stress"
+    ENVIRONMENT
+      "MEMRPC_STRESS_DURATION_SEC=1;MEMRPC_STRESS_WARMUP_SEC=0;MEMRPC_STRESS_THREADS=1;MEMRPC_STRESS_ECHO_WEIGHT=100;MEMRPC_STRESS_ADD_WEIGHT=0;MEMRPC_STRESS_SLEEP_WEIGHT=0;MEMRPC_STRESS_PAYLOAD_SIZES=0,16;MEMRPC_STRESS_MAX_SLEEP_MS=1;MEMRPC_STRESS_SEED=1"
+  )
 
   add_executable(vpsdemo_sample_rules_test tests/vesdemo_sample_rules_test.cpp)
   target_link_libraries(vpsdemo_sample_rules_test PRIVATE vpsdemo_lib GTest::gtest_main)

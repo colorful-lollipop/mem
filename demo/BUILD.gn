@@ -1,4 +1,0 @@
-executable("memrpc_minirpc_demo") {
-  sources = [ "minirpc_demo_main.cpp" ]
-  deps = [ "//src:minirpc_demo" ]
-}

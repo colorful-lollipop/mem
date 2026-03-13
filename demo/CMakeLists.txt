@@ -1,6 +1,3 @@
-add_executable(memrpc_minirpc_demo minirpc_demo_main.cpp)
-target_link_libraries(memrpc_minirpc_demo PRIVATE minirpc_demo)
-
 # vpsdemo - VPS demo application
 # Default to tests on; allow callers to override.
 set(VPSDEMO_ENABLE_TESTS ON CACHE BOOL "Build vpsdemo tests")

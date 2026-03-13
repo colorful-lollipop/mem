@@ -11,43 +11,20 @@ config("memrpc_test_config") {
 }
 
 group("memrpc_libs") {
-  deps = [
-    "//src:memrpc",
-    "//src:minirpc_demo",
-  ]
-}
-
-group("memrpc_demo") {
-  deps = [ "//demo:memrpc_minirpc_demo" ]
+  deps = [ "//src:memrpc" ]
 }
 
 if (memrpc_enable_tests) {
   group("memrpc_tests") {
     testonly = true
-    deps = [
-      "//tests/memrpc:memrpc_tests",
-      "//tests/apps/minirpc:minirpc_tests",
-    ]
-  }
-}
-
-if (memrpc_enable_fuzz) {
-  group("memrpc_fuzz") {
-    testonly = true
-    deps = [ "//tests/fuzz:fuzz_targets" ]
+    deps = [ "//tests/memrpc:memrpc_tests" ]
   }
 }
 
 group("all") {
   testonly = memrpc_enable_tests || memrpc_enable_fuzz
-  deps = [
-    ":memrpc_libs",
-    ":memrpc_demo",
-  ]
+  deps = [ ":memrpc_libs" ]
   if (memrpc_enable_tests) {
     deps += [ ":memrpc_tests" ]
-  }
-  if (memrpc_enable_fuzz) {
-    deps += [ ":memrpc_fuzz" ]
   }
 }

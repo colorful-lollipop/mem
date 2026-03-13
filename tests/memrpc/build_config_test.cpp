@@ -3,8 +3,10 @@
 #include <fstream>
 #include <string>
 
+#define MEMRPC_SOURCE_PATH(rel) MEMRPC_SOURCE_DIR rel
+
 TEST(BuildConfigTest, ExportCompileCommandsIsEnabled) {
-  std::ifstream stream("/root/code/demo/mem/CMakeLists.txt");
+  std::ifstream stream(MEMRPC_SOURCE_PATH("/CMakeLists.txt"));
   ASSERT_TRUE(stream.is_open());
 
   std::string content((std::istreambuf_iterator<char>(stream)),
@@ -13,7 +15,7 @@ TEST(BuildConfigTest, ExportCompileCommandsIsEnabled) {
 }
 
 TEST(BuildConfigTest, CMakeExplicitlyRequiresCpp17) {
-  std::ifstream stream("/root/code/demo/mem/CMakeLists.txt");
+  std::ifstream stream(MEMRPC_SOURCE_PATH("/CMakeLists.txt"));
   ASSERT_TRUE(stream.is_open());
 
   std::string content((std::istreambuf_iterator<char>(stream)),
@@ -24,9 +26,9 @@ TEST(BuildConfigTest, CMakeExplicitlyRequiresCpp17) {
 
 TEST(BuildConfigTest, ParentRepoDoesNotDependOnOhosSaMock) {
   const char* kFiles[] = {
-      "/root/code/demo/mem/CMakeLists.txt",
-      "/root/code/demo/mem/src/CMakeLists.txt",
-      "/root/code/demo/mem/BUILD.gn",
+      MEMRPC_SOURCE_PATH("/CMakeLists.txt"),
+      MEMRPC_SOURCE_PATH("/src/CMakeLists.txt"),
+      MEMRPC_SOURCE_PATH("/BUILD.gn"),
   };
 
   for (const char* path : kFiles) {
@@ -40,14 +42,14 @@ TEST(BuildConfigTest, ParentRepoDoesNotDependOnOhosSaMock) {
   }
 }
 
-TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndMiniRpc) {
+TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndVpsdemo) {
   struct FileExpectation {
     const char* path;
     const char* forbidden[8];
   };
 
   const FileExpectation expectations[] = {
-      {"/root/code/demo/mem/src/CMakeLists.txt",
+      {MEMRPC_SOURCE_PATH("/src/CMakeLists.txt"),
        {"client/engine_client.cpp",
         "server/engine_server.cpp",
         "memrpc/compat/scan_codec.cpp",
@@ -56,11 +58,10 @@ TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndMiniRpc) {
         "vps_demo",
         "apps/vps/",
         nullptr}},
-      {"/root/code/demo/mem/tests/CMakeLists.txt",
-       {"memrpc_integration_end_to_end_test", "memrpc_notify_channel_test",
-        "memrpc_rpc_notify_integration_test", nullptr}},
-      {"/root/code/demo/mem/demo/CMakeLists.txt",
-       {"memrpc_demo_dual_process", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
+      {MEMRPC_SOURCE_PATH("/tests/CMakeLists.txt"),
+       {"add_subdirectory(apps/minirpc)", "add_subdirectory(fuzz)", nullptr}},
+      {MEMRPC_SOURCE_PATH("/demo/CMakeLists.txt"),
+       {"memrpc_minirpc_demo", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
   };
 
   for (const auto& expectation : expectations) {
@@ -79,16 +80,16 @@ TEST(BuildConfigTest, SourceBuildOnlyKeepsCoreMemrpcAndMiniRpc) {
   }
 }
 
-TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
-  std::ifstream root_stream("/root/code/demo/mem/tests/CMakeLists.txt");
+TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndVpsdemoDirectories) {
+  std::ifstream root_stream(MEMRPC_SOURCE_PATH("/tests/CMakeLists.txt"));
   ASSERT_TRUE(root_stream.is_open());
 
   std::string root_content((std::istreambuf_iterator<char>(root_stream)),
                            std::istreambuf_iterator<char>());
   EXPECT_NE(root_content.find("add_subdirectory(memrpc)"), std::string::npos);
-  EXPECT_NE(root_content.find("add_subdirectory(apps/minirpc)"), std::string::npos);
+  EXPECT_EQ(root_content.find("add_subdirectory(apps/minirpc)"), std::string::npos);
 
-  std::ifstream memrpc_stream("/root/code/demo/mem/tests/memrpc/CMakeLists.txt");
+  std::ifstream memrpc_stream(MEMRPC_SOURCE_PATH("/tests/memrpc/CMakeLists.txt"));
   ASSERT_TRUE(memrpc_stream.is_open());
 
   std::string memrpc_content((std::istreambuf_iterator<char>(memrpc_stream)),
@@ -96,26 +97,26 @@ TEST(BuildConfigTest, TestsAreSplitBetweenFrameworkAndMiniRpcDirectories) {
   EXPECT_NE(memrpc_content.find("memrpc_smoke_test"), std::string::npos);
   EXPECT_NE(memrpc_content.find("memrpc_session_test"), std::string::npos);
 
-  std::ifstream minirpc_stream("/root/code/demo/mem/tests/apps/minirpc/CMakeLists.txt");
-  ASSERT_TRUE(minirpc_stream.is_open());
+  std::ifstream vpsdemo_stream(MEMRPC_SOURCE_PATH("/demo/vpsdemo/CMakeLists.txt"));
+  ASSERT_TRUE(vpsdemo_stream.is_open());
 
-  std::string minirpc_content((std::istreambuf_iterator<char>(minirpc_stream)),
+  std::string vpsdemo_content((std::istreambuf_iterator<char>(vpsdemo_stream)),
                               std::istreambuf_iterator<char>());
-  EXPECT_NE(minirpc_content.find("memrpc_minirpc_client_test"), std::string::npos);
-  EXPECT_NE(minirpc_content.find("memrpc_minirpc_service_test"), std::string::npos);
+  EXPECT_NE(vpsdemo_content.find("vpsdemo_testkit_client_test"), std::string::npos);
+  EXPECT_NE(vpsdemo_content.find("vpsdemo_testkit_dfx_test"), std::string::npos);
 }
 
 TEST(BuildConfigTest, TopLevelMemrpcForwardingHeadersAreNotPartOfMainline) {
   const char* kLegacyHeaders[] = {
-      "/root/code/demo/mem/include/memrpc/bootstrap.h",
-      "/root/code/demo/mem/include/memrpc/types.h",
-      "/root/code/demo/mem/include/memrpc/client.h",
-      "/root/code/demo/mem/include/memrpc/demo_bootstrap.h",
-      "/root/code/demo/mem/include/memrpc/sa_bootstrap.h",
-      "/root/code/demo/mem/include/memrpc/handler.h",
-      "/root/code/demo/mem/include/memrpc/rpc_client.h",
-      "/root/code/demo/mem/include/memrpc/rpc_server.h",
-      "/root/code/demo/mem/include/memrpc/server.h",
+      MEMRPC_SOURCE_PATH("/include/memrpc/bootstrap.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/types.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/client.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/demo_bootstrap.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/sa_bootstrap.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/handler.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/rpc_client.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/rpc_server.h"),
+      MEMRPC_SOURCE_PATH("/include/memrpc/server.h"),
       nullptr,
   };
 

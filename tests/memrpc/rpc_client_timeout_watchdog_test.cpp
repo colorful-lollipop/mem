@@ -9,11 +9,9 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
-#include "apps/minirpc/protocol.h"
-
-using OHOS::Security::VirusProtectionService::MiniRpc::MiniRpcOpcode;
-
 namespace {
+
+constexpr memrpc::Opcode kTestEchoOpcode = static_cast<memrpc::Opcode>(200);
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
   if (h.shmFd >= 0) close(h.shmFd);
@@ -36,8 +34,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
 
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
-                         [](const RpcServerCall&, RpcServerReply* reply) {
+  server.RegisterHandler(kTestEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
                            // Sleep long enough that exec timeout fires.
                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
                            reply->status = StatusCode::Ok;
@@ -62,7 +59,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   client.SetRecoveryPolicy(std::move(policy));
 
   RpcCall call;
-  call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
+  call.opcode = kTestEchoOpcode;
   call.queueTimeoutMs = 5000;
   call.execTimeoutMs = 100;  // Short exec timeout.
   auto future = client.InvokeAsync(call);
@@ -92,8 +89,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   std::atomic<bool> server_started{false};
-  server.RegisterHandler(static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho),
-                         [&](const RpcServerCall&, RpcServerReply* reply) {
+  server.RegisterHandler(kTestEchoOpcode, [&](const RpcServerCall&, RpcServerReply* reply) {
                            server_started.store(true);
                            std::this_thread::sleep_for(std::chrono::seconds(5));
                            reply->status = StatusCode::Ok;
@@ -105,7 +101,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
 
   // First request: blocks the server worker.
   RpcCall blocker;
-  blocker.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
+  blocker.opcode = kTestEchoOpcode;
   blocker.queueTimeoutMs = 10000;
   blocker.execTimeoutMs = 10000;
   auto blocker_future = client.InvokeAsync(blocker);
@@ -133,7 +129,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   client.SetRecoveryPolicy(std::move(policy2));
 
   RpcCall queued_call;
-  queued_call.opcode = static_cast<memrpc::Opcode>(MiniRpcOpcode::MiniEcho);
+  queued_call.opcode = kTestEchoOpcode;
   queued_call.queueTimeoutMs = 100;  // Short queue timeout.
   queued_call.execTimeoutMs = 5000;
   auto queued_future = client.InvokeAsync(queued_call);
