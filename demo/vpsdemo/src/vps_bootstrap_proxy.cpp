@@ -105,8 +105,8 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     handles.respEventFd = fds[3];
     handles.reqCreditEventFd = fds[4];
     handles.respCreditEventFd = fds[5];
-    handles.protocol_version = meta.protocol_version;
-    handles.session_id = meta.session_id;
+    handles.protocolVersion = meta.protocol_version;
+    handles.sessionId = meta.session_id;
     sessionId_ = meta.session_id;
 
     // Start monitoring the socket for disconnect (death detection).

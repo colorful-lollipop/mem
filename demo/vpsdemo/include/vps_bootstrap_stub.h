@@ -41,8 +41,8 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
                 reply->fd_count = FD_COUNT;
 
                 SessionMetadata meta{};
-                meta.protocol_version = handles.protocol_version;
-                meta.session_id = handles.session_id;
+                meta.protocol_version = handles.protocolVersion;
+                meta.session_id = handles.sessionId;
                 std::memcpy(reply->data, &meta, sizeof(meta));
                 reply->data_len = sizeof(meta);
                 return true;
