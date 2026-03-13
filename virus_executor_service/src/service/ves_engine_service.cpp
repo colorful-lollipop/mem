@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <thread>
 
+#include "memrpc/core/runtime_utils.h"
 #include "memrpc/server/typed_handler.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
@@ -12,15 +13,6 @@
 #include "virus_protection_service_log.h"
 
 namespace virus_executor_service {
-
-namespace {
-uint32_t MonotonicNowMs() {
-    auto now = std::chrono::steady_clock::now();
-    return static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()).count());
-}
-}  // namespace
 
 void VesEngineService::Initialize() {
     if (initialized_) {
@@ -39,7 +31,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
         std::lock_guard<std::mutex> lock(healthMutex_);
         inFlight_++;
         currentTask_ = request.filePath;
-        lastTaskStartMonoMs_ = MonotonicNowMs();
+        lastTaskStartMonoMs_ = MemRpc::MonotonicNowMs();
     }
 
     ScanFileReply result;
@@ -77,7 +69,7 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     snapshot.inFlight = inFlight_;
     snapshot.currentTask = currentTask_;
     if (inFlight_ > 0 && lastTaskStartMonoMs_ > 0) {
-        snapshot.lastTaskAgeMs = MonotonicNowMs() - lastTaskStartMonoMs_;
+        snapshot.lastTaskAgeMs = MemRpc::MonotonicNowMs() - lastTaskStartMonoMs_;
     }
     return snapshot;
 }

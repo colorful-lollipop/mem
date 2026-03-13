@@ -42,6 +42,9 @@ memrpc_add_test(memrpc_rpc_server_executor_test rpc_server_executor_test.cpp)
 memrpc_add_test(memrpc_typed_future_test typed_future_test.cpp)
 memrpc_add_test(memrpc_engine_death_handler_test engine_death_handler_test.cpp)
 memrpc_add_test(memrpc_rpc_client_recovery_policy_test rpc_client_recovery_policy_test.cpp)
+memrpc_add_test(memrpc_rpc_eventfd_fault_injection_test rpc_eventfd_fault_injection_test.cpp)
+set_tests_properties(memrpc_rpc_eventfd_fault_injection_test PROPERTIES
+  LABELS "dt_injection")
 
 if (MEMRPC_ENABLE_DT_TESTS)
   memrpc_add_test(memrpc_dt_stability_test dt_stability_test.cpp)

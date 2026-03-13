@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/core/runtime_utils.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_codec.h"
@@ -25,13 +26,6 @@ namespace virus_executor_service::testkit {
 namespace {
 
 namespace Mem = ::MemRpc;
-
-uint64_t MonotonicNowMs() {
-    return static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
-            .count());
-}
 
 void CloseHandles(Mem::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
@@ -169,7 +163,7 @@ bool RunStress(const StressConfig& config) {
     }
 
     SharedState state;
-    state.lastOkMs.store(MonotonicNowMs());
+    state.lastOkMs.store(Mem::MonotonicNowMs64());
 
     const auto start = std::chrono::steady_clock::now();
     const auto warmupEnd = start + std::chrono::seconds(config.warmupSec);
@@ -180,7 +174,8 @@ bool RunStress(const StressConfig& config) {
 
     for (int i = 0; i < config.threads; ++i) {
         workers.emplace_back([&, i]() {
-            std::mt19937_64 rng(config.seed ? config.seed + i : (MonotonicNowMs() + i));
+            std::mt19937_64 rng(
+                config.seed ? config.seed + i : (Mem::MonotonicNowMs64() + i));
             while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
                 const uint64_t elapsedMs = static_cast<uint64_t>(
                     std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -224,7 +219,7 @@ bool RunStress(const StressConfig& config) {
 
                 if (std::chrono::steady_clock::now() >= warmupEnd) {
                     state.okCount.fetch_add(1);
-                    state.lastOkMs.store(MonotonicNowMs());
+                    state.lastOkMs.store(Mem::MonotonicNowMs64());
                 }
 
                 if (!InBurstWindow(elapsedMs, config)) {
@@ -240,7 +235,7 @@ bool RunStress(const StressConfig& config) {
 
     std::thread monitor([&]() {
         while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
-            const uint64_t nowMs = MonotonicNowMs();
+            const uint64_t nowMs = Mem::MonotonicNowMs64();
             const uint64_t lastOk = state.lastOkMs.load();
             if (nowMs > lastOk &&
                 (nowMs - lastOk) / 1000 > static_cast<uint64_t>(config.noProgressTimeoutSec)) {

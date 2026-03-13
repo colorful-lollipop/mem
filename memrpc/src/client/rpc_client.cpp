@@ -18,6 +18,7 @@
 #include "core/session.h"
 #include "core/slot_pool.h"
 #include "client/replay_classifier.h"
+#include "memrpc/core/runtime_utils.h"
 #include "virus_protection_service_log.h"
 
 namespace MemRpc {
@@ -30,33 +31,6 @@ namespace {
 
 constexpr size_t MAX_SUBMIT_QUEUE_SIZE = 3000;
 
-uint32_t MonotonicNowMs() {
-  const auto now = std::chrono::steady_clock::now().time_since_epoch();
-  return static_cast<uint32_t>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(now).count() & 0xffffffffU);
-}
-
-bool AdmissionTimedOut(std::chrono::steady_clock::time_point deadline) {
-  return std::chrono::steady_clock::now() >= deadline;
-}
-
-bool RingCountIsOneAfterPush(const RingCursor& cursor) {
-  const uint32_t tail = cursor.tail.load(std::memory_order_acquire);
-  const uint32_t head = cursor.head.load(std::memory_order_acquire);
-  return tail - head == 1U;
-}
-
-int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
-  const auto now = std::chrono::steady_clock::now();
-  if (deadline == std::chrono::steady_clock::time_point::max()) {
-    return INT64_MAX;
-  }
-  const auto remaining =
-      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
-          .count();
-  return remaining > 0 ? remaining : 0;
-}
-
 bool ResponseRingBecameNotFull(const SharedMemoryHeader* header) {
   if (header == nullptr || header->responseRing.capacity == 0) {
     return false;
@@ -68,8 +42,7 @@ void SignalEventFdIfNeeded(int fd, bool should_signal) {
   if (!should_signal || fd < 0) {
     return;
   }
-  const uint64_t signal_value = 1;
-  write(fd, &signal_value, sizeof(signal_value));
+  (void)SignalEventFd(fd);
 }
 
 }  // namespace
@@ -152,7 +125,7 @@ void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor exe
   state_->executor = std::move(executor);
 }
 
-struct RpcClient::Impl {
+struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap_channel)
       : bootstrap(std::move(bootstrap_channel)) {}
 
@@ -357,6 +330,57 @@ struct RpcClient::Impl {
     watchdog_thread = std::thread([this] { WatchdogLoop(); });
   }
 
+  void ScanPendingTimeoutsIfNeeded() {
+    if (session_dead.load(std::memory_order_acquire) || pending_count.load() == 0) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(session_mutex);
+    if (!session_dead.load(std::memory_order_relaxed) && session.Valid()) {
+      ScanPendingTimeouts();
+    }
+  }
+
+  void HandleIdlePolicyDecision(uint32_t idle_ms) {
+    std::function<RecoveryDecision(uint64_t)> on_idle;
+    {
+      std::lock_guard<std::mutex> lock(policy_mutex);
+      on_idle = recovery_policy.onIdle;
+    }
+    if (!on_idle) {
+      return;
+    }
+    const RecoveryDecision decision = on_idle(idle_ms);
+    if (decision.action == RecoveryAction::Restart) {
+      RequestForcedRestart(decision.delayMs);
+    }
+  }
+
+  void HandleIdleReminder() {
+    uint32_t idle_timeout_ms = 0;
+    uint32_t idle_notify_interval_ms = 0;
+    {
+      std::lock_guard<std::mutex> lock(policy_mutex);
+      idle_timeout_ms = recovery_policy.idleTimeoutMs;
+      idle_notify_interval_ms = recovery_policy.idleNotifyIntervalMs;
+    }
+    if (idle_timeout_ms == 0 || idle_notify_interval_ms == 0) {
+      return;
+    }
+
+    const uint32_t now_ms = MonotonicNowMs();
+    const uint32_t last_ms = last_activity_mono_ms.load(std::memory_order_relaxed);
+    if (last_ms == 0 || now_ms - last_ms < idle_timeout_ms) {
+      last_idle_notify_mono_ms = 0;
+      return;
+    }
+    if (last_idle_notify_mono_ms != 0 &&
+        now_ms - last_idle_notify_mono_ms < idle_notify_interval_ms) {
+      return;
+    }
+    last_idle_notify_mono_ms = now_ms;
+    HandleIdlePolicyDecision(now_ms - last_ms);
+  }
+
   void WatchdogLoop() {
     constexpr uint32_t WATCHDOG_INTERVAL_MS = MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS;
     while (watchdog_running.load()) {
@@ -364,47 +388,8 @@ struct RpcClient::Impl {
       if (!watchdog_running.load() || shutting_down.load()) {
         break;
       }
-
-      // --- Async timeout scanning ---
-      if (!session_dead.load(std::memory_order_acquire) && pending_count.load() > 0) {
-        std::lock_guard<std::mutex> lock(session_mutex);
-        if (!session_dead.load(std::memory_order_relaxed) && session.Valid()) {
-          ScanPendingTimeouts();
-        }
-      }
-
-      // --- Idle reminder ---
-      uint32_t cur_idle_timeout_ms = 0;
-      uint32_t cur_idle_notify_interval_ms = 0;
-      {
-        std::lock_guard<std::mutex> lock(policy_mutex);
-        cur_idle_timeout_ms = recovery_policy.idleTimeoutMs;
-        cur_idle_notify_interval_ms = recovery_policy.idleNotifyIntervalMs;
-      }
-      if (cur_idle_timeout_ms > 0 && cur_idle_notify_interval_ms > 0) {
-        const uint32_t now_ms = MonotonicNowMs();
-        const uint32_t last_ms = last_activity_mono_ms.load(std::memory_order_relaxed);
-        if (last_ms > 0 && now_ms - last_ms >= cur_idle_timeout_ms) {
-          const uint32_t idle_ms = now_ms - last_ms;
-          if (last_idle_notify_mono_ms == 0 ||
-              now_ms - last_idle_notify_mono_ms >= cur_idle_notify_interval_ms) {
-            last_idle_notify_mono_ms = now_ms;
-            std::function<RecoveryDecision(uint64_t)> on_idle;
-            {
-              std::lock_guard<std::mutex> lock(policy_mutex);
-              on_idle = recovery_policy.onIdle;
-            }
-            if (on_idle) {
-              RecoveryDecision decision = on_idle(idle_ms);
-              if (decision.action == RecoveryAction::Restart) {
-                RequestForcedRestart(decision.delayMs);
-              }
-            }
-          }
-        } else {
-          last_idle_notify_mono_ms = 0;
-        }
-      }
+      ScanPendingTimeoutsIfNeeded();
+      HandleIdleReminder();
     }
   }
 
@@ -413,39 +398,49 @@ struct RpcClient::Impl {
     StatusCode status = StatusCode::ExecTimeout;
   };
 
+  static bool IsQueueState(SlotRuntimeStateCode state) {
+    return state == SlotRuntimeStateCode::Admitted || state == SlotRuntimeStateCode::Queued;
+  }
+
+  static bool IsExecutionState(SlotRuntimeStateCode state) {
+    return state == SlotRuntimeStateCode::Executing ||
+           state == SlotRuntimeStateCode::Responding;
+  }
+
+  static bool QueueTimedOut(const SlotRuntimeState& rt, const PendingInfo& info, uint32_t now_ms) {
+    return info.queue_timeout_ms > 0 && rt.enqueueMonoMs > 0 &&
+           now_ms - rt.enqueueMonoMs >= info.queue_timeout_ms;
+  }
+
+  static bool ExecTimedOut(const SlotRuntimeState& rt, const PendingInfo& info, uint32_t now_ms) {
+    if (info.exec_timeout_ms == 0) {
+      return false;
+    }
+    const uint32_t ref_ms = rt.startExecMonoMs > 0 ? rt.startExecMonoMs : rt.enqueueMonoMs;
+    return ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms;
+  }
+
   static TimeoutCheckResult CheckSlotTimeout(const SlotRuntimeState& rt,
                                              const PendingInfo& info,
                                              uint32_t now_ms) {
-    TimeoutCheckResult result;
-    switch (rt.state) {
-      case SlotRuntimeStateCode::Admitted:
-      case SlotRuntimeStateCode::Queued:
-        if (info.queue_timeout_ms > 0 && rt.enqueueMonoMs > 0 &&
-            now_ms - rt.enqueueMonoMs >= info.queue_timeout_ms) {
-          result.timed_out = true;
-          result.status = StatusCode::QueueTimeout;
-        }
-        break;
-      case SlotRuntimeStateCode::Executing:
-      case SlotRuntimeStateCode::Responding: {
-        if (info.exec_timeout_ms > 0) {
-          const uint32_t ref_ms =
-              rt.startExecMonoMs > 0 ? rt.startExecMonoMs : rt.enqueueMonoMs;
-          if (ref_ms > 0 && now_ms - ref_ms >= info.exec_timeout_ms) {
-            result.timed_out = true;
-            result.status = StatusCode::ExecTimeout;
-          }
-        }
-        break;
-      }
-      default:
-        break;
+    if (IsQueueState(rt.state) && QueueTimedOut(rt, info, now_ms)) {
+      return {true, StatusCode::QueueTimeout};
     }
-    return result;
+    if (IsExecutionState(rt.state) && ExecTimedOut(rt, info, now_ms)) {
+      return {true, StatusCode::ExecTimeout};
+    }
+    return {};
   }
 
   void ExpireTimedOutSlot(size_t slot_index, StatusCode status, const SlotRuntimeState& rt) {
-    PendingInfo timeout_info = *pending_info_slots[slot_index];
+    if (slot_index >= pending_info_slots.size()) {
+      return;
+    }
+    const std::optional<PendingInfo> timeout_info_opt = pending_info_slots[slot_index];
+    if (!timeout_info_opt.has_value()) {
+      return;
+    }
+    PendingInfo timeout_info = timeout_info_opt.value_or(PendingInfo{});
     timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
     timeout_info.replay_hint = ClassifyReplayHint(rt.state);
     auto pending = std::move(pending_slots[slot_index]);
@@ -465,14 +460,15 @@ struct RpcClient::Impl {
   void ScanPendingTimeouts() {
     const uint32_t now_ms = MonotonicNowMs();
     for (size_t i = 0; i < pending_slots.size(); ++i) {
-      if (pending_slots[i] == nullptr || !pending_info_slots[i].has_value()) {
+      const auto& pending_info = pending_info_slots[i];
+      if (pending_slots[i] == nullptr || !pending_info.has_value()) {
         continue;
       }
       const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
       if (payload == nullptr) {
         continue;
       }
-      const auto check = CheckSlotTimeout(payload->runtime, *pending_info_slots[i], now_ms);
+      const auto check = CheckSlotTimeout(payload->runtime, pending_info.value(), now_ms);
       if (check.timed_out) {
         ExpireTimedOutSlot(i, check.status, payload->runtime);
       }
@@ -484,7 +480,8 @@ struct RpcClient::Impl {
       auto pending = std::move(pending_slots[i]);
       pending_slots[i].reset();
       if (pending != nullptr && i < pending_info_slots.size() && pending_info_slots[i].has_value()) {
-        NotifyFailure(*pending_info_slots[i], status_code, FailureStage::Session);
+        const PendingInfo info = pending_info_slots[i].value_or(PendingInfo{});
+        NotifyFailure(info, status_code, FailureStage::Session);
         pending_info_slots[i].reset();
       }
       ResolveFuture(pending, status_code);  // NOLINT(FailAndResolve not used here: info may not exist)
@@ -501,33 +498,48 @@ struct RpcClient::Impl {
     std::vector<PoisonEntry> poison_list;
   };
 
+  PendingSubmit BuildReplayableSubmit(size_t slot_index, const PendingInfo& info) {
+    PendingSubmit submit;
+    submit.call.opcode = info.opcode;
+    submit.call.priority = info.priority;
+    submit.call.flags = info.flags;
+    submit.call.admissionTimeoutMs = info.admission_timeout_ms;
+    submit.call.queueTimeoutMs = info.queue_timeout_ms;
+    submit.call.execTimeoutMs = info.exec_timeout_ms;
+    const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(slot_index));
+    const uint8_t* request_bytes = session.GetSlotRequestBytes(static_cast<uint32_t>(slot_index));
+    if (payload != nullptr && request_bytes != nullptr && payload->request.payloadSize > 0) {
+      submit.call.payload.assign(request_bytes, request_bytes + payload->request.payloadSize);
+    }
+    submit.request_id = info.request_id;
+    submit.session_id = info.session_id;
+    return submit;
+  }
+
+  void DrainQueuedSubmissionsForReplay(std::vector<PendingSubmit>* replay_list) {
+    if (replay_list == nullptr) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(submit_mutex);
+    for (auto& queued_submit : submit_queue) {
+      replay_list->push_back(std::move(queued_submit));
+    }
+    submit_queue.clear();
+  }
+
   // Must be called under session_mutex, before session.Reset().
   // Separates pending requests into replay-safe and poison-pill categories.
   ReplayableSnapshot SaveReplayableRequests() {
     ReplayableSnapshot snapshot;
 
-    // Classify pending slots (already in shared memory).
     for (size_t i = 0; i < pending_slots.size(); ++i) {
-      if (pending_slots[i] == nullptr || !pending_info_slots[i].has_value()) {
+      const auto& pending_info = pending_info_slots[i];
+      if (pending_slots[i] == nullptr || !pending_info.has_value()) {
         continue;
       }
-      const PendingInfo& info = *pending_info_slots[i];
+      const PendingInfo info = pending_info.value_or(PendingInfo{});
       if (info.replay_hint == ReplayHint::SafeToReplay) {
-        PendingSubmit ps;
-        ps.call.opcode = info.opcode;
-        ps.call.priority = info.priority;
-        ps.call.flags = info.flags;
-        ps.call.admissionTimeoutMs = info.admission_timeout_ms;
-        ps.call.queueTimeoutMs = info.queue_timeout_ms;
-        ps.call.execTimeoutMs = info.exec_timeout_ms;
-        // Recover payload from shared memory.
-        const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
-        const uint8_t* request_bytes = session.GetSlotRequestBytes(static_cast<uint32_t>(i));
-        if (payload != nullptr && request_bytes != nullptr && payload->request.payloadSize > 0) {
-          ps.call.payload.assign(request_bytes, request_bytes + payload->request.payloadSize);
-        }
-        ps.request_id = info.request_id;
-        ps.session_id = info.session_id;
+        PendingSubmit ps = BuildReplayableSubmit(i, info);
         ps.future = std::move(pending_slots[i]);
         snapshot.replay_list.push_back(std::move(ps));
       } else {
@@ -537,20 +549,11 @@ struct RpcClient::Impl {
       pending_info_slots[i].reset();
     }
     pending_count.store(0, std::memory_order_relaxed);
-
-    // All queued submissions are SafeToReplay (not yet written to shm).
-    {
-      std::lock_guard<std::mutex> lock(submit_mutex);
-      for (auto& qs : submit_queue) {
-        snapshot.replay_list.push_back(std::move(qs));
-      }
-      submit_queue.clear();
-    }
-
+    DrainQueuedSubmissionsForReplay(&snapshot.replay_list);
     return snapshot;
   }
 
-  void FailSavedRequests(std::vector<PendingSubmit>& saved, StatusCode status) {
+  static void FailSavedRequests(std::vector<PendingSubmit>& saved, StatusCode status) {
     for (auto& item : saved) {
       ResolveFuture(item.future, status);
     }
@@ -560,13 +563,15 @@ struct RpcClient::Impl {
   // Must be called under session_mutex.
   void AnnotatePendingRuntimeStates() {
     for (size_t i = 0; i < pending_info_slots.size(); ++i) {
-      if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
+      auto& pending_info = pending_info_slots[i];
+      if (!pending_info.has_value() || pending_slots[i] == nullptr) {
         continue;
       }
       const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
       if (payload != nullptr) {
-        pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
-        pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
+        PendingInfo& info = pending_info.value();
+        info.last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+        info.replay_hint = ClassifyReplayHint(payload->runtime.state);
       }
     }
   }
@@ -694,28 +699,40 @@ struct RpcClient::Impl {
     });
   }
 
+  bool SessionMatchesDeadSession(uint64_t dead_session_id) {
+    std::lock_guard<std::mutex> lock(session_mutex);
+    const uint64_t current_session = current_session_id.load(std::memory_order_relaxed);
+    return current_session != 0 && dead_session_id == current_session;
+  }
+
+  std::function<RecoveryDecision(const EngineDeathReport&)> GetEngineDeathPolicy() {
+    std::lock_guard<std::mutex> lock(policy_mutex);
+    return recovery_policy.onEngineDeath;
+  }
+
+  void StartReplayRestartThread(uint32_t delay_ms, std::vector<PendingSubmit> replay_list) {
+    if (restart_thread.joinable()) {
+      restart_thread.join();
+    }
+    restart_thread = std::thread([this, delay = delay_ms,
+                                  saved = std::move(replay_list)]() mutable {
+      RestartAfterDeath(delay, std::move(saved));
+    });
+  }
+
   void HandleEngineDeath(uint64_t dead_session_id) {
     if (shutting_down.load() || suppress_death_callback.load()) {
       return;
     }
     std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
-    {
-      std::lock_guard<std::mutex> lock(session_mutex);
-      if (current_session_id.load(std::memory_order_relaxed) == 0 ||
-          dead_session_id != current_session_id.load(std::memory_order_relaxed)) {
-        return;
-      }
+    if (!SessionMatchesDeadSession(dead_session_id)) {
+      return;
     }
     HILOGW("session died, session_id=%{public}llu",
-          static_cast<unsigned long long>(dead_session_id));
+           static_cast<unsigned long long>(dead_session_id));
     StopDispatcher();
 
-    std::function<RecoveryDecision(const EngineDeathReport&)> on_engine_death;
-    {
-      std::lock_guard<std::mutex> lock(policy_mutex);
-      on_engine_death = recovery_policy.onEngineDeath;
-    }
-
+    const auto on_engine_death = GetEngineDeathPolicy();
     if (!on_engine_death) {
       HandleDeathNoPolicy();
       return;
@@ -735,42 +752,32 @@ struct RpcClient::Impl {
       FailReplayList(snapshot.replay_list);
       return;
     }
-
-    if (restart_thread.joinable()) {
-      restart_thread.join();
-    }
-    restart_thread = std::thread([this, delay = decision.delayMs,
-                                  saved = std::move(snapshot.replay_list)]() mutable {
-      RestartAfterDeath(delay, std::move(saved));
-    });
+    StartReplayRestartThread(decision.delayMs, std::move(snapshot.replay_list));
   }
 
-  StatusCode EnsureLiveSession() {
-    if (session_live.load(std::memory_order_acquire)) {
-      return StatusCode::Ok;
-    }
-    std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
-    {
-      std::lock_guard<std::mutex> lock(session_mutex);
-      if (session_live.load(std::memory_order_relaxed)) {
-        return StatusCode::Ok;
-      }
-    }
+  [[nodiscard]] bool HasLiveSessionFastPath() const {
+    return session_live.load(std::memory_order_acquire);
+  }
 
-    if (bootstrap == nullptr) {
+  bool HasLiveSessionLocked() {
+    std::lock_guard<std::mutex> lock(session_mutex);
+    return session_live.load(std::memory_order_relaxed);
+  }
+
+  StatusCode OpenBootstrapSession(BootstrapHandles* handles) {
+    if (bootstrap == nullptr || handles == nullptr) {
       return StatusCode::InvalidArgument;
     }
-
-    BootstrapHandles handles;
-    const StatusCode open_status = bootstrap->OpenSession(handles);
+    const StatusCode open_status = bootstrap->OpenSession(*handles);
     if (open_status != StatusCode::Ok) {
       HILOGE("OpenSession failed, status=%{public}d", static_cast<int>(open_status));
-      return open_status;
     }
+    return open_status;
+  }
 
+  StatusCode ReplaceSession(BootstrapHandles handles) {
     StopDispatcher();
     std::lock_guard<std::mutex> lock(session_mutex);
-    // 每次重连都完整替换 session 视图，避免旧 fd / shm 映射残留。
     session_live.store(false, std::memory_order_release);
     session_dead = true;
     current_session_id = 0;
@@ -788,6 +795,27 @@ struct RpcClient::Impl {
     current_session_id = handles.sessionId;
     session_dead = false;
     session_live.store(true, std::memory_order_release);
+    return StatusCode::Ok;
+  }
+
+  StatusCode EnsureLiveSession() {
+    if (HasLiveSessionFastPath()) {
+      return StatusCode::Ok;
+    }
+    std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
+    if (HasLiveSessionLocked()) {
+      return StatusCode::Ok;
+    }
+
+    BootstrapHandles handles;
+    const StatusCode open_status = OpenBootstrapSession(&handles);
+    if (open_status != StatusCode::Ok) {
+      return open_status;
+    }
+    const StatusCode attach_status = ReplaceSession(handles);
+    if (attach_status != StatusCode::Ok) {
+      return attach_status;
+    }
     TouchActivity();
     StartDispatcher();
     return StatusCode::Ok;
@@ -802,47 +830,28 @@ struct RpcClient::Impl {
            current_session_id.load(std::memory_order_relaxed) != pending_submit.session_id;
   }
 
-  bool WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
+  PollEventFdResult WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
     const int fd = session.Handles().reqCreditEventFd;
     if (fd < 0) {
-      return false;
+      return PollEventFdResult::Failed;
     }
     pollfd poll_fd{fd, POLLIN, 0};
     submitter_waiting_for_credit.store(true);
+    [[maybe_unused]] const auto clear_waiting =
+        MakeScopeExit([this] { submitter_waiting_for_credit.store(false); });
     while (submit_running.load() && !shutting_down.load()) {
       const int64_t remaining_ms = RemainingTimeoutMs(deadline);
       if (remaining_ms <= 0) {
-        submitter_waiting_for_credit.store(false);
-        return false;
+        return PollEventFdResult::Timeout;
       }
-      const int poll_result =
-          poll(&poll_fd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
-      if (!submit_running.load() || shutting_down.load()) {
-        submitter_waiting_for_credit.store(false);
-        return false;
-      }
-      if (poll_result <= 0) {
+      const auto wait_result =
+          PollEventFd(&poll_fd, static_cast<int>(std::min<int64_t>(remaining_ms, 100)));
+      if (wait_result == PollEventFdResult::Retry) {
         continue;
       }
-      if ((poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        submitter_waiting_for_credit.store(false);
-        return false;
-      }
-      if ((poll_fd.revents & POLLIN) == 0) {
-        continue;
-      }
-      uint64_t counter = 0;
-      bool drained = false;
-      while (read(fd, &counter, sizeof(counter)) == sizeof(counter)) {
-        drained = true;
-      }
-      if (drained) {
-        submitter_waiting_for_credit.store(false);
-        return true;
-      }
+      return wait_result;
     }
-    submitter_waiting_for_credit.store(false);
-    return false;
+    return PollEventFdResult::Failed;
   }
 
   void SubmitLoop() {
@@ -931,48 +940,93 @@ struct RpcClient::Impl {
 
   enum class PushOutcome : uint8_t { Success, RetryWithCredit, RetryWithoutCredit, FatalError };
 
+  PushOutcome FailQueuedRequest(uint32_t slot, StatusCode queue_status,
+                                const PendingSubmit& pending_submit, const PendingInfo& info) {
+    pending_slots[slot].reset();
+    pending_info_slots[slot].reset();
+    pending_count.fetch_sub(1, std::memory_order_relaxed);
+    slot_pool->Release(slot);
+    if (queue_status == StatusCode::QueueFull) {
+      return PushOutcome::RetryWithCredit;
+    }
+    if (queue_status == StatusCode::PeerDisconnected) {
+      return PushOutcome::RetryWithoutCredit;
+    }
+    FailAndResolve(info, queue_status, FailureStage::Admission, pending_submit.future);
+    return PushOutcome::FatalError;
+  }
+
+  [[nodiscard]] bool SignalQueuedRequest(bool high_priority) const {
+    const RingCursor& cursor =
+        high_priority ? session.Header()->highRing : session.Header()->normalRing;
+    if (!RingCountIsOneAfterPush(cursor)) {
+      return true;
+    }
+    const int req_fd = high_priority ? session.Handles().highReqEventFd
+                                     : session.Handles().normalReqEventFd;
+    return SignalEventFd(req_fd);
+  }
+
   PushOutcome PushAndSignalRequest(const RequestRingEntry& entry, uint32_t slot,
-                                    const PendingSubmit& pending_submit, const PendingInfo& info) {
+                                   const PendingSubmit& pending_submit,
+                                   const PendingInfo& info) {
     const bool high_priority = pending_submit.call.priority == Priority::High;
     slot_pool->Transition(slot, high_priority ? SlotState::QueuedHigh : SlotState::QueuedNormal);
     const StatusCode queue_status =
         session.PushRequest(high_priority ? QueueKind::HighRequest : QueueKind::NormalRequest,
                             entry);
     if (queue_status != StatusCode::Ok) {
-      pending_slots[slot].reset();
-      pending_info_slots[slot].reset();
-      pending_count.fetch_sub(1, std::memory_order_relaxed);
-      slot_pool->Release(slot);
-      if (queue_status == StatusCode::QueueFull) {
-        return PushOutcome::RetryWithCredit;
-      }
-      if (queue_status == StatusCode::PeerDisconnected) {
-        return PushOutcome::RetryWithoutCredit;
-      }
-      FailAndResolve(info, queue_status, FailureStage::Admission, pending_submit.future);
-      return PushOutcome::FatalError;
+      return FailQueuedRequest(slot, queue_status, pending_submit, info);
     }
-    const RingCursor& cursor =
-        high_priority ? session.Header()->highRing : session.Header()->normalRing;
-    if (RingCountIsOneAfterPush(cursor)) {
-      const uint64_t signal_value = 1;
-      const int req_fd = high_priority ? session.Handles().highReqEventFd
-                                       : session.Handles().normalReqEventFd;
-      if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
-        pending_slots[slot].reset();
-        pending_info_slots[slot].reset();
-        pending_count.fetch_sub(1, std::memory_order_relaxed);
-        slot_pool->Release(slot);
-        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
-                       pending_submit.future);
-        return PushOutcome::FatalError;
-      }
+    if (!SignalQueuedRequest(high_priority)) {
+      HILOGW("request published without wakeup signal, request_id=%{public}llu slot=%{public}u",
+             static_cast<unsigned long long>(pending_submit.request_id), slot);
     }
     TouchActivity();
     return PushOutcome::Success;
   }
 
   enum class SubmitAttemptResult : uint8_t { Done, Retry, RetryWithCredit };
+
+  void FailAdmission(const PendingInfo& info, StatusCode status,
+                     const std::shared_ptr<RpcFuture::State>& future) {
+    FailAndResolve(info, status, FailureStage::Admission, future);
+  }
+
+  StatusCode PrepareSubmissionSession(const PendingSubmit& pending_submit) {
+    if (SubmissionBelongsToDeadSession(pending_submit)) {
+      return StatusCode::PeerDisconnected;
+    }
+    const StatusCode ensure_status = EnsureLiveSession();
+    if (ensure_status != StatusCode::Ok) {
+      return ensure_status;
+    }
+    return SubmissionBelongsToDeadSession(pending_submit)
+               ? StatusCode::PeerDisconnected
+               : StatusCode::Ok;
+  }
+
+  std::optional<StatusCode> WaitForAdmissionRetry(SubmitAttemptResult attempt,
+                                                  bool infinite_admission_wait,
+                                                  std::chrono::steady_clock::time_point deadline) {
+    if (!infinite_admission_wait && DeadlineReached(deadline)) {
+      return StatusCode::QueueTimeout;
+    }
+    if (attempt != SubmitAttemptResult::RetryWithCredit) {
+      return std::nullopt;
+    }
+    switch (WaitForRequestCredit(deadline)) {
+      case PollEventFdResult::Ready:
+        return std::nullopt;
+      case PollEventFdResult::Timeout:
+        return infinite_admission_wait ? StatusCode::QueueFull : StatusCode::QueueTimeout;
+      case PollEventFdResult::Retry:
+        return std::nullopt;
+      case PollEventFdResult::Failed:
+        return StatusCode::PeerDisconnected;
+    }
+    return StatusCode::PeerDisconnected;
+  }
 
   SubmitAttemptResult TrySubmitOnce(const PendingSubmit& pending_submit, const PendingInfo& info) {
     auto reservation = ReserveSlotAndPayload();
@@ -1014,19 +1068,9 @@ struct RpcClient::Impl {
     const PendingInfo info = MakePendingInfo(pending_submit);
 
     while (submit_running.load() && !shutting_down.load()) {
-      if (SubmissionBelongsToDeadSession(pending_submit)) {
-        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
-                       pending_submit.future);
-        return;
-      }
-      const StatusCode ensure_status = EnsureLiveSession();
-      if (ensure_status != StatusCode::Ok) {
-        FailAndResolve(info, ensure_status, FailureStage::Admission, pending_submit.future);
-        return;
-      }
-      if (SubmissionBelongsToDeadSession(pending_submit)) {
-        FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
-                       pending_submit.future);
+      const StatusCode session_status = PrepareSubmissionSession(pending_submit);
+      if (session_status != StatusCode::Ok) {
+        FailAdmission(info, session_status, pending_submit.future);
         return;
       }
 
@@ -1034,21 +1078,14 @@ struct RpcClient::Impl {
       if (attempt == SubmitAttemptResult::Done) {
         return;
       }
-      if (!infinite_admission_wait && AdmissionTimedOut(admission_deadline)) {
-        FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission,
-                       pending_submit.future);
-        return;
-      }
-      if (attempt == SubmitAttemptResult::RetryWithCredit &&
-          !WaitForRequestCredit(admission_deadline)) {
-        const StatusCode fail_status =
-            infinite_admission_wait ? StatusCode::QueueFull : StatusCode::QueueTimeout;
-        FailAndResolve(info, fail_status, FailureStage::Admission, pending_submit.future);
+      const auto retry_status =
+          WaitForAdmissionRetry(attempt, infinite_admission_wait, admission_deadline);
+      if (retry_status.has_value()) {
+        FailAdmission(info, *retry_status, pending_submit.future);
         return;
       }
     }
-    FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission,
-                   pending_submit.future);
+    FailAdmission(info, StatusCode::PeerDisconnected, pending_submit.future);
   }
 
   struct PendingLookup {
@@ -1106,7 +1143,43 @@ struct RpcClient::Impl {
     }
   }
 
-  void CleanupCompletedSlots(const ResponseSlotPayload* response_slot,
+  bool HandleMismatchedResponse(const ResponseRingEntry& entry, ResponseSlotPayload* response_slot,
+                                const PendingLookup& lookup, RpcReply* reply) {
+    if (response_slot == nullptr || response_slot->runtime.requestId == entry.requestId) {
+      return false;
+    }
+    reply->status = StatusCode::ProtocolMismatch;
+    if (lookup.info.has_value()) {
+      NotifyFailure(*lookup.info, reply->status, FailureStage::Response);
+    }
+    ResolveFuture(lookup.future, reply->status);
+    session.SetState(Session::SessionState::Broken);
+    HandleEngineDeath(current_session_id);
+    return true;
+  }
+
+  void FillReplyPayload(const ResponseRingEntry& entry, ResponseSlotPayload* response_slot,
+                        uint8_t* response_bytes, RpcReply* reply) const {
+    if (reply == nullptr) {
+      return;
+    }
+    if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
+        entry.resultSize > session.Header()->maxResponseBytes) {
+      reply->status = StatusCode::ProtocolMismatch;
+      return;
+    }
+    reply->payload.assign(response_bytes, response_bytes + entry.resultSize);
+  }
+
+  static void MarkResponseConsumed(ResponseSlotPayload* response_slot) {
+    if (response_slot == nullptr) {
+      return;
+    }
+    response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
+    response_slot->runtime.lastUpdateMonoMs = MonotonicNowMs();
+  }
+
+  void CleanupCompletedSlots(ResponseSlotPayload* response_slot,
                              const std::shared_ptr<RpcFuture::State>& pending,
                              uint32_t response_slot_index,
                              bool responseRing_became_not_full) {
@@ -1123,7 +1196,7 @@ struct RpcClient::Impl {
                                 submitter_waiting_for_credit.load(std::memory_order_relaxed));
     }
     if (response_slot != nullptr) {
-      std::memset(const_cast<ResponseSlotPayload*>(response_slot), 0, sizeof(ResponseSlotPayload));
+      std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     }
     const bool response_slot_became_available = response_slot_pool.Available() == 0;
     response_slot_pool.Release(response_slot_index);
@@ -1144,27 +1217,11 @@ struct RpcClient::Impl {
     uint8_t* responseBytes = session.GetResponseSlotBytes(entry.slotIndex);
 
     auto lookup = LookupPendingFuture(responseSlot);
-
-    if (responseSlot != nullptr && responseSlot->runtime.requestId != entry.requestId) {
-      reply.status = StatusCode::ProtocolMismatch;
-      if (lookup.info.has_value()) {
-        NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
-      }
-      ResolveFuture(lookup.future, reply.status);
-      session.SetState(Session::SessionState::Broken);
-      HandleEngineDeath(current_session_id);
+    if (HandleMismatchedResponse(entry, responseSlot, lookup, &reply)) {
       return;
     }
-    if (session.Header() == nullptr || responseSlot == nullptr || responseBytes == nullptr ||
-        entry.resultSize > session.Header()->maxResponseBytes) {
-      reply.status = StatusCode::ProtocolMismatch;
-    } else {
-      reply.payload.assign(responseBytes, responseBytes + entry.resultSize);
-    }
-    if (responseSlot != nullptr) {
-      responseSlot->runtime.state = SlotRuntimeStateCode::Consumed;
-      responseSlot->runtime.lastUpdateMonoMs = MonotonicNowMs();
-    }
+    FillReplyPayload(entry, responseSlot, responseBytes, &reply);
+    MarkResponseConsumed(responseSlot);
     if (reply.status != StatusCode::Ok && lookup.info.has_value()) {
       NotifyFailure(*lookup.info, reply.status, FailureStage::Response);
     }
@@ -1174,6 +1231,22 @@ struct RpcClient::Impl {
     }
     CleanupCompletedSlots(responseSlot, lookup.future, entry.slotIndex,
                           responseRing_became_not_full);
+  }
+
+  void ReleaseEventResponseSlot(SharedSlotPool* response_slot_pool, uint32_t response_slot_index,
+                                bool response_ring_became_not_full) const {
+    if (response_slot_pool == nullptr) {
+      return;
+    }
+    const bool response_slot_became_available = response_slot_pool->Available() == 0;
+    response_slot_pool->Release(response_slot_index);
+    SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
+                          response_ring_became_not_full || response_slot_became_available);
+  }
+
+  RpcEventCallback GetEventCallback() {
+    std::lock_guard<std::mutex> lock(event_mutex);
+    return event_callback;
   }
 
   void DeliverEvent(const ResponseRingEntry& entry, bool responseRing_became_not_full) {
@@ -1195,29 +1268,18 @@ struct RpcClient::Impl {
     if (session.Header() == nullptr || response_slot == nullptr || response_bytes == nullptr ||
         entry.resultSize > session.Header()->maxResponseBytes) {
       HILOGW("drop invalid event, size=%{public}u", entry.resultSize);
-      const bool response_slot_became_available = response_slot_pool.Available() == 0;
-      response_slot_pool.Release(entry.slotIndex);
-      SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
-                            responseRing_became_not_full || response_slot_became_available);
+      ReleaseEventResponseSlot(&response_slot_pool, entry.slotIndex, responseRing_became_not_full);
       return;
     }
     event.payload.assign(response_bytes, response_bytes + entry.resultSize);
 
-    RpcEventCallback callback;
-    {
-      std::lock_guard<std::mutex> lock(event_mutex);
-      callback = event_callback;
-    }
+    RpcEventCallback callback = GetEventCallback();
     if (callback) {
       callback(event);
     }
-    response_slot->runtime.state = SlotRuntimeStateCode::Consumed;
-    response_slot->runtime.lastUpdateMonoMs = MonotonicNowMs();
+    MarkResponseConsumed(response_slot);
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
-    const bool response_slot_became_available = response_slot_pool.Available() == 0;
-    response_slot_pool.Release(entry.slotIndex);
-    SignalEventFdIfNeeded(session.Handles().respCreditEventFd,
-                          responseRing_became_not_full || response_slot_became_available);
+    ReleaseEventResponseSlot(&response_slot_pool, entry.slotIndex, responseRing_became_not_full);
   }
 
   bool DrainResponseRing() {
@@ -1235,35 +1297,28 @@ struct RpcClient::Impl {
     return drained;
   }
 
-  bool SpinForResponseRing(int iterations) const {
+  [[nodiscard]] bool SpinForResponseRing(int iterations) const {
     for (int i = 0; i < iterations; ++i) {
       if (RingCount(session.Header()->responseRing) > 0) {
         return true;
       }
-#if defined(__x86_64__) || defined(__i386__)
-      __builtin_ia32_pause();
-#elif defined(__aarch64__)
-      asm volatile("yield");
-#endif
+      CpuRelax();
     }
     return false;
   }
 
   bool PollAndDrainEventFd(pollfd* fd) {
-    const int poll_result = poll(fd, 1, 100);
-    if (poll_result <= 0) {
-      return true;
+    const auto wait_result = PollEventFd(fd, 100);
+    switch (wait_result) {
+      case PollEventFdResult::Ready:
+      case PollEventFdResult::Timeout:
+      case PollEventFdResult::Retry:
+        return true;
+      case PollEventFdResult::Failed:
+        HandleEngineDeath(current_session_id);
+        return false;
     }
-    if ((fd->revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-      HandleEngineDeath(current_session_id);
-      return false;
-    }
-    if ((fd->revents & POLLIN) != 0) {
-      uint64_t counter = 0;
-      while (read(fd->fd, &counter, sizeof(counter)) == sizeof(counter)) {
-      }
-    }
-    return true;
+    return false;
   }
 
   void ResponseLoop() {
@@ -1294,35 +1349,38 @@ struct RpcClient::Impl {
     }
   }
 
+  static PendingInfo MakePendingInfoFromCall(const RpcCall& call, uint64_t request_id,
+                                             uint64_t session_id = 0) {
+    PendingInfo info;
+    info.opcode = call.opcode;
+    info.priority = call.priority;
+    info.flags = call.flags;
+    info.admission_timeout_ms = call.admissionTimeoutMs;
+    info.queue_timeout_ms = call.queueTimeoutMs;
+    info.exec_timeout_ms = call.execTimeoutMs;
+    info.request_id = request_id;
+    info.session_id = session_id;
+    return info;
+  }
+
+  RpcFuture MakeFailedInvokeFuture(const RpcCall& call, uint64_t request_id, StatusCode status,
+                                   uint64_t session_id = 0) {
+    NotifyFailure(MakePendingInfoFromCall(call, request_id, session_id), status,
+                  FailureStage::Admission);
+    return MakeReadyFuture(status);
+  }
+
   RpcFuture InvokeAsync(RpcCall call) {
     const uint64_t request_id = next_request_id.fetch_add(1);
     const StatusCode ensure_status = EnsureLiveSession();
     if (ensure_status != StatusCode::Ok) {
-      PendingInfo info;
-      info.opcode = call.opcode;
-      info.priority = call.priority;
-      info.flags = call.flags;
-      info.admission_timeout_ms = call.admissionTimeoutMs;
-      info.queue_timeout_ms = call.queueTimeoutMs;
-      info.exec_timeout_ms = call.execTimeoutMs;
-      info.request_id = request_id;
-      NotifyFailure(info, ensure_status, FailureStage::Admission);
-      return this->MakeReadyFuture(ensure_status);
+      return MakeFailedInvokeFuture(call, request_id, ensure_status);
     }
 
     {
       std::lock_guard<std::mutex> session_lock(session_mutex);
       if (session.Header() != nullptr && call.payload.size() > session.Header()->maxRequestBytes) {
-        PendingInfo info;
-        info.opcode = call.opcode;
-        info.priority = call.priority;
-        info.flags = call.flags;
-        info.admission_timeout_ms = call.admissionTimeoutMs;
-        info.queue_timeout_ms = call.queueTimeoutMs;
-        info.exec_timeout_ms = call.execTimeoutMs;
-        info.request_id = request_id;
-        NotifyFailure(info, StatusCode::InvalidArgument, FailureStage::Admission);
-        return this->MakeReadyFuture(StatusCode::InvalidArgument);
+        return MakeFailedInvokeFuture(call, request_id, StatusCode::InvalidArgument);
       }
     }
 
@@ -1333,17 +1391,7 @@ struct RpcClient::Impl {
     {
       std::lock_guard<std::mutex> lock(submit_mutex);
       if (submit_queue.size() >= MAX_SUBMIT_QUEUE_SIZE) {
-        PendingInfo info;
-        info.opcode = call.opcode;
-        info.priority = call.priority;
-        info.flags = call.flags;
-        info.admission_timeout_ms = call.admissionTimeoutMs;
-        info.queue_timeout_ms = call.queueTimeoutMs;
-        info.exec_timeout_ms = call.execTimeoutMs;
-        info.request_id = request_id;
-        info.session_id = session_id;
-        NotifyFailure(info, StatusCode::QueueFull, FailureStage::Admission);
-        return this->MakeReadyFuture(StatusCode::QueueFull);
+        return MakeFailedInvokeFuture(call, request_id, StatusCode::QueueFull, session_id);
       }
       pending = std::make_shared<RpcFuture::State>();
       PendingSubmit submit;
