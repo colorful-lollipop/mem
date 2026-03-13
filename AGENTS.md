@@ -17,20 +17,41 @@ Keep business-specific compatibility layers out of the framework. Applications s
 
 **本项目使用 Clang 工具链编译。**
 
-- `cmake -S . -B build`: configure the project (自动使用 Clang)
-- `cmake --build build`: build libraries, tests, and demos
-- `ctest --test-dir build --output-on-failure`: run the active test suite (count varies by options; includes vpsdemo tests)
-- `cmake -S . -B build_full -DMEMRPC_ENABLE_FUZZ=ON && cmake --build build_full && ctest --test-dir build_full --output-on-failure`: one-line full build + tests (includes memrpc + vpsdemo fuzz)
-- `./build/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
-- `./build/vpsdemo/vpsdemo_client`: run the standalone VPS client
-- `./build/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
-- `./build/vpsdemo/vpsdemo_testkit_stress_runner`: run the testkit stress runner directly
-- `cmake -S vpsdemo -B build_vps -DVPSDEMO_ENABLE_TESTS=ON`: configure vpsdemo-only build (unit + integration + stress + dt)
-- `cmake --build build_vps`: build vpsdemo-only targets and tests
-- `ctest --test-dir build_vps --output-on-failure`: run vpsdemo-only test suite
-- `cmake -S vpsdemo -B build_vps_fuzz -DVPSDEMO_ENABLE_TESTS=ON -DVPSDEMO_ENABLE_FUZZ=ON`: configure vpsdemo fuzz build
-- `cmake --build build_vps_fuzz`: build vpsdemo fuzz targets
-- `ctest --test-dir build_vps_fuzz -L fuzz --output-on-failure`: run vpsdemo fuzz smoke test
+- First choice: `tools/build_and_test.sh`
+  This is the canonical zero-knowledge entrypoint for configure + build + test.
+- `tools/build_and_test.sh`
+  Configure, build, and run the full repo test suite with `clang + ninja` into `build_ninja/`.
+- `tools/build_and_test.sh --clean`
+  Recreate the default `build_ninja/` directory from scratch.
+- `tools/build_and_test.sh --fuzz`
+  Enable both memrpc and vpsdemo fuzz targets, then build and test them.
+- `tools/build_and_test.sh --test-regex vpsdemo`
+  Build everything, then only run tests matching `vpsdemo`.
+- `tools/build_and_test.sh --label stress`
+  Build everything, then only run `ctest -L stress`.
+- `tools/build_and_test.sh --configure-only`
+  Configure only.
+- `tools/build_and_test.sh --build-only`
+  Configure and build, but skip tests.
+- `./build_ninja/vpsdemo/vpsdemo_supervisor`
+  Run the VPS demo supervisor after building.
+- `./build_ninja/vpsdemo/vpsdemo_client`
+  Run the standalone VPS client after building.
+- `./build_ninja/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`
+  Run the stress client directly.
+- `./build_ninja/vpsdemo/vpsdemo_testkit_stress_runner`
+  Run the testkit stress runner directly.
+- Manual fallback: `cmake -S . -B build_ninja -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVPSDEMO_ENABLE_TESTS=ON`
+- Manual build fallback: `cmake --build build_ninja --parallel`
+- Manual test fallback: `ctest --test-dir build_ninja --output-on-failure --parallel`
+
+### AI Quick Start
+
+- If you are an AI agent with no repo context, start with `tools/build_and_test.sh --help`, then use `tools/build_and_test.sh`.
+- Prefer the root build over ad-hoc per-module builds unless the task is isolated to `vpsdemo/`.
+- Default build directory is `build_ninja/`. Do not reuse old `build/` directories configured with another generator.
+- This repo's meaningful tests use shared memory, Unix-domain sockets, and child processes. In sandboxed agent environments, `ctest` may fail with `shm_open ... errno=13` or registry start failures unless you request elevated permissions.
+- In Codex-style sandboxes, request escalation before running full or integration-heavy test commands. Typical cases: `tools/build_and_test.sh`, `ctest --test-dir build_ninja ...`, or any `vpsdemo_*integration*`, `stress`, `dt`, or shared-memory session tests.
 
 Use CMake as the source of truth during active development.
 
@@ -105,7 +126,7 @@ Run by label:
 - `ctest -L fuzz` - Fuzz smoke tests (requires Clang build)
 
 Notes:
-- Top-level builds default vpsdemo tests to ON via `demo/CMakeLists.txt` (override with `-DVPSDEMO_ENABLE_TESTS=OFF`).
+- Top-level builds default vpsdemo tests to ON via the root `CMakeLists.txt` and `tools/build_and_test.sh`.
 - Setting `-DMEMRPC_ENABLE_FUZZ=ON` enables both memrpc fuzz and vpsdemo fuzz in top-level builds.
 
 ## Commit Guidelines

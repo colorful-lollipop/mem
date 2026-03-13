@@ -21,7 +21,21 @@ from typing import List, Dict, Tuple
 
 def run_lizard(path: str, max_lines: int) -> List[Dict]:
     """运行 lizard 并解析输出"""
+    # 排除的目录和文件模式
+    exclude_patterns = [
+        "build",
+        "build_*",
+        "cmake-build-*",
+        ".git",
+        ".idea",
+        ".cache",
+        "third_party",
+    ]
+    
     cmd = ["lizard", path, "-L", str(max_lines), "-V"]
+    # 添加排除选项
+    for pattern in exclude_patterns:
+        cmd.extend(["-x", pattern])
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
@@ -32,6 +46,9 @@ def run_lizard(path: str, max_lines: int) -> List[Dict]:
     # 解析格式: NLOC CCN token PARAM length location
     # 示例: 54      8    329      3      54 memrpc::DuplicateHandles@43-96@file.cpp
     pattern = r'^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)@(\d+)-(\d+)@(.+)$'
+    
+    # C++ 文件扩展名白名单
+    cpp_extensions = {'.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx'}
     
     for line in result.stdout.strip().split('\n'):
         match = re.match(pattern, line)
@@ -49,10 +66,16 @@ def run_lizard(path: str, max_lines: int) -> List[Dict]:
                 'file': file_path
             })
     
-    # 去重并只保留超过阈值的函数
+    # 去重并只保留超过阈值的函数，同时过滤非 C++ 文件
     seen = set()
     unique = []
     for f in functions:
+        # 跳过非 C++ 文件
+        file_path = f['file']
+        ext = Path(file_path).suffix.lower()
+        if ext not in cpp_extensions:
+            continue
+            
         key = (f['file'], f['name'], f['start_line'])
         if key not in seen and f['length'] > max_lines:
             seen.add(key)
