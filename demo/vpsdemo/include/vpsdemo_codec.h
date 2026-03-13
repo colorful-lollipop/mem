@@ -26,12 +26,12 @@ template <>
 struct CodecTraits<vpsdemo::ScanFileRequest> {
     static bool Encode(const vpsdemo::ScanFileRequest& request, std::vector<uint8_t>* bytes) {
         ByteWriter writer;
-        return writer.WriteString(request.file_path) && detail::AssignBytes(writer, bytes);
+        return writer.WriteString(request.filePath) && detail::AssignBytes(writer, bytes);
     }
     static bool Decode(const uint8_t* bytes, std::size_t size, vpsdemo::ScanFileRequest* request) {
         if (request == nullptr) return false;
         ByteReader reader(bytes, size);
-        return reader.ReadString(&request->file_path);
+        return reader.ReadString(&request->filePath);
     }
 };
 
@@ -39,13 +39,13 @@ template <>
 struct CodecTraits<vpsdemo::ScanFileReply> {
     static bool Encode(const vpsdemo::ScanFileReply& reply, std::vector<uint8_t>* bytes) {
         ByteWriter writer;
-        return writer.WriteInt32(reply.code) && writer.WriteInt32(reply.threat_level) &&
+        return writer.WriteInt32(reply.code) && writer.WriteInt32(reply.threatLevel) &&
                detail::AssignBytes(writer, bytes);
     }
     static bool Decode(const uint8_t* bytes, std::size_t size, vpsdemo::ScanFileReply* reply) {
         if (reply == nullptr) return false;
         ByteReader reader(bytes, size);
-        return reader.ReadInt32(&reply->code) && reader.ReadInt32(&reply->threat_level);
+        return reader.ReadInt32(&reply->code) && reader.ReadInt32(&reply->threatLevel);
     }
 };
 

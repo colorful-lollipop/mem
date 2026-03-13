@@ -31,7 +31,7 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
 }  // namespace
 
 TEST(VpsSessionServiceTest, OpenSessionInitializesService) {
-    VpsDemoService service;
+    VesEngineService service;
     EngineSessionService sessionService(&service);
 
     memrpc::BootstrapHandles handles{};

@@ -7,20 +7,20 @@ namespace vpsdemo {
 
 TEST(VpsDemoCodecTest, ScanFileRequestRoundTrip) {
     ScanFileRequest req;
-    req.file_path = "/data/scan/clean.apk";
+    req.filePath = "/data/scan/clean.apk";
 
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(memrpc::CodecTraits<ScanFileRequest>::Encode(req, &bytes));
 
     ScanFileRequest decoded;
     ASSERT_TRUE(memrpc::CodecTraits<ScanFileRequest>::Decode(bytes.data(), bytes.size(), &decoded));
-    EXPECT_EQ(decoded.file_path, req.file_path);
+    EXPECT_EQ(decoded.filePath, req.filePath);
 }
 
 TEST(VpsDemoCodecTest, ScanFileReplyRoundTrip) {
     ScanFileReply reply;
     reply.code = 0;
-    reply.threat_level = 1;
+    reply.threatLevel = 1;
 
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(memrpc::CodecTraits<ScanFileReply>::Encode(reply, &bytes));
@@ -28,7 +28,7 @@ TEST(VpsDemoCodecTest, ScanFileReplyRoundTrip) {
     ScanFileReply decoded;
     ASSERT_TRUE(memrpc::CodecTraits<ScanFileReply>::Decode(bytes.data(), bytes.size(), &decoded));
     EXPECT_EQ(decoded.code, reply.code);
-    EXPECT_EQ(decoded.threat_level, reply.threat_level);
+    EXPECT_EQ(decoded.threatLevel, reply.threatLevel);
 }
 
 TEST(VpsDemoCodecTest, DecodeRejectsTruncatedPayload) {

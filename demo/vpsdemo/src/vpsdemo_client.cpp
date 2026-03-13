@@ -14,7 +14,7 @@ namespace {
 const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
-std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
+std::unique_ptr<vpsdemo::VesClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     auto remote = sam->GetSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID);
     if (remote == nullptr) {
@@ -27,7 +27,7 @@ std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
     }
     HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
+    auto client = std::make_unique<vpsdemo::VesClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
         HILOGE("VpsClient init failed");
         return nullptr;
@@ -35,7 +35,7 @@ std::unique_ptr<vpsdemo::VpsClient> ConnectToEngine() {
     return client;
 }
 
-std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
+std::unique_ptr<vpsdemo::VesClient> LoadAndConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
 
     auto remote = sam->LoadSystemAbility(vpsdemo::VPS_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
@@ -51,7 +51,7 @@ std::unique_ptr<vpsdemo::VpsClient> LoadAndConnectToEngine() {
     }
     HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
+    auto client = std::make_unique<vpsdemo::VesClient>(remote);
     if (client->Init() != memrpc::StatusCode::Ok) {
         HILOGE("VpsClient init failed");
         return nullptr;
@@ -71,7 +71,7 @@ int main() {
     // Inject backend and proxy factory.
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    vpsdemo::VpsClient::RegisterProxyFactory();
+    vpsdemo::VesClient::RegisterProxyFactory();
 
     // --- First session ---
     HILOGI("=== First session ===");
@@ -82,10 +82,10 @@ int main() {
 
     vpsdemo::ScanFileReply scanReply;
     client->ScanFile("/data/test_file_1.apk", &scanReply);
-    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
+    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
     client->ScanFile("/data/test_file_2.apk", &scanReply);
-    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threat_level);
+    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
     // Request engine unload (triggers death callback via RecoveryPolicy).
     HILOGI("=== Unload engine ===");
@@ -103,7 +103,7 @@ int main() {
     if (client2) {
         vpsdemo::ScanFileReply scan2;
         client2->ScanFile("/data/test_file_3.apk", &scan2);
-        HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threat_level);
+        HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
 
         client2->Shutdown();
         HILOGI("second session completed");

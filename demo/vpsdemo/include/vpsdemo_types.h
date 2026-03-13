@@ -11,12 +11,12 @@ struct InitReply {
 };
 
 struct ScanFileRequest {
-    std::string file_path;
+    std::string filePath;
 };
 
 struct ScanFileReply {
     int32_t code = 0;
-    int32_t threat_level = 0;  // 0 = clean, 1 = infected
+    int32_t threatLevel = 0;  // 0 = clean, 1 = infected
 };
 
 }  // namespace vpsdemo

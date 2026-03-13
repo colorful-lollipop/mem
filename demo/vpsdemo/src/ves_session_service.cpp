@@ -28,7 +28,7 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
 }
 }  // namespace
 
-EngineSessionService::EngineSessionService(VpsDemoService* service)
+EngineSessionService::EngineSessionService(VesEngineService* service)
     : service_(service) {}
 
 memrpc::StatusCode EngineSessionService::EnsureInitialized() {

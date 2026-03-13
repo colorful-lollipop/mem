@@ -27,7 +27,7 @@ TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             ScanFileReply reply;
             reply.code = 0;
-            reply.threat_level = 0;
+            reply.threatLevel = 0;
             (void)req;
             return reply;
         });
@@ -48,7 +48,7 @@ TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
     ASSERT_EQ(client.Init(), memrpc::StatusCode::Ok);
 
     ScanFileRequest req;
-    req.file_path = "/data/sleep50.bin";
+    req.filePath = "/data/sleep50.bin";
 
     memrpc::RpcCall call;
     call.opcode = static_cast<memrpc::Opcode>(DemoOpcode::DemoScanFile);

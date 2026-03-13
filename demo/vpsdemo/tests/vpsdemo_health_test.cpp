@@ -9,7 +9,7 @@
 namespace vpsdemo {
 
 TEST(VpsHealthTest, SnapshotIdleDefaults) {
-    VpsDemoService service;
+    VesEngineService service;
     auto snapshot = service.GetHealthSnapshot();
     EXPECT_EQ(snapshot.in_flight, 0u);
     EXPECT_EQ(snapshot.current_task, "idle");
@@ -17,11 +17,11 @@ TEST(VpsHealthTest, SnapshotIdleDefaults) {
 }
 
 TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
-    VpsDemoService service;
+    VesEngineService service;
     service.Initialize();
 
     ScanFileRequest req;
-    req.file_path = "/data/virus.apk";
+    req.filePath = "/data/virus.apk";
 
     auto reply = service.ScanFile(req);
     EXPECT_EQ(reply.code, 0);
@@ -32,13 +32,13 @@ TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
 }
 
 TEST(VpsHealthTest, InFlightAndAgeDuringScan) {
-    VpsDemoService service;
+    VesEngineService service;
     service.Initialize();
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
         ScanFileRequest req;
-        req.file_path = "/data/sleep50.bin";
+        req.filePath = "/data/sleep50.bin";
         started.store(true);
         (void)service.ScanFile(req);
     });

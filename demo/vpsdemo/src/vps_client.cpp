@@ -10,15 +10,15 @@
 
 namespace vpsdemo {
 
-VpsClient::VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VpsClientOptions options)
     : remote_(remote),
       client_(),
       options_(options) {}
 
-VpsClient::~VpsClient() = default;
+VesClient::~VesClient() = default;
 
-void VpsClient::RegisterProxyFactory() {
+void VesClient::RegisterProxyFactory() {
     OHOS::BrokerRegistration::GetInstance().Register(
         VPS_BOOTSTRAP_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
@@ -27,7 +27,7 @@ void VpsClient::RegisterProxyFactory() {
         });
 }
 
-memrpc::StatusCode VpsClient::Init() {
+memrpc::StatusCode VesClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
     auto bootstrap = OHOS::iface_cast<IVpsBootstrap>(remote_);
     if (bootstrap == nullptr) {
@@ -63,9 +63,9 @@ memrpc::StatusCode VpsClient::Init() {
                   static_cast<unsigned>(suspect.opcode),
                   static_cast<int>(suspect.last_state));
         }
-        engine_died_ = true;
-        if (restart_callback_) {
-            restart_callback_();
+        engineDied_ = true;
+        if (restartCallback_) {
+            restartCallback_();
         }
         return memrpc::RecoveryDecision{memrpc::RecoveryAction::Restart, options_.engineDeathRestartDelayMs};
     };
@@ -79,21 +79,21 @@ memrpc::StatusCode VpsClient::Init() {
     return client_.Init();
 }
 
-void VpsClient::Shutdown() {
+void VesClient::Shutdown() {
     client_.Shutdown();
 }
 
-void VpsClient::SetEngineRestartCallback(EngineRestartCallback callback) {
-    restart_callback_ = std::move(callback);
+void VesClient::SetEngineRestartCallback(EngineRestartCallback callback) {
+    restartCallback_ = std::move(callback);
 }
 
-bool VpsClient::EngineDied() const {
-    return engine_died_.load();
+bool VesClient::EngineDied() const {
+    return engineDied_.load();
 }
 
-memrpc::StatusCode VpsClient::ScanFile(const std::string& path, ScanFileReply* reply) {
+memrpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* reply) {
     ScanFileRequest request;
-    request.file_path = path;
+    request.filePath = path;
     return memrpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
         &client_,
         static_cast<memrpc::Opcode>(DemoOpcode::DemoScanFile),

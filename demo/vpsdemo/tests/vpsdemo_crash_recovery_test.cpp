@@ -80,7 +80,7 @@ TEST(VpsCrashRecoveryTest, CrashThenRecover) {
 
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    vpsdemo::VpsClient::RegisterProxyFactory();
+    vpsdemo::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -95,7 +95,7 @@ TEST(VpsCrashRecoveryTest, CrashThenRecover) {
 
     std::atomic<int> engineRestarts{0};
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
+    auto client = std::make_unique<vpsdemo::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) {

@@ -11,7 +11,7 @@
 
 namespace vpsdemo {
 
-class VpsDemoService;
+class VesEngineService;
 
 class VesSessionProvider {
  public:
@@ -22,7 +22,7 @@ class VesSessionProvider {
 
 class EngineSessionService final : public VesSessionProvider {
  public:
-    explicit EngineSessionService(VpsDemoService* service);
+    explicit EngineSessionService(VesEngineService* service);
 
     memrpc::StatusCode OpenSession(memrpc::BootstrapHandles& handles) override;
     memrpc::StatusCode CloseSession() override;
@@ -32,7 +32,7 @@ class EngineSessionService final : public VesSessionProvider {
  private:
     memrpc::StatusCode EnsureInitialized();
 
-    VpsDemoService* service_ = nullptr;
+    VesEngineService* service_ = nullptr;
     std::shared_ptr<memrpc::PosixDemoBootstrapChannel> bootstrap_;
     std::unique_ptr<memrpc::RpcServer> rpc_server_;
     std::mutex init_mutex_;

@@ -22,7 +22,7 @@ uint32_t MonotonicNowMs() {
 }
 }  // namespace
 
-void VpsDemoService::Initialize() {
+void VesEngineService::Initialize() {
     if (initialized_) {
         return;
     }
@@ -30,59 +30,59 @@ void VpsDemoService::Initialize() {
     HILOGI("VpsDemoService initialized");
 }
 
-bool VpsDemoService::initialized() const {
+bool VesEngineService::initialized() const {
     return initialized_;
 }
 
-ScanFileReply VpsDemoService::ScanFile(const ScanFileRequest& request) {
+ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
     {
-        std::lock_guard<std::mutex> lock(health_mutex_);
-        in_flight_++;
-        current_task_ = request.file_path;
-        last_task_start_mono_ms_ = MonotonicNowMs();
+        std::lock_guard<std::mutex> lock(healthMutex_);
+        inFlight_++;
+        currentTask_ = request.filePath;
+        lastTaskStartMonoMs_ = MonotonicNowMs();
     }
 
     ScanFileReply result;
     if (!initialized_) {
         result.code = -1;
     } else {
-        const auto behavior = EvaluateSamplePath(request.file_path);
+        const auto behavior = EvaluateSamplePath(request.filePath);
         if (behavior.shouldCrash) {
-            HILOGE("ScanFile(%{public}s): crash requested", request.file_path.c_str());
+            HILOGE("ScanFile(%{public}s): crash requested", request.filePath.c_str());
             std::abort();
         }
         if (behavior.sleepMs > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(behavior.sleepMs));
         }
         result.code = 0;
-        result.threat_level = behavior.threatLevel;
+        result.threatLevel = behavior.threatLevel;
     }
     HILOGI("ScanFile(%{public}s): threat=%{public}d",
-          request.file_path.c_str(), result.threat_level);
+          request.filePath.c_str(), result.threatLevel);
 
     {
-        std::lock_guard<std::mutex> lock(health_mutex_);
-        in_flight_--;
-        if (in_flight_ == 0) {
-            current_task_ = "idle";
+        std::lock_guard<std::mutex> lock(healthMutex_);
+        inFlight_--;
+        if (inFlight_ == 0) {
+            currentTask_ = "idle";
         }
     }
 
     return result;
 }
 
-VpsHealthSnapshot VpsDemoService::GetHealthSnapshot() const {
-    std::lock_guard<std::mutex> lock(health_mutex_);
-    VpsHealthSnapshot snapshot;
-    snapshot.in_flight = in_flight_;
-    snapshot.current_task = current_task_;
-    if (in_flight_ > 0 && last_task_start_mono_ms_ > 0) {
-        snapshot.last_task_age_ms = MonotonicNowMs() - last_task_start_mono_ms_;
+VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
+    std::lock_guard<std::mutex> lock(healthMutex_);
+    VesHealthSnapshot snapshot;
+    snapshot.in_flight = inFlight_;
+    snapshot.current_task = currentTask_;
+    if (inFlight_ > 0 && lastTaskStartMonoMs_ > 0) {
+        snapshot.last_task_age_ms = MonotonicNowMs() - lastTaskStartMonoMs_;
     }
     return snapshot;
 }
 
-void VpsDemoService::RegisterHandlers(memrpc::RpcServer* server) {
+void VesEngineService::RegisterHandlers(memrpc::RpcServer* server) {
     if (server == nullptr) {
         return;
     }

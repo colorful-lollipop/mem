@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
 
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    vpsdemo::VpsClient::RegisterProxyFactory();
+    vpsdemo::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
     std::atomic<int> engineRestarts{0};
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
+    auto client = std::make_unique<vpsdemo::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         // Reap the dead engine.
@@ -142,13 +142,13 @@ int main(int argc, char* argv[]) {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean.apk", &reply);
         DT_CHECK(status == memrpc::StatusCode::Ok, "step1: clean scan RPC ok");
-        DT_CHECK(reply.threat_level == 0, "step1: clean file threat=0");
+        DT_CHECK(reply.threatLevel == 0, "step1: clean file threat=0");
     }
     {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus.apk", &reply);
         DT_CHECK(status == memrpc::StatusCode::Ok, "step1: virus scan RPC ok");
-        DT_CHECK(reply.threat_level == 1, "step1: virus file threat=1");
+        DT_CHECK(reply.threatLevel == 1, "step1: virus file threat=1");
     }
 
     // === Step 2: send crash sample ===
@@ -181,13 +181,13 @@ int main(int argc, char* argv[]) {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean_after.apk", &reply);
         DT_CHECK(status == memrpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
-        DT_CHECK(reply.threat_level == 0, "step4: post-recovery threat=0");
+        DT_CHECK(reply.threatLevel == 0, "step4: post-recovery threat=0");
     }
     {
         vpsdemo::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus_after.apk", &reply);
         DT_CHECK(status == memrpc::StatusCode::Ok, "step4: post-recovery virus scan ok");
-        DT_CHECK(reply.threat_level == 1, "step4: post-recovery threat=1");
+        DT_CHECK(reply.threatLevel == 1, "step4: post-recovery threat=1");
     }
 
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
@@ -219,7 +219,7 @@ int main(int argc, char* argv[]) {
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
         HILOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
-              i + 1, static_cast<int>(status), reply.threat_level,
+              i + 1, static_cast<int>(status), reply.threatLevel,
               static_cast<long long>(elapsed));
         DT_CHECK(status == memrpc::StatusCode::Ok,
                  ("step5: call " + std::to_string(i + 1) + " ok").c_str());

@@ -28,10 +28,10 @@ class VirusExecutorService : public OHOS::SystemAbility,
     void OnStart() override;
     void OnStop() override;
 
-    VpsDemoService& service() { return service_; }
+    VesEngineService& service() { return service_; }
 
  private:
-    VpsDemoService service_;
+    VesEngineService service_;
     std::shared_ptr<EngineSessionService> session_service_;
 };
 

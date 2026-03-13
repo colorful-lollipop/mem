@@ -76,7 +76,7 @@ TEST(VpsHeartbeatTest, HeartbeatShowsInFlight) {
     std::atomic<bool> started{false};
     std::thread worker([&]() {
         vpsdemo::ScanFileRequest req;
-        req.file_path = "/data/sleep50.bin";
+        req.filePath = "/data/sleep50.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
     });

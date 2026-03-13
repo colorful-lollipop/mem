@@ -93,7 +93,7 @@ void RespawnEngine(const std::string& enginePath, StressStats* stats) {
 }
 
 void WorkerThread(const StressConfig& config, uint32_t threadId,
-                  vpsdemo::VpsClient* client, StressStats* stats) {
+                  vpsdemo::VesClient* client, StressStats* stats) {
     std::mt19937 rng(config.seed + threadId);
     std::uniform_int_distribution<size_t> tokenDist(0, kNormalTokens.size() - 1);
     std::uniform_real_distribution<double> crashDist(0.0, 1.0);
@@ -120,10 +120,10 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
             continue;
         }
 
-        if (reply.threat_level != behavior.threatLevel) {
+        if (reply.threatLevel != behavior.threatLevel) {
             stats->mismatch++;
             HILOGE("thread %{public}u: MISMATCH %{public}s expected=%{public}d got=%{public}d",
-                  threadId, path.c_str(), behavior.threatLevel, reply.threat_level);
+                  threadId, path.c_str(), behavior.threatLevel, reply.threatLevel);
         } else {
             stats->ok++;
         }
@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
     // Inject backend for client-side SAM access.
     auto backend = std::make_shared<vpsdemo::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    vpsdemo::VpsClient::RegisterProxyFactory();
+    vpsdemo::VesClient::RegisterProxyFactory();
 
     // Spawn engine.
     {
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
 
     StressStats stats;
 
-    auto client = std::make_unique<vpsdemo::VpsClient>(remote);
+    auto client = std::make_unique<vpsdemo::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         RespawnEngine(enginePath, &stats);
     });

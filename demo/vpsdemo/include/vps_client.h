@@ -22,14 +22,14 @@ struct VpsClientOptions {
 // Application-level client that owns the full connection to the engine:
 // IRemoteObject + VpsBootstrapProxy + RpcClient.
 // Provides typed VPS business methods.
-class VpsClient {
+class VesClient {
  public:
-    explicit VpsClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+    explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                        VpsClientOptions options = {});
-    ~VpsClient();
+    ~VesClient();
 
-    VpsClient(const VpsClient&) = delete;
-    VpsClient& operator=(const VpsClient&) = delete;
+    VesClient(const VesClient&) = delete;
+    VesClient& operator=(const VesClient&) = delete;
 
     // Register VpsBootstrapProxy factory with BrokerRegistration.
     // Call once before using iface_cast<IVpsBootstrap>.
@@ -53,8 +53,8 @@ class VpsClient {
     std::shared_ptr<VpsBootstrapProxy> proxy_;
     memrpc::RpcClient client_;
     VpsClientOptions options_;
-    std::atomic<bool> engine_died_{false};
-    EngineRestartCallback restart_callback_;
+    std::atomic<bool> engineDied_{false};
+    EngineRestartCallback restartCallback_;
 };
 
 }  // namespace vpsdemo
