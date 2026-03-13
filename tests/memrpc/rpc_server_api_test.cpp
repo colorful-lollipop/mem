@@ -13,9 +13,9 @@ constexpr memrpc::Opcode kTestOpcode = 1u;
 TEST(RpcServerApiTest, PublicHeaderComposes) {
   MemRpc::RpcServer server;
   MemRpc::ServerOptions options;
-  options.high_worker_threads = 2;
-  options.normal_worker_threads = 3;
-  options.completion_queue_capacity = 4;
+  options.highWorkerThreads = 2;
+  options.normalWorkerThreads = 3;
+  options.completionQueueCapacity = 4;
   MemRpc::RpcServerRuntimeStats stats;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
@@ -30,6 +30,6 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
   event.payload = {1, 2, 3};
 
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);
-  EXPECT_EQ(stats.completion_backlog, 0u);
+  EXPECT_EQ(stats.completionBacklog, 0u);
   EXPECT_EQ(server.PublishEvent(event), MemRpc::StatusCode::EngineInternalError);
 }

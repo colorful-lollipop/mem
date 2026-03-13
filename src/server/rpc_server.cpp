@@ -691,17 +691,17 @@ StatusCode RpcServer::Start() {
   }
   impl_->running.store(true);
   impl_->completion_queue_capacity =
-      impl_->options.completion_queue_capacity == 0
+      impl_->options.completionQueueCapacity == 0
           ? std::max(1u, impl_->session.Header()->responseRingSize)
-          : impl_->options.completion_queue_capacity;
+          : impl_->options.completionQueueCapacity;
   impl_->pending_completion_count = 0;
   impl_->StartResponseWriter();
-  impl_->high_executor = impl_->options.high_executor
-      ? impl_->options.high_executor
-      : std::make_shared<ThreadPoolExecutor>(impl_->options.high_worker_threads);
-  impl_->normal_executor = impl_->options.normal_executor
-      ? impl_->options.normal_executor
-      : std::make_shared<ThreadPoolExecutor>(impl_->options.normal_worker_threads);
+  impl_->high_executor = impl_->options.highExecutor
+      ? impl_->options.highExecutor
+      : std::make_shared<ThreadPoolExecutor>(impl_->options.highWorkerThreads);
+  impl_->normal_executor = impl_->options.normalExecutor
+      ? impl_->options.normalExecutor
+      : std::make_shared<ThreadPoolExecutor>(impl_->options.normalWorkerThreads);
   impl_->dispatcher_thread = std::thread([this] { impl_->DispatcherLoop(); });
   return StatusCode::Ok;
 }
@@ -725,15 +725,15 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
 
   {
     std::lock_guard<std::mutex> lock(impl_->completion_mutex);
-    stats.completion_backlog = impl_->pending_completion_count;
-    stats.completion_backlog_capacity = impl_->completion_queue_capacity;
+    stats.completionBacklog = impl_->pending_completion_count;
+    stats.completionBacklogCapacity = impl_->completion_queue_capacity;
   }
   if (impl_->session.Header() != nullptr) {
-    stats.high_request_ring_pending = RingCount(impl_->session.Header()->highRing);
-    stats.normal_request_ring_pending = RingCount(impl_->session.Header()->normalRing);
-    stats.response_ring_pending = RingCount(impl_->session.Header()->responseRing);
+    stats.highRequestRingPending = RingCount(impl_->session.Header()->highRing);
+    stats.normalRequestRingPending = RingCount(impl_->session.Header()->normalRing);
+    stats.responseRingPending = RingCount(impl_->session.Header()->responseRing);
   }
-  stats.waiting_for_response_credit =
+  stats.waitingForResponseCredit =
       impl_->response_writer_waiting_for_credit.load(std::memory_order_relaxed);
   return stats;
 }

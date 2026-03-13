@@ -53,7 +53,7 @@ TEST(MiniRpcBackpressureTest, SlotExhaustionAndRecovery) {
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  server.SetOptions({.high_worker_threads = 4, .normal_worker_threads = 4});
+  server.SetOptions({.highWorkerThreads = 4, .normalWorkerThreads = 4});
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
@@ -122,7 +122,7 @@ TEST(MiniRpcBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  server.SetOptions({.high_worker_threads = 2, .normal_worker_threads = 2});
+  server.SetOptions({.highWorkerThreads = 2, .normalWorkerThreads = 2});
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);

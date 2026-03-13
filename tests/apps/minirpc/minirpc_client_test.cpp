@@ -87,7 +87,7 @@ TEST(MiniRpcClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
 
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
-  server.SetOptions({.high_worker_threads = 1, .normal_worker_threads = 1});
+  server.SetOptions({.highWorkerThreads = 1, .normalWorkerThreads = 1});
   MiniRpcService service;
   service.RegisterHandlers(&server);
   ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);

@@ -24,7 +24,15 @@ class PayloadView {
   const uint8_t* begin() const { return data_; }
   const uint8_t* end() const { return data_ + size_; }
 
-  std::vector<uint8_t> ToVector() const { return std::vector<uint8_t>(begin(), end()); }
+  // Compatibility aliases (PascalCase)
+  const uint8_t* Data() const { return data_; }
+  std::size_t Size() const { return size_; }
+  bool Empty() const { return empty(); }
+  const uint8_t& Rront() const { return front(); }
+  const uint8_t* Begin() const { return begin(); }
+  const uint8_t* End() const { return end(); }
+
+  std::vector<uint8_t> ToVector() const { return std::vector<uint8_t>(Begin(), End()); }
 
   operator std::vector<uint8_t>() const { return ToVector(); }
 
@@ -34,8 +42,8 @@ class PayloadView {
 };
 
 inline bool operator==(PayloadView lhs, const std::vector<uint8_t>& rhs) {
-  return lhs.size() == rhs.size() &&
-         std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+  return lhs.Size() == rhs.size() &&
+         std::equal(lhs.Begin(), lhs.End(), rhs.begin(), rhs.end());
 }
 
 inline bool operator==(const std::vector<uint8_t>& lhs, PayloadView rhs) {

@@ -244,8 +244,8 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   MemRpc::ServerOptions options;
-  options.high_worker_threads = static_cast<uint32_t>(thread_count);
-  options.normal_worker_threads = static_cast<uint32_t>(thread_count);
+  options.highWorkerThreads = static_cast<uint32_t>(thread_count);
+  options.normalWorkerThreads = static_cast<uint32_t>(thread_count);
   server.SetOptions(options);
   MiniRpcService service;
   service.RegisterHandlers(&server);

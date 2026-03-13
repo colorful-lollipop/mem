@@ -133,8 +133,8 @@ TEST(DtPerfTest, ShortPerfBaseline) {
   memrpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   memrpc::ServerOptions options;
-  options.high_worker_threads = thread_count;
-  options.normal_worker_threads = thread_count;
+  options.highWorkerThreads = thread_count;
+  options.normalWorkerThreads = thread_count;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {

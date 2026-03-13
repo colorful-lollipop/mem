@@ -101,8 +101,8 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
 
   auto executor = std::make_shared<TestExecutor>(0);
   memrpc::ServerOptions options;
-  options.high_executor = executor;
-  options.normal_executor = executor;
+  options.highExecutor = executor;
+  options.normalExecutor = executor;
   server.SetOptions(options);
   server.RegisterHandler(kTestOpcode,
                          [](const memrpc::RpcServerCall& call, memrpc::RpcServerReply* reply) {

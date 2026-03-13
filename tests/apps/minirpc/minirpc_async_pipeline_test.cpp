@@ -56,8 +56,8 @@ TEST(MiniRpcAsyncPipelineTest, BatchSizeThroughput) {
   MemRpc::RpcServer server;
   server.SetBootstrapHandles(bootstrap->serverHandles());
   MemRpc::ServerOptions options;
-  options.high_worker_threads = 4;
-  options.normal_worker_threads = 4;
+  options.highWorkerThreads = 4;
+  options.normalWorkerThreads = 4;
   server.SetOptions(options);
   MiniRpcService service;
   service.RegisterHandlers(&server);
