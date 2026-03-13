@@ -29,7 +29,7 @@ TEST(VpsHeartbeatTest, OkAfterOpenSession) {
 
     memrpc::BootstrapHandles handles{};
     ASSERT_EQ(service.OpenSession(handles), memrpc::StatusCode::Ok);
-    const uint64_t session_id = handles.session_id;
+    const uint64_t session_id = handles.sessionId;
 
     VpsHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), memrpc::StatusCode::Ok);
@@ -55,7 +55,7 @@ TEST(VpsHeartbeatTest, HeartbeatOverSaSocket) {
     VpsBootstrapProxy proxy(stub->AsObject(), socketPath);
     memrpc::BootstrapHandles handles{};
     ASSERT_EQ(proxy.OpenSession(handles), memrpc::StatusCode::Ok);
-    const uint64_t session_id = handles.session_id;
+    const uint64_t session_id = handles.sessionId;
 
     VpsHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), memrpc::StatusCode::Ok);

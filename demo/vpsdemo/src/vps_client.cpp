@@ -54,14 +54,14 @@ memrpc::StatusCode VesClient::Init() {
     };
     policy.onEngineDeath = [this](const memrpc::EngineDeathReport& report) {
         HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
-              static_cast<unsigned long long>(report.dead_session_id),
-              report.safe_to_replay_count,
-              report.poison_pill_suspects.size());
-        for (const auto& suspect : report.poison_pill_suspects) {
+              static_cast<unsigned long long>(report.deadSessionId),
+              report.safeToReplayCount,
+              report.poisonPillSuspects.size());
+        for (const auto& suspect : report.poisonPillSuspects) {
             HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
-                  static_cast<unsigned long long>(suspect.request_id),
+                  static_cast<unsigned long long>(suspect.requestId),
                   static_cast<unsigned>(suspect.opcode),
-                  static_cast<int>(suspect.last_state));
+                  static_cast<int>(suspect.lastState));
         }
         engineDied_ = true;
         if (restartCallback_) {

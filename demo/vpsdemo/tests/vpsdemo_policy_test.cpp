@@ -21,7 +21,7 @@ TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
 
     memrpc::RpcServer server(bootstrap->serverHandles());
     memrpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
-        &server, static_cast<memrpc::Opcode>(DemoOpcode::ScanFile),
+        &server, static_cast<memrpc::Opcode>(VesOpcode::ScanFile),
         [](const ScanFileRequest& req) {
             // Force exec timeout by sleeping longer than client timeout.
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -52,7 +52,7 @@ TEST(VpsPolicyTest, ExecTimeoutTriggersOnFailure) {
 
     memrpc::RpcCall call;
     call.opcode = static_cast<memrpc::Opcode>(VesOpcode::ScanFile);
-    call.exec_timeout_ms = 5;  // short timeout
+    call.execTimeoutMs = 5;  // short timeout
     memrpc::CodecTraits<ScanFileRequest>::Encode(req, &call.payload);
 
     auto future = client.InvokeAsync(call);

@@ -11,9 +11,9 @@ namespace vpsdemo {
 TEST(VpsHealthTest, SnapshotIdleDefaults) {
     VesEngineService service;
     auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.in_flight, 0u);
-    EXPECT_EQ(snapshot.current_task, "idle");
-    EXPECT_EQ(snapshot.last_task_age_ms, 0u);
+    EXPECT_EQ(snapshot.inFlight, 0u);
+    EXPECT_EQ(snapshot.currentTask, "idle");
+    EXPECT_EQ(snapshot.lastTaskAgeMs, 0u);
 }
 
 TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
@@ -27,8 +27,8 @@ TEST(VpsHealthTest, SnapshotUpdatesAfterScan) {
     EXPECT_EQ(reply.code, 0);
 
     auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.in_flight, 0u);
-    EXPECT_EQ(snapshot.current_task, "idle");
+    EXPECT_EQ(snapshot.inFlight, 0u);
+    EXPECT_EQ(snapshot.currentTask, "idle");
 }
 
 TEST(VpsHealthTest, InFlightAndAgeDuringScan) {
@@ -48,8 +48,8 @@ TEST(VpsHealthTest, InFlightAndAgeDuringScan) {
     }
 
     auto snapshot = service.GetHealthSnapshot();
-    EXPECT_GE(snapshot.in_flight, 1u);
-    EXPECT_NE(snapshot.current_task, "idle");
+    EXPECT_GE(snapshot.inFlight, 1u);
+    EXPECT_NE(snapshot.currentTask, "idle");
 
     worker.join();
 }

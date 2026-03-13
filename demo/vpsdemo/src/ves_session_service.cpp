@@ -76,7 +76,7 @@ memrpc::StatusCode EngineSessionService::OpenSession(memrpc::BootstrapHandles& h
     }
     auto status = bootstrap_->OpenSession(handles);
     if (status == memrpc::StatusCode::Ok) {
-        session_id_ = handles.session_id;
+        session_id_ = handles.sessionId;
     }
     return status;
 }
