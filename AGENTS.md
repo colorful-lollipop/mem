@@ -5,11 +5,10 @@
 Current mainline work focuses on the shared-memory RPC framework and the VPS demo app.
 
 - `memrpc/include/memrpc/`, `memrpc/src/`: framework code
-- `include/vpsdemo/`, `demo/vpsdemo/src/`: mainline application code (`ves`, transport, client, `testkit`)
+- `vpsdemo/include/vpsdemo/`, `vpsdemo/src/{app,client,service,transport,testkit,ves}/`: mainline application code
 - `memrpc/tests/`: focused framework unit and integration tests
-- `demo/vpsdemo/tests/`: app-level unit, integration, stress, DT, and fuzz tests
-- `demo/`: runnable examples
-  - `vpsdemo/`: VPS (Virus Protection Service) demo application with supervisor, engine SA, and client
+- `vpsdemo/tests/`: app-level unit, integration, stress, DT, and fuzz tests
+- `vpsdemo/perf_baselines/`: app-owned perf/DT baselines
 - `docs/`: architecture, porting notes, and implementation plans
 
 Keep business-specific compatibility layers out of the framework. Applications should adapt their own legacy APIs.
@@ -22,14 +21,14 @@ Keep business-specific compatibility layers out of the framework. Applications s
 - `cmake --build build`: build libraries, tests, and demos
 - `ctest --test-dir build --output-on-failure`: run the active test suite (count varies by options; includes vpsdemo tests)
 - `cmake -S . -B build_full -DMEMRPC_ENABLE_FUZZ=ON && cmake --build build_full && ctest --test-dir build_full --output-on-failure`: one-line full build + tests (includes memrpc + vpsdemo fuzz)
-- `./build/demo/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
-- `./build/demo/vpsdemo/vpsdemo_client`: run the standalone VPS client
-- `./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
-- `./build/demo/vpsdemo/vpsdemo_testkit_stress_runner`: run the testkit stress runner directly
-- `cmake -S demo/vpsdemo -B build_vps -DVPSDEMO_ENABLE_TESTS=ON`: configure vpsdemo-only build (unit + integration + stress + dt)
+- `./build/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
+- `./build/vpsdemo/vpsdemo_client`: run the standalone VPS client
+- `./build/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
+- `./build/vpsdemo/vpsdemo_testkit_stress_runner`: run the testkit stress runner directly
+- `cmake -S vpsdemo -B build_vps -DVPSDEMO_ENABLE_TESTS=ON`: configure vpsdemo-only build (unit + integration + stress + dt)
 - `cmake --build build_vps`: build vpsdemo-only targets and tests
 - `ctest --test-dir build_vps --output-on-failure`: run vpsdemo-only test suite
-- `cmake -S demo/vpsdemo -B build_vps_fuzz -DVPSDEMO_ENABLE_TESTS=ON -DVPSDEMO_ENABLE_FUZZ=ON`: configure vpsdemo fuzz build
+- `cmake -S vpsdemo -B build_vps_fuzz -DVPSDEMO_ENABLE_TESTS=ON -DVPSDEMO_ENABLE_FUZZ=ON`: configure vpsdemo fuzz build
 - `cmake --build build_vps_fuzz`: build vpsdemo fuzz targets
 - `ctest --test-dir build_vps_fuzz -L fuzz --output-on-failure`: run vpsdemo fuzz smoke test
 

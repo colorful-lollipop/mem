@@ -20,16 +20,16 @@
 
 建议应用层按这个形态组织：
 
-- `demo/<app>/include`
+- `<app>/include`
   - 请求/响应类型
   - codec
   - client facade
   - service/handler 注册接口
-- `demo/<app>/src`
+- `<app>/src`
   - client
   - engine/service
   - transport/bootstrap/registry
-- `demo/<app>/tests`
+- `<app>/tests`
   - unit
   - integration
   - stress / dt / fuzz
@@ -58,7 +58,7 @@
 
 当前仓库里的主线样板是：
 
-- `demo/vpsdemo`
+- `vpsdemo`
 
 它同时展示了两类协议如何共用同一条 `memrpc` 通道：
 
@@ -67,7 +67,7 @@
 
 其中 `testkit` 继续保留了 `Echo/Add/Sleep`、故障注入、吞吐/延迟/DT/stress/fuzz 这些测试型能力；`ves` 负责业务调用。后续迁移新应用时，建议直接照这个模式组织，而不是把业务细节塞回框架层。
 
-新的业务接入应直接放到 `demo/<app>/include|src|tests`。
+新的业务接入应直接放到 `<app>/include|src|tests`。
 
 ## 事件模型
 

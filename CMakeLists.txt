@@ -27,4 +27,4 @@ find_package(GTest REQUIRED)
 # memrpc is a reusable dependency module, while the repository mainline is the
 # vpsdemo application and its test surface.
 add_subdirectory(memrpc)
-add_subdirectory(demo)
+add_subdirectory(vpsdemo)

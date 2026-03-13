@@ -12,8 +12,8 @@
 ## 复现
 
 ```bash
-cmake --build demo/vpsdemo/build
-timeout 20 ./demo/vpsdemo/build/vpsdemo_dt_crash_recovery
+cmake --build vpsdemo/build
+timeout 20 ./vpsdemo/build/vpsdemo_dt_crash_recovery
 ```
 
 输出停在：
@@ -47,6 +47,6 @@ EngineSessionService initialized
 ## 相关文件
 
 - `src/client/rpc_client.cpp` — `RestartAfterDeath`, `EnsureLiveSession`, `HandleEngineDeath`
-- `demo/vpsdemo/src/ves_bootstrap_proxy.cpp` — `OpenSession` reconnect 清理逻辑
-- `demo/vpsdemo/src/ves_client.cpp` — `SetEngineDeathHandler`, restart callback
-- `demo/vpsdemo/src/vesdemo_dt_crash_recovery.cpp` — DT 复现用例
+- `vpsdemo/src/transport/ves_bootstrap_proxy.cpp` — `OpenSession` reconnect 清理逻辑
+- `vpsdemo/src/client/ves_client.cpp` — `SetEngineDeathHandler`, restart callback
+- `vpsdemo/src/app/vesdemo_dt_crash_recovery.cpp` — DT 复现用例

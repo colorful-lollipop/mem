@@ -10,7 +10,7 @@ cmake --build build --target vpsdemo_supervisor vpsdemo_client vpsdemo_stress_cl
 ## 运行
 
 ```bash
-./build/demo/vpsdemo/vpsdemo_supervisor
+./build/vpsdemo/vpsdemo_supervisor
 ```
 
 推荐的自动化 smoke 方式：
@@ -41,8 +41,8 @@ ctest --test-dir build --output-on-failure -R vpsdemo_supervisor_integration_tes
 手动压测可直接运行：
 
 ```bash
-./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
-./build/demo/vpsdemo/vpsdemo_testkit_stress_runner
+./build/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
+./build/vpsdemo/vpsdemo_testkit_stress_runner
 ```
 
 ## 说明

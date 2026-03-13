@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Root of the memrpc repo.
-set(MEMRPC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+# Root of the repo.
+set(MEMRPC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(MEMRPC_MODULE_ROOT ${MEMRPC_ROOT}/memrpc)
 
 if (NOT TARGET memrpc_core)
@@ -23,9 +23,11 @@ if (NOT TARGET memrpc_core)
       ${MEMRPC_MODULE_ROOT}/src/core/session.cpp
   )
   target_include_directories(memrpc_core PUBLIC
-      ${MEMRPC_ROOT}/include
       ${MEMRPC_MODULE_ROOT}/include
       ${MEMRPC_MODULE_ROOT}/src
+  )
+  target_include_directories(memrpc_core PRIVATE
+      ${MEMRPC_ROOT}/include
   )
   target_compile_features(memrpc_core PUBLIC cxx_std_17)
   target_link_libraries(memrpc_core PUBLIC pthread rt)
@@ -48,42 +50,86 @@ target_include_directories(ohos_sa_mock PUBLIC
 )
 target_compile_features(ohos_sa_mock PUBLIC cxx_std_17)
 
-# --- vpsdemo library (registry + bootstrap + demo service) ---
-add_library(vpsdemo_lib
-    src/registry_protocol.cpp
-    src/registry_server.cpp
-    src/registry_client.cpp
-    src/registry_backend.cpp
-    src/virus_executor_service.cpp
-    src/ves_bootstrap_proxy.cpp
-    src/ves_client.cpp
-    src/ves_session_service.cpp
-    src/vesdemo_sample_rules.cpp
-    src/ves_engine_service.cpp
-    src/testkit_service.cpp
-    src/testkit_async_client.cpp
-    src/testkit_client.cpp
-)
-target_include_directories(vpsdemo_lib PUBLIC
+set(VPSDEMO_PUBLIC_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${MEMRPC_ROOT}/include
 )
-target_link_libraries(vpsdemo_lib PUBLIC memrpc_core ohos_sa_mock)
+
+add_library(vpsdemo_transport
+    src/transport/registry_protocol.cpp
+    src/transport/registry_server.cpp
+    src/transport/registry_client.cpp
+    src/transport/registry_backend.cpp
+    src/transport/ves_bootstrap_proxy.cpp
+)
+target_include_directories(vpsdemo_transport PUBLIC ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_link_libraries(vpsdemo_transport PUBLIC memrpc_core ohos_sa_mock)
+target_compile_features(vpsdemo_transport PUBLIC cxx_std_17)
+
+add_library(vpsdemo_ves
+    src/ves/vesdemo_sample_rules.cpp
+)
+target_include_directories(vpsdemo_ves PUBLIC ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_compile_features(vpsdemo_ves PUBLIC cxx_std_17)
+
+add_library(vpsdemo_client_lib
+    src/client/ves_client.cpp
+)
+target_include_directories(vpsdemo_client_lib PUBLIC ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_link_libraries(vpsdemo_client_lib PUBLIC memrpc_core vpsdemo_transport)
+target_compile_features(vpsdemo_client_lib PUBLIC cxx_std_17)
+
+add_library(vpsdemo_testkit
+    src/testkit/testkit_service.cpp
+    src/testkit/testkit_async_client.cpp
+    src/testkit/testkit_client.cpp
+)
+target_include_directories(vpsdemo_testkit PUBLIC ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_link_libraries(vpsdemo_testkit PUBLIC memrpc_core)
+target_compile_features(vpsdemo_testkit PUBLIC cxx_std_17)
+
+add_library(vpsdemo_service
+    src/service/virus_executor_service.cpp
+    src/service/ves_session_service.cpp
+    src/service/ves_engine_service.cpp
+)
+target_include_directories(vpsdemo_service PUBLIC ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_link_libraries(vpsdemo_service PUBLIC memrpc_core vpsdemo_ves vpsdemo_testkit ohos_sa_mock)
+target_compile_features(vpsdemo_service PUBLIC cxx_std_17)
+
+# Aggregate application surface for tests and simple entrypoints.
+add_library(vpsdemo_lib INTERFACE)
+target_include_directories(vpsdemo_lib INTERFACE ${VPSDEMO_PUBLIC_INCLUDE_DIRS})
+target_link_libraries(vpsdemo_lib INTERFACE
+    vpsdemo_transport
+    vpsdemo_ves
+    vpsdemo_client_lib
+    vpsdemo_testkit
+    vpsdemo_service
+)
 
 # --- Executables ---
-add_executable(vpsdemo_supervisor src/vesdemo_supervisor.cpp)
-target_link_libraries(vpsdemo_supervisor PRIVATE vpsdemo_lib)
+add_executable(vpsdemo_supervisor src/app/vesdemo_supervisor.cpp)
+target_link_libraries(vpsdemo_supervisor PRIVATE vpsdemo_transport)
 
-add_executable(vpsdemo_engine_sa src/vesdemo_engine_sa.cpp)
-target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib)
+add_executable(vpsdemo_engine_sa src/app/vesdemo_engine_sa.cpp)
+target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_transport vpsdemo_service)
 
-add_executable(vpsdemo_client src/vesdemo_client.cpp)
-target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib)
+add_executable(vpsdemo_client src/app/vesdemo_client.cpp)
+target_link_libraries(vpsdemo_client PRIVATE vpsdemo_transport vpsdemo_client_lib)
 
-add_executable(vpsdemo_stress_client src/vesdemo_stress_client.cpp)
-target_link_libraries(vpsdemo_stress_client PRIVATE vpsdemo_lib)
+add_executable(vpsdemo_stress_client src/app/vesdemo_stress_client.cpp)
+target_link_libraries(vpsdemo_stress_client PRIVATE
+    vpsdemo_transport
+    vpsdemo_client_lib
+    vpsdemo_ves
+)
 
-add_executable(vpsdemo_dt_crash_recovery src/vesdemo_dt_crash_recovery.cpp)
-target_link_libraries(vpsdemo_dt_crash_recovery PRIVATE vpsdemo_lib)
+add_executable(vpsdemo_dt_crash_recovery src/app/vesdemo_dt_crash_recovery.cpp)
+target_link_libraries(vpsdemo_dt_crash_recovery PRIVATE
+    vpsdemo_transport
+    vpsdemo_client_lib
+)
 
 option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
 option(VPSDEMO_ENABLE_FUZZ "Build vpsdemo fuzz targets" OFF)

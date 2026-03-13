@@ -22,3 +22,4 @@ third_party/*/build/
 *.pdb
 *.log
 compile_commands.json
+.idea

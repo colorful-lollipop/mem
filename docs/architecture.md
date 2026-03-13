@@ -3,11 +3,11 @@
 `MemRpc` 是一套基于共享内存和 `eventfd` 的通用跨进程 RPC 框架。当前主线构建只关注两个主体：
 
 - 框架层：`memrpc`
-- 应用层：`demo/vpsdemo`
+- 应用层：`vpsdemo`
   - `ves` 业务协议与 client/service
   - `testkit` 测试协议与 fault injection / perf / stress / fuzz 覆盖
 
-原独立测试样板的能力已经收编到 `demo/vpsdemo/testkit`，不再作为独立主线模块存在。
+原独立测试样板的能力已经收编到 `vpsdemo/testkit`，不再作为独立主线模块存在。
 
 框架公开头也只保留分层路径：
 
@@ -225,11 +225,11 @@ credit fd 采用“资源重新可写”语义：
 
 这些都留给应用层处理。
 
-## MiniRpc 样板
+## Testkit 样板
 
-`MiniRpc` 是最小应用样板，用来验证框架本身的泛用性。
+`testkit` 是 `vpsdemo` 内建的测试型 RPC 组合，用来验证框架主路径和应用侧回归面。
 
-当前只保留三个基础 RPC：
+当前保留三个基础 RPC：
 
 - `Echo`
 - `Add`
@@ -243,7 +243,7 @@ credit fd 采用“资源重新可写”语义：
 - 验证 request/reply 全量 view decode，服务端默认 view，保留 owning 用于对比/兼容
 - 通过吞吐量基线测试持续监控 `Echo/Add/Sleep` 的 ops/sec，回退超过 10% 视为失败
 
-`MiniRpc` 不承担复杂业务兼容职责，也不强依赖事件模型。
+`testkit` 不承担复杂业务兼容职责，也不强依赖事件模型。
 
 ## 小包降拷贝现状
 
@@ -259,7 +259,7 @@ credit fd 采用“资源重新可写”语义：
   - `RpcFuture::WaitAndTake()` 可以把 `RpcReply` move 给调用方
 - codec 边界：
   - `ByteReader` 支持 `ReadStringView()` / `ReadBytesView()`
-  - `MiniRpc` request/reply 已全量支持 view decode，并保留 owning 模式
+  - `testkit` request/reply 已全量支持 view decode，并保留 owning 模式
   - VPS codec 的外层 envelope 已改成在原始字节流上推进，不再切中间 `vector`
 
 仍然保留的 owning 边界：
@@ -267,7 +267,7 @@ credit fd 采用“资源重新可写”语义：
 - request submitter 仍然要把 payload `memcpy` 到 request slot
 - response loop 仍然要把 response slot materialize 成 `RpcReply.payload`
 - 大对象业务结构默认仍保留 owning decode，view codec 只覆盖热点路径
-- `MiniRpc` handler 仍保留 owning decode 分支，便于兼容和性能对比
+- `testkit` handler 仍保留 owning decode 分支，便于兼容和性能对比
 
 ## 恢复语义
 

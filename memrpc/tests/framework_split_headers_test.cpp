@@ -25,7 +25,7 @@ TEST(FrameworkSplitHeadersTest, MainlineHeadersDoNotDependOnLegacyCompatPaths) {
   EXPECT_EQ(clientContent.find("vps_demo"), std::string::npos);
   EXPECT_EQ(clientContent.find("minirpc"), std::string::npos);
 
-  std::ifstream testkitHeader(MEMRPC_REPO_PATH("/include/vpsdemo/testkit/testkit_client.h"));
+  std::ifstream testkitHeader(MEMRPC_REPO_PATH("/vpsdemo/include/vpsdemo/testkit/testkit_client.h"));
   ASSERT_TRUE(testkitHeader.is_open());
   std::string testkitContent((std::istreambuf_iterator<char>(testkitHeader)),
                              std::istreambuf_iterator<char>());

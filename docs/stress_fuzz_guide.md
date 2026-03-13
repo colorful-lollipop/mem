@@ -3,7 +3,7 @@
 ## Build (Release + Stress)
 
 ```bash
-cmake -S demo/vpsdemo -B build_vps_stress -DVPSDEMO_ENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake -S vpsdemo -B build_vps_stress -DVPSDEMO_ENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build_vps_stress --target vpsdemo_testkit_stress_runner
 ```
 
@@ -23,7 +23,7 @@ MEMRPC_STRESS_PAYLOAD_SIZES=0,16,128,512,1024,2048 \
 ## ASan/UBSan/LSan Build
 
 ```bash
-cmake -S demo/vpsdemo -B build_vps_asan -DVPSDEMO_ENABLE_TESTS=ON \
+cmake -S vpsdemo -B build_vps_asan -DVPSDEMO_ENABLE_TESTS=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -34,7 +34,7 @@ ctest --test-dir build_vps_asan -L stress --output-on-failure
 ## TSan Build
 
 ```bash
-cmake -S demo/vpsdemo -B build_vps_tsan -DVPSDEMO_ENABLE_TESTS=ON \
+cmake -S vpsdemo -B build_vps_tsan -DVPSDEMO_ENABLE_TESTS=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -45,7 +45,7 @@ ctest --test-dir build_vps_tsan -L stress --output-on-failure
 ## Fuzz Build (Clang)
 
 ```bash
-cmake -S demo/vpsdemo -B build_vps_fuzz \
+cmake -S vpsdemo -B build_vps_fuzz \
   -DVPSDEMO_ENABLE_TESTS=ON \
   -DVPSDEMO_ENABLE_FUZZ=ON \
   -DCMAKE_CXX_COMPILER=clang++
