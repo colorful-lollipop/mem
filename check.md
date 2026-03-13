@@ -19,10 +19,10 @@
 
 ```bash
 # 基础检测 - 查看所有超长函数
-python3 tools/lint/check_function_length.py src/ --max-lines 50
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50
 
 # 生成 AI 优化提示（复制输出用于下一步）
-python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50 --ai-prompt
 ```
 
 ### 步骤 2：分析输出
@@ -31,7 +31,7 @@ python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt
 ```
 行数 | 圈复杂度 | 函数名                              | 文件
 ----------------------------------------------------------------------------------------------------
- 163 |       30 | memrpc::RpcClient::Impl::SubmitOne | src/client/rpc_client.cpp:620
+ 163 |       30 | memrpc::RpcClient::Impl::SubmitOne | memrpc/src/client/rpc_client.cpp:620
 ```
 
 关注指标：
@@ -98,13 +98,13 @@ python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt
 
 ```bash
 # 检测全部源码
-python3 tools/lint/check_function_length.py src/ --max-lines 50
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50
 
 # 生成 AI 提示（用于批量优化）
-python3 tools/lint/check_function_length.py src/ --max-lines 50 --ai-prompt > ai_tasks.md
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50 --ai-prompt > ai_tasks.md
 
 # JSON 输出（用于脚本处理）
-python3 tools/lint/check_function_length.py src/ --max-lines 50 --json
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50 --json
 ```
 
 ---
@@ -119,7 +119,7 @@ python3 tools/lint/check_function_length.py src/ --max-lines 50 --json
 set -e
 
 echo "Checking function length..."
-python3 tools/lint/check_function_length.py src/ --max-lines 50
+python3 tools/lint/check_function_length.py memrpc/src/ --max-lines 50
 
 echo "All functions are within 50 lines!"
 ```
