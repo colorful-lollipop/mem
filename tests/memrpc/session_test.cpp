@@ -29,11 +29,11 @@ bool WaitForExit(pid_t pid, int timeout_ms, int* status) {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
   if (h.shmFd >= 0) close(h.shmFd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 }  // namespace
@@ -296,8 +296,8 @@ TEST(SessionTest, AttachPreservesCreditEventFds) {
   ASSERT_EQ(server_session.Attach(server_handles, memrpc::Session::AttachRole::Server),
             memrpc::StatusCode::Ok);
 
-  EXPECT_GE(client_session.handles().req_credit_event_fd, 0);
-  EXPECT_GE(client_session.handles().resp_credit_event_fd, 0);
-  EXPECT_GE(server_session.handles().req_credit_event_fd, 0);
-  EXPECT_GE(server_session.handles().resp_credit_event_fd, 0);
+  EXPECT_GE(client_session.handles().reqCreditEventFd, 0);
+  EXPECT_GE(client_session.handles().respCreditEventFd, 0);
+  EXPECT_GE(server_session.handles().reqCreditEventFd, 0);
+  EXPECT_GE(server_session.handles().respCreditEventFd, 0);
 }

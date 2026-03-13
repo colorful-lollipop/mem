@@ -141,7 +141,7 @@ Session::~Session() {
   Reset();
 }
 
-StatusCode Session::MapAndValidateHeader(int shm_fd) {
+StatusCode Session::MapAndValidateHeader(int shmFd) {
   LayoutConfig config;
   config.high_ring_size = 32;
   config.normal_ring_size = 32;
@@ -154,7 +154,7 @@ StatusCode Session::MapAndValidateHeader(int shm_fd) {
   Layout default_layout = ComputeLayout(config);
   initial_mapped_size_ = default_layout.total_size;
   mapped_region_ =
-      mmap(nullptr, default_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+      mmap(nullptr, default_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
     return StatusCode::EngineInternalError;
@@ -168,9 +168,9 @@ StatusCode Session::MapAndValidateHeader(int shm_fd) {
   return StatusCode::Ok;
 }
 
-StatusCode Session::RemapWithActualLayout(int shm_fd) {
+StatusCode Session::RemapWithActualLayout(int shmFd) {
   struct stat file_stat {};
-  if (fstat(shm_fd, &file_stat) != 0) {
+  if (fstat(shmFd, &file_stat) != 0) {
     Reset();
     return StatusCode::EngineInternalError;
   }
@@ -194,7 +194,7 @@ StatusCode Session::RemapWithActualLayout(int shm_fd) {
   munmap(mapped_region_, initial_mapped_size_);
 
   mapped_region_ =
-      mmap(nullptr, actual_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+      mmap(nullptr, actual_layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
   if (mapped_region_ == MAP_FAILED) {
     mapped_region_ = nullptr;
     header_ = nullptr;
@@ -271,20 +271,20 @@ void Session::Reset() {
   if (handles_.shmFd >= 0) {
     close(handles_.shmFd);
   }
-  if (handles_.high_req_event_fd >= 0) {
-    close(handles_.high_req_event_fd);
+  if (handles_.highReqEventFd >= 0) {
+    close(handles_.highReqEventFd);
   }
-  if (handles_.normal_req_event_fd >= 0) {
-    close(handles_.normal_req_event_fd);
+  if (handles_.normalReqEventFd >= 0) {
+    close(handles_.normalReqEventFd);
   }
-  if (handles_.resp_event_fd >= 0) {
-    close(handles_.resp_event_fd);
+  if (handles_.respEventFd >= 0) {
+    close(handles_.respEventFd);
   }
-  if (handles_.req_credit_event_fd >= 0) {
-    close(handles_.req_credit_event_fd);
+  if (handles_.reqCreditEventFd >= 0) {
+    close(handles_.reqCreditEventFd);
   }
-  if (handles_.resp_credit_event_fd >= 0) {
-    close(handles_.resp_credit_event_fd);
+  if (handles_.respCreditEventFd >= 0) {
+    close(handles_.respCreditEventFd);
   }
   mapped_size_ = 0;
   mapped_region_ = nullptr;

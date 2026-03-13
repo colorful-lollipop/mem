@@ -175,7 +175,7 @@ struct RpcServer::Impl {
   std::unordered_map<uint16_t, RpcHandler> handlers;
 
   bool WaitForResponseCredit(std::chrono::steady_clock::time_point deadline) {
-    const int fd = session.handles().resp_credit_event_fd;
+    const int fd = session.handles().respCreditEventFd;
     if (fd < 0) {
       return false;
     }
@@ -256,11 +256,11 @@ struct RpcServer::Impl {
 
   void MarkSessionBroken() {
     session.SetState(Session::SessionState::Broken);
-    if (session.handles().resp_event_fd < 0) {
+    if (session.handles().respEventFd < 0) {
       return;
     }
     const uint64_t signal_value = 1;
-    write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value));
+    write(session.handles().respEventFd, &signal_value, sizeof(signal_value));
   }
 
   void CompleteItem(const std::shared_ptr<CompletionState>& completion, StatusCode status) {
@@ -288,9 +288,9 @@ struct RpcServer::Impl {
 
   void StopResponseWriter() {
     response_writer_running.store(false);
-    if (session.handles().resp_credit_event_fd >= 0) {
+    if (session.handles().respCreditEventFd >= 0) {
       const uint64_t signal_value = 1;
-      write(session.handles().resp_credit_event_fd, &signal_value, sizeof(signal_value));
+      write(session.handles().respCreditEventFd, &signal_value, sizeof(signal_value));
     }
     completion_cv.notify_all();
     if (response_writer_thread.joinable()) {
@@ -353,7 +353,7 @@ struct RpcServer::Impl {
     if (status == StatusCode::Ok) {
       if (RingCountIsOneAfterPush(session.header()->response_ring)) {
         const uint64_t signal_value = 1;
-        if (write(session.handles().resp_event_fd, &signal_value, sizeof(signal_value)) !=
+        if (write(session.handles().respEventFd, &signal_value, sizeof(signal_value)) !=
             sizeof(signal_value)) {
           CompleteItem(item.completion, StatusCode::PeerDisconnected);
           if (item.break_session_on_failure) {
@@ -459,7 +459,7 @@ struct RpcServer::Impl {
   }
 
   StatusCode PublishEvent(const RpcEvent& event) {
-    if (!session.valid() || session.handles().resp_event_fd < 0 || session.header() == nullptr) {
+    if (!session.valid() || session.handles().respEventFd < 0 || session.header() == nullptr) {
       HILOGE("PublishEvent failed, session is not ready");
       return StatusCode::EngineInternalError;
     }
@@ -573,7 +573,7 @@ struct RpcServer::Impl {
     }
     if (request_ring_became_not_full) {
       const uint64_t signal_value = 1;
-      write(session.handles().req_credit_event_fd, &signal_value, sizeof(signal_value));
+      write(session.handles().reqCreditEventFd, &signal_value, sizeof(signal_value));
     }
     return drained;
   }
@@ -615,8 +615,8 @@ struct RpcServer::Impl {
   void DispatcherLoop() {
     constexpr int SPIN_ITERATIONS = 256;
     pollfd fds[2] = {
-        {session.handles().high_req_event_fd, POLLIN, 0},
-        {session.handles().normal_req_event_fd, POLLIN, 0},
+        {session.handles().highReqEventFd, POLLIN, 0},
+        {session.handles().normalReqEventFd, POLLIN, 0},
     };
 
     while (running.load()) {

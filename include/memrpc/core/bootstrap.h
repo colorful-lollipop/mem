@@ -13,11 +13,11 @@ using EngineDeathCallback = std::function<void(uint64_t)>;
 struct BootstrapHandles {
   // 这些 fd/元数据描述了一次共享内存 RPC session 的连接入口。
   int shmFd = -1;
-  int high_req_event_fd = -1;
-  int normal_req_event_fd = -1;
-  int resp_event_fd = -1;
-  int req_credit_event_fd = -1;
-  int resp_credit_event_fd = -1;
+  int highReqEventFd = -1;
+  int normalReqEventFd = -1;
+  int respEventFd = -1;
+  int reqCreditEventFd = -1;
+  int respCreditEventFd = -1;
   uint32_t protocol_version = 0;
   uint64_t session_id = 0;
 };

@@ -44,7 +44,7 @@
 
 **通知失败语义：**
 
-- `resp_event_fd` 写失败不触发 slot 回收。
+- `respEventFd` 写失败不触发 slot 回收。
 - 允许记录错误并标记 session health（必要时置为 broken），但 slot 仍由 client 回收。
 
 **一致性校验：**
@@ -56,14 +56,14 @@
 
 **核心规则：**
 
-- 资源不足时只等待 `resp_credit_event_fd`，不再固定 `sleep_for` / 周期性轮询。
+- 资源不足时只等待 `respCreditEventFd`，不再固定 `sleep_for` / 周期性轮询。
 - 等待基于 “一次阻塞 + deadline”：
   - 先 `TryReserve` / `TryPush`。
   - 失败则 `poll/ppoll` 等待 credit，超时则返回失败。
 
 **credit 写入时机：**
 
-- client response loop 在以下动作后写 `resp_credit_event_fd`：
+- client response loop 在以下动作后写 `respCreditEventFd`：
   - 成功 `PopResponse()`（response ring 变非满）
   - 释放 response slot（slot pool 变非空）
 
@@ -85,17 +85,17 @@
 
 ### Client
 
-- admission 失败时等待 `req_credit_event_fd`，等待预算由 `admission_timeout_ms` 控制。
+- admission 失败时等待 `reqCreditEventFd`，等待预算由 `admission_timeout_ms` 控制。
 - response loop 消费 reply/event 后：
-  - 释放 response slot，并写 `resp_credit_event_fd`
-  - 若为 reply，释放 request slot 并写 `req_credit_event_fd`
+  - 释放 response slot，并写 `respCreditEventFd`
+  - 若为 reply，释放 request slot 并写 `reqCreditEventFd`
 - 校验 response slot 的 `request_id` 与 ring entry 一致性。
 
 ### Server
 
-- response writer：资源不足时仅等待 `resp_credit_event_fd`，不再轮询。
+- response writer：资源不足时仅等待 `respCreditEventFd`，不再轮询。
 - response slot 发布后不再释放；只有 client 回收。
-- `resp_event_fd` 写失败仅影响 session 健康度，不回收 slot。
+- `respEventFd` 写失败仅影响 session 健康度，不回收 slot。
 
 ## 错误处理原则
 

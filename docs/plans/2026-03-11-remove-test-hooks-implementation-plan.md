@@ -134,12 +134,12 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) 
 
   using FdField = int BootstrapHandles::*;
   static constexpr FdField kFdFields[] = {
-      &BootstrapHandles::shm_fd,
-      &BootstrapHandles::high_req_event_fd,
-      &BootstrapHandles::normal_req_event_fd,
-      &BootstrapHandles::resp_event_fd,
-      &BootstrapHandles::req_credit_event_fd,
-      &BootstrapHandles::resp_credit_event_fd,
+      &BootstrapHandles::shmFd,
+      &BootstrapHandles::highReqEventFd,
+      &BootstrapHandles::normalReqEventFd,
+      &BootstrapHandles::respEventFd,
+      &BootstrapHandles::reqCreditEventFd,
+      &BootstrapHandles::respCreditEventFd,
   };
 
   size_t dup_count = 0;

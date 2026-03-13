@@ -38,11 +38,11 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) 
   using FdField = int BootstrapHandles::*;
   static constexpr FdField kFdFields[] = {
       &BootstrapHandles::shmFd,
-      &BootstrapHandles::high_req_event_fd,
-      &BootstrapHandles::normal_req_event_fd,
-      &BootstrapHandles::resp_event_fd,
-      &BootstrapHandles::req_credit_event_fd,
-      &BootstrapHandles::resp_credit_event_fd,
+      &BootstrapHandles::highReqEventFd,
+      &BootstrapHandles::normalReqEventFd,
+      &BootstrapHandles::respEventFd,
+      &BootstrapHandles::reqCreditEventFd,
+      &BootstrapHandles::respCreditEventFd,
   };
 
   size_t dup_count = 0;
@@ -83,17 +83,17 @@ struct PosixDemoBootstrapChannel::Impl {
 
   void ResetHandles() {
     CloseFd(&handles.shmFd);
-    CloseFd(&handles.high_req_event_fd);
-    CloseFd(&handles.normal_req_event_fd);
-    CloseFd(&handles.resp_event_fd);
-    CloseFd(&handles.req_credit_event_fd);
-    CloseFd(&handles.resp_credit_event_fd);
+    CloseFd(&handles.highReqEventFd);
+    CloseFd(&handles.normalReqEventFd);
+    CloseFd(&handles.respEventFd);
+    CloseFd(&handles.reqCreditEventFd);
+    CloseFd(&handles.respCreditEventFd);
     handles.protocol_version = 0;
     handles.session_id = 0;
     initialized = false;
   }
 
-  StatusCode InitializeSharedMemory(int shm_fd, uint64_t* out_session_id) {
+  StatusCode InitializeSharedMemory(int shmFd, uint64_t* out_session_id) {
     const LayoutConfig layout_config{config.high_ring_size,
                                      config.normal_ring_size,
                                      config.response_ring_size,
@@ -103,13 +103,13 @@ struct PosixDemoBootstrapChannel::Impl {
                                      config.max_request_bytes,
                                      config.max_response_bytes};
     const Layout layout = ComputeLayout(layout_config);
-    if (ftruncate(shm_fd, static_cast<off_t>(layout.total_size)) != 0) {
+    if (ftruncate(shmFd, static_cast<off_t>(layout.total_size)) != 0) {
       HILOGE("ftruncate failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
       return StatusCode::EngineInternalError;
     }
 
     void* region =
-        mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        mmap(nullptr, layout.total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (region == MAP_FAILED) {
       HILOGE("mmap failed, size=%{public}zu errno=%{public}d", layout.total_size, errno);
       return StatusCode::EngineInternalError;
@@ -143,16 +143,16 @@ struct PosixDemoBootstrapChannel::Impl {
   }
 
   bool CreateEventFds() {
-    handles.high_req_event_fd = eventfd(0, EFD_NONBLOCK);
-    handles.normal_req_event_fd = eventfd(0, EFD_NONBLOCK);
-    handles.resp_event_fd = eventfd(0, EFD_NONBLOCK);
-    handles.req_credit_event_fd = eventfd(0, EFD_NONBLOCK);
-    handles.resp_credit_event_fd = eventfd(0, EFD_NONBLOCK);
-    return handles.high_req_event_fd >= 0 &&
-           handles.normal_req_event_fd >= 0 &&
-           handles.resp_event_fd >= 0 &&
-           handles.req_credit_event_fd >= 0 &&
-           handles.resp_credit_event_fd >= 0;
+    handles.highReqEventFd = eventfd(0, EFD_NONBLOCK);
+    handles.normalReqEventFd = eventfd(0, EFD_NONBLOCK);
+    handles.respEventFd = eventfd(0, EFD_NONBLOCK);
+    handles.reqCreditEventFd = eventfd(0, EFD_NONBLOCK);
+    handles.respCreditEventFd = eventfd(0, EFD_NONBLOCK);
+    return handles.highReqEventFd >= 0 &&
+           handles.normalReqEventFd >= 0 &&
+           handles.respEventFd >= 0 &&
+           handles.reqCreditEventFd >= 0 &&
+           handles.respCreditEventFd >= 0;
   }
 
   ~Impl() {
@@ -185,23 +185,23 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
 
     impl_->ResetHandles();
 
-    const int shm_fd =
+    const int shmFd =
         shm_open(impl_->config.shm_name.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
-    if (shm_fd < 0) {
+    if (shmFd < 0) {
       HILOGE("shm_open failed, name=%{public}s errno=%{public}d", impl_->config.shm_name.c_str(),
             errno);
       return StatusCode::EngineInternalError;
     }
 
     uint64_t session_id = 0;
-    const StatusCode init_status = impl_->InitializeSharedMemory(shm_fd, &session_id);
+    const StatusCode init_status = impl_->InitializeSharedMemory(shmFd, &session_id);
     if (init_status != StatusCode::Ok) {
-      close(shm_fd);
+      close(shmFd);
       shm_unlink(impl_->config.shm_name.c_str());
       return init_status;
     }
 
-    impl_->handles.shmFd = shm_fd;
+    impl_->handles.shmFd = shmFd;
     impl_->handles.protocol_version = PROTOCOL_VERSION;
     impl_->handles.session_id = session_id;
     impl_->initialized = impl_->CreateEventFds();

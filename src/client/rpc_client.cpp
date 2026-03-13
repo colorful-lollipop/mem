@@ -310,7 +310,7 @@ struct RpcClient::Impl {
 
   void StopSubmitter() {
     submit_running.store(false);
-    SignalEventFdIfNeeded(session.handles().req_credit_event_fd, true);
+    SignalEventFdIfNeeded(session.handles().reqCreditEventFd, true);
     submit_cv.notify_all();
     if (submit_thread.joinable() && std::this_thread::get_id() != submit_thread.get_id()) {
       submit_thread.join();
@@ -811,7 +811,7 @@ struct RpcClient::Impl {
   }
 
   bool WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
-    const int fd = session.handles().req_credit_event_fd;
+    const int fd = session.handles().reqCreditEventFd;
     if (fd < 0) {
       return false;
     }
@@ -963,8 +963,8 @@ struct RpcClient::Impl {
         high_priority ? session.header()->high_ring : session.header()->normal_ring;
     if (RingCountIsOneAfterPush(cursor)) {
       const uint64_t signal_value = 1;
-      const int req_fd = high_priority ? session.handles().high_req_event_fd
-                                       : session.handles().normal_req_event_fd;
+      const int req_fd = high_priority ? session.handles().highReqEventFd
+                                       : session.handles().normalReqEventFd;
       if (write(req_fd, &signal_value, sizeof(signal_value)) != sizeof(signal_value)) {
         pending_slots[slot].reset();
         pending_info_slots[slot].reset();
@@ -1124,7 +1124,7 @@ struct RpcClient::Impl {
       }
       const bool request_slot_became_available = slot_pool->available() == 0;
       slot_pool->Release(response_slot->response.request_slot_index);
-      SignalEventFdIfNeeded(session.handles().req_credit_event_fd,
+      SignalEventFdIfNeeded(session.handles().reqCreditEventFd,
                             request_slot_became_available &&
                                 submitter_waiting_for_credit.load(std::memory_order_relaxed));
     }
@@ -1133,7 +1133,7 @@ struct RpcClient::Impl {
     }
     const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(response_slot_index);
-    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+    SignalEventFdIfNeeded(session.handles().respCreditEventFd,
                           response_ring_became_not_full || response_slot_became_available);
   }
 
@@ -1203,7 +1203,7 @@ struct RpcClient::Impl {
       HILOGW("drop invalid event, size=%{public}u", entry.result_size);
       const bool response_slot_became_available = response_slot_pool.available() == 0;
       response_slot_pool.Release(entry.slot_index);
-      SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+      SignalEventFdIfNeeded(session.handles().respCreditEventFd,
                             response_ring_became_not_full || response_slot_became_available);
       return;
     }
@@ -1222,7 +1222,7 @@ struct RpcClient::Impl {
     std::memset(response_slot, 0, sizeof(ResponseSlotPayload));
     const bool response_slot_became_available = response_slot_pool.available() == 0;
     response_slot_pool.Release(entry.slot_index);
-    SignalEventFdIfNeeded(session.handles().resp_credit_event_fd,
+    SignalEventFdIfNeeded(session.handles().respCreditEventFd,
                           response_ring_became_not_full || response_slot_became_available);
   }
 
@@ -1273,7 +1273,7 @@ struct RpcClient::Impl {
   }
 
   void ResponseLoop() {
-    const int resp_fd = session.handles().resp_event_fd;
+    const int resp_fd = session.handles().respEventFd;
     if (resp_fd < 0) {
       return;
     }

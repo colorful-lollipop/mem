@@ -33,11 +33,11 @@ class VpsBootstrapStub : public OHOS::IRemoteStub<IVpsBootstrap> {
 
                 constexpr size_t FD_COUNT = 6;
                 reply->fds[0] = handles.shmFd;
-                reply->fds[1] = handles.high_req_event_fd;
-                reply->fds[2] = handles.normal_req_event_fd;
-                reply->fds[3] = handles.resp_event_fd;
-                reply->fds[4] = handles.req_credit_event_fd;
-                reply->fds[5] = handles.resp_credit_event_fd;
+                reply->fds[1] = handles.highReqEventFd;
+                reply->fds[2] = handles.normalReqEventFd;
+                reply->fds[3] = handles.respEventFd;
+                reply->fds[4] = handles.reqCreditEventFd;
+                reply->fds[5] = handles.respCreditEventFd;
                 reply->fd_count = FD_COUNT;
 
                 SessionMetadata meta{};

@@ -389,12 +389,12 @@ uint64_t MonotonicNowMs() {
 }
 
 void CloseHandles(Mem::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 struct SharedState {

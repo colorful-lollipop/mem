@@ -25,11 +25,11 @@ constexpr memrpc::Opcode kTestOpcode = 1u;
 
 void CloseHandles(memrpc::BootstrapHandles& handles) {
   if (handles.shmFd >= 0) close(handles.shmFd);
-  if (handles.high_req_event_fd >= 0) close(handles.high_req_event_fd);
-  if (handles.normal_req_event_fd >= 0) close(handles.normal_req_event_fd);
-  if (handles.resp_event_fd >= 0) close(handles.resp_event_fd);
-  if (handles.req_credit_event_fd >= 0) close(handles.req_credit_event_fd);
-  if (handles.resp_credit_event_fd >= 0) close(handles.resp_credit_event_fd);
+  if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
+  if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
+  if (handles.respEventFd >= 0) close(handles.respEventFd);
+  if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
+  if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
 }
 
 int GetEnvInt(const char* name, int default_value) {

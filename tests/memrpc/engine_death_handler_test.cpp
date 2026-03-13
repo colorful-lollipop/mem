@@ -56,7 +56,7 @@ TEST(EngineDeathHandlerTest, NoHandlerBackwardCompat) {
   };
   client.SetRecoveryPolicy(std::move(policy));
 
-  // Init will fail to create a real session (no shm_fd), but InvokeAsync
+  // Init will fail to create a real session (no shmFd), but InvokeAsync
   // will produce ready futures with failure status. This test verifies
   // the handler-absent code path compiles and runs without crash.
   auto future = client.InvokeAsync(MemRpc::RpcCall{});

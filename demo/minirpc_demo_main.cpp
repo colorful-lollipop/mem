@@ -44,11 +44,11 @@ int main() {
     return 1;
   }
   close(unused_handles.shmFd);
-  close(unused_handles.high_req_event_fd);
-  close(unused_handles.normal_req_event_fd);
-  close(unused_handles.resp_event_fd);
-  close(unused_handles.req_credit_event_fd);
-  close(unused_handles.resp_credit_event_fd);
+  close(unused_handles.highReqEventFd);
+  close(unused_handles.normalReqEventFd);
+  close(unused_handles.respEventFd);
+  close(unused_handles.reqCreditEventFd);
+  close(unused_handles.respCreditEventFd);
 
   const Mem::BootstrapHandles server_handles = bootstrap->serverHandles();
   const pid_t child = fork();

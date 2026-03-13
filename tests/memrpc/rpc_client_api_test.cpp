@@ -90,8 +90,8 @@ TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
 TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds) {
   MemRpc::BootstrapHandles handles;
 
-  EXPECT_EQ(handles.req_credit_event_fd, -1);
-  EXPECT_EQ(handles.resp_credit_event_fd, -1);
+  EXPECT_EQ(handles.reqCreditEventFd, -1);
+  EXPECT_EQ(handles.respCreditEventFd, -1);
 }
 
 TEST(RpcClientApiTest, ThenCallbackInvokedImmediatelyOnAlreadyReadyFuture) {

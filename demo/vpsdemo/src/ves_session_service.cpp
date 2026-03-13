@@ -13,11 +13,11 @@ void CloseHandles(memrpc::BootstrapHandles* handles) {
     if (handles == nullptr) return;
     int* fds[] = {
         &handles->shmFd,
-        &handles->high_req_event_fd,
-        &handles->normal_req_event_fd,
-        &handles->resp_event_fd,
-        &handles->req_credit_event_fd,
-        &handles->resp_credit_event_fd,
+        &handles->highReqEventFd,
+        &handles->normalReqEventFd,
+        &handles->respEventFd,
+        &handles->reqCreditEventFd,
+        &handles->respCreditEventFd,
     };
     for (int* fd : fds) {
         if (fd != nullptr && *fd >= 0) {

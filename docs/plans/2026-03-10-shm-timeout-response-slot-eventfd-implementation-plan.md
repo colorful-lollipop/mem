@@ -113,7 +113,7 @@ git commit -m "fix: align sync timeout budget with admission queue and exec phas
 **Step 1: Write the failing test**
 
 新增测试覆盖：
-- ring 发布后，server 不会释放 response slot，即使 `resp_event_fd` 写失败；
+- ring 发布后，server 不会释放 response slot，即使 `respEventFd` 写失败；
 - client 校验 `response_slot.runtime.request_id` 与 `entry.request_id`，不一致时返回 `ProtocolMismatch`；
 - client 回收 response slot 后写 credit。
 
@@ -125,7 +125,7 @@ Expected: FAIL for slot lifetime or request_id mismatch.
 **Step 3: Write minimal implementation**
 
 关键改动：
-- 在 `ResponseWriterLoop` 中，`PushResponse` 成功后不释放 slot，即使 `resp_event_fd` 写失败。
+- 在 `ResponseWriterLoop` 中，`PushResponse` 成功后不释放 slot，即使 `respEventFd` 写失败。
 - `CompleteRequest` / `DeliverEvent` 增加 request_id 校验，失败则 `ProtocolMismatch` 并走断连路径。
 
 **Step 4: Run test to verify it passes**
@@ -149,7 +149,7 @@ git commit -m "fix: enforce response slot lifetime and request id validation"
 **Step 1: Write the failing test**
 
 新增测试覆盖：
-- response slot/ring 满载时 writer 阻塞等待 `resp_credit_event_fd`；
+- response slot/ring 满载时 writer 阻塞等待 `respCreditEventFd`；
 - client 释放资源后 writer 立即继续（无 1ms 轮询）。
 
 **Step 2: Run test to verify it fails**

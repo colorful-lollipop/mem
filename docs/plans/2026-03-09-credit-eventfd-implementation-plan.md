@@ -4,7 +4,7 @@
 
 **Goal:** 用 2 个新增 credit eventfd 去掉 request/response 侧的 `1ms` 轮询，同时把消息通知和 credit 通知都收敛成“状态跃迁才唤醒”，降低小 payload 高频 RPC 下的 eventfd syscall 和无效 wakeup 成本。
 
-**Architecture:** 保留当前 `单 client + 单 server + 3 条 ring + request/response slot` 总体结构，不改共享内存布局。现有 3 个消息到达 fd 改成边沿通知，只在 `empty -> non-empty` 时写；新增 `req_credit_event_fd` 和 `resp_credit_event_fd` 两个 credit fd，并用 waiter-aware 的 armed 标志控制写入，只在对端确实因为资源不足而阻塞时唤醒。被唤醒的一侧继续批量 drain/flush，把一次唤醒摊到多条消息上。
+**Architecture:** 保留当前 `单 client + 单 server + 3 条 ring + request/response slot` 总体结构，不改共享内存布局。现有 3 个消息到达 fd 改成边沿通知，只在 `empty -> non-empty` 时写；新增 `reqCreditEventFd` 和 `respCreditEventFd` 两个 credit fd，并用 waiter-aware 的 armed 标志控制写入，只在对端确实因为资源不足而阻塞时唤醒。被唤醒的一侧继续批量 drain/flush，把一次唤醒摊到多条消息上。
 
 **Tech Stack:** C++17、CMake、GTest、shared memory、eventfd、poll、condition_variable、slot pool、ring cursor
 
@@ -12,7 +12,7 @@
 
 ## 当前基线
 
-- `high_req_event_fd` / `normal_req_event_fd` / `resp_event_fd` 目前基本按“每次成功 push 都 write”使用
+- `highReqEventFd` / `normalReqEventFd` / `respEventFd` 目前基本按“每次成功 push 都 write”使用
 - client submitter 在 request admission 失败时 `sleep_for(1ms)` 重试
 - server response writer 在 response slot / response ring 资源不足时 `sleep_for(1ms)` 重试
 - small-payload copy reduction 做完后，payload copy 固定成本下降，eventfd/poll 的固定 syscall 成本会更显眼
@@ -40,7 +40,7 @@
 
 补测试覆盖：
 
-- `BootstrapHandles` 新增 `req_credit_event_fd` 和 `resp_credit_event_fd`
+- `BootstrapHandles` 新增 `reqCreditEventFd` 和 `respCreditEventFd`
 - `PosixDemoBootstrapChannel::Connect()` / `server_handles()` 会复制这 2 个 fd
 - `Session::Attach()` 后这 2 个 fd 对 client/server 可见且合法
 
@@ -56,7 +56,7 @@ Expected:
 
 最小实现：
 
-- 在 `BootstrapHandles` 增加 `req_credit_event_fd`、`resp_credit_event_fd`
+- 在 `BootstrapHandles` 增加 `reqCreditEventFd`、`respCreditEventFd`
 - `PosixDemoBootstrapChannel` 创建、dup、关闭这 2 个 fd
 - `Session` 只做透明 attach/reset，不引入行为改动
 
@@ -88,8 +88,8 @@ git commit -m "feat: add credit eventfds to bootstrap handles"
 
 补测试覆盖：
 
-- request ring 从空变非空时只写一次 `high_req_event_fd` / `normal_req_event_fd`
-- response ring 从空变非空时只写一次 `resp_event_fd`
+- request ring 从空变非空时只写一次 `highReqEventFd` / `normalReqEventFd`
+- response ring 从空变非空时只写一次 `respEventFd`
 - 连续 push 多条消息时，不会因为每条消息都 write 而产生额外 eventfd 计数
 
 **Step 2: Run test to verify it fails**
@@ -106,7 +106,7 @@ Expected:
 
 - 在 `Session` 或调用侧增加“push 前 ring 是否为空”的判断辅助
 - `RpcClient::SubmitOne()` 只在目标 request ring `empty -> non-empty` 时写消息 fd
-- `RpcServer::ResponseWriterLoop()` 只在 response ring `empty -> non-empty` 时写 `resp_event_fd`
+- `RpcServer::ResponseWriterLoop()` 只在 response ring `empty -> non-empty` 时写 `respEventFd`
 - 仍然保持 consumer 被唤醒后 drain 到空
 
 **Step 4: Run test to verify it passes**
@@ -136,9 +136,9 @@ git commit -m "perf: edge-trigger shared ring eventfds"
 
 补测试覆盖：
 
-- response writer 因 `response ring` 满或 `response slot` 不足阻塞后，client 消费 reply/event 会通过 `resp_credit_event_fd` 唤醒它
+- response writer 因 `response ring` 满或 `response slot` 不足阻塞后，client 消费 reply/event 会通过 `respCreditEventFd` 唤醒它
 - client 连续消费多个 response 时，不会对每次 `PopResponse()` 和每次 `Release(response_slot)` 都盲写 credit fd
-- 只有 response writer 真的 armed 等待时，client 才写 `resp_credit_event_fd`
+- 只有 response writer 真的 armed 等待时，client 才写 `respCreditEventFd`
 
 **Step 2: Run test to verify it fails**
 
@@ -153,7 +153,7 @@ Expected:
 最小实现：
 
 - 在 `RpcServer::Impl` 增加 `response_credit_waiting` 原子标志
-- `ResponseWriterLoop()` 在资源不足前 arm 标志并阻塞 `poll(resp_credit_event_fd, ...)`
+- `ResponseWriterLoop()` 在资源不足前 arm 标志并阻塞 `poll(respCreditEventFd, ...)`
 - client response loop 在：
   - `PopResponse()` 让 response ring 从满变非满
   - `response_slot_pool.Release()` 让 free count 从 `0 -> >0`
@@ -186,9 +186,9 @@ git commit -m "perf: replace response retry polling with credit eventfd"
 
 补测试覆盖：
 
-- submitter 因 request ring 满或 request slot 不足阻塞后，server dispatcher `PopRequest()` / client 完成 reply 后释放 request slot 会通过 `req_credit_event_fd` 唤醒 submitter
+- submitter 因 request ring 满或 request slot 不足阻塞后，server dispatcher `PopRequest()` / client 完成 reply 后释放 request slot 会通过 `reqCreditEventFd` 唤醒 submitter
 - submitter 不再依赖 `sleep_for(1ms)` 重试 admission
-- 只有 submitter 真的 armed 等待时，server/client 才写 `req_credit_event_fd`
+- 只有 submitter 真的 armed 等待时，server/client 才写 `reqCreditEventFd`
 
 **Step 2: Run test to verify it fails**
 
@@ -203,7 +203,7 @@ Expected:
 最小实现：
 
 - 在 `RpcClient::Impl` 增加 `request_credit_waiting` 原子标志
-- `SubmitOne()` 在 admission 失败时 arm 标志并阻塞等待 `req_credit_event_fd`
+- `SubmitOne()` 在 admission 失败时 arm 标志并阻塞等待 `reqCreditEventFd`
 - `RpcServer::DrainQueue()` / dispatcher 成功 `PopRequest()` 后，如果看到 `request_credit_waiting` 为 true，则写 credit fd
 - `RpcClient::CompleteRequest()` 在释放 request slot 且看到 armed 标志时写 credit fd
 
@@ -250,8 +250,8 @@ Expected:
 
 最小实现：
 
-- submitter 被 `req_credit_event_fd` 唤醒后，优先在本轮尽量推进后续 submission
-- response writer 被 `resp_credit_event_fd` 唤醒后，优先在本轮尽量 flush completion backlog
+- submitter 被 `reqCreditEventFd` 唤醒后，优先在本轮尽量推进后续 submission
+- response writer 被 `respCreditEventFd` 唤醒后，优先在本轮尽量 flush completion backlog
 - 保持现有公平性：高优 request 仍优先于普通 request
 
 **Step 4: Run test to verify it passes**

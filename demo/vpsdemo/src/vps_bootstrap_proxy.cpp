@@ -100,11 +100,11 @@ memrpc::StatusCode VpsBootstrapProxy::OpenSession(memrpc::BootstrapHandles& hand
     }
 
     handles.shmFd = fds[0];
-    handles.high_req_event_fd = fds[1];
-    handles.normal_req_event_fd = fds[2];
-    handles.resp_event_fd = fds[3];
-    handles.req_credit_event_fd = fds[4];
-    handles.resp_credit_event_fd = fds[5];
+    handles.highReqEventFd = fds[1];
+    handles.normalReqEventFd = fds[2];
+    handles.respEventFd = fds[3];
+    handles.reqCreditEventFd = fds[4];
+    handles.respCreditEventFd = fds[5];
     handles.protocol_version = meta.protocol_version;
     handles.session_id = meta.session_id;
     session_id_ = meta.session_id;

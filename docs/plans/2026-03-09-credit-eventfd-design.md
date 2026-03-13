@@ -27,7 +27,7 @@
 
 做法：
 
-- 继续只保留 `high_req_event_fd`、`normal_req_event_fd`、`resp_event_fd`
+- 继续只保留 `highReqEventFd`、`normalReqEventFd`、`respEventFd`
 - 通过“从空变非空时才写 fd”减少 write 次数
 
 优点：
@@ -88,25 +88,25 @@
 
 现有 3 个 fd 保持不变：
 
-- `high_req_event_fd`
+- `highReqEventFd`
   `client -> server`
   语义：高优 request ring 从空变非空，server 可以来取请求
 
-- `normal_req_event_fd`
+- `normalReqEventFd`
   `client -> server`
   语义：普通 request ring 从空变非空
 
-- `resp_event_fd`
+- `respEventFd`
   `server -> client`
   语义：response ring 从空变非空，client 可以来取 reply/event
 
 新增 2 个 credit fd：
 
-- `req_credit_event_fd`
+- `reqCreditEventFd`
   `server -> client`
   语义：request admission 相关资源重新可用
 
-- `resp_credit_event_fd`
+- `respCreditEventFd`
   `client -> server`
   语义：response 发布相关资源重新可用
 
@@ -121,8 +121,8 @@
 
 如果把 credit 信号复用到已有 fd：
 
-- `resp_event_fd` 会同时表示“有响应可读”和“response 资源可写”
-- `high_req_event_fd` / `normal_req_event_fd` 会同时表示“有请求可读”和“request 资源可写”
+- `respEventFd` 会同时表示“有响应可读”和“response 资源可写”
+- `highReqEventFd` / `normalReqEventFd` 会同时表示“有请求可读”和“request 资源可写”
 
 这样会有两个问题：
 
@@ -152,9 +152,9 @@ submitter 尝试 admission：
 1. 检查 request slot 是否可用
 2. 检查目标 ring 是否可写
 3. 若成功，正常写入 request slot 和 request ring
-4. 若失败，阻塞等待 `req_credit_event_fd`
+4. 若失败，阻塞等待 `reqCreditEventFd`
 
-submitter 被 `req_credit_event_fd` 唤醒后，统一重新检查：
+submitter 被 `reqCreditEventFd` 唤醒后，统一重新检查：
 
 - request slot
 - `high request ring`
@@ -162,7 +162,7 @@ submitter 被 `req_credit_event_fd` 唤醒后，统一重新检查：
 
 不要求 fd 精确区分是哪种资源恢复。
 
-### 谁负责写 `req_credit_event_fd`
+### 谁负责写 `reqCreditEventFd`
 
 以下动作完成后写一次：
 
@@ -171,7 +171,7 @@ submitter 被 `req_credit_event_fd` 唤醒后，统一重新检查：
 - client response loop 释放 request slot 后
   这表示 request slot 有空间了
 
-### 为什么一个 `req_credit_event_fd` 就够
+### 为什么一个 `reqCreditEventFd` 就够
 
 当前模型是：
 
@@ -198,15 +198,15 @@ response writer 尝试发布：
 
 1. 申请 response slot
 2. 写 response ring
-3. 若成功，正常写 `resp_event_fd`
-4. 若失败，阻塞等待 `resp_credit_event_fd`
+3. 若成功，正常写 `respEventFd`
+4. 若失败，阻塞等待 `respCreditEventFd`
 
 response writer 被唤醒后，统一重新检查：
 
 - response slot
 - response ring
 
-### 谁负责写 `resp_credit_event_fd`
+### 谁负责写 `respCreditEventFd`
 
 以下动作完成后写一次：
 
@@ -245,13 +245,13 @@ response writer 被唤醒后，统一重新检查：
 
 - 业务线程 -> submit queue
 - submitter 尝试 admission
-- 成功则写 request slot / request ring，并在需要时写 `high_req_event_fd` 或 `normal_req_event_fd`
-- 失败则等待 `req_credit_event_fd`
+- 成功则写 request slot / request ring，并在需要时写 `highReqEventFd` 或 `normalReqEventFd`
+- 失败则等待 `reqCreditEventFd`
 
 消费：
 
 - server dispatcher `PopRequest()`
-- 成功后写 `req_credit_event_fd`
+- 成功后写 `reqCreditEventFd`
 - worker 执行 handler
 
 ### 响应方向
@@ -259,15 +259,15 @@ response writer 被唤醒后，统一重新检查：
 生产：
 
 - response writer 尝试申请 response slot / 写 response ring
-- 成功则在需要时写 `resp_event_fd`
-- 失败则等待 `resp_credit_event_fd`
+- 成功则在需要时写 `respEventFd`
+- 失败则等待 `respCreditEventFd`
 
 消费：
 
 - client response loop `PopResponse()`
-- 成功后写 `resp_credit_event_fd`
-- 释放 response slot 后再写 `resp_credit_event_fd`
-- 若是 reply，释放 request slot 后写 `req_credit_event_fd`
+- 成功后写 `respCreditEventFd`
+- 释放 response slot 后再写 `respCreditEventFd`
+- 若是 reply，释放 request slot 后写 `reqCreditEventFd`
 
 ## 需要修改的模块
 
@@ -275,8 +275,8 @@ response writer 被唤醒后，统一重新检查：
 
 - `include/memrpc/core/bootstrap.h`
   `BootstrapHandles` 新增：
-  - `req_credit_event_fd`
-  - `resp_credit_event_fd`
+  - `reqCreditEventFd`
+  - `respCreditEventFd`
 
 ### bootstrap
 
@@ -305,7 +305,7 @@ response writer 被唤醒后，统一重新检查：
 
 需要：
 
-- submitter 在 admission 失败时等待 `req_credit_event_fd`
+- submitter 在 admission 失败时等待 `reqCreditEventFd`
 - response loop 在 `PopResponse()`、释放 response slot、释放 request slot 后写 credit fd
 
 ### server
@@ -314,8 +314,8 @@ response writer 被唤醒后，统一重新检查：
 
 需要：
 
-- dispatcher 在 `PopRequest()` 后写 `req_credit_event_fd`
-- response writer 在资源不足时等待 `resp_credit_event_fd`
+- dispatcher 在 `PopRequest()` 后写 `reqCreditEventFd`
+- response writer 在资源不足时等待 `respCreditEventFd`
 
 ### 测试
 
@@ -379,7 +379,7 @@ response writer 被唤醒后，统一重新检查：
 
 本设计推荐在当前协议基础上新增 2 个 credit `eventfd`：
 
-- `req_credit_event_fd`
-- `resp_credit_event_fd`
+- `reqCreditEventFd`
+- `respCreditEventFd`
 
 这样可以在不重构共享内存协议的前提下，把 request/response 两侧资源等待从定时轮询改成事件驱动，是当前最适合你们框架的工业化收敛路径。

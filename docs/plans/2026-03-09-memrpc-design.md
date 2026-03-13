@@ -167,10 +167,10 @@ class EngineServer {
 namespace memrpc {
 
 struct BootstrapHandles {
-  int shm_fd = -1;
-  int high_req_event_fd = -1;
-  int normal_req_event_fd = -1;
-  int resp_event_fd = -1;
+  int shmFd = -1;
+  int highReqEventFd = -1;
+  int normalReqEventFd = -1;
+  int respEventFd = -1;
   uint32_t protocol_version = 0;
   uint64_t session_id = 0;
 };

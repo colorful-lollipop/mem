@@ -28,9 +28,9 @@
 
 ## BootstrapHandles
 继续包含：
-- `shm_fd`
-- `high_req_event_fd` / `normal_req_event_fd` / `resp_event_fd`
-- `req_credit_event_fd` / `resp_credit_event_fd`
+- `shmFd`
+- `highReqEventFd` / `normalReqEventFd` / `respEventFd`
+- `reqCreditEventFd` / `respCreditEventFd`
 - `protocol_version` / `session_id`
 
 ## 数据流

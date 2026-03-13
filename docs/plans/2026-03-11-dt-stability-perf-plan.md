@@ -105,12 +105,12 @@ Replace the file content with the real short-run stability test:
 namespace {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 int GetEnvInt(const char* name, int default_value) {
@@ -312,12 +312,12 @@ Replace file with a short perf test that records ops/s + p99 and updates a basel
 namespace {
 
 void CloseHandles(memrpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 int GetEnvInt(const char* name, int default_value) {
@@ -613,12 +613,12 @@ namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 int GetEnvInt(const char* name, int default_value) {
@@ -814,12 +814,12 @@ namespace OHOS::Security::VirusProtectionService::MiniRpc {
 namespace {
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shm_fd >= 0) close(h.shm_fd);
-  if (h.high_req_event_fd >= 0) close(h.high_req_event_fd);
-  if (h.normal_req_event_fd >= 0) close(h.normal_req_event_fd);
-  if (h.resp_event_fd >= 0) close(h.resp_event_fd);
-  if (h.req_credit_event_fd >= 0) close(h.req_credit_event_fd);
-  if (h.resp_credit_event_fd >= 0) close(h.resp_credit_event_fd);
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
 }
 
 int GetEnvInt(const char* name, int default_value) {

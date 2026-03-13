@@ -194,7 +194,7 @@
 - `RegisterClientCallback(...)`
 - `NotifyClientSessionClosed(...)`
 
-其中 `OpenSession(...)` 负责把 `shm_fd`、`eventfd`、`session_id`、协议版本等信息返回给客户端。
+其中 `OpenSession(...)` 负责把 `shmFd`、`eventfd`、`session_id`、协议版本等信息返回给客户端。
 
 ### 5.2 `services/engine_sa/` 层
 
@@ -294,7 +294,7 @@ SystemAbility 调另一个 SystemAbility，仍然是：
 - `EnsureEngineReady()`
   - 确保引擎 SA 已准备好共享内存会话
 - `AcquireSession()`
-  - 返回 `shm_fd`、`high_req_event_fd`、`normal_req_event_fd`、`resp_event_fd`
+  - 返回 `shmFd`、`highReqEventFd`、`normalReqEventFd`、`respEventFd`
   - 返回 `session_id`、`protocol_version`
 - `RegisterClientObserver(callback)`
   - 用于服务死亡、session 更新、可选的主动通知
@@ -315,10 +315,10 @@ SystemAbility 调另一个 SystemAbility，仍然是：
 
 鸿蒙正式接入时，核心难点不是扫描逻辑，而是把这些句柄通过 Binder 正确传过去：
 
-- `shm_fd`
-- `high_req_event_fd`
-- `normal_req_event_fd`
-- `resp_event_fd`
+- `shmFd`
+- `highReqEventFd`
+- `normalReqEventFd`
+- `respEventFd`
 
 建议把 fd 交换集中在新 SA 的 `AcquireSession()` 中一次性完成，避免分多次调用造成 session 不一致。
 
