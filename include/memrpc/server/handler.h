@@ -69,13 +69,6 @@ struct RpcServerReply {
 
 using RpcHandler = std::function<void(const RpcServerCall&, RpcServerReply*)>;
 
-class IScanHandler {
- public:
-  virtual ~IScanHandler() = default;
-
-  virtual ScanResult HandleScan(const ScanRequest& request) = 0;
-};
-
 }  // namespace memrpc
 
 namespace OHOS {

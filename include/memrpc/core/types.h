@@ -17,16 +17,12 @@ struct ScanOptions {
   // priority 决定请求进入高优或普通请求队列。
   Priority priority = Priority::Normal;
   // queue_timeout_ms 是请求在服务端排队阶段允许等待的最长时间。
-  uint32_t queue_timeout_ms = 1000;
+  uint32_t queueTimeoutMs = 1000;
   // exec_timeout_ms 是 handler 实际执行阶段允许消耗的最长时间。
-  uint32_t exec_timeout_ms = 30000;
+  uint32_t execTimeoutMs = 30000;
   uint32_t flags = 0;
 };
 
-struct ScanRequest {
-  std::string file_path;
-  ScanOptions options;
-};
 
 struct ScanBehaviorRequest {
   std::string behavior_text;
@@ -55,8 +51,8 @@ enum class StatusCode {
 struct ScanResult {
   StatusCode status = StatusCode::Ok;
   ScanVerdict verdict = ScanVerdict::Unknown;
-  int32_t engine_code = 0;
-  int32_t detail_code = 0;
+  int32_t engineCode = 0;
+  int32_t detailCode = 0;
   std::string message;
 };
 

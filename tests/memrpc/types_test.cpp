@@ -5,16 +5,16 @@
 TEST(TypesTest, ScanOptionsDefaultsToNormalPriority) {
   const memrpc::ScanOptions options;
   EXPECT_EQ(options.priority, memrpc::Priority::Normal);
-  EXPECT_EQ(options.queue_timeout_ms, 1000u);
-  EXPECT_EQ(options.exec_timeout_ms, 30000u);
+  EXPECT_EQ(options.queueTimeoutMs, 1000u);
+  EXPECT_EQ(options.execTimeoutMs, 30000u);
 }
 
 TEST(TypesTest, ScanResultDefaultsAreStable) {
   const memrpc::ScanResult result;
   EXPECT_EQ(result.status, memrpc::StatusCode::Ok);
   EXPECT_EQ(result.verdict, memrpc::ScanVerdict::Unknown);
-  EXPECT_EQ(result.engine_code, 0);
-  EXPECT_EQ(result.detail_code, 0);
+  EXPECT_EQ(result.engineCode, 0);
+  EXPECT_EQ(result.detailCode, 0);
   EXPECT_TRUE(result.message.empty());
 }
 
