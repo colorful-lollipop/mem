@@ -7,7 +7,9 @@ Current mainline work focuses on the shared-memory RPC framework and the minimal
 - `include/memrpc/`, `src/core/`, `src/client/`, `src/server/`, `src/bootstrap/`: framework code
 - `include/apps/minirpc/`, `src/apps/minirpc/`: minimal app used to validate cross-process RPC
 - `tests/`: focused unit and integration tests; keep framework and app tests logically separated
-- `demo/`: runnable examples, currently centered on `memrpc_minirpc_demo`
+- `demo/`: runnable examples
+  - `memrpc_minirpc_demo`: minimal cross-process RPC demo
+  - `vpsdemo/`: VPS (Virus Protection Service) demo application with supervisor, engine SA, and client
 - `docs/`: architecture, porting notes, and implementation plans
 
 Keep business-specific compatibility layers out of the framework. Applications should adapt their own legacy APIs.
@@ -16,8 +18,10 @@ Keep business-specific compatibility layers out of the framework. Applications s
 
 - `cmake -S . -B build`: configure the project
 - `cmake --build build`: build libraries, tests, and demos
-- `ctest --test-dir build --output-on-failure`: run the active test suite
+- `ctest --test-dir build --output-on-failure`: run the active test suite (44 tests)
 - `./build/demo/memrpc_minirpc_demo`: run the minimal cross-process demo
+- `./build/demo/vpsdemo/vpsdemo_supervisor`: run VPS demo (supervisor + engine + client)
+- `./build/demo/vpsdemo/vpsdemo_stress_client --threads 2 --iterations 100`: run stress test
 
 Use CMake as the source of truth during active development.
 
@@ -49,6 +53,30 @@ Tests use GoogleTest via CMake. Name new tests by feature, for example `response
 - Add app tests only for thin integration paths
 
 Avoid broad end-to-end additions unless they protect a real regression.
+
+### vpsdemo Tests
+
+The vpsdemo module includes both GoogleTest unit tests and executable integration tests:
+
+| Test | Type | Command |
+|------|------|---------|
+| vpsdemo_session_service_test | unit | `ctest -R vpsdemo_session` |
+| vpsdemo_heartbeat_test | unit | `ctest -R vpsdemo_heartbeat` |
+| vpsdemo_codec_test | unit | `ctest -R vpsdemo_codec` |
+| vpsdemo_sample_rules_test | unit | `ctest -R vpsdemo_sample` |
+| vpsdemo_health_test | unit | `ctest -R vpsdemo_health` |
+| vpsdemo_policy_test | unit | `ctest -R vpsdemo_policy` |
+| vpsdemo_crash_recovery_test | unit | `ctest -R vpsdemo_crash_recovery` |
+| vpsdemo_supervisor_integration_test | integration | `ctest -L integration` |
+| vpsdemo_stress_test | stress | `ctest -L stress` |
+| vpsdemo_dt_crash_recovery_test | dt | `ctest -L dt` |
+
+Run all vpsdemo tests: `ctest -R vpsdemo`
+
+Run by label:
+- `ctest -L dt` - DT (Deterministic Testing) tests
+- `ctest -L integration` - Integration tests
+- `ctest -L stress` - Stress tests
 
 ## Commit Guidelines
 
