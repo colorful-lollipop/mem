@@ -68,7 +68,7 @@ Build a runnable multi-process VPS demo that simulates HarmonyOS SA discovery an
 ## VPS Bootstrap SA Interface
 
 ### Interface
-A demo interface defined in `demo/vpsdemo/include/vps_bootstrap_interface.h`:
+A demo interface defined in `demo/vpsdemo/include/ves_bootstrap_interface.h`:
 - `StatusCode OpenSession(BootstrapHandles* handles)`
 - `StatusCode CloseSession()`
 

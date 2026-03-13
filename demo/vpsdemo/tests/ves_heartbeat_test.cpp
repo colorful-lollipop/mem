@@ -6,8 +6,8 @@
 #include <unistd.h>
 
 #include "virus_executor_service.h"
-#include "vps_bootstrap_interface.h"
-#include "vps_bootstrap_proxy.h"
+#include "ves_bootstrap_interface.h"
+#include "ves_bootstrap_proxy.h"
 #include "ves_types.h"
 
 namespace vpsdemo {

@@ -3,7 +3,7 @@
 #include <string>
 
 #include "ves_codec.h"
-#include "vpsdemo_sample_rules.h"
+#include "vesdemo_sample_rules.h"
 #include "ves_types.h"
 
 namespace {

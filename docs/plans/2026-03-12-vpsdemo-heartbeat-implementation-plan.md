@@ -13,25 +13,25 @@
 ### Task 1: Add Heartbeat Types + Direct Service Heartbeat (Unit Test)
 
 **Files:**
-- Modify: `demo/vpsdemo/include/vps_bootstrap_interface.h`
+- Modify: `demo/vpsdemo/include/ves_bootstrap_interface.h`
 - Modify: `demo/vpsdemo/include/virus_executor_service.h`
 - Modify: `demo/vpsdemo/src/virus_executor_service.cpp`
 - Modify: `demo/vpsdemo/include/vpsdemo_service.h`
 - Modify: `demo/vpsdemo/src/vpsdemo_service.cpp`
 - Modify: `demo/vpsdemo/include/ves_session_service.h`
 - Modify: `demo/vpsdemo/src/ves_session_service.cpp`
-- Create: `demo/vpsdemo/tests/vps_heartbeat_test.cpp`
+- Create: `demo/vpsdemo/tests/ves_heartbeat_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Add `demo/vpsdemo/tests/vps_heartbeat_test.cpp`:
+Add `demo/vpsdemo/tests/ves_heartbeat_test.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
 
 #include "virus_executor_service.h"
-#include "vps_bootstrap_interface.h"
+#include "ves_bootstrap_interface.h"
 
 namespace vpsdemo {
 
@@ -52,7 +52,7 @@ TEST(VpsHeartbeatTest, UnhealthyBeforeOpenSession) {
 Update `demo/vpsdemo/CMakeLists.txt` to add the test target when `VPSDEMO_ENABLE_TESTS` is ON:
 
 ```cmake
-  add_executable(vpsdemo_heartbeat_test tests/vps_heartbeat_test.cpp)
+  add_executable(vpsdemo_heartbeat_test tests/ves_heartbeat_test.cpp)
   target_link_libraries(vpsdemo_heartbeat_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_heartbeat_test COMMAND vpsdemo_heartbeat_test)
 ```
@@ -68,7 +68,7 @@ Expected: compile failure because `VesHeartbeatReply` / `Heartbeat` do not exist
 
 **Step 3: Write minimal implementation**
 
-In `demo/vpsdemo/include/vps_bootstrap_interface.h` add:
+In `demo/vpsdemo/include/ves_bootstrap_interface.h` add:
 
 ```cpp
 enum class VesHeartbeatStatus : uint32_t {
@@ -136,14 +136,14 @@ Expected: `vpsdemo_heartbeat_test` PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/include/vps_bootstrap_interface.h \
+git add demo/vpsdemo/include/ves_bootstrap_interface.h \
         demo/vpsdemo/include/virus_executor_service.h \
         demo/vpsdemo/src/virus_executor_service.cpp \
         demo/vpsdemo/include/vpsdemo_service.h \
         demo/vpsdemo/src/vpsdemo_service.cpp \
         demo/vpsdemo/include/ves_session_service.h \
         demo/vpsdemo/src/ves_session_service.cpp \
-        demo/vpsdemo/tests/vps_heartbeat_test.cpp \
+        demo/vpsdemo/tests/ves_heartbeat_test.cpp \
         demo/vpsdemo/CMakeLists.txt
 
 git commit -m "feat: add heartbeat types and base handler"
@@ -159,11 +159,11 @@ git commit -m "feat: add heartbeat types and base handler"
 - Modify: `demo/vpsdemo/include/ves_session_service.h`
 - Modify: `demo/vpsdemo/src/ves_session_service.cpp`
 - Modify: `demo/vpsdemo/src/virus_executor_service.cpp`
-- Modify: `demo/vpsdemo/tests/vps_heartbeat_test.cpp`
+- Modify: `demo/vpsdemo/tests/ves_heartbeat_test.cpp`
 
 **Step 1: Write the failing test**
 
-Update `demo/vpsdemo/tests/vps_heartbeat_test.cpp` to add:
+Update `demo/vpsdemo/tests/ves_heartbeat_test.cpp` to add:
 
 ```cpp
 TEST(VpsHeartbeatTest, OkAfterOpenSession) {
@@ -273,7 +273,7 @@ git add demo/vpsdemo/include/vpsdemo_service.h \
         demo/vpsdemo/include/ves_session_service.h \
         demo/vpsdemo/src/ves_session_service.cpp \
         demo/vpsdemo/src/virus_executor_service.cpp \
-        demo/vpsdemo/tests/vps_heartbeat_test.cpp
+        demo/vpsdemo/tests/ves_heartbeat_test.cpp
 
 git commit -m "feat: add vpsdemo health snapshot for heartbeat"
 ```
@@ -287,14 +287,14 @@ git commit -m "feat: add vpsdemo health snapshot for heartbeat"
 - Modify: `third_party/ohos_sa_mock/src/mock_service_socket.cpp`
 - Modify: `third_party/ohos_sa_mock/include/scm_rights.h` (optional helper)
 - Modify: `third_party/ohos_sa_mock/src/scm_rights.cpp` (optional helper)
-- Modify: `demo/vpsdemo/include/vps_bootstrap_stub.h`
-- Modify: `demo/vpsdemo/include/vps_bootstrap_proxy.h`
-- Modify: `demo/vpsdemo/src/vps_bootstrap_proxy.cpp`
-- Modify: `demo/vpsdemo/tests/vps_heartbeat_test.cpp`
+- Modify: `demo/vpsdemo/include/ves_bootstrap_stub.h`
+- Modify: `demo/vpsdemo/include/ves_bootstrap_proxy.h`
+- Modify: `demo/vpsdemo/src/ves_bootstrap_proxy.cpp`
+- Modify: `demo/vpsdemo/tests/ves_heartbeat_test.cpp`
 
 **Step 1: Write the failing test**
 
-Extend `demo/vpsdemo/tests/vps_heartbeat_test.cpp` with an SA-socket round trip:
+Extend `demo/vpsdemo/tests/ves_heartbeat_test.cpp` with an SA-socket round trip:
 
 ```cpp
 #include <unistd.h>
@@ -361,7 +361,7 @@ if (reply.close_after_reply) {
 }
 ```
 
-Add cmd=3 handling in `demo/vpsdemo/include/vps_bootstrap_stub.h`:
+Add cmd=3 handling in `demo/vpsdemo/include/ves_bootstrap_stub.h`:
 
 ```cpp
 case 3: {  // Heartbeat
@@ -378,13 +378,13 @@ case 3: {  // Heartbeat
 
 Implement `Heartbeat` in `VpsBootstrapProxy` and integrate into `MonitorSocket`:
 
-`demo/vpsdemo/include/vps_bootstrap_proxy.h`
+`demo/vpsdemo/include/ves_bootstrap_proxy.h`
 
 ```cpp
 memrpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
 ```
 
-`demo/vpsdemo/src/vps_bootstrap_proxy.cpp`:
+`demo/vpsdemo/src/ves_bootstrap_proxy.cpp`:
 - Add a helper to send cmd=3 on a short-lived connection and `recv()` a fixed-size reply.
 - In `MonitorSocket`, keep the existing death-detection poll loop, but every 10s call `Heartbeat()`. On failure or `reply.status != Ok`, call `CloseSession()` and invoke `death_callback_` with the current session id.
 - Update `CloseSession()` to send cmd=2 over a short-lived connection before closing the monitor socket.
@@ -405,10 +405,10 @@ git add third_party/ohos_sa_mock/include/mock_ipc_types.h \
         third_party/ohos_sa_mock/src/mock_service_socket.cpp \
         third_party/ohos_sa_mock/include/scm_rights.h \
         third_party/ohos_sa_mock/src/scm_rights.cpp \
-        demo/vpsdemo/include/vps_bootstrap_stub.h \
-        demo/vpsdemo/include/vps_bootstrap_proxy.h \
-        demo/vpsdemo/src/vps_bootstrap_proxy.cpp \
-        demo/vpsdemo/tests/vps_heartbeat_test.cpp
+        demo/vpsdemo/include/ves_bootstrap_stub.h \
+        demo/vpsdemo/include/ves_bootstrap_proxy.h \
+        demo/vpsdemo/src/ves_bootstrap_proxy.cpp \
+        demo/vpsdemo/tests/ves_heartbeat_test.cpp
 
 git commit -m "feat: add SA-socket heartbeat and proxy monitor"
 ```

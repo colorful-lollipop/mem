@@ -14,9 +14,9 @@
 #include "iservice_registry.h"
 #include "registry_backend.h"
 #include "registry_server.h"
-#include "vps_bootstrap_interface.h"
-#include "vps_client.h"
-#include "vpsdemo_sample_rules.h"
+#include "ves_bootstrap_interface.h"
+#include "ves_client.h"
+#include "vesdemo_sample_rules.h"
 #include "ves_types.h"
 #include "virus_protection_service_log.h"
 

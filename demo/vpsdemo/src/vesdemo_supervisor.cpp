@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "registry_server.h"
-#include "vps_bootstrap_interface.h"
+#include "ves_bootstrap_interface.h"
 #include "virus_protection_service_log.h"
 
 namespace {

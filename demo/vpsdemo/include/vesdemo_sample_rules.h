@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPSDEMO_SAMPLE_RULES_H_
-#define VPSDEMO_VPSDEMO_SAMPLE_RULES_H_
+#ifndef VPSDEMO_VESDEMO_SAMPLE_RULES_H_
+#define VPSDEMO_VESDEMO_SAMPLE_RULES_H_
 
 #include <cstdint>
 #include <string>
@@ -18,4 +18,4 @@ SampleBehavior EvaluateSamplePath(const std::string& path);
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPSDEMO_SAMPLE_RULES_H_
+#endif  // VPSDEMO_VESDEMO_SAMPLE_RULES_H_

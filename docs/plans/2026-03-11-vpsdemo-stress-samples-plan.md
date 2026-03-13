@@ -13,15 +13,15 @@
 ### Task 1: Implement Sample Rules + Stress Client (Single End-to-End Slice)
 
 **Files:**
-- Create: `demo/vpsdemo/include/vpsdemo_sample_rules.h`
-- Create: `demo/vpsdemo/src/vpsdemo_sample_rules.cpp`
-- Create: `demo/vpsdemo/src/vpsdemo_stress_client.cpp`
+- Create: `demo/vpsdemo/include/vesdemo_sample_rules.h`
+- Create: `demo/vpsdemo/src/vesdemo_sample_rules.cpp`
+- Create: `demo/vpsdemo/src/vesdemo_stress_client.cpp`
 - Modify: `demo/vpsdemo/src/vpsdemo_service.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test (stress client with explicit expectations)**
 
-Create `demo/vpsdemo/src/vpsdemo_stress_client.cpp` with a local expected mapping table
+Create `demo/vpsdemo/src/vesdemo_stress_client.cpp` with a local expected mapping table
 that marks `eicar` and `sleep*` samples as `threat=1`. This will fail against the current
 server logic (which only matches `"virus"`).
 
@@ -58,7 +58,7 @@ Expected: non-zero exit with `mismatch > 0` (because server lacks `eicar`/`sleep
 
 **Step 3: Write minimal implementation (shared helper + service integration)**
 
-Create `demo/vpsdemo/include/vpsdemo_sample_rules.h`:
+Create `demo/vpsdemo/include/vesdemo_sample_rules.h`:
 
 ```cpp
 #pragma once
@@ -79,10 +79,10 @@ SampleBehavior EvaluateSamplePath(const std::string& path);
 }  // namespace vpsdemo
 ```
 
-Create `demo/vpsdemo/src/vpsdemo_sample_rules.cpp`:
+Create `demo/vpsdemo/src/vesdemo_sample_rules.cpp`:
 
 ```cpp
-#include "vpsdemo_sample_rules.h"
+#include "vesdemo_sample_rules.h"
 
 #include <algorithm>
 #include <cctype>
@@ -145,7 +145,7 @@ result.threat_level = behavior.threatLevel;
 Replace the local table with `EvaluateSamplePath()` for expected behavior, while
 still using a fixed list of sample tokens to generate paths.
 
-Key parts to include in `vpsdemo_stress_client.cpp`:
+Key parts to include in `vesdemo_stress_client.cpp`:
 
 ```cpp
 struct SampleToken {
@@ -174,7 +174,7 @@ if (status != memrpc::StatusCode::Ok) { rpcError++; continue; }
 if (reply.threat_level != behavior.threatLevel) { mismatch++; }
 ```
 
-Add self-hosted registry + engine spawn (adapt from `demo/vpsdemo/src/vpsdemo_supervisor.cpp`):
+Add self-hosted registry + engine spawn (adapt from `demo/vpsdemo/src/vesdemo_supervisor.cpp`):
 
 ```cpp
 vpsdemo::RegistryServer registry(registrySocket);
@@ -190,10 +190,10 @@ Add the new sources to `vpsdemo_lib`, and add the new executable:
 ```cmake
 add_library(vpsdemo_lib
   ...
-  src/vpsdemo_sample_rules.cpp
+  src/vesdemo_sample_rules.cpp
 )
 
-add_executable(vpsdemo_stress_client src/vpsdemo_stress_client.cpp)
+add_executable(vpsdemo_stress_client src/vesdemo_stress_client.cpp)
 target_link_libraries(vpsdemo_stress_client PRIVATE vpsdemo_lib)
 ```
 
@@ -211,10 +211,10 @@ Expected: exit code `0`, `mismatch=0`, `rpc_error=0` (with `--include-crash` off
 
 ```bash
 git add demo/vpsdemo/CMakeLists.txt \
-  demo/vpsdemo/include/vpsdemo_sample_rules.h \
-  demo/vpsdemo/src/vpsdemo_sample_rules.cpp \
+  demo/vpsdemo/include/vesdemo_sample_rules.h \
+  demo/vpsdemo/src/vesdemo_sample_rules.cpp \
   demo/vpsdemo/src/vpsdemo_service.cpp \
-  demo/vpsdemo/src/vpsdemo_stress_client.cpp
+  demo/vpsdemo/src/vesdemo_stress_client.cpp
 git commit -m "feat: add vpsdemo stress samples and shared rules"
 ```
 

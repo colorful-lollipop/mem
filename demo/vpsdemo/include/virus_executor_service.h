@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "system_ability.h"
-#include "vps_bootstrap_stub.h"
+#include "ves_bootstrap_stub.h"
 #include "ves_session_service.h"
 #include "ves_engine_service.h"
 

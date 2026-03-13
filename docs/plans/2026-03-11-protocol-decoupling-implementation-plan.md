@@ -234,7 +234,7 @@ git commit -m "feat: switch minirpc to app opcode"
 - Modify: `src/apps/vps/parent/virus_engine_manager.cpp`
 - Modify: `src/apps/vps/parent/virus_engine_manager.h`
 - Modify: `src/apps/vps/common/vps_codec.cpp`
-- Modify: `demo/vpsdemo/src/vpsdemo_client.cpp`
+- Modify: `demo/vpsdemo/src/vesdemo_client.cpp`
 - Modify: `include/apps/vps/parent/virus_engine_manager.h`
 - Modify: `include/apps/vps/child/virus_engine_service.h`
 

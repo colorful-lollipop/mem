@@ -13,12 +13,12 @@
 ### Task 1: Add codec unit tests (ScanFile request/reply)
 
 **Files:**
-- Create: `demo/vpsdemo/tests/vpsdemo_codec_test.cpp`
+- Create: `demo/vpsdemo/tests/vesdemo_codec_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Create `demo/vpsdemo/tests/vpsdemo_codec_test.cpp`:
+Create `demo/vpsdemo/tests/vesdemo_codec_test.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
@@ -75,7 +75,7 @@ Expected: FAIL because target not defined in CMake.
 Edit `demo/vpsdemo/CMakeLists.txt` under `if (VPSDEMO_ENABLE_TESTS)`:
 
 ```cmake
-  add_executable(vpsdemo_codec_test tests/vpsdemo_codec_test.cpp)
+  add_executable(vpsdemo_codec_test tests/vesdemo_codec_test.cpp)
   target_link_libraries(vpsdemo_codec_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_codec_test COMMAND vpsdemo_codec_test)
 ```
@@ -93,7 +93,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vpsdemo_codec_test.cpp demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/vesdemo_codec_test.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo codec unit tests"
 ```
 
@@ -102,17 +102,17 @@ git commit -m "feat: add vpsdemo codec unit tests"
 ### Task 2: Add sample rules unit tests
 
 **Files:**
-- Create: `demo/vpsdemo/tests/vpsdemo_sample_rules_test.cpp`
+- Create: `demo/vpsdemo/tests/vesdemo_sample_rules_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Create `demo/vpsdemo/tests/vpsdemo_sample_rules_test.cpp`:
+Create `demo/vpsdemo/tests/vesdemo_sample_rules_test.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
 
-#include "vpsdemo_sample_rules.h"
+#include "vesdemo_sample_rules.h"
 
 namespace vpsdemo {
 
@@ -156,7 +156,7 @@ Expected: FAIL because target not defined in CMake.
 Edit `demo/vpsdemo/CMakeLists.txt` under `if (VPSDEMO_ENABLE_TESTS)`:
 
 ```cmake
-  add_executable(vpsdemo_sample_rules_test tests/vpsdemo_sample_rules_test.cpp)
+  add_executable(vpsdemo_sample_rules_test tests/vesdemo_sample_rules_test.cpp)
   target_link_libraries(vpsdemo_sample_rules_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_sample_rules_test COMMAND vpsdemo_sample_rules_test)
 ```
@@ -174,7 +174,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vpsdemo_sample_rules_test.cpp demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/vesdemo_sample_rules_test.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo sample rules tests"
 ```
 
@@ -183,12 +183,12 @@ git commit -m "feat: add vpsdemo sample rules tests"
 ### Task 3: Add health snapshot unit tests
 
 **Files:**
-- Create: `demo/vpsdemo/tests/vpsdemo_health_test.cpp`
+- Create: `demo/vpsdemo/tests/vesdemo_health_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Create `demo/vpsdemo/tests/vpsdemo_health_test.cpp`:
+Create `demo/vpsdemo/tests/vesdemo_health_test.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
@@ -261,7 +261,7 @@ Expected: FAIL because target not defined in CMake.
 Edit `demo/vpsdemo/CMakeLists.txt` under `if (VPSDEMO_ENABLE_TESTS)`:
 
 ```cmake
-  add_executable(vpsdemo_health_test tests/vpsdemo_health_test.cpp)
+  add_executable(vpsdemo_health_test tests/vesdemo_health_test.cpp)
   target_link_libraries(vpsdemo_health_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_health_test COMMAND vpsdemo_health_test)
 ```
@@ -279,7 +279,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vpsdemo_health_test.cpp demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/vesdemo_health_test.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo health snapshot tests"
 ```
 
@@ -288,12 +288,12 @@ git commit -m "feat: add vpsdemo health snapshot tests"
 ### Task 4: Add policy/timeout unit test (exec timeout triggers onFailure)
 
 **Files:**
-- Create: `demo/vpsdemo/tests/vpsdemo_policy_test.cpp`
+- Create: `demo/vpsdemo/tests/vesdemo_policy_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Create `demo/vpsdemo/tests/vpsdemo_policy_test.cpp`:
+Create `demo/vpsdemo/tests/vesdemo_policy_test.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
@@ -378,7 +378,7 @@ Expected: FAIL because target not defined in CMake.
 Edit `demo/vpsdemo/CMakeLists.txt` under `if (VPSDEMO_ENABLE_TESTS)`:
 
 ```cmake
-  add_executable(vpsdemo_policy_test tests/vpsdemo_policy_test.cpp)
+  add_executable(vpsdemo_policy_test tests/vesdemo_policy_test.cpp)
   target_link_libraries(vpsdemo_policy_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_policy_test COMMAND vpsdemo_policy_test)
 ```
@@ -396,7 +396,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vpsdemo_policy_test.cpp demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/vesdemo_policy_test.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo policy timeout test"
 ```
 
@@ -405,7 +405,7 @@ git commit -m "feat: add vpsdemo policy timeout test"
 ### Task 5: Expand heartbeat test assertions
 
 **Files:**
-- Modify: `demo/vpsdemo/tests/vps_heartbeat_test.cpp`
+- Modify: `demo/vpsdemo/tests/ves_heartbeat_test.cpp`
 
 **Step 1: Write the failing test**
 
@@ -458,7 +458,7 @@ Expected: build fails until includes and threading headers are added.
 
 **Step 3: Write minimal implementation**
 
-Add missing includes in `demo/vpsdemo/tests/vps_heartbeat_test.cpp`:
+Add missing includes in `demo/vpsdemo/tests/ves_heartbeat_test.cpp`:
 
 ```cpp
 #include <atomic>
@@ -475,7 +475,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vps_heartbeat_test.cpp
+git add demo/vpsdemo/tests/ves_heartbeat_test.cpp
 git commit -m "feat: expand vpsdemo heartbeat tests"
 ```
 
@@ -484,12 +484,12 @@ git commit -m "feat: expand vpsdemo heartbeat tests"
 ### Task 6: Add crash-recovery integration test
 
 **Files:**
-- Create: `demo/vpsdemo/tests/vpsdemo_crash_recovery_test.cpp`
+- Create: `demo/vpsdemo/tests/vesdemo_crash_recovery_test.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
-Create `demo/vpsdemo/tests/vpsdemo_crash_recovery_test.cpp` (adapted from `vpsdemo_dt_crash_recovery.cpp` into a bounded gtest):
+Create `demo/vpsdemo/tests/vesdemo_crash_recovery_test.cpp` (adapted from `vesdemo_dt_crash_recovery.cpp` into a bounded gtest):
 
 ```cpp
 #include <gtest/gtest.h>
@@ -507,8 +507,8 @@ Create `demo/vpsdemo/tests/vpsdemo_crash_recovery_test.cpp` (adapted from `vpsde
 #include "iservice_registry.h"
 #include "registry_backend.h"
 #include "registry_server.h"
-#include "vps_bootstrap_interface.h"
-#include "vps_client.h"
+#include "ves_bootstrap_interface.h"
+#include "ves_client.h"
 #include "vpsdemo_types.h"
 
 namespace {
@@ -642,7 +642,7 @@ Expected: FAIL because target not defined in CMake.
 Edit `demo/vpsdemo/CMakeLists.txt` under `if (VPSDEMO_ENABLE_TESTS)`:
 
 ```cmake
-  add_executable(vpsdemo_crash_recovery_test tests/vpsdemo_crash_recovery_test.cpp)
+  add_executable(vpsdemo_crash_recovery_test tests/vesdemo_crash_recovery_test.cpp)
   target_link_libraries(vpsdemo_crash_recovery_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_crash_recovery_test COMMAND vpsdemo_crash_recovery_test)
 ```
@@ -666,7 +666,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/vpsdemo_crash_recovery_test.cpp demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/vesdemo_crash_recovery_test.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo crash recovery test"
 ```
 
@@ -675,13 +675,13 @@ git commit -m "feat: add vpsdemo crash recovery test"
 ### Task 7: Add vpsdemo codec fuzz target
 
 **Files:**
-- Create: `demo/vpsdemo/tests/fuzz/vpsdemo_codec_fuzz.cpp`
+- Create: `demo/vpsdemo/tests/fuzz/vesdemo_codec_fuzz.cpp`
 - Create: `demo/vpsdemo/tests/fuzz/CMakeLists.txt`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Write the failing test (fuzz target)**
 
-Create `demo/vpsdemo/tests/fuzz/vpsdemo_codec_fuzz.cpp`:
+Create `demo/vpsdemo/tests/fuzz/vesdemo_codec_fuzz.cpp`:
 
 ```cpp
 #include <cstddef>
@@ -689,7 +689,7 @@ Create `demo/vpsdemo/tests/fuzz/vpsdemo_codec_fuzz.cpp`:
 #include <string>
 
 #include "vpsdemo_codec.h"
-#include "vpsdemo_sample_rules.h"
+#include "vesdemo_sample_rules.h"
 #include "vpsdemo_types.h"
 
 namespace {
@@ -748,7 +748,7 @@ if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(FATAL_ERROR "VPSDEMO_ENABLE_FUZZ requires Clang")
 endif()
 
-add_executable(vpsdemo_codec_fuzz vpsdemo_codec_fuzz.cpp)
+add_executable(vpsdemo_codec_fuzz vesdemo_codec_fuzz.cpp)
 set_target_properties(vpsdemo_codec_fuzz PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED YES
@@ -803,7 +803,7 @@ Expected: fuzz smoke test PASS.
 **Step 5: Commit**
 
 ```bash
-git add demo/vpsdemo/tests/fuzz/vpsdemo_codec_fuzz.cpp demo/vpsdemo/tests/fuzz/CMakeLists.txt demo/vpsdemo/CMakeLists.txt
+git add demo/vpsdemo/tests/fuzz/vesdemo_codec_fuzz.cpp demo/vpsdemo/tests/fuzz/CMakeLists.txt demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: add vpsdemo codec fuzz target"
 ```
 

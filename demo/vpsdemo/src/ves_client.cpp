@@ -1,9 +1,9 @@
-#include "vps_client.h"
+#include "ves_client.h"
 
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
-#include "vps_bootstrap_interface.h"
+#include "ves_bootstrap_interface.h"
 #include "ves_codec.h"
 #include "ves_protocol.h"
 #include "virus_protection_service_log.h"

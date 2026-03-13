@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPS_CLIENT_H_
-#define VPSDEMO_VPS_CLIENT_H_
+#ifndef VPSDEMO_VES_CLIENT_H_
+#define VPSDEMO_VES_CLIENT_H_
 
 #include <atomic>
 #include <functional>
@@ -8,7 +8,7 @@
 
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
-#include "vps_bootstrap_proxy.h"
+#include "ves_bootstrap_proxy.h"
 #include "ves_types.h"
 
 namespace vpsdemo {
@@ -59,4 +59,4 @@ class VesClient {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_CLIENT_H_
+#endif  // VPSDEMO_VES_CLIENT_H_

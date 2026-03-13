@@ -5,8 +5,8 @@
 
 #include "iservice_registry.h"
 #include "registry_backend.h"
-#include "vps_bootstrap_interface.h"
-#include "vps_client.h"
+#include "ves_bootstrap_interface.h"
+#include "ves_client.h"
 #include "virus_protection_service_log.h"
 
 namespace {

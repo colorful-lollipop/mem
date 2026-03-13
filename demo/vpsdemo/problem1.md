@@ -47,6 +47,6 @@ EngineSessionService initialized
 ## 相关文件
 
 - `src/client/rpc_client.cpp` — `RestartAfterDeath`, `EnsureLiveSession`, `HandleEngineDeath`
-- `demo/vpsdemo/src/vps_bootstrap_proxy.cpp` — `OpenSession` reconnect 清理逻辑
-- `demo/vpsdemo/src/vps_client.cpp` — `SetEngineDeathHandler`, restart callback
-- `demo/vpsdemo/src/vpsdemo_dt_crash_recovery.cpp` — DT 复现用例
+- `demo/vpsdemo/src/ves_bootstrap_proxy.cpp` — `OpenSession` reconnect 清理逻辑
+- `demo/vpsdemo/src/ves_client.cpp` — `SetEngineDeathHandler`, restart callback
+- `demo/vpsdemo/src/vesdemo_dt_crash_recovery.cpp` — DT 复现用例

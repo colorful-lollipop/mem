@@ -326,9 +326,9 @@ git commit -m "feat: test exec-timeout forced restart"
 ### Task 7: Update VpsClient to Use RecoveryPolicy
 
 **Files:**
-- Modify: `demo/vpsdemo/include/vps_client.h`
-- Modify: `demo/vpsdemo/src/vps_client.cpp`
-- Modify: `demo/vpsdemo/src/vpsdemo_client.cpp` (if options need wiring)
+- Modify: `demo/vpsdemo/include/ves_client.h`
+- Modify: `demo/vpsdemo/src/ves_client.cpp`
+- Modify: `demo/vpsdemo/src/vesdemo_client.cpp` (if options need wiring)
 
 **Step 1: Add Options to VpsClient**
 
@@ -371,7 +371,7 @@ Expected: build succeeds.
 **Step 4: Commit**
 
 ```bash
-git add demo/vpsdemo/include/vps_client.h demo/vpsdemo/src/vps_client.cpp demo/vpsdemo/src/vpsdemo_client.cpp
+git add demo/vpsdemo/include/ves_client.h demo/vpsdemo/src/ves_client.cpp demo/vpsdemo/src/vesdemo_client.cpp
 git commit -m "feat: configure vps client recovery policy"
 ```
 

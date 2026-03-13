@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPS_BOOTSTRAP_INTERFACE_H_
-#define VPSDEMO_VPS_BOOTSTRAP_INTERFACE_H_
+#ifndef VPSDEMO_VES_BOOTSTRAP_INTERFACE_H_
+#define VPSDEMO_VES_BOOTSTRAP_INTERFACE_H_
 
 #include <cstdint>
 #include <cstring>
@@ -38,4 +38,4 @@ class IVesBootstrap : public OHOS::IRemoteBroker {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_BOOTSTRAP_INTERFACE_H_
+#endif  // VPSDEMO_VES_BOOTSTRAP_INTERFACE_H_

@@ -48,10 +48,10 @@ add_library(vpsdemo_lib
     src/registry_client.cpp
     src/registry_backend.cpp
     src/virus_executor_service.cpp
-    src/vps_bootstrap_proxy.cpp
-    src/vps_client.cpp
+    src/ves_bootstrap_proxy.cpp
+    src/ves_client.cpp
     src/ves_session_service.cpp
-    src/vpsdemo_sample_rules.cpp
+    src/vesdemo_sample_rules.cpp
     src/ves_engine_service.cpp
 )
 target_include_directories(vpsdemo_lib PUBLIC
@@ -60,19 +60,19 @@ target_include_directories(vpsdemo_lib PUBLIC
 target_link_libraries(vpsdemo_lib PUBLIC memrpc_core ohos_sa_mock)
 
 # --- Executables ---
-add_executable(vpsdemo_supervisor src/vpsdemo_supervisor.cpp)
+add_executable(vpsdemo_supervisor src/vesdemo_supervisor.cpp)
 target_link_libraries(vpsdemo_supervisor PRIVATE vpsdemo_lib)
 
-add_executable(vpsdemo_engine_sa src/vpsdemo_engine_sa.cpp)
+add_executable(vpsdemo_engine_sa src/vesdemo_engine_sa.cpp)
 target_link_libraries(vpsdemo_engine_sa PRIVATE vpsdemo_lib)
 
-add_executable(vpsdemo_client src/vpsdemo_client.cpp)
+add_executable(vpsdemo_client src/vesdemo_client.cpp)
 target_link_libraries(vpsdemo_client PRIVATE vpsdemo_lib)
 
-add_executable(vpsdemo_stress_client src/vpsdemo_stress_client.cpp)
+add_executable(vpsdemo_stress_client src/vesdemo_stress_client.cpp)
 target_link_libraries(vpsdemo_stress_client PRIVATE vpsdemo_lib)
 
-add_executable(vpsdemo_dt_crash_recovery src/vpsdemo_dt_crash_recovery.cpp)
+add_executable(vpsdemo_dt_crash_recovery src/vesdemo_dt_crash_recovery.cpp)
 target_link_libraries(vpsdemo_dt_crash_recovery PRIVATE vpsdemo_lib)
 
 option(VPSDEMO_ENABLE_TESTS "Build vpsdemo tests" OFF)
@@ -85,27 +85,27 @@ if (VPSDEMO_ENABLE_TESTS)
   target_link_libraries(vpsdemo_session_service_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_session_service_test COMMAND vpsdemo_session_service_test)
 
-  add_executable(vpsdemo_heartbeat_test tests/vps_heartbeat_test.cpp)
+  add_executable(vpsdemo_heartbeat_test tests/ves_heartbeat_test.cpp)
   target_link_libraries(vpsdemo_heartbeat_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_heartbeat_test COMMAND vpsdemo_heartbeat_test)
 
-  add_executable(vpsdemo_codec_test tests/vpsdemo_codec_test.cpp)
+  add_executable(vpsdemo_codec_test tests/vesdemo_codec_test.cpp)
   target_link_libraries(vpsdemo_codec_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_codec_test COMMAND vpsdemo_codec_test)
 
-  add_executable(vpsdemo_sample_rules_test tests/vpsdemo_sample_rules_test.cpp)
+  add_executable(vpsdemo_sample_rules_test tests/vesdemo_sample_rules_test.cpp)
   target_link_libraries(vpsdemo_sample_rules_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_sample_rules_test COMMAND vpsdemo_sample_rules_test)
 
-  add_executable(vpsdemo_health_test tests/vpsdemo_health_test.cpp)
+  add_executable(vpsdemo_health_test tests/vesdemo_health_test.cpp)
   target_link_libraries(vpsdemo_health_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_health_test COMMAND vpsdemo_health_test)
 
-  add_executable(vpsdemo_policy_test tests/vpsdemo_policy_test.cpp)
+  add_executable(vpsdemo_policy_test tests/vesdemo_policy_test.cpp)
   target_link_libraries(vpsdemo_policy_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_policy_test COMMAND vpsdemo_policy_test)
 
-  add_executable(vpsdemo_crash_recovery_test tests/vpsdemo_crash_recovery_test.cpp)
+  add_executable(vpsdemo_crash_recovery_test tests/vesdemo_crash_recovery_test.cpp)
   target_link_libraries(vpsdemo_crash_recovery_test PRIVATE vpsdemo_lib GTest::gtest_main)
   add_test(NAME vpsdemo_crash_recovery_test COMMAND vpsdemo_crash_recovery_test)
   set_tests_properties(vpsdemo_crash_recovery_test PROPERTIES LABELS "dt")

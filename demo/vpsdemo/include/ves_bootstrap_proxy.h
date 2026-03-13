@@ -1,5 +1,5 @@
-#ifndef VPSDEMO_VPS_BOOTSTRAP_PROXY_H_
-#define VPSDEMO_VPS_BOOTSTRAP_PROXY_H_
+#ifndef VPSDEMO_VES_BOOTSTRAP_PROXY_H_
+#define VPSDEMO_VES_BOOTSTRAP_PROXY_H_
 
 #include <atomic>
 #include <mutex>
@@ -8,7 +8,7 @@
 
 #include "iremote_proxy.h"
 #include "memrpc/core/bootstrap.h"
-#include "vps_bootstrap_interface.h"
+#include "ves_bootstrap_interface.h"
 
 namespace vpsdemo {
 
@@ -48,4 +48,4 @@ class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_BOOTSTRAP_PROXY_H_
+#endif  // VPSDEMO_VES_BOOTSTRAP_PROXY_H_

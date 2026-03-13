@@ -23,7 +23,7 @@ Add a lightweight heartbeat on the SA socket so the client must call it every 10
 - **Health:** `VpsDemoService` exposes a small health snapshot (`status`, `current_task`, `in_flight`, `last_task_age_ms`). `EngineSessionService` provides `session_id` for reply validation.
 
 ## Protocol
-Define a fixed-size reply struct in `vps_bootstrap_interface.h`:
+Define a fixed-size reply struct in `ves_bootstrap_interface.h`:
 - `uint32_t version` (start at 1)
 - `uint32_t status` (OK / UNHEALTHY)
 - `uint64_t session_id`

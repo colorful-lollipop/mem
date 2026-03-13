@@ -1,4 +1,4 @@
-#include "vps_bootstrap_proxy.h"
+#include "ves_bootstrap_proxy.h"
 
 #include <cstring>
 #include <sys/socket.h>

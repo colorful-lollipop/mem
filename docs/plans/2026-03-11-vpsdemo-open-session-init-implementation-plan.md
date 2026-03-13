@@ -294,13 +294,13 @@ git commit -m "feat: add engine session service for vpsdemo"
 **Files:**
 - Modify: `demo/vpsdemo/include/virus_executor_service.h`
 - Modify: `demo/vpsdemo/src/virus_executor_service.cpp`
-- Modify: `demo/vpsdemo/src/vpsdemo_engine_sa.cpp`
+- Modify: `demo/vpsdemo/src/vesdemo_engine_sa.cpp`
 - Modify: `demo/vpsdemo/CMakeLists.txt`
 
 **Step 1: Rename SA class and files**
 
 Run:
-- `git mv demo/vpsdemo/include/vps_bootstrap_stub.h demo/vpsdemo/include/virus_executor_service.h`
+- `git mv demo/vpsdemo/include/ves_bootstrap_stub.h demo/vpsdemo/include/virus_executor_service.h`
 - `git mv demo/vpsdemo/src/vps_bootstrap_stub.cpp demo/vpsdemo/src/virus_executor_service.cpp`
 
 Update include guards, filenames, and class name `VpsBootstrapStub` -> `VirusExecutorService` in both files.
@@ -347,7 +347,7 @@ Update `demo/vpsdemo/CMakeLists.txt` to replace `src/vps_bootstrap_stub.cpp` wit
 
 **Step 3: Update engine SA to construct provider and SA**
 
-`demo/vpsdemo/src/vpsdemo_engine_sa.cpp`
+`demo/vpsdemo/src/vesdemo_engine_sa.cpp`
 
 ```cpp
 vpsdemo::VpsDemoService service;
@@ -371,14 +371,14 @@ Expected: PASS
 
 ```bash
 git add demo/vpsdemo/include/virus_executor_service.h demo/vpsdemo/src/virus_executor_service.cpp \
-  demo/vpsdemo/src/vpsdemo_engine_sa.cpp demo/vpsdemo/CMakeLists.txt
+  demo/vpsdemo/src/vesdemo_engine_sa.cpp demo/vpsdemo/CMakeLists.txt
 git commit -m "feat: wire vpsdemo SA to session provider"
 ```
 
 ### Task 4: Remove client-side InitEngine usage + manual verification
 
 **Files:**
-- Modify: `demo/vpsdemo/src/vpsdemo_client.cpp`
+- Modify: `demo/vpsdemo/src/vesdemo_client.cpp`
 
 **Step 1: Remove InitEngine call**
 
@@ -396,6 +396,6 @@ Expected: demo completes without requiring client `InitEngine` and logs normal `
 **Step 3: Commit**
 
 ```bash
-git add demo/vpsdemo/src/vpsdemo_client.cpp
+git add demo/vpsdemo/src/vesdemo_client.cpp
 git commit -m "fix: drop vpsdemo client InitEngine call"
 ```

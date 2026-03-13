@@ -32,18 +32,18 @@ Make `OpenSession` the single synchronous engine-initialization entry point for 
     - Holds `memrpc::PosixDemoBootstrapChannel`.
     - Performs synchronous `Initialize()` once.
     - Returns `BootstrapHandles` directly from the first `OpenSession`, avoiding a throwaway open/close.
-- **Rename/Update:** `demo/vpsdemo/include/vps_bootstrap_stub.h` -> `demo/vpsdemo/include/virus_executor_service.h`
+- **Rename/Update:** `demo/vpsdemo/include/ves_bootstrap_stub.h` -> `demo/vpsdemo/include/virus_executor_service.h`
 - **Rename/Update:** `demo/vpsdemo/src/vps_bootstrap_stub.cpp` -> `demo/vpsdemo/src/virus_executor_service.cpp`
   - Inject `VesSessionProvider`.
   - `AcceptLoop()` calls provider `OpenSession()` then sends fds.
-- **Update:** `demo/vpsdemo/src/vpsdemo_engine_sa.cpp`
+- **Update:** `demo/vpsdemo/src/vesdemo_engine_sa.cpp`
   - Construct `EngineSessionService`.
   - Inject into `VirusExecutorService`.
 - **Update:** `demo/vpsdemo/include/vpsdemo_service.h`
 - **Update:** `demo/vpsdemo/src/vpsdemo_service.cpp`
   - Add `Initialize()` (synchronous, idempotent).
   - `DemoInit` handler may call `Initialize()` to remain compatible.
-- **Update:** `demo/vpsdemo/src/vpsdemo_client.cpp`
+- **Update:** `demo/vpsdemo/src/vesdemo_client.cpp`
   - Remove `InitEngine()` call.
  - **Unchanged names:** `IVpsBootstrap`, `VPS_BOOTSTRAP_SA_ID`, `VpsBootstrapProxy`.
 

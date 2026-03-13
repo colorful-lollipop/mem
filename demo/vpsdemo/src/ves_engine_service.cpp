@@ -7,7 +7,7 @@
 #include "memrpc/server/typed_handler.h"
 #include "ves_codec.h"
 #include "ves_protocol.h"
-#include "vpsdemo_sample_rules.h"
+#include "vesdemo_sample_rules.h"
 #include "ves_types.h"
 #include "virus_protection_service_log.h"
 

@@ -1,12 +1,12 @@
-#ifndef VPSDEMO_VPS_BOOTSTRAP_STUB_H_
-#define VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+#ifndef VPSDEMO_VES_BOOTSTRAP_STUB_H_
+#define VPSDEMO_VES_BOOTSTRAP_STUB_H_
 
 #include <cstring>
 
 #include "iremote_stub.h"
 #include "mock_ipc_types.h"
 #include "memrpc/core/bootstrap.h"
-#include "vps_bootstrap_interface.h"
+#include "ves_bootstrap_interface.h"
 
 namespace vpsdemo {
 
@@ -67,4 +67,4 @@ class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
 
 }  // namespace vpsdemo
 
-#endif  // VPSDEMO_VPS_BOOTSTRAP_STUB_H_
+#endif  // VPSDEMO_VES_BOOTSTRAP_STUB_H_
