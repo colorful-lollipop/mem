@@ -551,6 +551,77 @@ struct RpcClient::Impl {
     saved.clear();
   }
 
+  // Must be called under session_mutex.
+  void AnnotatePendingRuntimeStates() {
+    for (size_t i = 0; i < pending_info_slots.size(); ++i) {
+      if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
+        continue;
+      }
+      const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
+      if (payload != nullptr) {
+        pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+        pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
+      }
+    }
+  }
+
+  // Must be called under session_mutex.
+  void ResetSessionState() {
+    session_live.store(false, std::memory_order_release);
+    session_dead = true;
+    current_session_id = 0;
+    session.Reset();
+    slot_pool.reset();
+  }
+
+  // Must be called under session_mutex. Annotates, snapshots, and tears down.
+  ReplayableSnapshot SnapshotAndTearDownLocked() {
+    AnnotatePendingRuntimeStates();
+    ReplayableSnapshot snapshot = SaveReplayableRequests();
+    ResetSessionState();
+    return snapshot;
+  }
+
+  void FailPoisonPills(std::vector<ReplayableSnapshot::PoisonEntry>& poison_list) {
+    for (auto& pe : poison_list) {
+      NotifyFailure(pe.info, StatusCode::CrashedDuringExecution, FailureStage::Session);
+      ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
+    }
+  }
+
+  EngineDeathReport BuildDeathReport(uint64_t dead_session_id,
+                                     const ReplayableSnapshot& snapshot) {
+    EngineDeathReport report;
+    report.deadSessionId = dead_session_id;
+    report.safeToReplayCount = static_cast<uint32_t>(snapshot.replay_list.size());
+    for (const auto& pe : snapshot.poison_list) {
+      EngineDeathReport::PoisonPillSuspect suspect;
+      suspect.requestId = pe.info.request_id;
+      suspect.opcode = pe.info.opcode;
+      suspect.lastState = pe.info.last_runtime_state;
+      report.poisonPillSuspects.push_back(suspect);
+    }
+    return report;
+  }
+
+  void HandleDeathNoPolicy() {
+    {
+      std::lock_guard<std::mutex> lock(session_mutex);
+      AnnotatePendingRuntimeStates();
+      ResetSessionState();
+    }
+    FailQueuedSubmissions(StatusCode::PeerDisconnected);
+    FailAllPending(StatusCode::PeerDisconnected);
+  }
+
+  void FailReplayList(std::vector<PendingSubmit>& replay_list) {
+    for (auto& ps : replay_list) {
+      PendingInfo info = MakePendingInfo(ps);
+      NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Session);
+      ResolveFuture(ps.future, StatusCode::PeerDisconnected);
+    }
+  }
+
   void RestartAfterDeath(uint32_t delay_ms,
                          std::vector<PendingSubmit> saved_requests) {
     // Segmented sleep, checking shutting_down every 100ms.
@@ -592,34 +663,13 @@ struct RpcClient::Impl {
       restart_pending.store(false);
       return;
     }
-    // Snapshot replayable requests and tear down the session.
     StopDispatcher();
     ReplayableSnapshot snapshot;
     {
       std::lock_guard<std::mutex> lock(session_mutex);
-      for (size_t i = 0; i < pending_info_slots.size(); ++i) {
-        if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
-          continue;
-        }
-        const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
-        if (payload != nullptr) {
-          pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
-          pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
-        }
-      }
-      snapshot = SaveReplayableRequests();
-      session_live.store(false, std::memory_order_release);
-      session_dead = true;
-      current_session_id = 0;
-      session.Reset();
-      slot_pool.reset();
+      snapshot = SnapshotAndTearDownLocked();
     }
-
-    // Fail poison-pill futures.
-    for (auto& pe : snapshot.poison_list) {
-      NotifyFailure(pe.info, StatusCode::CrashedDuringExecution, FailureStage::Session);
-      ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
-    }
+    FailPoisonPills(snapshot.poison_list);
 
     // Close the existing session (suppress death callback to avoid re-entry).
     suppress_death_callback.store(true);
@@ -628,7 +678,6 @@ struct RpcClient::Impl {
     }
     suppress_death_callback.store(false);
 
-    // Spawn restart thread.
     if (restart_thread.joinable()) {
       restart_thread.join();
     }
@@ -640,10 +689,7 @@ struct RpcClient::Impl {
   }
 
   void HandleEngineDeath(uint64_t dead_session_id) {
-    if (shutting_down.load()) {
-      return;
-    }
-    if (suppress_death_callback.load()) {
+    if (shutting_down.load() || suppress_death_callback.load()) {
       return;
     }
     std::lock_guard<std::mutex> reconnect_lock(reconnect_mutex);
@@ -658,7 +704,6 @@ struct RpcClient::Impl {
           static_cast<unsigned long long>(dead_session_id));
     StopDispatcher();
 
-    // Check policy presence early.
     std::function<RecoveryDecision(const EngineDeathReport&)> on_engine_death;
     {
       std::lock_guard<std::mutex> lock(policy_mutex);
@@ -666,84 +711,25 @@ struct RpcClient::Impl {
     }
 
     if (!on_engine_death) {
-      // No handler — legacy behavior: fail everything.
-      {
-        std::lock_guard<std::mutex> lock(session_mutex);
-        for (size_t i = 0; i < pending_info_slots.size(); ++i) {
-          if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
-            continue;
-          }
-          const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
-          if (payload != nullptr) {
-            pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
-            pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
-          }
-        }
-        session_live.store(false, std::memory_order_release);
-        session_dead = true;
-        current_session_id = 0;
-        session.Reset();
-        slot_pool.reset();
-      }
-      FailQueuedSubmissions(StatusCode::PeerDisconnected);
-      FailAllPending(StatusCode::PeerDisconnected);
+      HandleDeathNoPolicy();
       return;
     }
 
-    // Handler exists — snapshot, classify, and tear down session.
     ReplayableSnapshot snapshot;
     {
       std::lock_guard<std::mutex> lock(session_mutex);
-      for (size_t i = 0; i < pending_info_slots.size(); ++i) {
-        if (!pending_info_slots[i].has_value() || pending_slots[i] == nullptr) {
-          continue;
-        }
-        const SlotPayload* payload = session.GetSlotPayload(static_cast<uint32_t>(i));
-        if (payload != nullptr) {
-          pending_info_slots[i]->last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
-          pending_info_slots[i]->replay_hint = ClassifyReplayHint(payload->runtime.state);
-        }
-      }
-      snapshot = SaveReplayableRequests();
-      session_live.store(false, std::memory_order_release);
-      session_dead = true;
-      current_session_id = 0;
-      session.Reset();
-      slot_pool.reset();
+      snapshot = SnapshotAndTearDownLocked();
     }
 
-    // Build report.
-    EngineDeathReport report;
-    report.deadSessionId = dead_session_id;
-    report.safeToReplayCount = static_cast<uint32_t>(snapshot.replay_list.size());
-    for (const auto& pe : snapshot.poison_list) {
-      EngineDeathReport::PoisonPillSuspect suspect;
-      suspect.requestId = pe.info.request_id;
-      suspect.opcode = pe.info.opcode;
-      suspect.lastState = pe.info.last_runtime_state;
-      report.poisonPillSuspects.push_back(suspect);
-    }
-
-    // Call handler.
+    EngineDeathReport report = BuildDeathReport(dead_session_id, snapshot);
     RecoveryDecision decision = on_engine_death(report);
-
-    // Fail poison-pill futures with CrashedDuringExecution.
-    for (auto& pe : snapshot.poison_list) {
-      NotifyFailure(pe.info, StatusCode::CrashedDuringExecution, FailureStage::Session);
-      ResolveFuture(pe.future, StatusCode::CrashedDuringExecution);
-    }
+    FailPoisonPills(snapshot.poison_list);
 
     if (decision.action == RecoveryAction::Ignore) {
-      // Fail all replay-safe futures too.
-      for (auto& ps : snapshot.replay_list) {
-        PendingInfo info = MakePendingInfo(ps);
-        NotifyFailure(info, StatusCode::PeerDisconnected, FailureStage::Session);
-        ResolveFuture(ps.future, StatusCode::PeerDisconnected);
-      }
+      FailReplayList(snapshot.replay_list);
       return;
     }
 
-    // Restart: join any prior restart thread, then spawn a new one.
     if (restart_thread.joinable()) {
       restart_thread.join();
     }
