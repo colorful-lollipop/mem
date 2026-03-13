@@ -33,7 +33,7 @@ constexpr size_t MAX_SUBMIT_QUEUE_SIZE = 3000;
 uint32_t MonotonicNowMs() {
   const auto now = std::chrono::steady_clock::now().time_since_epoch();
   return static_cast<uint32_t>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(now).count() & 0xffffffffu);
+      std::chrono::duration_cast<std::chrono::milliseconds>(now).count() & 0xffffffffU);
 }
 
 bool AdmissionTimedOut(std::chrono::steady_clock::time_point deadline) {
@@ -43,7 +43,7 @@ bool AdmissionTimedOut(std::chrono::steady_clock::time_point deadline) {
 bool RingCountIsOneAfterPush(const RingCursor& cursor) {
   const uint32_t tail = cursor.tail.load(std::memory_order_acquire);
   const uint32_t head = cursor.head.load(std::memory_order_acquire);
-  return tail - head == 1u;
+  return tail - head == 1U;
 }
 
 int64_t RemainingTimeoutMs(std::chrono::steady_clock::time_point deadline) {
@@ -61,7 +61,7 @@ bool ResponseRingBecameNotFull(const SharedMemoryHeader* header) {
   if (header == nullptr || header->responseRing.capacity == 0) {
     return false;
   }
-  return RingCount(header->responseRing) + 1u == header->responseRing.capacity;
+  return RingCount(header->responseRing) + 1U == header->responseRing.capacity;
 }
 
 void SignalEventFdIfNeeded(int fd, bool should_signal) {
@@ -209,7 +209,7 @@ struct RpcClient::Impl {
   std::atomic<bool> restart_pending{false};
   std::atomic<bool> suppress_death_callback{false};
 
-  RpcFuture MakeReadyFuture(StatusCode status) {
+  static RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
     state->ready = true;
     state->reply.status = status;
@@ -220,7 +220,7 @@ struct RpcClient::Impl {
     last_activity_mono_ms.store(MonotonicNowMs(), std::memory_order_relaxed);
   }
 
-  PendingInfo MakePendingInfo(const PendingSubmit& submit) {
+  static PendingInfo MakePendingInfo(const PendingSubmit& submit) {
     PendingInfo info;
     info.opcode = submit.call.opcode;
     info.priority = submit.call.priority;
@@ -271,7 +271,7 @@ struct RpcClient::Impl {
     ResolveFuture(future, status);
   }
 
-  void ResolveFuture(const std::shared_ptr<RpcFuture::State>& pending, StatusCode status) {
+  static void ResolveFuture(const std::shared_ptr<RpcFuture::State>& pending, StatusCode status) {
     if (pending == nullptr) {
       return;
     }
@@ -413,8 +413,9 @@ struct RpcClient::Impl {
     StatusCode status = StatusCode::ExecTimeout;
   };
 
-  TimeoutCheckResult CheckSlotTimeout(const SlotRuntimeState& rt, const PendingInfo& info,
-                                      uint32_t now_ms) {
+  static TimeoutCheckResult CheckSlotTimeout(const SlotRuntimeState& rt,
+                                             const PendingInfo& info,
+                                             uint32_t now_ms) {
     TimeoutCheckResult result;
     switch (rt.state) {
       case SlotRuntimeStateCode::Admitted:
@@ -594,8 +595,8 @@ struct RpcClient::Impl {
     }
   }
 
-  EngineDeathReport BuildDeathReport(uint64_t dead_session_id,
-                                     const ReplayableSnapshot& snapshot) {
+  static EngineDeathReport BuildDeathReport(uint64_t dead_session_id,
+                                            const ReplayableSnapshot& snapshot) {
     EngineDeathReport report;
     report.deadSessionId = dead_session_id;
     report.safeToReplayCount = static_cast<uint32_t>(snapshot.replay_list.size());
@@ -632,7 +633,7 @@ struct RpcClient::Impl {
     // Segmented sleep, checking shutting_down every 100ms.
     for (uint32_t elapsed = 0; elapsed < delay_ms && !shutting_down.load(); elapsed += 100) {
       std::this_thread::sleep_for(std::chrono::milliseconds(
-          std::min(100u, delay_ms - elapsed)));
+          std::min(100U, delay_ms - elapsed)));
     }
     if (shutting_down.load()) {
       FailSavedRequests(saved_requests, StatusCode::PeerDisconnected);
@@ -895,8 +896,8 @@ struct RpcClient::Impl {
     return result;
   }
 
-  void FillSlotPayload(SlotPayload* payload, uint8_t* request_bytes,
-                        const PendingSubmit& pending_submit) {
+  static void FillSlotPayload(SlotPayload* payload, uint8_t* request_bytes,
+                              const PendingSubmit& pending_submit) {
     std::memset(payload, 0, sizeof(SlotPayload));
     payload->runtime.requestId = pending_submit.request_id;
     payload->runtime.state = SlotRuntimeStateCode::Admitted;
@@ -912,8 +913,9 @@ struct RpcClient::Impl {
     }
   }
 
-  RequestRingEntry BuildRingEntry(const PendingSubmit& pending_submit, uint32_t slot,
-                                   SlotPayload* payload) {
+  static RequestRingEntry BuildRingEntry(const PendingSubmit& pending_submit,
+                                         uint32_t slot,
+                                         SlotPayload* payload) {
     RequestRingEntry entry;
     entry.requestId = pending_submit.request_id;
     entry.slotIndex = slot;
@@ -927,7 +929,7 @@ struct RpcClient::Impl {
     return entry;
   }
 
-  enum class PushOutcome { Success, RetryWithCredit, RetryWithoutCredit, FatalError };
+  enum class PushOutcome : uint8_t { Success, RetryWithCredit, RetryWithoutCredit, FatalError };
 
   PushOutcome PushAndSignalRequest(const RequestRingEntry& entry, uint32_t slot,
                                     const PendingSubmit& pending_submit, const PendingInfo& info) {
@@ -970,7 +972,7 @@ struct RpcClient::Impl {
     return PushOutcome::Success;
   }
 
-  enum class SubmitAttemptResult { Done, Retry, RetryWithCredit };
+  enum class SubmitAttemptResult : uint8_t { Done, Retry, RetryWithCredit };
 
   SubmitAttemptResult TrySubmitOnce(const PendingSubmit& pending_submit, const PendingInfo& info) {
     auto reservation = ReserveSlotAndPayload();
@@ -1067,7 +1069,7 @@ struct RpcClient::Impl {
     result.future = std::move(pending_slots[result.request_slot_idx]);
     pending_slots[result.request_slot_idx].reset();
     if (result.request_slot_idx < pending_info_slots.size()) {
-      result.info = std::move(pending_info_slots[result.request_slot_idx]);
+      result.info = pending_info_slots[result.request_slot_idx];
       pending_info_slots[result.request_slot_idx].reset();
     }
     if (result.future != nullptr) {
@@ -1076,7 +1078,8 @@ struct RpcClient::Impl {
     return result;
   }
 
-  void ResolveCompletedFuture(const std::shared_ptr<RpcFuture::State>& pending, RpcReply reply) {
+  static void ResolveCompletedFuture(const std::shared_ptr<RpcFuture::State>& pending,
+                                     RpcReply reply) {
     if (pending == nullptr) {
       return;
     }
@@ -1232,7 +1235,7 @@ struct RpcClient::Impl {
     return drained;
   }
 
-  bool SpinForResponseRing(int iterations) {
+  bool SpinForResponseRing(int iterations) const {
     for (int i = 0; i < iterations; ++i) {
       if (RingCount(session.Header()->responseRing) > 0) {
         return true;

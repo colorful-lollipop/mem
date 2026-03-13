@@ -17,7 +17,7 @@ uint64_t PackTagged(uint32_t index, uint32_t version) {
 }
 
 uint32_t TaggedIndex(uint64_t tagged) {
-  return static_cast<uint32_t>(tagged & 0xffffffffu);
+  return static_cast<uint32_t>(tagged & 0xffffffffU);
 }
 
 uint32_t TaggedVersion(uint64_t tagged) {
@@ -100,7 +100,7 @@ bool SharedSlotPool::Release(uint32_t slot_index) {
   inUseSlots_[slot_index] = 0;
 
   uint64_t old_tagged = header_->topTagged.load(std::memory_order_relaxed);
-  do {
+  while (true) {
     freeSlots_[slot_index] = TaggedIndex(old_tagged);
     const uint32_t new_version = TaggedVersion(old_tagged) + 1;
     const uint64_t new_tagged = PackTagged(slot_index, new_version);
@@ -109,7 +109,7 @@ bool SharedSlotPool::Release(uint32_t slot_index) {
                                                    std::memory_order_relaxed)) {
       return true;
     }
-  } while (true);
+  }
 }
 
 uint32_t SharedSlotPool::Capacity() const {
@@ -208,11 +208,14 @@ bool SlotPool::Release(uint32_t slot_index) {
 
   // Push onto the Treiber stack (lock-free, safe for concurrent pushers).
   uint32_t top = freeTop_.load(std::memory_order_relaxed);
-  do {
+  while (true) {
     nextFree_[slot_index] = top;
-  } while (!freeTop_.compare_exchange_weak(top, slot_index,
-                                             std::memory_order_release,
-                                             std::memory_order_relaxed));
+    if (freeTop_.compare_exchange_weak(top, slot_index,
+                                       std::memory_order_release,
+                                       std::memory_order_relaxed)) {
+      break;
+    }
+  }
   freeCount_.fetch_add(1, std::memory_order_release);
   return true;
 }
@@ -236,7 +239,7 @@ bool SlotPool::IsValidIndex(uint32_t slot_index) const {
   return slot_index < slotCount_;
 }
 
-bool SlotPool::CanTransition(SlotState current, SlotState next) const {
+bool SlotPool::CanTransition(SlotState current, SlotState next) {
   switch (current) {
     case SlotState::Free:
       return false;

@@ -3,6 +3,9 @@
 #include <cstdio>
 #include <vector>
 
+// The logging bridge intentionally uses C varargs to stay source-compatible
+// with Harmony-style logging call sites.
+// NOLINTBEGIN(cppcoreguidelines-pro-type-vararg,readability-uppercase-literal-suffix,cert-err33-c,cert-dcl50-cpp)
 namespace MemRpc {
 namespace {
 
@@ -90,3 +93,4 @@ void LogPrint(LogLevel level, const char* file, int line, const char* format, ..
 }
 
 }  // namespace MemRpc
+// NOLINTEND(cppcoreguidelines-pro-type-vararg,readability-uppercase-literal-suffix,cert-err33-c,cert-dcl50-cpp)

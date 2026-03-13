@@ -72,7 +72,7 @@ class SlotPool {
  private:
   static constexpr uint32_t EMPTY = UINT32_MAX;
   [[nodiscard]] bool IsValidIndex(uint32_t slot_index) const;
-  [[nodiscard]] bool CanTransition(SlotState current, SlotState next) const;
+  [[nodiscard]] static bool CanTransition(SlotState current, SlotState next);
 
   uint32_t slotCount_ = 0;
   std::vector<std::atomic<uint8_t>> states_;

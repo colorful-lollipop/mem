@@ -16,7 +16,7 @@ class ByteWriter {
   bool WriteBytes(const void* data, uint32_t size);
   bool WriteString(const std::string& value);
 
-  const std::vector<uint8_t>& bytes() const;
+  [[nodiscard]] const std::vector<uint8_t>& bytes() const;
 
  private:
   std::vector<uint8_t> bytes_;

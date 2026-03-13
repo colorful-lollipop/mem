@@ -8,7 +8,7 @@
 
 namespace MemRpc {
 
-enum class Priority {
+enum class Priority : uint8_t {
   Normal = 0,
   High = 1,
 };
@@ -29,14 +29,14 @@ struct ScanBehaviorRequest {
   ScanOptions options;
 };
 
-enum class ScanVerdict {
+enum class ScanVerdict : uint8_t {
   Clean = 0,
   Infected = 1,
   Unknown = 2,
   Error = 3,
 };
 
-enum class StatusCode {
+enum class StatusCode : uint8_t {
   Ok = 0,
   QueueFull,
   QueueTimeout,
@@ -74,13 +74,13 @@ struct RpcEvent {
 
 using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
-enum class ReplayHint {
+enum class ReplayHint : uint8_t {
   Unknown = 0,
   SafeToReplay = 1,
   MaybeExecuted = 2,
 };
 
-enum class RpcRuntimeState {
+enum class RpcRuntimeState : uint8_t {
   Unknown = 0,
   Free,
   Admitted,

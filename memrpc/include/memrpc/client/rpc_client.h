@@ -78,7 +78,7 @@ class RpcFuture {
   friend class RpcClient;
 };
 
-enum class FailureStage {
+enum class FailureStage : uint8_t {
   Admission = 0,
   Response = 1,
   Session = 2,

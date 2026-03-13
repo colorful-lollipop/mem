@@ -10,7 +10,7 @@
 
 namespace MemRpc {
 
-enum class QueueKind {
+enum class QueueKind : uint8_t {
   HighRequest,
   NormalRequest,
   Response,
@@ -18,12 +18,12 @@ enum class QueueKind {
 
 class Session {
  public:
-  enum class AttachRole {
+  enum class AttachRole : uint8_t {
     Client,
     Server,
   };
 
-  enum class SessionState : uint32_t {
+  enum class SessionState : uint32_t {  // NOLINT(performance-enum-size)
     Alive = 0,
     Broken = 1,
   };
