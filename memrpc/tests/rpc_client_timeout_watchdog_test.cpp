@@ -9,6 +9,7 @@
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
+#include "core/session.h"
 
 namespace {
 
@@ -23,6 +24,21 @@ bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds t
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   return predicate();
+}
+
+bool FindRuntimeByRequestId(MemRpc::Session* session, uint64_t requestId,
+                            MemRpc::SlotRuntimeState* runtime) {
+  if (session == nullptr || runtime == nullptr || session->Header() == nullptr) {
+    return false;
+  }
+  for (uint32_t i = 0; i < session->Header()->slotCount; ++i) {
+    const MemRpc::SlotPayload* payload = session->GetSlotPayload(i);
+    if (payload != nullptr && payload->runtime.requestId == requestId) {
+      *runtime = payload->runtime;
+      return true;
+    }
+  }
+  return false;
 }
 
 class HealthAwareBootstrapChannel final : public MemRpc::IBootstrapChannel {
@@ -294,6 +310,55 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart) {
     client.Shutdown();
     server.Stop();
   }
+}
+
+TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionAdvancesRuntimeHeartbeatButStaysExecTimeout) {
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  MemRpc::BootstrapHandles inspectHandles;
+  ASSERT_EQ(bootstrap->OpenSession(inspectHandles), MemRpc::StatusCode::Ok);
+  MemRpc::Session inspectSession;
+  ASSERT_EQ(inspectSession.Attach(inspectHandles, MemRpc::Session::AttachRole::Server),
+            MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    reply->status = MemRpc::StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcCall call;
+  call.opcode = kTestEchoOpcode;
+  call.queueTimeoutMs = 5000;
+  call.execTimeoutMs = 120;
+  auto future = client.InvokeAsync(call);
+
+  MemRpc::SlotRuntimeState firstRuntime{};
+  ASSERT_TRUE(WaitFor([&]() {
+    return FindRuntimeByRequestId(&inspectSession, 1, &firstRuntime) &&
+           firstRuntime.state == MemRpc::SlotRuntimeStateCode::Executing;
+  }, std::chrono::milliseconds(500)));
+
+  const uint32_t firstHeartbeatMs = firstRuntime.lastHeartbeatMonoMs;
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+
+  MemRpc::SlotRuntimeState secondRuntime{};
+  ASSERT_TRUE(FindRuntimeByRequestId(&inspectSession, 1, &secondRuntime));
+  EXPECT_GT(secondRuntime.lastHeartbeatMonoMs, firstHeartbeatMs);
+
+  MemRpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ExecTimeout);
+
+  client.Shutdown();
+  server.Stop();
 }
 
 }  // namespace MemRpc

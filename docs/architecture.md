@@ -148,6 +148,7 @@ credit fd 采用“资源重新可写”语义：
 - `RpcClient::Init()`
 - `RpcClient::InvokeAsync()`
 - `RpcClient::InvokeSync()`
+- `RpcClient::RequestExternalRecovery()`
 - `RpcFuture::WaitAndTake()`
 - `RpcClient::SetEventCallback()`
 
@@ -181,6 +182,7 @@ credit fd 采用“资源重新可写”语义：
 - 一个 `RpcClient` 对应一条响应分发线程
 - `InvokeAsync(RpcCall&&)` 会把编码后的 payload move 进提交队列，避免在 client API 边界再复制一份
 - `RpcFuture::WaitAndTake()` 会把内部 `RpcReply` move 给调用方，避免小包回包在 future 出口再复制一份
+- watchdog 统一负责 timeout scan、channel health check、idle handling
 
 需要注意：
 
@@ -203,10 +205,48 @@ credit fd 采用“资源重新可写”语义：
 
 - bootstrap 初始化失败
 - session 死亡与恢复
+- 健康检查触发的 restart / close
 - 协议异常
 - 事件发布失败
 
 不要在高频正常路径里铺满日志，避免影响核心通信层的开销和可读性。
+
+## 健康检查与恢复边界
+
+当前主线把 heartbeat / 健康检查收口成四层职责：
+
+- `IBootstrapChannel::CheckHealth(expectedSessionId)`
+  - 只返回通用 `ChannelHealthResult`
+  - 不把业务 heartbeat reply 暴露进 `memrpc`
+- `VesControlProxy`
+  - 保留 VES-specific heartbeat 协议
+  - 把 `VesHeartbeatReply` 翻译成 `ChannelHealthStatus`
+  - 可选异步发布完整 VES snapshot 给上层 DFX 订阅者
+- `RpcClient`
+  - watchdog 顺序固定为 `timeout scan -> CheckHealth -> idle handling`
+  - `RequestExternalRecovery()` 把外部健康故障导入统一 restart 骨架
+  - heartbeat failure、exec-timeout、engine death 最终都在同一恢复 owner 下去重
+- `VesClient`
+  - 只配置默认策略、业务日志、可选 snapshot 订阅
+  - 默认不维护独立 heartbeat loop
+
+明确语义：
+
+- `CloseSession`
+  - intentional close only
+  - 典型场景：idle unload、manual shutdown
+- `Restart`
+  - fault recovery only
+  - 典型场景：channel health failure、engine death、exec-timeout
+- `EngineDeath` / `HeartbeatFailure`
+  - reason，不是动作
+
+这保证了“协议下沉、调度上收、恢复收口、观测旁路”的分层：
+
+- 业务协议留在 proxy
+- watchdog 调度留在 `RpcClient`
+- process respawn 留在 supervisor / registry / harness
+- 业务 DFX 通过 snapshot side-channel 旁路获取
 
 ## 事件边界
 

@@ -36,6 +36,8 @@ ctest --test-dir build --output-on-failure -R virus_executor_service_supervisor_
 - `Reply/Event` 共用响应队列的协议基础
 - `RpcClient` / `RpcServer` 公共接口
 - `VesClient` 与 `TestkitClient` 两类应用 facade 共用同一引擎服务端
+- `VesControlProxy` 保留业务 heartbeat 协议，`RpcClient` watchdog 统一调度健康检查
+- `VesClient` 默认不维护独立 heartbeat loop，可选订阅完整 VES health snapshot 做 DFX 展示
 - 业务集成测试、testkit perf/stress/DT/fuzz 测试共用一套主线可执行体
 
 手动压测可直接运行：
@@ -48,3 +50,12 @@ ctest --test-dir build --output-on-failure -R virus_executor_service_supervisor_
 ## 说明
 
 这不是鸿蒙正式部署方式。迁移到 HarmonyOS 时，应保留通信核心不变，只把 bootstrap 替换成基于 `GetSystemAbility` / `LoadSystemAbility` 的实现，并由 `init` 管理子进程生命周期。
+
+当前 demo 的恢复边界也固定为：
+
+- `RpcClient`
+  - session reopen / replay / cooldown / idle close
+- supervisor / registry / harness
+  - engine process reap / respawn
+- snapshot 订阅
+  - 仅做旁路观测，不参与主恢复链路

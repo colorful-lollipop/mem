@@ -8,9 +8,14 @@
 
 namespace VirusExecutorService {
 
-TEST(VesHealthTest, SnapshotIdleDefaults) {
+TEST(VesHealthTest, SnapshotBeforeInitializeIsInternalError) {
     VesEngineService service;
     auto snapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(snapshot.status,
+              static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError));
+    EXPECT_EQ(snapshot.reasonCode,
+              static_cast<uint32_t>(VesHeartbeatReasonCode::InternalError));
+    EXPECT_EQ(snapshot.flags, 0u);
     EXPECT_EQ(snapshot.inFlight, 0u);
     EXPECT_EQ(snapshot.currentTask, "idle");
     EXPECT_EQ(snapshot.lastTaskAgeMs, 0u);
@@ -20,6 +25,11 @@ TEST(VesHealthTest, SnapshotUpdatesAfterScan) {
     VesEngineService service;
     service.Initialize();
 
+    auto idleSnapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(idleSnapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
+    EXPECT_EQ(idleSnapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
+    EXPECT_EQ(idleSnapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
+
     ScanFileRequest req;
     req.filePath = "/data/virus.apk";
 
@@ -27,6 +37,9 @@ TEST(VesHealthTest, SnapshotUpdatesAfterScan) {
     EXPECT_EQ(reply.code, 0);
 
     auto snapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
+    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
+    EXPECT_EQ(snapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
     EXPECT_EQ(snapshot.inFlight, 0u);
     EXPECT_EQ(snapshot.currentTask, "idle");
 }
@@ -48,6 +61,10 @@ TEST(VesHealthTest, InFlightAndAgeDuringScan) {
     }
 
     auto snapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
+    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
+    EXPECT_EQ(snapshot.flags,
+              VES_HEARTBEAT_FLAG_INITIALIZED | VES_HEARTBEAT_FLAG_BUSY);
     EXPECT_GE(snapshot.inFlight, 1u);
     EXPECT_NE(snapshot.currentTask, "idle");
 
@@ -105,9 +122,41 @@ TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
 
     EXPECT_EQ(snapshot.currentTask, "/data/sleep200_long.bin");
     EXPECT_GE(snapshot.lastTaskAgeMs, 20u);
+    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
+    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
 
     shortWorker.join();
     longWorker.join();
+}
+
+TEST(VesHealthTest, SnapshotMarksLongRunningTaskAge) {
+    VesEngineService service;
+    service.Initialize();
+
+    std::atomic<bool> started{false};
+    std::thread worker([&]() {
+        ScanFileRequest req;
+        req.filePath = "/data/sleep200_threshold.bin";
+        started.store(true);
+        (void)service.ScanFile(req);
+    });
+
+    while (!started.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        VesEngineService::LONG_RUNNING_TASK_THRESHOLD_MS + 20));
+
+    auto snapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning));
+    EXPECT_EQ(snapshot.reasonCode,
+              static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning));
+    EXPECT_EQ(snapshot.flags,
+              VES_HEARTBEAT_FLAG_INITIALIZED | VES_HEARTBEAT_FLAG_BUSY |
+                  VES_HEARTBEAT_FLAG_LONG_RUNNING);
+    EXPECT_GE(snapshot.lastTaskAgeMs, VesEngineService::LONG_RUNNING_TASK_THRESHOLD_MS);
+
+    worker.join();
 }
 
 }  // namespace VirusExecutorService

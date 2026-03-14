@@ -1,6 +1,7 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_VIRUS_EXECUTOR_SERVICE_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_VIRUS_EXECUTOR_SERVICE_H_
 
+#include <atomic>
 #include <memory>
 
 #include "system_ability.h"
@@ -30,6 +31,7 @@ class VirusExecutorService : public OHOS::SystemAbility,
     VesEngineService service_;
     testkit::TestkitService testkitService_;
     std::shared_ptr<EngineSessionService> session_service_;
+    std::atomic<bool> stopping_{false};
 };
 
 }  // namespace VirusExecutorService

@@ -41,6 +41,9 @@ MemRpc::StatusCode VesClient::Init() {
 
     bootstrapChannel_ = std::make_shared<VesControlChannelAdapter>(proxy_);
     client_.SetBootstrapChannel(bootstrapChannel_);
+    if (healthSnapshotCallback_) {
+        bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
+    }
 
     MemRpc::RecoveryPolicy policy;
     policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const MemRpc::RpcFailure& failure) {
@@ -77,6 +80,13 @@ MemRpc::StatusCode VesClient::Init() {
 
     client_.SetRecoveryPolicy(std::move(policy));
     return client_.Init();
+}
+
+void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
+    healthSnapshotCallback_ = std::move(callback);
+    if (bootstrapChannel_ != nullptr) {
+        bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
+    }
 }
 
 void VesClient::Shutdown() {

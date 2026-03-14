@@ -27,25 +27,35 @@ SA 相关逻辑只应出现在 bootstrap 层。
 - 发现或启动引擎服务
 - 交换共享内存 fd
 - 交换请求/响应 `eventfd`
-- 把子进程死亡事件回调给 `EngineClient`
-- 在重启后让 `Connect()` 返回最新 `BootstrapHandles`
+- 暴露通用 `CheckHealth(expectedSessionId)`，把业务 heartbeat/probe 翻译成 generic health result
+- 把子进程死亡事件回调给 `RpcClient`
+- 在重启后让 `OpenSession()` 返回最新 `BootstrapHandles`
 
 ## 建议接入流程
 
 1. 客户端通过 `GetSystemAbility` 获取服务代理
 2. 需要拉起或重建引擎时调用 `LoadSystemAbility`
 3. 通过 SA 交换 `BootstrapHandles`
-4. `EngineClient` 使用这些句柄附着共享内存会话
-5. 若引擎死亡，SA 回调通知客户端
-6. 下一次 `Scan()` 自动重新 `StartEngine()` + `Connect()`
+4. `RpcClient` 使用这些句柄附着共享内存会话
+5. `RpcClient` watchdog 周期性执行 `CheckHealth()`
+6. 若健康检查超时/异常，`RpcClient::RequestExternalRecovery()` 统一导入 restart
+7. 若引擎死亡，SA 回调通知客户端
+8. 下一次业务调用在 cooldown 结束后自动重新附着新 session
 
 ## 当前恢复语义
 
-当前代码实现的是保守恢复模型：
+当前代码实现的是单恢复 owner 模型：
 
 - 死亡回调到来后，旧 `session` 立即失效
-- 旧 `session` 上等待中的请求立即失败
-- 下一次 `Scan()` 懒恢复到新 `session`
-- 已经发布到旧 ring 的请求不自动重放
+- heartbeat / engine death / timeout 都由 `RpcClient` 统一决定 `Restart` 或 `CloseSession`
+- `CloseSession` 只用于 intentional close，例如 idle unload
+- `Restart` 只用于 fault recovery
+- replay-safe 请求会进入统一 replay 骨架
+
+对于 VES：
+
+- heartbeat 协议和 `VesHeartbeatReply` 仍留在 `VesControlProxy`
+- `memrpc` core 不依赖业务 heartbeat 结构
+- `VesClient` 可选订阅完整 VES snapshot，但该 side-channel 不参与恢复判定
 
 这个边界比较适合先接入业务，再由上层决定是否做更激进的重试策略。

@@ -12,18 +12,38 @@ namespace VirusExecutorService {
 constexpr int32_t VES_CONTROL_SA_ID = 1251;
 
 enum class VesHeartbeatStatus : uint32_t {
-    Ok = 0,
-    Unhealthy = 1,
+    OkIdle = 0,
+    OkBusy = 1,
+    DegradedLongRunning = 2,
+    UnhealthyNoSession = 3,
+    UnhealthyStopping = 4,
+    UnhealthyInternalError = 5,
 };
 
+enum class VesHeartbeatReasonCode : uint32_t {
+    None = 0,
+    Busy = 1,
+    LongRunning = 2,
+    NoSession = 3,
+    Stopping = 4,
+    InternalError = 5,
+};
+
+constexpr uint32_t VES_HEARTBEAT_FLAG_HAS_SESSION = 1u << 0;
+constexpr uint32_t VES_HEARTBEAT_FLAG_INITIALIZED = 1u << 1;
+constexpr uint32_t VES_HEARTBEAT_FLAG_BUSY = 1u << 2;
+constexpr uint32_t VES_HEARTBEAT_FLAG_LONG_RUNNING = 1u << 3;
+
 struct VesHeartbeatReply {
-    uint32_t version = 1;
-    uint32_t status = static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy);
+    uint32_t version = 2;
+    uint32_t status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyNoSession);
+    uint32_t reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
     uint64_t sessionId = 0;
     uint32_t inFlight = 0;
     uint32_t lastTaskAgeMs = 0;
     char currentTask[64] = {};
-    uint32_t reserved[4] = {};
+    uint32_t flags = 0;
+    uint32_t reserved[3] = {};
 };
 
 class IVesControl : public OHOS::IRemoteBroker {

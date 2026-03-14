@@ -128,7 +128,7 @@ if [[ "${run_tsan}" -eq 1 ]]; then
         --strict \
         --werror \
         --timeout 90 \
-        --test-regex 'memrpc_(engine_death_handler|rpc_client_.*|typed_future|session|dt_.*)|virus_executor_service_(session_service|heartbeat|testkit_.*|policy|crash_recovery|supervisor_integration|stress_test|dt_crash_recovery_test)'
+        --test-regex 'memrpc_(engine_death_handler|rpc_client_.*|typed_future|session|dt_.*)|virus_executor_service_(session_service|heartbeat|health_subscription|recovery_reason|testkit_.*|policy|crash_recovery|supervisor_integration|stress_test|dt_crash_recovery_test)'
 fi
 
 if [[ "${run_repeat}" -eq 1 ]]; then

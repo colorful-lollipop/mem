@@ -18,7 +18,10 @@ TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
 
     VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Unhealthy));
+    EXPECT_EQ(reply.version, 2u);
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyNoSession));
+    EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession));
+    EXPECT_EQ(reply.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
 
     service.OnStop();
 }
@@ -33,12 +36,15 @@ TEST(VesHeartbeatTest, OkAfterOpenSession) {
 
     VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
+    EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
     EXPECT_EQ(reply.sessionId, session_id);
     EXPECT_STREQ(reply.currentTask, "idle");
-    EXPECT_EQ(reply.version, 1u);
+    EXPECT_EQ(reply.version, 2u);
     EXPECT_EQ(reply.inFlight, 0u);
     EXPECT_EQ(reply.lastTaskAgeMs, 0u);
+    EXPECT_EQ(reply.flags,
+              VES_HEARTBEAT_FLAG_HAS_SESSION | VES_HEARTBEAT_FLAG_INITIALIZED);
 
     service.CloseSession();
     service.OnStop();
@@ -59,7 +65,7 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
 
     VesHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::Ok));
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
     EXPECT_EQ(reply.sessionId, session_id);
 
     proxy.CloseSession();
@@ -135,6 +141,41 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_GE(reply.inFlight, 1u);
     EXPECT_STRNE(reply.currentTask, "idle");
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
+    EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
+    EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_BUSY, 0u);
+
+    worker.join();
+    service.CloseSession();
+    service.OnStop();
+}
+
+TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
+    VirusExecutorService service;
+    service.OnStart();
+
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    std::atomic<bool> started{false};
+    std::thread worker([&]() {
+        ScanFileRequest req;
+        req.filePath = "/data/sleep200_long.bin";
+        started.store(true);
+        (void)service.service().ScanFile(req);
+    });
+
+    while (!started.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    VesHeartbeatReply reply{};
+    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning));
+    EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning));
+    EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_LONG_RUNNING, 0u);
+    EXPECT_GE(reply.lastTaskAgeMs, 100u);
 
     worker.join();
     service.CloseSession();

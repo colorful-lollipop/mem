@@ -20,6 +20,8 @@ struct VesClientOptions {
 
 class VesClient {
  public:
+    using HealthSnapshotCallback = VesControlChannelAdapter::HealthSnapshotCallback;
+
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                        VesClientOptions options = {});
     ~VesClient();
@@ -30,6 +32,7 @@ class VesClient {
     static void RegisterProxyFactory();
 
     MemRpc::StatusCode Init();
+    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
@@ -39,9 +42,10 @@ class VesClient {
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     std::shared_ptr<VesControlProxy> proxy_;
-    std::shared_ptr<MemRpc::IBootstrapChannel> bootstrapChannel_;
+    std::shared_ptr<VesControlChannelAdapter> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
+    HealthSnapshotCallback healthSnapshotCallback_;
     std::atomic<bool> engineDied_{false};
 };
 

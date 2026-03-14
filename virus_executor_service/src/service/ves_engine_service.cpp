@@ -67,9 +67,16 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
 VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     std::lock_guard<std::mutex> lock(healthMutex_);
     VesHealthSnapshot snapshot;
+    if (!initialized_) {
+        return snapshot;
+    }
+
+    snapshot.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
     snapshot.inFlight = static_cast<uint32_t>(activeTasks_.size());
     if (activeTasks_.empty()) {
         snapshot.currentTask = "idle";
+        snapshot.status = static_cast<uint32_t>(VesHeartbeatStatus::OkIdle);
+        snapshot.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::None);
         return snapshot;
     }
 
@@ -81,6 +88,15 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
         });
     snapshot.currentTask = oldestTask->second.filePath;
     snapshot.lastTaskAgeMs = nowMs - oldestTask->second.startMonoMs;
+    snapshot.flags |= VES_HEARTBEAT_FLAG_BUSY;
+    if (snapshot.lastTaskAgeMs >= LONG_RUNNING_TASK_THRESHOLD_MS) {
+        snapshot.status = static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning);
+        snapshot.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning);
+        snapshot.flags |= VES_HEARTBEAT_FLAG_LONG_RUNNING;
+        return snapshot;
+    }
+    snapshot.status = static_cast<uint32_t>(VesHeartbeatStatus::OkBusy);
+    snapshot.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Busy);
     return snapshot;
 }
 

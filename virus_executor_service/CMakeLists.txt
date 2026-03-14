@@ -205,6 +205,15 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
   add_test(NAME virus_executor_service_recovery_reason_test
       COMMAND virus_executor_service_recovery_reason_test)
 
+  add_executable(virus_executor_service_health_subscription_test
+      tests/unit/ves/ves_health_subscription_test.cpp)
+  target_link_libraries(virus_executor_service_health_subscription_test PRIVATE
+      virus_executor_service_lib
+      GTest::gtest_main
+  )
+  add_test(NAME virus_executor_service_health_subscription_test
+      COMMAND virus_executor_service_health_subscription_test)
+
   add_executable(virus_executor_service_codec_test
       tests/unit/ves/ves_codec_test.cpp)
   target_link_libraries(virus_executor_service_codec_test PRIVATE

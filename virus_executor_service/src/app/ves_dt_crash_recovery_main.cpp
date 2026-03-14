@@ -2,8 +2,8 @@
 //
 // Step 1: normal scan → verify ok
 // Step 2: send crash sample → engine dies
-// Step 3: verify death callback fired
-// Step 4: engine respawned (via DeathRecipient harness) → framework reconnects
+// Step 3: verify the crashed engine process exits
+// Step 4: next client request triggers SA reload + engine restart
 // Step 5: normal scan again → verify ok
 //
 // Uses the supervisor pattern: self-host registry, fork engine, VesClient.
@@ -18,7 +18,6 @@
 #include <thread>
 #include <unistd.h>
 
-#include "iremote_object.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
@@ -55,49 +54,38 @@ void KillAndWait(pid_t pid) {
     }
 }
 
+bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout)
+{
+    if (pid <= 0) {
+        return true;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        int status = 0;
+        const pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            std::lock_guard<std::mutex> lock(g_engine_mutex);
+            if (g_engine_pid == pid) {
+                g_engine_pid = -1;
+            }
+            return true;
+        }
+        if (result < 0) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return false;
+}
+
 #define DT_CHECK(expr, msg)                              \
     do {                                                 \
         if (!(expr)) {                                   \
             HILOGE("FAIL: %s (%s:%d)", msg, __FILE__, __LINE__); \
             return 1;                                    \
         }                                                \
-        HILOGI("PASS: %s", msg);                          \
+        HILOGI("PASS: %s", msg);                         \
     } while (0)
-
-class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
- public:
-    EngineRespawnRecipient(const std::string& enginePath, std::atomic<int>* engineRestarts)
-        : enginePath_(enginePath), engineRestarts_(engineRestarts) {}
-
-    void Disable()
-    {
-        enabled_.store(false);
-    }
-
-    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
-    {
-        if (!enabled_.load()) {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) {
-            int status = 0;
-            waitpid(g_engine_pid, &status, WNOHANG);
-            g_engine_pid = -1;
-        }
-        g_engine_pid = SpawnEngine(enginePath_);
-        if (g_engine_pid > 0) {
-            engineRestarts_->fetch_add(1);
-            HILOGI("engine respawned pid=%{public}d", g_engine_pid);
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-        }
-    }
-
- private:
-    std::string enginePath_;
-    std::atomic<int>* engineRestarts_;
-    std::atomic<bool> enabled_{true};
-};
 
 }  // namespace
 
@@ -113,14 +101,23 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // --- Setup: registry + engine + client ---
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
+    std::atomic<int> loadCount{0};
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) return true;
+        if (g_engine_pid > 0) {
+            int status = 0;
+            const pid_t result = waitpid(g_engine_pid, &status, WNOHANG);
+            if (result == 0) {
+                return true;
+            }
+            g_engine_pid = -1;
+        }
         HILOGI("load callback: spawning engine");
         g_engine_pid = SpawnEngine(enginePath);
         if (g_engine_pid < 0) return false;
+        loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         return true;
     });
@@ -149,10 +146,6 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
     DT_CHECK(remote != nullptr, "LoadSystemAbility ok");
 
-    std::atomic<int> engineRestarts{0};
-    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &engineRestarts);
-    DT_CHECK(remote->AddDeathRecipient(respawnRecipient), "DeathRecipient registered");
-
     VirusExecutorService::VesClientOptions options;
     options.execTimeoutRestartDelayMs = 0;
     options.engineDeathRestartDelayMs = 0;
@@ -178,6 +171,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // === Step 2: send crash sample ===
     HILOGI("=== Step 2: send crash sample (engine will abort) ===");
+    const pid_t firstCrashPid = g_engine_pid;
     {
         VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_crash.apk", &reply);
@@ -186,27 +180,23 @@ int main([[maybe_unused]] int argc, char* argv[]) {
               static_cast<int>(status));
     }
 
-    // === Step 3: wait for death detection + restart ===
-    HILOGI("=== Step 3: waiting for engine restart ===");
+    // === Step 3: wait for the crashed process to exit ===
+    HILOGI("=== Step 3: waiting for engine death ===");
     {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (engineRestarts.load() == 0 &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        DT_CHECK(engineRestarts.load() > 0, "step3: engine death detected and respawned");
+        DT_CHECK(WaitForEngineExit(firstCrashPid, std::chrono::seconds(10)),
+                 "step3: engine process exited");
     }
 
-    // Give the framework time to re-establish the session.
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-    // === Step 4: scan after recovery ===
-    HILOGI("=== Step 4: scan after recovery ===");
+    // === Step 4: first request after death should trigger client-driven restart ===
+    HILOGI("=== Step 4: client-driven restart on next scan ===");
+    const int firstRecoveryLoadCount = loadCount.load();
     {
         VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean_after.apk", &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
         DT_CHECK(reply.threatLevel == 0, "step4: post-recovery threat=0");
+        DT_CHECK(loadCount.load() > firstRecoveryLoadCount,
+                 "step4: client triggered engine load");
     }
     {
         VirusExecutorService::ScanFileReply reply;
@@ -217,25 +207,32 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
     HILOGI("=== Step 5: second crash + 10 sequential normal calls ===");
-    int prev = engineRestarts.load();
+    const pid_t secondCrashPid = g_engine_pid;
     {
         VirusExecutorService::ScanFileReply reply;
         HILOGI("step5: sending crash...");
         auto status = client->ScanFile("/data/dt_crash2.apk", &reply);
         HILOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
     }
-    // Wait for restart to complete.
-    {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (engineRestarts.load() == prev &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        DT_CHECK(engineRestarts.load() > prev, "step5: second restart detected");
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    DT_CHECK(WaitForEngineExit(secondCrashPid, std::chrono::seconds(10)),
+             "step5: second engine process exited");
 
-    for (int i = 0; i < 10; i++) {
+    const int secondRecoveryLoadCount = loadCount.load();
+    {
+        HILOGI("step5: call 1/10 ...");
+        VirusExecutorService::ScanFileReply reply;
+        const auto t0 = std::chrono::steady_clock::now();
+        auto status = client->ScanFile("/data/dt_post_recover_0.apk", &reply);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        HILOGI("step5: call 1/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",
+              static_cast<int>(status), reply.threatLevel, static_cast<long long>(elapsed));
+        DT_CHECK(status == MemRpc::StatusCode::Ok, "step5: call 1 ok");
+        DT_CHECK(loadCount.load() > secondRecoveryLoadCount,
+                 "step5: client triggered second engine load");
+    }
+
+    for (int i = 1; i < 10; i++) {
         HILOGI("step5: call %{public}d/10 ...", i + 1);
         VirusExecutorService::ScanFileReply reply;
         const auto t0 = std::chrono::steady_clock::now();
@@ -252,16 +249,15 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // === Cleanup ===
     HILOGI("=== Cleanup ===");
-    respawnRecipient->Disable();
     client->Shutdown();
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-            KillAndWait(g_engine_pid);
-            g_engine_pid = -1;
+        KillAndWait(g_engine_pid);
+        g_engine_pid = -1;
     }
     registry.Stop();
 
     HILOGI("=== DT crash recovery: ALL PASSED (restarts=%{public}d) ===",
-          engineRestarts.load());
+          loadCount.load());
     return 0;
 }

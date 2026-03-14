@@ -54,16 +54,24 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
 
 class VesControlChannelAdapter : public MemRpc::IBootstrapChannel {
  public:
+    using HealthSnapshotCallback = VesControlProxy::HealthSnapshotCallback;
+
     explicit VesControlChannelAdapter(std::shared_ptr<VesControlProxy> proxy);
     ~VesControlChannelAdapter() override = default;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
+    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
+    std::shared_ptr<VesControlProxy> ReloadProxyLocked(bool forceReload);
+
+    std::mutex mutex_;
     std::shared_ptr<VesControlProxy> proxy_;
+    HealthSnapshotCallback healthSnapshotCallback_;
+    MemRpc::EngineDeathCallback deathCallback_;
 };
 
 }  // namespace VirusExecutorService

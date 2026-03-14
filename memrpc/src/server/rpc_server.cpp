@@ -15,6 +15,7 @@
 #include <queue>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -154,8 +155,58 @@ struct RpcServer::Impl {
   std::atomic<bool> responseWriterRunning{false};
   std::atomic<bool> responseWriterWaitingForCredit{false};
   std::thread dispatcherThread;
+  std::thread executionHeartbeatThread;
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
+  std::mutex executingSlotsMutex;
+  std::unordered_set<uint32_t> executingSlots;
+
+  void RegisterExecutingSlot(uint32_t request_slot_index) {
+    std::lock_guard<std::mutex> lock(executingSlotsMutex);
+    executingSlots.insert(request_slot_index);
+  }
+
+  void UnregisterExecutingSlot(uint32_t request_slot_index) {
+    std::lock_guard<std::mutex> lock(executingSlotsMutex);
+    executingSlots.erase(request_slot_index);
+  }
+
+  void StartExecutionHeartbeat() {
+    executionHeartbeatThread = std::thread([this] { ExecutionHeartbeatLoop(); });
+  }
+
+  void StopExecutionHeartbeat() {
+    if (executionHeartbeatThread.joinable()) {
+      executionHeartbeatThread.join();
+    }
+    std::lock_guard<std::mutex> lock(executingSlotsMutex);
+    executingSlots.clear();
+  }
+
+  void ExecutionHeartbeatLoop() {
+    constexpr auto HEARTBEAT_INTERVAL = std::chrono::milliseconds(25);
+    while (running.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(HEARTBEAT_INTERVAL);
+      if (!running.load(std::memory_order_acquire)) {
+        break;
+      }
+
+      std::vector<uint32_t> active_slots;
+      {
+        std::lock_guard<std::mutex> lock(executingSlotsMutex);
+        active_slots.assign(executingSlots.begin(), executingSlots.end());
+      }
+
+      const uint32_t now_ms = MonotonicNowMs();
+      for (uint32_t slot_index : active_slots) {
+        SlotPayload* request_slot = session.GetSlotPayload(slot_index);
+        if (request_slot == nullptr) {
+          continue;
+        }
+        request_slot->runtime.lastHeartbeatMonoMs = now_ms;
+      }
+    }
+  }
 
   PollEventFdResult WaitForResponseCredit(std::chrono::steady_clock::time_point deadline) {
     const int fd = session.Handles().respCreditEventFd;
@@ -513,6 +564,11 @@ struct RpcServer::Impl {
       return reply;
     }
     RpcServerCall call = BuildServerCall(request_entry, payload);
+    RegisterExecutingSlot(request_entry.slotIndex);
+    [[maybe_unused]] const auto unregister_guard =
+        MakeScopeExit([this, request_slot_index = request_entry.slotIndex] {
+          UnregisterExecutingSlot(request_slot_index);
+        });
     const auto start = std::chrono::steady_clock::now();
     it->second(call, &reply);
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -701,6 +757,7 @@ StatusCode RpcServer::Start() {
   impl_->normalExecutor = impl_->options.normalExecutor
       ? impl_->options.normalExecutor
       : std::make_shared<ThreadPoolExecutor>(impl_->options.normalWorkerThreads);
+  impl_->StartExecutionHeartbeat();
   impl_->dispatcherThread = std::thread([this] { impl_->DispatcherLoop(); });
   return StatusCode::Ok;
 }
@@ -750,6 +807,7 @@ void RpcServer::Stop() {
     impl_->normalExecutor->Stop();
     impl_->normalExecutor.reset();
   }
+  impl_->StopExecutionHeartbeat();
   impl_->StopResponseWriter();
   impl_->session.Reset();
 }

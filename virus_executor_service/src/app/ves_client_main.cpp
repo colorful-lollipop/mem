@@ -71,6 +71,7 @@ int main() {
     auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
     VirusExecutorService::VesClient::RegisterProxyFactory();
+    bool secondSessionSucceeded = false;
 
     // --- First session ---
     HILOGI("=== First session ===");
@@ -105,11 +106,15 @@ int main() {
         HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
 
         client2->Shutdown();
+        secondSessionSucceeded = true;
         HILOGI("second session completed");
     } else {
         HILOGI("engine not available after restart (expected in demo)");
     }
 
     HILOGI("=== Done ===");
-    return client->EngineDied() ? 0 : 1;
+    HILOGI("engine_died=%{public}s second_session_succeeded=%{public}s",
+           client->EngineDied() ? "true" : "false",
+           secondSessionSucceeded ? "true" : "false");
+    return secondSessionSucceeded ? 0 : 1;
 }

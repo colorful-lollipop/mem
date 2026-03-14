@@ -152,7 +152,7 @@ if [[ "${wide_repeat_count}" -gt 0 ]]; then
         --strict \
         --werror \
         --jobs "${jobs}" \
-        --test-regex 'memrpc_(rpc_client_.*|typed_future|engine_death_handler_test)|virus_executor_service_(testkit_client_test|testkit_dfx_test|testkit_async_pipeline_test|heartbeat_test|session_service_test|policy_test)' \
+        --test-regex 'memrpc_(rpc_client_.*|typed_future|engine_death_handler_test)|virus_executor_service_(testkit_client_test|testkit_dfx_test|testkit_async_pipeline_test|heartbeat_test|health_subscription_test|recovery_reason_test|session_service_test|policy_test)' \
         --repeat "until-fail:${wide_repeat_count}" \
         --timeout 45
 fi
