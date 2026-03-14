@@ -18,7 +18,8 @@ class BrokerRegistration {
   static BrokerRegistration& GetInstance();
 
   void Register(int32_t saId, BrokerDelegateCreator creator);
-  sptr<IRemoteBroker> CreateBroker(int32_t saId, const sptr<IRemoteObject>& remote) const;
+  [[nodiscard]] sptr<IRemoteBroker> CreateBroker(int32_t saId,
+                                                 const sptr<IRemoteObject>& remote) const;
 
  private:
   BrokerRegistration() = default;

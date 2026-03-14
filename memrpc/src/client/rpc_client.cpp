@@ -216,7 +216,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     reopenBlockedStatus_.store(StatusCode::Ok, std::memory_order_release);
   }
 
-  StatusCode GetReopenBlockStatus() const {
+  [[nodiscard]] StatusCode GetReopenBlockStatus() const {
     if (clientClosed_.load(std::memory_order_acquire)) {
       return StatusCode::ClientClosed;
     }

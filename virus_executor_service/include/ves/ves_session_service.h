@@ -27,7 +27,7 @@ class EngineSessionService final : public VesSessionProvider {
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
 
-    uint64_t session_id() const;
+    [[nodiscard]] uint64_t session_id() const;
 
  private:
     MemRpc::StatusCode EnsureInitialized();

@@ -1,5 +1,6 @@
 #include "transport/registry_protocol.h"
 
+#include <algorithm>
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -11,14 +12,14 @@ bool EncodeRegistryRequest(const RegistryRequest& req, std::string* out) {
     if (out == nullptr || req.payload.size() > 0xFFFF) {
         return false;
     }
-    const uint16_t plen = static_cast<uint16_t>(req.payload.size());
+    const auto plen = static_cast<uint16_t>(req.payload.size());
     out->resize(1 + 4 + 2 + plen);
     auto* p = reinterpret_cast<uint8_t*>(out->data());
     p[0] = static_cast<uint8_t>(req.op);
     std::memcpy(p + 1, &req.sa_id, 4);
     std::memcpy(p + 5, &plen, 2);
     if (plen > 0) {
-        std::memcpy(p + 7, req.payload.data(), plen);
+        std::copy_n(req.payload.data(), plen, p + 7);
     }
     return true;
 }
@@ -43,13 +44,13 @@ bool EncodeRegistryResponse(const RegistryResponse& resp, std::string* out) {
     if (out == nullptr || resp.payload.size() > 0xFFFF) {
         return false;
     }
-    const uint16_t plen = static_cast<uint16_t>(resp.payload.size());
+    const auto plen = static_cast<uint16_t>(resp.payload.size());
     out->resize(4 + 2 + plen);
     auto* p = reinterpret_cast<uint8_t*>(out->data());
     std::memcpy(p, &resp.err_code, 4);
     std::memcpy(p + 4, &plen, 2);
     if (plen > 0) {
-        std::memcpy(p + 6, resp.payload.data(), plen);
+        std::copy_n(resp.payload.data(), plen, p + 6);
     }
     return true;
 }
@@ -70,7 +71,7 @@ bool DecodeRegistryResponse(const uint8_t* data, size_t len, RegistryResponse* r
 
 // Length-prefixed I/O: [Len:4][Data:N]
 bool SendMessage(int fd, const std::string& msg) {
-    uint32_t len = static_cast<uint32_t>(msg.size());
+    auto len = static_cast<uint32_t>(msg.size());
     if (send(fd, &len, 4, MSG_NOSIGNAL) != 4) {
         return false;
     }

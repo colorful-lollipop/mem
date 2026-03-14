@@ -39,7 +39,7 @@ class ResilientBatchInvoker {
 
     void CollectResults(std::vector<MemRpc::RpcReply>* completedReplies);
 
-    const std::vector<FailedCallRecord>& GetFailedCalls() const;
+    [[nodiscard]] const std::vector<FailedCallRecord>& GetFailedCalls() const;
 
     std::vector<TrackedFuture> ReplayFailed();
 

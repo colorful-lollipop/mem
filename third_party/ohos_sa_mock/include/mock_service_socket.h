@@ -18,7 +18,7 @@ class MockServiceSocket {
 
     bool Start(const std::string& path, MockIpcHandler handler);
     void Stop();
-    const std::string& socket_path() const { return socket_path_; }
+    [[nodiscard]] const std::string& socket_path() const { return socket_path_; }
 
  private:
     void AcceptLoop();

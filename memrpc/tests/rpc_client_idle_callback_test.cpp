@@ -32,8 +32,8 @@ class CountingBootstrapChannel : public MemRpc::IBootstrapChannel {
     delegate_->SetEngineDeathCallback(std::move(callback));
   }
 
-  int openCount() const { return openCount_.load(); }
-  int closeCount() const { return closeCount_.load(); }
+  [[nodiscard]] int openCount() const { return openCount_.load(); }
+  [[nodiscard]] int closeCount() const { return closeCount_.load(); }
 
  private:
   std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
@@ -42,12 +42,24 @@ class CountingBootstrapChannel : public MemRpc::IBootstrapChannel {
 };
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shmFd >= 0) close(h.shmFd);
-  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
-  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
-  if (h.respEventFd >= 0) close(h.respEventFd);
-  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
-  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
+  if (h.shmFd >= 0) {
+    close(h.shmFd);
+  }
+  if (h.highReqEventFd >= 0) {
+    close(h.highReqEventFd);
+  }
+  if (h.normalReqEventFd >= 0) {
+    close(h.normalReqEventFd);
+  }
+  if (h.respEventFd >= 0) {
+    close(h.respEventFd);
+  }
+  if (h.reqCreditEventFd >= 0) {
+    close(h.reqCreditEventFd);
+  }
+  if (h.respCreditEventFd >= 0) {
+    close(h.respCreditEventFd);
+  }
 }
 
 }  // namespace

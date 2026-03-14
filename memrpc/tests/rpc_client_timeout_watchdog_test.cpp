@@ -14,12 +14,24 @@ namespace {
 constexpr MemRpc::Opcode kTestEchoOpcode = static_cast<MemRpc::Opcode>(200);
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shmFd >= 0) close(h.shmFd);
-  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
-  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
-  if (h.respEventFd >= 0) close(h.respEventFd);
-  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
-  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
+  if (h.shmFd >= 0) {
+    close(h.shmFd);
+  }
+  if (h.highReqEventFd >= 0) {
+    close(h.highReqEventFd);
+  }
+  if (h.normalReqEventFd >= 0) {
+    close(h.normalReqEventFd);
+  }
+  if (h.respEventFd >= 0) {
+    close(h.respEventFd);
+  }
+  if (h.reqCreditEventFd >= 0) {
+    close(h.reqCreditEventFd);
+  }
+  if (h.respCreditEventFd >= 0) {
+    close(h.respCreditEventFd);
+  }
 }
 
 }  // namespace

@@ -34,7 +34,7 @@ class VesClient {
 
     MemRpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
 
-    bool EngineDied() const;
+    [[nodiscard]] bool EngineDied() const;
 
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;

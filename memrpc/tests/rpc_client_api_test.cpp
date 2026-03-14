@@ -104,7 +104,7 @@ TEST(RpcClientApiTest, ThenCallbackInvokedImmediatelyOnAlreadyReadyFuture) {
 
   bool called = false;
   MemRpc::StatusCode received_status = MemRpc::StatusCode::Ok;
-  future.Then([&](MemRpc::RpcReply reply) {
+  future.Then([&](const MemRpc::RpcReply& reply) {
     called = true;
     received_status = reply.status;
   });
@@ -124,7 +124,7 @@ TEST(RpcClientApiTest, ThenWithNullCallbackIsNoOp) {
 TEST(RpcClientApiTest, ThenOnDefaultConstructedFutureIsNoOp) {
   MemRpc::RpcFuture future;
   bool called = false;
-  future.Then([&](MemRpc::RpcReply) { called = true; });
+  future.Then([&](const MemRpc::RpcReply&) { called = true; });
   EXPECT_FALSE(called);
 }
 
@@ -137,12 +137,12 @@ TEST(RpcClientApiTest, ThenUsesExecutorWhenProvided) {
 
   int scheduled = 0;
   bool called = false;
-  MemRpc::RpcThenExecutor executor = [&](std::function<void()> task) {
+  MemRpc::RpcThenExecutor executor = [&](const std::function<void()>& task) {
     ++scheduled;
     task();
   };
 
-  future.Then([&](MemRpc::RpcReply) { called = true; }, executor);
+  future.Then([&](const MemRpc::RpcReply&) { called = true; }, executor);
 
   EXPECT_EQ(scheduled, 1);
   EXPECT_TRUE(called);
@@ -156,7 +156,7 @@ TEST(RpcClientApiTest, ThenWithoutExecutorRunsInline) {
   ASSERT_TRUE(future.IsReady());
 
   bool called = false;
-  future.Then([&](MemRpc::RpcReply) { called = true; });
+  future.Then([&](const MemRpc::RpcReply&) { called = true; });
 
   EXPECT_TRUE(called);
 }

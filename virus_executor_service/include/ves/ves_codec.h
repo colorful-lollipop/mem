@@ -16,7 +16,9 @@ struct CodecTraits<VirusExecutorService::InitReply> {
         return writer.WriteInt32(reply.code) && detail::AssignBytes(writer, bytes);
     }
     static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::InitReply* reply) {
-        if (reply == nullptr) return false;
+        if (reply == nullptr) {
+            return false;
+        }
         ByteReader reader(bytes, size);
         return reader.ReadInt32(&reply->code);
     }
@@ -29,7 +31,9 @@ struct CodecTraits<VirusExecutorService::ScanFileRequest> {
         return writer.WriteString(request.filePath) && detail::AssignBytes(writer, bytes);
     }
     static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanFileRequest* request) {
-        if (request == nullptr) return false;
+        if (request == nullptr) {
+            return false;
+        }
         ByteReader reader(bytes, size);
         return reader.ReadString(&request->filePath);
     }
@@ -43,7 +47,9 @@ struct CodecTraits<VirusExecutorService::ScanFileReply> {
                detail::AssignBytes(writer, bytes);
     }
     static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanFileReply* reply) {
-        if (reply == nullptr) return false;
+        if (reply == nullptr) {
+            return false;
+        }
         ByteReader reader(bytes, size);
         return reader.ReadInt32(&reply->code) && reader.ReadInt32(&reply->threatLevel);
     }

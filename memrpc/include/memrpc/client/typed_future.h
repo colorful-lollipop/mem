@@ -59,7 +59,7 @@ class TypedFuture {
   // Then registers a completion callback. Decode happens inside the callback
   // wrapper. Mutually exclusive with Wait/WaitFor on the same future.
   void Then(std::function<void(StatusCode, Rep)> callback,
-            RpcThenExecutor executor = {}) {
+            const RpcThenExecutor& executor = {}) {
     future_.Then([cb = std::move(callback)](RpcReply rpcReply) {
       if (rpcReply.status != StatusCode::Ok) {
         cb(rpcReply.status, {});
@@ -71,7 +71,7 @@ class TypedFuture {
         return;
       }
       cb(rpcReply.status, std::move(decoded));
-    }, std::move(executor));
+    }, executor);
   }
 
   // Access the underlying RpcFuture for low-level use.

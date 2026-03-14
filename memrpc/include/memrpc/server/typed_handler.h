@@ -12,7 +12,9 @@ template <typename Req, typename Rep, typename Handler>
 void RegisterTypedHandler(RpcServer* server, Opcode opcode, Handler handler) {
     server->RegisterHandler(opcode,
         [h = std::move(handler)](const RpcServerCall& call, RpcServerReply* reply) {
-            if (reply == nullptr) return;
+            if (reply == nullptr) {
+                return;
+            }
             Req request;
             if (!DecodeMessage<Req>(call.payload, &request)) {
                 reply->status = StatusCode::ProtocolMismatch;

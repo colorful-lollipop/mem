@@ -13,7 +13,6 @@ namespace VirusExecutorService {
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VesClientOptions options)
     : remote_(remote),
-      client_(),
       options_(options) {}
 
 VesClient::~VesClient() = default;

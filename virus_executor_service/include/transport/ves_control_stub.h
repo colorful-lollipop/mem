@@ -10,14 +10,14 @@
 
 namespace VirusExecutorService {
 
-namespace {
+namespace detail {
 
 struct SessionMetadata {
     uint32_t protocol_version = 0;
     uint64_t session_id = 0;
 };
 
-}  // namespace
+}  // namespace detail
 
 class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
  public:
@@ -38,7 +38,7 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                 reply->fds[5] = handles.respCreditEventFd;
                 reply->fd_count = FD_COUNT;
 
-                SessionMetadata meta{};
+                detail::SessionMetadata meta{};
                 meta.protocol_version = handles.protocolVersion;
                 meta.session_id = handles.sessionId;
                 std::memcpy(reply->data, &meta, sizeof(meta));

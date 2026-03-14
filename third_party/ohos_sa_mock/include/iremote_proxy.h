@@ -11,7 +11,7 @@ class IRemoteProxy : public T {
   explicit IRemoteProxy(const sptr<IRemoteObject>& remote) : remote_(remote) {}
   ~IRemoteProxy() override = default;
 
-  sptr<IRemoteObject> Remote() const
+  [[nodiscard]] sptr<IRemoteObject> Remote() const
   {
     return remote_;
   }

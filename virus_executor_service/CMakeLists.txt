@@ -138,6 +138,7 @@ add_executable(virus_executor_service_supervisor src/app/ves_supervisor_main.cpp
 target_link_libraries(virus_executor_service_supervisor PRIVATE virus_executor_service_transport)
 
 add_executable(virus_executor_service src/app/virus_executor_service_main.cpp)
+set_target_properties(virus_executor_service PROPERTIES OUTPUT_NAME "VirusExecutorService")
 target_link_libraries(virus_executor_service PRIVATE
     virus_executor_service_transport
     virus_executor_service_service

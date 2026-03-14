@@ -49,7 +49,7 @@ StatusCode WaitAndDecode(RpcFuture future, Rep* reply) {
 template <typename Rep>
 void Then(RpcFuture future,
           std::function<void(StatusCode, Rep)> callback,
-          RpcThenExecutor executor = {}) {
+          const RpcThenExecutor& executor = {}) {
     future.Then([cb = std::move(callback)](RpcReply rpcReply) {
         if (rpcReply.status != StatusCode::Ok) {
             cb(rpcReply.status, {});
@@ -61,7 +61,7 @@ void Then(RpcFuture future,
             return;
         }
         cb(rpcReply.status, std::move(decoded));
-    }, std::move(executor));
+    }, executor);
 }
 
 // Encode request and invoke asynchronously, returning a TypedFuture<Rep> that
