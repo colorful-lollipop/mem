@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 TestkitClient::TestkitClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap)
     : asyncClient_(std::move(bootstrap)) {}
@@ -40,4 +40,4 @@ void TestkitClient::Shutdown() {
     asyncClient_.Shutdown();
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

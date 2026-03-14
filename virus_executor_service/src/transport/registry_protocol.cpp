@@ -4,7 +4,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 // Wire: [Op:1][SaId:4][PayloadLen:2][Payload:N]
 bool EncodeRegistryRequest(const RegistryRequest& req, std::string* out) {
@@ -109,4 +109,4 @@ bool RecvMessage(int fd, std::string* msg) {
     return true;
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

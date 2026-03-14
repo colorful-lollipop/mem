@@ -3,7 +3,7 @@
 
 #include "memrpc/server/rpc_server.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class RpcHandlerRegistrar {
  public:
@@ -11,6 +11,6 @@ class RpcHandlerRegistrar {
     virtual void RegisterHandlers(MemRpc::RpcServer* server) = 0;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_RPC_HANDLER_REGISTRAR_H_

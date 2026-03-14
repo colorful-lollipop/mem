@@ -5,7 +5,7 @@
 #include "memrpc/client/typed_invoker.h"
 #include "testkit/testkit_protocol.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 TestkitAsyncClient::TestkitAsyncClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap)
     : client_(std::move(bootstrap)) {}
@@ -43,4 +43,4 @@ void TestkitAsyncClient::Shutdown() {
     client_.Shutdown();
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

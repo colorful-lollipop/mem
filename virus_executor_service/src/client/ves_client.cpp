@@ -8,7 +8,7 @@
 #include "ves/ves_protocol.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VesClientOptions options)
@@ -20,7 +20,7 @@ VesClient::~VesClient() = default;
 
 void VesClient::RegisterProxyFactory() {
     OHOS::BrokerRegistration::GetInstance().Register(
-        VES_BOOTSTRAP_SA_ID,
+        VES_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
             std::string servicePath = remote->GetServicePath();
             return std::make_shared<VesBootstrapProxy>(remote, servicePath);
@@ -100,4 +100,4 @@ MemRpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* r
         request, reply);
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

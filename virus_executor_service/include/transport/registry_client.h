@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class RegistryClient {
  public:
@@ -21,6 +21,6 @@ class RegistryClient {
     std::string registry_socket_path_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_CLIENT_H_

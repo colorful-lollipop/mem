@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 struct SampleBehavior {
     int threatLevel = 0;
@@ -14,6 +14,6 @@ struct SampleBehavior {
 
 SampleBehavior EvaluateSamplePath(const std::string& path);
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VESDEMO_SAMPLE_RULES_H_

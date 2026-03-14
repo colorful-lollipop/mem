@@ -10,7 +10,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "transport/ves_bootstrap_interface.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
                           public MemRpc::IBootstrapChannel {
@@ -37,6 +37,6 @@ class VesBootstrapProxy : public OHOS::IRemoteProxy<IVesBootstrap>,
     std::mutex callbackMutex_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_PROXY_H_

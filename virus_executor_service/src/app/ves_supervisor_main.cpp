@@ -65,13 +65,13 @@ int main(int argc, char* argv[]) {
     if (pos != std::string::npos) {
         dir = argv0.substr(0, pos);
     }
-    std::string enginePath = dir + "/virus_executor_service";
+    std::string enginePath = dir + "/VirusExecutorService";
     std::string clientPath = dir + "/virus_executor_service_client";
 
-    virus_executor_service::RegistryServer registry(REGISTRY_SOCKET);
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_SA_ID) {
             return false;
         }
         if (g_engine_pid > 0) {
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_SA_ID) {
             return;
         }
         HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);

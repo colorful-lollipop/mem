@@ -9,12 +9,12 @@
 
 namespace MemRpc {
 
-using virus_executor_service::testkit::AddReply;
-using virus_executor_service::testkit::AddRequest;
-using virus_executor_service::testkit::EchoReply;
-using virus_executor_service::testkit::EchoRequest;
-using virus_executor_service::testkit::SleepReply;
-using virus_executor_service::testkit::SleepRequest;
+using VirusExecutorService::testkit::AddReply;
+using VirusExecutorService::testkit::AddRequest;
+using VirusExecutorService::testkit::EchoReply;
+using VirusExecutorService::testkit::EchoRequest;
+using VirusExecutorService::testkit::SleepReply;
+using VirusExecutorService::testkit::SleepRequest;
 
 template <>
 struct CodecTraits<EchoRequest> {

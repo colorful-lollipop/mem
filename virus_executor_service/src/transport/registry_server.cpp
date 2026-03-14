@@ -8,7 +8,7 @@
 
 #include "transport/registry_protocol.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 RegistryServer::RegistryServer(const std::string& socketPath)
     : socket_path_(socketPath) {}
@@ -156,4 +156,4 @@ void RegistryServer::HandleClient(int client_fd) {
     }
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

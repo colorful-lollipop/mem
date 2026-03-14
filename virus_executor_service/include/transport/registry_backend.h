@@ -6,7 +6,7 @@
 #include "isam_backend.h"
 #include "transport/registry_client.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class RegistryBackend : public OHOS::ISamBackend {
  public:
@@ -21,6 +21,6 @@ class RegistryBackend : public OHOS::ISamBackend {
     RegistryClient client_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_BACKEND_H_

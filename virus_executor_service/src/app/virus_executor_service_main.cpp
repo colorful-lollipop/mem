@@ -19,7 +19,7 @@ void SignalHandler(int) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        HILOGE("usage: virus_executor_service <registry_socket> <service_socket>");
+        HILOGE("usage: VirusExecutorService <registry_socket> <service_socket>");
         return 1;
     }
     const std::string registrySocket = argv[1];
@@ -29,11 +29,11 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, SignalHandler);
 
     // Inject backend so Publish() routes through the registry.
-    auto backend = std::make_shared<virus_executor_service::RegistryBackend>(registrySocket);
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
 
     // Create SA — self-creates VirusExecutorService + EngineSessionService internally.
-    auto stub = std::make_shared<virus_executor_service::VirusExecutorService>();
+    auto stub = std::make_shared<VirusExecutorService::VirusExecutorService>();
     stub->AsObject()->SetServicePath(serviceSocket);
     stub->OnStart();
 

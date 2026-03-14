@@ -8,7 +8,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "transport/ves_bootstrap_interface.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 namespace {
 
@@ -63,6 +63,6 @@ class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
     }
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_STUB_H_

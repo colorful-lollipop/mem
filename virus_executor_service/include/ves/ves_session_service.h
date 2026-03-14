@@ -11,7 +11,7 @@
 #include "memrpc/server/rpc_server.h"
 #include "service/rpc_handler_registrar.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class VesSessionProvider {
  public:
@@ -40,6 +40,6 @@ class EngineSessionService final : public VesSessionProvider {
     uint64_t sessionId_ = 0;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_SESSION_SERVICE_H_

@@ -73,13 +73,13 @@ int main(int argc, char* argv[]) {
     if (pos != std::string::npos) {
         dir = argv0.substr(0, pos);
     }
-    std::string enginePath = dir + "/virus_executor_service";
+    std::string enginePath = dir + "/VirusExecutorService";
 
     // --- Setup: registry + engine + client ---
-    virus_executor_service::RegistryServer registry(REGISTRY_SOCKET);
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) return false;
+        if (sa_id != VirusExecutorService::VES_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) return true;
         HILOGI("load callback: spawning engine");
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) return;
+        if (sa_id != VirusExecutorService::VES_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
@@ -98,9 +98,9 @@ int main(int argc, char* argv[]) {
 
     DT_CHECK(registry.Start(), "registry started");
 
-    auto backend = std::make_shared<virus_executor_service::RegistryBackend>(REGISTRY_SOCKET);
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    virus_executor_service::VesClient::RegisterProxyFactory();
+    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -110,12 +110,12 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, 5000);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, 5000);
     DT_CHECK(remote != nullptr, "LoadSystemAbility ok");
 
     std::atomic<int> engineRestarts{0};
 
-    auto client = std::make_unique<virus_executor_service::VesClient>(remote);
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         // Reap the dead engine.
@@ -139,13 +139,13 @@ int main(int argc, char* argv[]) {
     // === Step 1: normal scan ===
     HILOGI("=== Step 1: normal scan ===");
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean.apk", &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: clean scan RPC ok");
         DT_CHECK(reply.threatLevel == 0, "step1: clean file threat=0");
     }
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus.apk", &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: virus scan RPC ok");
         DT_CHECK(reply.threatLevel == 1, "step1: virus file threat=1");
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
     // === Step 2: send crash sample ===
     HILOGI("=== Step 2: send crash sample (engine will abort) ===");
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_crash.apk", &reply);
         // The engine aborts — this request will fail.
         HILOGI("step2: crash scan returned status=%{public}d (expected failure)",
@@ -178,13 +178,13 @@ int main(int argc, char* argv[]) {
     // === Step 4: scan after recovery ===
     HILOGI("=== Step 4: scan after recovery ===");
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_clean_after.apk", &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
         DT_CHECK(reply.threatLevel == 0, "step4: post-recovery threat=0");
     }
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile("/data/dt_virus_after.apk", &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery virus scan ok");
         DT_CHECK(reply.threatLevel == 1, "step4: post-recovery threat=1");
@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
     HILOGI("=== Step 5: second crash + 10 sequential normal calls ===");
     int prev = engineRestarts.load();
     {
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         HILOGI("step5: sending crash...");
         auto status = client->ScanFile("/data/dt_crash2.apk", &reply);
         HILOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
@@ -212,7 +212,7 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < 10; i++) {
         HILOGI("step5: call %{public}d/10 ...", i + 1);
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         const auto t0 = std::chrono::steady_clock::now();
         auto status = client->ScanFile(
             "/data/dt_post_recover_" + std::to_string(i) + ".apk", &reply);

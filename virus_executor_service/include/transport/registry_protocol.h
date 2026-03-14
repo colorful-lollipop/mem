@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 enum class RegistryOp : uint8_t {
     Register = 1,
@@ -33,6 +33,6 @@ bool DecodeRegistryResponse(const uint8_t* data, size_t len, RegistryResponse* r
 bool SendMessage(int fd, const std::string& msg);
 bool RecvMessage(int fd, std::string* msg);
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_PROTOCOL_H_

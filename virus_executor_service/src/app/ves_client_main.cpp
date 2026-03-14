@@ -14,20 +14,19 @@ namespace {
 const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
-std::unique_ptr<virus_executor_service::VesClient> ConnectToEngine() {
+std::unique_ptr<VirusExecutorService::VesClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->GetSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID);
+    auto remote = sam->GetSystemAbility(VirusExecutorService::VES_SA_ID);
     if (remote == nullptr) {
         // Service not registered yet; try LoadSystemAbility.
-        remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
+        remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
     }
     if (remote == nullptr) {
-        HILOGE("ConnectToEngine failed for saId=%{public}d", virus_executor_service::VES_BOOTSTRAP_SA_ID);
+        HILOGE("ConnectToEngine failed for saId=%{public}d", VirusExecutorService::VES_SA_ID);
         return nullptr;
     }
-    HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
-    auto client = std::make_unique<virus_executor_service::VesClient>(remote);
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
@@ -35,14 +34,14 @@ std::unique_ptr<virus_executor_service::VesClient> ConnectToEngine() {
     return client;
 }
 
-std::unique_ptr<virus_executor_service::VesClient> LoadAndConnectToEngine() {
+std::unique_ptr<VirusExecutorService::VesClient> LoadAndConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
 
-    auto remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
     if (remote == nullptr) {
         // Retry once after a delay.
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, LOAD_TIMEOUT_MS);
+        remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
     }
 
     if (remote == nullptr) {
@@ -51,7 +50,7 @@ std::unique_ptr<virus_executor_service::VesClient> LoadAndConnectToEngine() {
     }
     HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
 
-    auto client = std::make_unique<virus_executor_service::VesClient>(remote);
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
@@ -69,9 +68,9 @@ int main() {
     }
 
     // Inject backend and proxy factory.
-    auto backend = std::make_shared<virus_executor_service::RegistryBackend>(registrySocket);
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    virus_executor_service::VesClient::RegisterProxyFactory();
+    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     // --- First session ---
     HILOGI("=== First session ===");
@@ -80,7 +79,7 @@ int main() {
         return 1;
     }
 
-    virus_executor_service::ScanFileReply scanReply;
+    VirusExecutorService::ScanFileReply scanReply;
     client->ScanFile("/data/test_file_1.apk", &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
@@ -90,7 +89,7 @@ int main() {
     // Request engine unload (triggers death callback via RecoveryPolicy).
     HILOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    sam->UnloadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID);
+    sam->UnloadSystemAbility(VirusExecutorService::VES_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     HILOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
@@ -101,7 +100,7 @@ int main() {
     HILOGI("=== Second session (after restart) ===");
     auto client2 = LoadAndConnectToEngine();
     if (client2) {
-        virus_executor_service::ScanFileReply scan2;
+        VirusExecutorService::ScanFileReply scan2;
         client2->ScanFile("/data/test_file_3.apk", &scan2);
         HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
 

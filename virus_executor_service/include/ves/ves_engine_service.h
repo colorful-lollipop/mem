@@ -8,7 +8,7 @@
 #include "service/rpc_handler_registrar.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 struct VesHealthSnapshot {
     uint32_t inFlight = 0;
@@ -33,6 +33,6 @@ class VesEngineService : public RpcHandlerRegistrar {
     std::string currentTask_ = "idle";
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_ENGINE_SERVICE_H_

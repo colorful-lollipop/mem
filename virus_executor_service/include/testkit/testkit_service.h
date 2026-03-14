@@ -4,13 +4,13 @@
 #include "service/rpc_handler_registrar.h"
 #include "testkit/testkit_codec.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 struct TestkitServiceOptions {
     bool enableFaultInjection = false;
 };
 
-class TestkitService : public virus_executor_service::RpcHandlerRegistrar {
+class TestkitService : public VirusExecutorService::RpcHandlerRegistrar {
  public:
     explicit TestkitService(TestkitServiceOptions options = {});
 
@@ -25,6 +25,6 @@ class TestkitService : public virus_executor_service::RpcHandlerRegistrar {
     TestkitServiceOptions options_;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_SERVICE_H_

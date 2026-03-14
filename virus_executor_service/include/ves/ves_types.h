@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 struct InitReply {
     int32_t code = 0;
@@ -19,6 +19,6 @@ struct ScanFileReply {
     int32_t threatLevel = 0;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_TYPES_H_

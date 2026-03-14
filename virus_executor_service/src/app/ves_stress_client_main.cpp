@@ -93,7 +93,7 @@ void RespawnEngine(const std::string& enginePath, StressStats* stats) {
 }
 
 void WorkerThread(const StressConfig& config, uint32_t threadId,
-                  virus_executor_service::VesClient* client, StressStats* stats) {
+                  VirusExecutorService::VesClient* client, StressStats* stats) {
     std::mt19937 rng(config.seed + threadId);
     std::uniform_int_distribution<size_t> tokenDist(0, kNormalTokens.size() - 1);
     std::uniform_real_distribution<double> crashDist(0.0, 1.0);
@@ -104,14 +104,14 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
         std::string path = "/data/stress_" + token + "_" +
                            std::to_string(threadId) + "_" + std::to_string(i) + ".apk";
 
-        const auto behavior = virus_executor_service::EvaluateSamplePath(path);
+        const auto behavior = VirusExecutorService::EvaluateSamplePath(path);
 
         if (doCrash) {
             stats->crashesSent++;
         }
         stats->sleepMs += behavior.sleepMs;
 
-        virus_executor_service::ScanFileReply reply;
+        VirusExecutorService::ScanFileReply reply;
         auto status = client->ScanFile(path, &reply);
         stats->total++;
 
@@ -165,13 +165,13 @@ int main(int argc, char* argv[]) {
     if (pos != std::string::npos) {
         dir = argv0.substr(0, pos);
     }
-    std::string enginePath = dir + "/virus_executor_service";
+    std::string enginePath = dir + "/VirusExecutorService";
 
     // Self-host registry server.
-    virus_executor_service::RegistryServer registry(REGISTRY_SOCKET);
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_SA_ID) {
             return false;
         }
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -188,7 +188,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_SA_ID) {
             return;
         }
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -204,9 +204,9 @@ int main(int argc, char* argv[]) {
     HILOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
 
     // Inject backend for client-side SAM access.
-    auto backend = std::make_shared<virus_executor_service::RegistryBackend>(REGISTRY_SOCKET);
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    virus_executor_service::VesClient::RegisterProxyFactory();
+    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     // Spawn engine.
     {
@@ -223,7 +223,7 @@ int main(int argc, char* argv[]) {
 
     // Create a single shared client (engine supports one session).
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, 5000);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, 5000);
     if (remote == nullptr) {
         HILOGE("LoadSystemAbility failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
 
     StressStats stats;
 
-    auto client = std::make_unique<virus_executor_service::VesClient>(remote);
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         RespawnEngine(enginePath, &stats);
     });

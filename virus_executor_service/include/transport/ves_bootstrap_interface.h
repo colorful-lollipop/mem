@@ -7,9 +7,9 @@
 #include "iremote_broker.h"
 #include "memrpc/core/bootstrap.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
-constexpr int32_t VES_BOOTSTRAP_SA_ID = 1251;
+constexpr int32_t VES_SA_ID = 1251;
 
 enum class VesHeartbeatStatus : uint32_t {
     Ok = 0,
@@ -34,6 +34,6 @@ class IVesBootstrap : public OHOS::IRemoteBroker {
     virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_INTERFACE_H_

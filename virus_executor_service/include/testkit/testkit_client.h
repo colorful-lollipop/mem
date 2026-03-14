@@ -6,7 +6,7 @@
 
 #include "testkit/testkit_async_client.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 class TestkitClient {
  public:
@@ -33,6 +33,6 @@ class TestkitClient {
     TestkitAsyncClient asyncClient_;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_CLIENT_H_

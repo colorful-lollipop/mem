@@ -9,7 +9,7 @@
 #include "ves/ves_engine_service.h"
 #include "ves/ves_session_service.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 class VirusExecutorService : public OHOS::SystemAbility,
                               public VesBootstrapStub {
@@ -32,6 +32,6 @@ class VirusExecutorService : public OHOS::SystemAbility,
     std::shared_ptr<EngineSessionService> session_service_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_VIRUS_EXECUTOR_SERVICE_H_

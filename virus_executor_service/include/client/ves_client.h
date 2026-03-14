@@ -11,7 +11,7 @@
 #include "transport/ves_bootstrap_proxy.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 struct VesClientOptions {
     uint32_t execTimeoutRestartDelayMs = 200;
@@ -49,6 +49,6 @@ class VesClient {
     EngineRestartCallback restartCallback_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_

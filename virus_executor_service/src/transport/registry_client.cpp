@@ -7,7 +7,7 @@
 
 #include "transport/registry_protocol.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 RegistryClient::RegistryClient(const std::string& registrySocketPath)
     : registry_socket_path_(registrySocketPath) {}
@@ -83,4 +83,4 @@ bool RegistryClient::RegisterService(int32_t sa_id,
     return r != "\x01";
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

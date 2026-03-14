@@ -1,6 +1,6 @@
 #include "transport/registry_backend.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 RegistryBackend::RegistryBackend(const std::string& registrySocketPath)
     : client_(registrySocketPath) {}
@@ -21,4 +21,4 @@ bool RegistryBackend::UnloadService(int32_t saId) {
     return client_.UnloadService(saId);
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

@@ -12,7 +12,7 @@
 #include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 void VesEngineService::Initialize() {
     if (initialized_) {
@@ -84,4 +84,4 @@ void VesEngineService::RegisterHandlers(MemRpc::RpcServer* server) {
         [this](const ScanFileRequest& r) { return ScanFile(r); });
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

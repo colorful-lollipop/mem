@@ -8,7 +8,7 @@
 #include "iservice_registry.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 namespace {
 
@@ -20,7 +20,7 @@ bool IsTestkitFaultInjectionEnabled() {
 }  // namespace
 
 VirusExecutorService::VirusExecutorService()
-    : OHOS::SystemAbility(VES_BOOTSTRAP_SA_ID, true) {}
+    : OHOS::SystemAbility(VES_SA_ID, true) {}
 
 MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& handles) {
     if (!session_service_) {
@@ -84,4 +84,4 @@ void VirusExecutorService::OnStop() {
     }
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

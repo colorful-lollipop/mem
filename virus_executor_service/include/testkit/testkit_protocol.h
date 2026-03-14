@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 enum class TestkitOpcode : uint16_t {
     Echo = 200,
@@ -15,6 +15,6 @@ enum class TestkitOpcode : uint16_t {
     StackOverflowForTest = 206,
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_PROTOCOL_H_

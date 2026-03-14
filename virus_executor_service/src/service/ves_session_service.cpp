@@ -7,7 +7,7 @@
 #include "ves/ves_engine_service.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 namespace {
 void CloseHandles(MemRpc::BootstrapHandles* handles) {
@@ -101,4 +101,4 @@ uint64_t EngineSessionService::session_id() const {
     return sessionId_;
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

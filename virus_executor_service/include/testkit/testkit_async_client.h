@@ -6,7 +6,7 @@
 #include "memrpc/client/typed_future.h"
 #include "testkit/testkit_codec.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 class TestkitAsyncClient {
  public:
@@ -32,6 +32,6 @@ class TestkitAsyncClient {
     MemRpc::RpcClient client_;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_ASYNC_CLIENT_H_

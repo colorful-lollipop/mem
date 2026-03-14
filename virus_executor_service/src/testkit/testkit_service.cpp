@@ -8,7 +8,7 @@
 #include "memrpc/server/typed_handler.h"
 #include "testkit/testkit_protocol.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 TestkitService::TestkitService(TestkitServiceOptions options)
     : options_(options) {}
@@ -89,4 +89,4 @@ void TestkitService::RegisterHandlers(MemRpc::RpcServer* server) {
         });
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

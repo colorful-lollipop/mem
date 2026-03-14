@@ -7,7 +7,7 @@
 #include <thread>
 #include <unordered_map>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 using LoadCallback = std::function<bool(int32_t sa_id)>;
 using UnloadCallback = std::function<void(int32_t sa_id)>;
@@ -42,6 +42,6 @@ class RegistryServer {
     UnloadCallback unload_cb_;
 };
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_SERVER_H_

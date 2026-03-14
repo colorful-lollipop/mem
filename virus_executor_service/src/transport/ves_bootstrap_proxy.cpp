@@ -9,7 +9,7 @@
 #include "scm_rights.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 namespace {
 
@@ -191,4 +191,4 @@ void VesBootstrapProxy::MonitorSocket() {
     }
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

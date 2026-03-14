@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 struct EchoRequest {
     std::string text;
@@ -31,6 +31,6 @@ struct SleepReply {
     int32_t status = 0;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_TYPES_H_

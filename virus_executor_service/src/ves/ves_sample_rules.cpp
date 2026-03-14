@@ -4,7 +4,7 @@
 #include <cctype>
 #include <string>
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 namespace {
 
 constexpr uint32_t MAX_SLEEP_MS = 5000;
@@ -42,4 +42,4 @@ SampleBehavior EvaluateSamplePath(const std::string& path) {
     return behavior;
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService
