@@ -41,13 +41,14 @@ bool RegistryServer::Start() {
         return false;
     }
 
-    running_ = true;
-    accept_thread_ = std::thread(&RegistryServer::AcceptLoop, this);
+    const int listen_fd = listen_fd_;
+    running_.store(true, std::memory_order_release);
+    accept_thread_ = std::thread(&RegistryServer::AcceptLoop, this, listen_fd);
     return true;
 }
 
 void RegistryServer::Stop() {
-    running_ = false;
+    running_.store(false, std::memory_order_release);
     if (listen_fd_ >= 0) {
         shutdown(listen_fd_, SHUT_RDWR);
         close(listen_fd_);
@@ -69,10 +70,13 @@ void RegistryServer::UnregisterService(int32_t sa_id) {
     services_.erase(sa_id);
 }
 
-void RegistryServer::AcceptLoop() {
-    while (running_) {
-        int client_fd = accept(listen_fd_, nullptr, nullptr);
+void RegistryServer::AcceptLoop(int listen_fd) {
+    while (running_.load(std::memory_order_acquire)) {
+        int client_fd = accept(listen_fd, nullptr, nullptr);
         if (client_fd < 0) {
+            if (running_.load(std::memory_order_acquire)) {
+                continue;
+            }
             break;
         }
         // Handle one request per connection (simple protocol).

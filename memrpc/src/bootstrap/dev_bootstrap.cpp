@@ -99,6 +99,7 @@ struct DevBootstrapChannel::Impl {
   [[nodiscard]] bool HasValidConfig() const {
     return config.maxRequestBytes != 0 &&
            config.maxResponseBytes != 0 &&
+           HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes) &&
            config.maxResponseBytes <= DEFAULT_MAX_RESPONSE_BYTES;
   }
 

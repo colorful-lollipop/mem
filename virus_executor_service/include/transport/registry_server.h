@@ -1,6 +1,7 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_SERVER_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_REGISTRY_SERVER_H_
 
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -27,13 +28,13 @@ class RegistryServer {
     void UnregisterService(int32_t sa_id);
 
  private:
-    void AcceptLoop();
+    void AcceptLoop(int listen_fd);
     void HandleClient(int client_fd);
 
     std::string socket_path_;
     int listen_fd_ = -1;
     std::thread accept_thread_;
-    bool running_ = false;
+    std::atomic<bool> running_{false};
 
     std::mutex mutex_;
     std::unordered_map<int32_t, std::string> services_;

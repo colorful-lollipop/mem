@@ -48,6 +48,19 @@ inline uint32_t RingCount(const RingCursor& cursor) {
          cursor.head.load(std::memory_order_relaxed);
 }
 
+constexpr std::size_t AlignOffset(std::size_t offset, std::size_t alignment) {
+  return alignment == 0 ? offset : ((offset + alignment - 1) / alignment) * alignment;
+}
+
+constexpr bool IsAlignedValue(uint32_t value, std::size_t alignment) {
+  return alignment != 0 && value % alignment == 0;
+}
+
+constexpr bool HasAlignedPayloadSizes(uint32_t max_request_bytes, uint32_t max_response_bytes) {
+  return IsAlignedValue(max_request_bytes, alignof(SlotPayload)) &&
+         IsAlignedValue(max_response_bytes, alignof(ResponseSlotPayload));
+}
+
 struct SharedMemoryHeader {
   uint32_t magic = SHARED_MEMORY_MAGIC;
   uint32_t protocolVersion = PROTOCOL_VERSION;
@@ -70,17 +83,23 @@ struct SharedMemoryHeader {
 
 inline Layout ComputeLayout(const LayoutConfig& config) {
   Layout layout;
-  layout.highRingOffset = sizeof(SharedMemoryHeader);
-  layout.normalRingOffset =
-      layout.highRingOffset + sizeof(RequestRingEntry) * config.highRingSize;
-  layout.responseRingOffset =
-      layout.normalRingOffset + sizeof(RequestRingEntry) * config.normalRingSize;
-  layout.slotPoolOffset =
-      layout.responseRingOffset + sizeof(ResponseRingEntry) * config.responseRingSize;
-  layout.responseSlotPoolOffset = layout.slotPoolOffset +
-                      static_cast<std::size_t>(config.slotCount) * config.slotSize;
-  layout.responseSlotsOffset =
-      layout.responseSlotPoolOffset + ComputeSharedSlotPoolBytes(config.responseRingSize);
+  layout.highRingOffset =
+      AlignOffset(sizeof(SharedMemoryHeader), alignof(RequestRingEntry));
+  layout.normalRingOffset = AlignOffset(
+      layout.highRingOffset + sizeof(RequestRingEntry) * config.highRingSize,
+      alignof(RequestRingEntry));
+  layout.responseRingOffset = AlignOffset(
+      layout.normalRingOffset + sizeof(RequestRingEntry) * config.normalRingSize,
+      alignof(ResponseRingEntry));
+  layout.slotPoolOffset = AlignOffset(
+      layout.responseRingOffset + sizeof(ResponseRingEntry) * config.responseRingSize,
+      alignof(SlotPayload));
+  layout.responseSlotPoolOffset = AlignOffset(
+      layout.slotPoolOffset + static_cast<std::size_t>(config.slotCount) * config.slotSize,
+      alignof(SharedSlotPoolHeader));
+  layout.responseSlotsOffset = AlignOffset(
+      layout.responseSlotPoolOffset + ComputeSharedSlotPoolBytes(config.responseRingSize),
+      alignof(ResponseSlotPayload));
   layout.totalSize = layout.responseSlotsOffset +
                       static_cast<std::size_t>(config.responseRingSize) *
                           ComputeResponseSlotSize(config.maxResponseBytes);

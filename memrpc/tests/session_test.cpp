@@ -194,6 +194,49 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
 }
 
+TEST(SessionTest, RequestPayloadLimitMustBePayloadAligned) {
+  MemRpc::DevBootstrapConfig config;
+  config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
+
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
+  MemRpc::BootstrapHandles invalid_handles;
+  EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
+}
+
+TEST(SessionTest, ResponsePayloadLimitMustBePayloadAligned) {
+  MemRpc::DevBootstrapConfig config;
+  config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES - 1;
+
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
+  MemRpc::BootstrapHandles invalid_handles;
+  EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
+}
+
+TEST(SessionTest, AttachRejectsUnalignedPayloadLimitsInHeader) {
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+
+  MemRpc::BootstrapHandles corrupt_handles;
+  ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), MemRpc::StatusCode::Ok);
+
+  struct stat file_stat {};
+  ASSERT_EQ(fstat(corrupt_handles.shmFd, &file_stat), 0);
+  void* region = mmap(nullptr, static_cast<size_t>(file_stat.st_size), PROT_READ | PROT_WRITE,
+                      MAP_SHARED, corrupt_handles.shmFd, 0);
+  ASSERT_NE(region, MAP_FAILED);
+  auto* header = static_cast<MemRpc::SharedMemoryHeader*>(region);
+  header->maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
+  header->slotSize =
+      MemRpc::ComputeSlotSize(header->maxRequestBytes, header->maxResponseBytes);
+  ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
+  CloseHandles(corrupt_handles);
+
+  MemRpc::BootstrapHandles attach_handles;
+  ASSERT_EQ(bootstrap->OpenSession(attach_handles), MemRpc::StatusCode::Ok);
+
+  MemRpc::Session session;
+  EXPECT_EQ(session.Attach(attach_handles), MemRpc::StatusCode::ProtocolMismatch);
+}
+
 TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
   MemRpc::DevBootstrapConfig config;
   config.highRingSize = 1;

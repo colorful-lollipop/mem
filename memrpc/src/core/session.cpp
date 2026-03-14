@@ -85,6 +85,7 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
     return false;
   }
   if (config.maxRequestBytes == 0 || config.maxResponseBytes == 0 ||
+      !HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes) ||
       config.maxResponseBytes > DEFAULT_MAX_RESPONSE_BYTES) {
     return false;
   }

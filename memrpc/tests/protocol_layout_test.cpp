@@ -57,6 +57,24 @@ TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {
   EXPECT_LT(layout.responseSlotsOffset, layout.totalSize);
 }
 
+TEST(ProtocolLayoutTest, ResponseSlotRegionIsProperlyAligned) {
+  const MemRpc::LayoutConfig config{
+      8,
+      8,
+      8,
+      4,
+      MemRpc::ComputeSlotSize(MemRpc::DEFAULT_MAX_REQUEST_BYTES,
+                              MemRpc::DEFAULT_MAX_RESPONSE_BYTES),
+      MemRpc::DEFAULT_MAX_REQUEST_BYTES,
+      MemRpc::DEFAULT_MAX_RESPONSE_BYTES,
+  };
+  const MemRpc::Layout layout = MemRpc::ComputeLayout(config);
+
+  EXPECT_EQ(layout.slotPoolOffset % alignof(MemRpc::SlotPayload), 0U);
+  EXPECT_EQ(layout.responseSlotPoolOffset % alignof(MemRpc::SharedSlotPoolHeader), 0U);
+  EXPECT_EQ(layout.responseSlotsOffset % alignof(MemRpc::ResponseSlotPayload), 0U);
+}
+
 TEST(ProtocolLayoutTest, RingCursorLayoutMatchesSpscHeadTailModel) {
   EXPECT_EQ(sizeof(MemRpc::RingCursor), 16U);
   MemRpc::RingCursor cursor;

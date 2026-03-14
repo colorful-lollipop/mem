@@ -38,29 +38,59 @@ void PopulateHealthyReply(const VesHealthSnapshot& snapshot, uint64_t sessionId,
 VirusExecutorService::VirusExecutorService()
     : OHOS::SystemAbility(VES_CONTROL_SA_ID, true) {}
 
+bool VirusExecutorService::Publish(VirusExecutorService* service) {
+    const bool published = OHOS::SystemAbility::Publish(service);
+    if (!published) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    published_ = true;
+    return true;
+}
+
 MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& handles) {
-    if (!session_service_) {
+    std::shared_ptr<EngineSessionService> sessionService;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        sessionService = session_service_;
+    }
+    if (!sessionService) {
         HILOGE("session service not initialized");
         return MemRpc::StatusCode::InvalidArgument;
     }
-    return session_service_->OpenSession(handles);
+    return sessionService->OpenSession(handles);
 }
 
 MemRpc::StatusCode VirusExecutorService::CloseSession() {
-    if (!session_service_) {
+    std::shared_ptr<EngineSessionService> sessionService;
+    bool shouldRequestUnload = false;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        sessionService = session_service_;
+        shouldRequestUnload = sessionService != nullptr &&
+                              !stopping_.load() &&
+                              !unloadRequested_ &&
+                              published_;
+        if (shouldRequestUnload) {
+            unloadRequested_ = true;
+        }
+    }
+    if (!sessionService) {
         return MemRpc::StatusCode::Ok;
     }
-    auto status = session_service_->CloseSession();
+    auto status = sessionService->CloseSession();
 
     // After releasing session resources, trigger self-unload asynchronously.
     // Must be async because the IPC caller is still waiting for our reply.
-    std::thread([sa_id = GetSystemAbilityId()]() {
-        HILOGI("requesting self-unload for sa_id=%{public}d", sa_id);
-        auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-        if (sam != nullptr) {
-            sam->UnloadSystemAbility(sa_id);
-        }
-    }).detach();
+    if (shouldRequestUnload) {
+        std::thread([sa_id = GetSystemAbilityId()]() {
+            HILOGI("requesting self-unload for sa_id=%{public}d", sa_id);
+            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+            if (sam != nullptr) {
+                sam->UnloadSystemAbility(sa_id);
+            }
+        }).detach();
+    }
 
     return status;
 }
@@ -72,7 +102,12 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
         reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Stopping);
         return MemRpc::StatusCode::Ok;
     }
-    if (!session_service_) {
+    std::shared_ptr<EngineSessionService> sessionService;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        sessionService = session_service_;
+    }
+    if (!sessionService) {
         if (service_.initialized()) {
             reply.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
         }
@@ -80,7 +115,7 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
         return MemRpc::StatusCode::Ok;
     }
     const auto snapshot = service_.GetHealthSnapshot();
-    const uint64_t sessionId = session_service_->session_id();
+    const uint64_t sessionId = sessionService->session_id();
     if (!service_.initialized()) {
         reply.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError);
         reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::InternalError);
@@ -100,18 +135,27 @@ void VirusExecutorService::OnStart() {
     HILOGI("OnStart sa_id=%{public}d", GetSystemAbilityId());
     stopping_.store(false);
     testkitService_.SetFaultInjectionEnabled(IsTestkitFaultInjectionEnabled());
-    session_service_ =
-        std::make_shared<EngineSessionService>(
-            std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        published_ = false;
+        unloadRequested_ = false;
+        session_service_ =
+            std::make_shared<EngineSessionService>(
+                std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
+    }
     service_.Initialize();
 }
 
 void VirusExecutorService::OnStop() {
     HILOGI("OnStop");
     stopping_.store(true);
-    if (session_service_) {
-        session_service_->CloseSession();
-        session_service_.reset();
+    std::shared_ptr<EngineSessionService> sessionService;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        sessionService = std::move(session_service_);
+    }
+    if (sessionService) {
+        sessionService->CloseSession();
     }
 }
 
