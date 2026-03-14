@@ -38,9 +38,8 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs) {
 
 }  // namespace
 
-TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
+TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
     MemRpc::DevBootstrapConfig config;
-    config.slotCount = 4;
     config.highRingSize = 8;
     config.normalRingSize = 8;
     config.responseRingSize = 8;
@@ -99,7 +98,6 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
 
 TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     MemRpc::DevBootstrapConfig config;
-    config.slotCount = 2;
     config.highRingSize = 4;
     config.normalRingSize = 4;
     config.responseRingSize = 4;

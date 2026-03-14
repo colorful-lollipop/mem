@@ -167,6 +167,7 @@ void VirusExecutorService::OnStop() {
     if (sessionService) {
         sessionService->CloseSession();
     }
+    OHOS::SystemAbility::OnStop();
 }
 
 }  // namespace VirusExecutorService

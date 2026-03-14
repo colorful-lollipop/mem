@@ -15,7 +15,9 @@ VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
     : remote_(remote),
       options_(options) {}
 
-VesClient::~VesClient() = default;
+VesClient::~VesClient() {
+    Shutdown();
+}
 
 void VesClient::RegisterProxyFactory() {
     OHOS::BrokerRegistration::GetInstance().Register(
@@ -91,6 +93,8 @@ void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
 
 void VesClient::Shutdown() {
     client_.Shutdown();
+    bootstrapChannel_.reset();
+    proxy_.reset();
 }
 
 bool VesClient::EngineDied() const {

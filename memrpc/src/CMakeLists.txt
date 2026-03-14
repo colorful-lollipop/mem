@@ -6,7 +6,6 @@ add_library(memrpc_core
   core/byte_reader.cpp
   core/byte_writer.cpp
   core/log.cpp
-  core/slot_pool.cpp
   core/session.cpp
 )
 

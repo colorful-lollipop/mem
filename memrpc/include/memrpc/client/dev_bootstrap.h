@@ -13,7 +13,6 @@ struct DevBootstrapConfig {
   uint32_t highRingSize = 32;
   uint32_t normalRingSize = 32;
   uint32_t responseRingSize = 64;
-  uint32_t slotCount = 64;
   uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
   std::string shmName;

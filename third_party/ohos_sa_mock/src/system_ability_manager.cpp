@@ -155,7 +155,9 @@ SystemAbility::~SystemAbility()
 
 void SystemAbility::OnStart() {}
 
-void SystemAbility::OnStop() {}
+void SystemAbility::OnStop() {
+  transport_.Stop();
+}
 
 void SystemAbility::OnAddSystemAbility(int32_t systemAbilityId, const std::string& deviceId)
 {

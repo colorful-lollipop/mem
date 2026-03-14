@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "mock_ipc_types.h"
 
@@ -27,6 +28,7 @@ class MockServiceSocket {
     std::mutex mutex_;
     MockIpcHandler handler_;
     std::string socket_path_;
+    std::vector<int> client_fds_;
     int listen_fd_ = -1;
     std::atomic<bool> stop_{false};
     std::thread accept_thread_;

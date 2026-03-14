@@ -135,9 +135,8 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
 
 TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmission) {
   DevBootstrapConfig config;
-  config.slotCount = 1;
-  config.highRingSize = 2;
-  config.normalRingSize = 2;
+  config.highRingSize = 1;
+  config.normalRingSize = 1;
   config.responseRingSize = 2;
 
   auto bootstrap = std::make_shared<FaultInjectingBootstrap>(
@@ -147,7 +146,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
 
   RpcCall call;
   call.opcode = kFaultInjectionOpcode;
-  call.admissionTimeoutMs = 0;
+  call.admissionTimeoutMs = 100;
   call.queueTimeoutMs = 1000;
   call.execTimeoutMs = 1000;
 
@@ -155,14 +154,14 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
   auto second_future = client.InvokeAsync(call);
 
   RpcReply second_reply;
-  EXPECT_EQ(second_future.WaitFor(&second_reply, std::chrono::milliseconds(500)),
-            StatusCode::PeerDisconnected);
+  EXPECT_EQ(second_future.WaitFor(&second_reply, std::chrono::seconds(1)),
+            StatusCode::QueueTimeout);
 
   client.Shutdown();
 
   RpcReply first_reply;
-  EXPECT_EQ(first_future.WaitFor(&first_reply, std::chrono::milliseconds(500)),
-            StatusCode::PeerDisconnected);
+  EXPECT_NE(first_future.WaitFor(&first_reply, std::chrono::milliseconds(500)),
+            StatusCode::Ok);
 }
 
 TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling) {

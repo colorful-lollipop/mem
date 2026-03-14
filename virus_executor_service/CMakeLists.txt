@@ -33,7 +33,6 @@ if (NOT TARGET memrpc_core)
       ${MEMRPC_MODULE_ROOT}/src/core/byte_reader.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_writer.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/log.cpp
-      ${MEMRPC_MODULE_ROOT}/src/core/slot_pool.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/session.cpp
   )
   target_include_directories(memrpc_core PUBLIC

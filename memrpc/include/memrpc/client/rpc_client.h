@@ -17,8 +17,8 @@ using RpcThenExecutor = std::function<void(std::function<void()>)>;
 struct RpcCall {
   Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
-  // admission_timeout_ms 作用在 client 等待 slot / request ring 可写阶段。
-  // 0 = 无限等待（slot 耗尽时阻塞直到可用）。
+  // admission_timeout_ms 作用在 client 等待 request ring 可写阶段。
+  // 0 = 无限等待。
   uint32_t admissionTimeoutMs = 0;
   // queue_timeout_ms 作用在服务端排队阶段。0 = 无限等待。
   uint32_t queueTimeoutMs = 0;
@@ -38,7 +38,6 @@ struct RpcReply {
 struct RpcClientRuntimeStats {
   uint32_t queuedSubmissions = 0;
   uint32_t pendingCalls = 0;
-  uint32_t requestSlotCapacity = 0;
   uint32_t highRequestRingPending = 0;
   uint32_t normalRequestRingPending = 0;
   uint32_t responseRingPending = 0;

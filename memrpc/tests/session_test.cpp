@@ -97,7 +97,6 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
   config.highRingSize = 2;
   config.normalRingSize = 2;
   config.responseRingSize = 2;
-  config.slotCount = 2;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 
@@ -144,7 +143,6 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
   config.highRingSize = 2;
   config.normalRingSize = 2;
   config.responseRingSize = 2;
-  config.slotCount = 2;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 
@@ -238,7 +236,6 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
   config.highRingSize = 1;
   config.normalRingSize = 1;
   config.responseRingSize = 1;
-  config.slotCount = 1;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 

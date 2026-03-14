@@ -48,7 +48,7 @@ class RpcServer {
   // 重复注册同一 opcode 会覆盖旧 handler；传入空 handler 等价于注销。
   void RegisterHandler(Opcode opcode, RpcHandler handler);
   void SetOptions(ServerOptions options);
-  // PublishEvent 复用 response ring + response slot，把异步事件发给客户端。
+  // PublishEvent 复用 response ring，把异步事件发给客户端。
   [[nodiscard]] StatusCode PublishEvent(const RpcEvent& event);
   // Start 负责 attach session、拉起 worker 池和请求分发线程。
   [[nodiscard]] StatusCode Start();

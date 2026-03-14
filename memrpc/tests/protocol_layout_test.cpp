@@ -9,12 +9,12 @@
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
   EXPECT_EQ(MemRpc::SHARED_MEMORY_MAGIC, 0x4d454d52U);
   EXPECT_EQ(MemRpc::PROTOCOL_VERSION, 4U);
+  EXPECT_EQ(MemRpc::RING_ENTRY_BYTES, 512U);
   EXPECT_EQ(MemRpc::DEFAULT_MAX_REQUEST_BYTES,
             static_cast<uint32_t>(MemRpc::RequestRingEntry::INLINE_PAYLOAD_BYTES));
   EXPECT_EQ(MemRpc::DEFAULT_MAX_RESPONSE_BYTES,
             static_cast<uint32_t>(MemRpc::ResponseRingEntry::INLINE_PAYLOAD_BYTES));
   EXPECT_EQ(sizeof(MemRpc::RequestRingEntry), MemRpc::RING_ENTRY_BYTES);
-  EXPECT_EQ(sizeof(MemRpc::SlotRuntimeState), 32U);
   EXPECT_EQ(sizeof(MemRpc::ResponseRingEntry), MemRpc::RING_ENTRY_BYTES);
 }
 
@@ -25,13 +25,6 @@ TEST(ProtocolLayoutTest, InlinePayloadLimitsStayWithinEntryBudget) {
   EXPECT_EQ(sizeof(MemRpc::ResponseRingEntry) -
                 MemRpc::ResponseRingEntry::INLINE_PAYLOAD_BYTES,
             40U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Free), 0U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Admitted), 1U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Queued), 2U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Executing), 3U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Responding), 4U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Ready), 5U);
-  EXPECT_EQ(static_cast<uint32_t>(MemRpc::SlotRuntimeStateCode::Consumed), 6U);
 }
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {

@@ -61,14 +61,14 @@ class Session {
   RingAccess ResolveRing(QueueKind queue);
   StatusCode MapAndValidateHeader(int shmFd);
   StatusCode RemapWithActualLayout(int shmFd);
-  StatusCode TryAcquireClientSlot();
+  StatusCode TryAcquireClientAttachment();
   std::size_t mappedSize_ = 0;
   std::size_t initialMappedSize_ = 0;
   void* mappedRegion_ = nullptr;
   BootstrapHandles handles_{};
   SharedMemoryHeader* header_ = nullptr;
   AttachRole attachRole_ = AttachRole::Server;
-  bool ownsClientSlot_ = false;
+  bool ownsClientAttachment_ = false;
 };
 
 }  // namespace MemRpc

@@ -22,16 +22,6 @@ enum class ResponseMessageKind : uint16_t {  // NOLINT(performance-enum-size)
   Event = 1,
 };
 
-enum class SlotRuntimeStateCode : uint32_t {  // NOLINT(performance-enum-size)
-  Free = 0,
-  Admitted = 1,
-  Queued = 2,
-  Executing = 3,
-  Responding = 4,
-  Ready = 5,
-  Consumed = 6,
-};
-
 struct RequestRingEntry {
   uint64_t requestId = 0;
   uint32_t enqueueMonoMs = 0;
@@ -66,31 +56,8 @@ inline constexpr uint32_t DEFAULT_MAX_REQUEST_BYTES =
 inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES =
     static_cast<uint32_t>(ResponseRingEntry::INLINE_PAYLOAD_BYTES);
 
-struct SlotRuntimeState {
-  uint64_t requestId = 0;
-  SlotRuntimeStateCode state = SlotRuntimeStateCode::Free;
-  uint32_t workerId = 0;
-  uint32_t enqueueMonoMs = 0;
-  uint32_t startExecMonoMs = 0;
-  uint32_t lastHeartbeatMonoMs = 0;
-  uint32_t seq = 0;
-};
-
 static_assert(sizeof(RequestRingEntry) == RING_ENTRY_BYTES, "RequestRingEntry size must stay fixed");
 static_assert(sizeof(ResponseRingEntry) == RING_ENTRY_BYTES, "ResponseRingEntry size must stay fixed");
-static_assert(sizeof(SlotRuntimeState) == 32U, "SlotRuntimeState size must stay fixed");
-
-constexpr uint32_t ComputeSlotSize(uint32_t max_request_bytes,
-                                   uint32_t max_response_bytes) {
-  static_cast<void>(max_request_bytes);
-  static_cast<void>(max_response_bytes);
-  return 0;
-}
-
-constexpr uint32_t ComputeResponseSlotSize(uint32_t max_response_bytes) {
-  static_cast<void>(max_response_bytes);
-  return 0;
-}
 
 }  // namespace MemRpc
 

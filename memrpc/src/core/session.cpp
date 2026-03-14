@@ -201,7 +201,7 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
   return StatusCode::Ok;
 }
 
-StatusCode Session::TryAcquireClientSlot() {
+StatusCode Session::TryAcquireClientAttachment() {
   const StatusCode lock_status = LockSharedMutex(&header_->clientStateMutex);
   if (lock_status != StatusCode::Ok) {
     Reset();
@@ -219,7 +219,7 @@ StatusCode Session::TryAcquireClientSlot() {
   }
   header_->clientAttached = 1;
   header_->activeClientPid = static_cast<uint32_t>(getpid());
-  ownsClientSlot_ = true;
+  ownsClientAttachment_ = true;
   pthread_mutex_unlock(&header_->clientStateMutex);
   return StatusCode::Ok;
 }
@@ -242,9 +242,9 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
 
   handles_ = handles;
   attachRole_ = role;
-  ownsClientSlot_ = false;
+  ownsClientAttachment_ = false;
   if (role == AttachRole::Client) {
-    status = TryAcquireClientSlot();
+    status = TryAcquireClientAttachment();
     if (status != StatusCode::Ok) {
       return status;
     }
@@ -252,8 +252,8 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   return StatusCode::Ok;
 }
 
-void ReleaseClientSlot(SharedMemoryHeader* header, bool owns_client_slot) {
-  if (header == nullptr || !owns_client_slot) {
+void ReleaseClientAttachment(SharedMemoryHeader* header, bool owns_client_attachment) {
+  if (header == nullptr || !owns_client_attachment) {
     return;
   }
   if (LockSharedMutex(&header->clientStateMutex) != StatusCode::Ok) {
@@ -277,7 +277,7 @@ void CloseHandles(BootstrapHandles* handles) {
 }
 
 void Session::Reset() {
-  ReleaseClientSlot(header_, ownsClientSlot_);
+  ReleaseClientAttachment(header_, ownsClientAttachment_);
   if (mappedRegion_ != nullptr) {
     munmap(mappedRegion_, mappedSize_);
   }
@@ -287,7 +287,7 @@ void Session::Reset() {
   mappedRegion_ = nullptr;
   header_ = nullptr;
   attachRole_ = AttachRole::Server;
-  ownsClientSlot_ = false;
+  ownsClientAttachment_ = false;
 }
 
 bool Session::Valid() const {

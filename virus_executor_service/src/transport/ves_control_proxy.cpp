@@ -90,6 +90,18 @@ bool HasDisconnectSignal(const pollfd& pfd)
     return (pfd.revents & (POLLHUP | POLLERR | POLLIN)) != 0;
 }
 
+void JoinThread(std::thread* worker)
+{
+    if (worker == nullptr || !worker->joinable()) {
+        return;
+    }
+    if (worker->get_id() == std::this_thread::get_id()) {
+        worker->detach();
+        return;
+    }
+    worker->join();
+}
+
 bool IsHealthyHeartbeatStatus(uint32_t status)
 {
     return status == static_cast<uint32_t>(VesHeartbeatStatus::OkIdle) ||
@@ -110,29 +122,29 @@ VesControlProxy::~VesControlProxy() {
 }
 
 void VesControlProxy::StopMonitorThread() {
-    stop_monitor_ = true;
-    if (sock_fd_ >= 0) {
-        shutdown(sock_fd_, SHUT_RDWR);
-    }
-    if (monitor_thread_.joinable()) {
-        if (monitor_thread_.get_id() == std::this_thread::get_id()) {
-            monitor_thread_.detach();
-        } else {
-            monitor_thread_.join();
+    std::thread monitorThread;
+    int fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(connectionMutex_);
+        stop_monitor_.store(true);
+        fd = sock_fd_;
+        sock_fd_ = -1;
+        sessionId_ = 0;
+        if (monitor_thread_.joinable()) {
+            monitorThread = std::move(monitor_thread_);
         }
     }
-}
-
-void VesControlProxy::CloseSocket() {
-    if (sock_fd_ >= 0) {
-        close(sock_fd_);
-        sock_fd_ = -1;
+    if (fd >= 0) {
+        shutdown(fd, SHUT_RDWR);
+    }
+    JoinThread(&monitorThread);
+    if (fd >= 0) {
+        close(fd);
     }
 }
 
 void VesControlProxy::ResetSocketConnection() {
     StopMonitorThread();
-    CloseSocket();
 }
 
 bool VesControlProxy::SendCommand(int fd, char cmd, const std::vector<uint8_t>& payload) const {
@@ -169,12 +181,12 @@ MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::BootstrapHandles& handles) {
     handles = MemRpc::BootstrapHandles{};
     int fds[FD_COUNT] = {-1, -1, -1, -1, -1, -1};
     SessionMetadata meta{};
     size_t data_len = sizeof(meta);
-    const size_t received = OHOS::RecvFds(sock_fd_, fds, FD_COUNT, &meta, &data_len);
+    const size_t received = OHOS::RecvFds(fd, fds, FD_COUNT, &meta, &data_len);
     if (received != FD_COUNT || data_len != sizeof(meta)) {
         for (size_t i = 0; i < received; ++i) {
             close(fds[i]);
@@ -190,13 +202,12 @@ MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(MemRpc::BootstrapHandl
     handles.respCreditEventFd = fds[5];
     handles.protocolVersion = meta.protocolVersion;
     handles.sessionId = meta.sessionId;
-    sessionId_ = meta.sessionId;
     return MemRpc::StatusCode::Ok;
 }
 
-bool VesControlProxy::IsPeerDisconnected() const {
+bool VesControlProxy::IsPeerDisconnected(int fd) const {
     char buf = 0;
-    const ssize_t received = recv(sock_fd_, &buf, 1, MSG_PEEK | MSG_DONTWAIT);
+    const ssize_t received = recv(fd, &buf, 1, MSG_PEEK | MSG_DONTWAIT);
     return received == 0 || (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK);
 }
 
@@ -204,10 +215,15 @@ void VesControlProxy::NotifyPeerDisconnected() {
     if (stop_monitor_.load()) {
         return;
     }
+    uint64_t sessionId = 0;
+    {
+        std::lock_guard<std::mutex> lock(connectionMutex_);
+        sessionId = sessionId_;
+    }
     {
         std::lock_guard<std::mutex> lock(callbackMutex_);
         if (deathCallback_) {
-            deathCallback_(sessionId_);
+            deathCallback_(sessionId);
         }
     }
     auto object = AsObject();
@@ -217,26 +233,32 @@ void VesControlProxy::NotifyPeerDisconnected() {
 }
 
 MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handles) {
+    std::lock_guard<std::mutex> lock(operationMutex_);
     ResetSocketConnection();
 
-    sock_fd_ = ConnectToService(service_socket_path_);
-    if (sock_fd_ < 0) {
+    int fd = ConnectToService(service_socket_path_);
+    if (fd < 0) {
         HILOGE("connect to %{public}s failed", service_socket_path_.c_str());
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
-    if (!SendCommand(sock_fd_, 1)) {
-        ResetSocketConnection();
+    if (!SendCommand(fd, 1)) {
+        close(fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
-    const MemRpc::StatusCode receive_status = ReceiveSessionHandles(handles);
+    const MemRpc::StatusCode receive_status = ReceiveSessionHandles(fd, handles);
     if (receive_status != MemRpc::StatusCode::Ok) {
-        ResetSocketConnection();
+        close(fd);
         return receive_status;
     }
-    stop_monitor_ = false;
-    monitor_thread_ = std::thread(&VesControlProxy::MonitorSocket, this);
+    {
+        std::lock_guard<std::mutex> stateLock(connectionMutex_);
+        stop_monitor_.store(false);
+        sock_fd_ = fd;
+        sessionId_ = handles.sessionId;
+        monitor_thread_ = std::thread(&VesControlProxy::MonitorSocket, this);
+    }
     return MemRpc::StatusCode::Ok;
 }
 
@@ -357,6 +379,7 @@ MemRpc::ChannelHealthResult VesControlProxy::CheckHealth(uint64_t expectedSessio
 }
 
 MemRpc::StatusCode VesControlProxy::CloseSession() {
+    std::lock_guard<std::mutex> lock(operationMutex_);
     ResetSocketConnection();
 
     int close_fd = ConnectToService(service_socket_path_);
@@ -383,8 +406,17 @@ void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callbac
 }
 
 void VesControlProxy::MonitorSocket() {
+    int monitoredFd = -1;
+    {
+        std::lock_guard<std::mutex> lock(connectionMutex_);
+        monitoredFd = sock_fd_;
+    }
+    if (monitoredFd < 0) {
+        return;
+    }
+
     struct pollfd pfd{};
-    pfd.fd = sock_fd_;
+    pfd.fd = monitoredFd;
     pfd.events = POLLIN | POLLHUP | POLLERR;
 
     while (!stop_monitor_) {
@@ -392,7 +424,7 @@ void VesControlProxy::MonitorSocket() {
         if (stop_monitor_) {
             break;
         }
-        if (poll_result <= 0 || !HasDisconnectSignal(pfd) || !IsPeerDisconnected()) {
+        if (poll_result <= 0 || !HasDisconnectSignal(pfd) || !IsPeerDisconnected(monitoredFd)) {
             continue;
         }
         NotifyPeerDisconnected();

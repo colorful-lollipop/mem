@@ -115,6 +115,7 @@ class FakeHealthControlService final : public OHOS::SystemAbility,
     {
         sessionOpen_.store(false);
         (void)bootstrap_->CloseSession();
+        OHOS::SystemAbility::OnStop();
     }
 
     void PrepareServerHandlesForTest()

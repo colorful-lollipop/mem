@@ -85,11 +85,13 @@ void MockServiceSocket::Stop() {
     stop_ = true;
     int listen_fd = -1;
     std::string socket_path;
+    std::vector<int> clientFds;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         listen_fd = listen_fd_;
         listen_fd_ = -1;
         socket_path = std::move(socket_path_);
+        clientFds.swap(client_fds_);
     }
     if (listen_fd >= 0) {
         shutdown(listen_fd, SHUT_RDWR);
@@ -104,6 +106,12 @@ void MockServiceSocket::Stop() {
     }
     if (!socket_path.empty()) {
         unlink(socket_path.c_str());
+    }
+    for (int clientFd : clientFds) {
+        if (clientFd >= 0) {
+            shutdown(clientFd, SHUT_RDWR);
+            close(clientFd);
+        }
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -181,8 +189,10 @@ void MockServiceSocket::AcceptLoop() {
             continue;
         }
 
-        // Keep client_fd open — proxy monitors it for death detection.
-        // The socket will close when the process exits.
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            client_fds_.push_back(client_fd);
+        }
     }
 }
 
