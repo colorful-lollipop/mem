@@ -23,8 +23,6 @@ TEST(RpcClientRecoveryPolicyTest, AllHandlersCanBeSet) {
   policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
     return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 100};
   };
-  policy.idleTimeoutMs = 1000;
-  policy.idleNotifyIntervalMs = 500;
   client.SetRecoveryPolicy(std::move(policy));
 }
 

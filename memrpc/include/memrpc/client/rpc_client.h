@@ -125,10 +125,11 @@ struct RecoveryDecision {
 
 struct RecoveryPolicy {
   std::function<RecoveryDecision(const RpcFailure&)> onFailure;
+  // onIdle 收到的是“自最后一次活动以来累计 idle 总时长”。
+  // 框架内部按固定 watchdog 节拍在“无 pending / 无排队 / session live”时采样回调；
+  // idle 阈值是否成立、是否需要 CloseSession / Restart，由业务回调自己判断。
   std::function<RecoveryDecision(uint64_t idle_ms)> onIdle;
   std::function<RecoveryDecision(const EngineDeathReport&)> onEngineDeath;
-  uint32_t idleTimeoutMs = 0;
-  uint32_t idleNotifyIntervalMs = 0;
 };
 
 class RpcClient {

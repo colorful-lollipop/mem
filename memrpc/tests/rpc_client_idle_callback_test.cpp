@@ -70,8 +70,6 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   RpcClient client(bootstrap);
   std::atomic<int> idle_hits{0};
   RecoveryPolicy policy;
-  policy.idleTimeoutMs = 50;
-  policy.idleNotifyIntervalMs = 20;
   policy.onIdle = [&](uint64_t idle_ms) {
     if (idle_ms > 0) {
       idle_hits.fetch_add(1);
@@ -106,18 +104,18 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   ASSERT_EQ(server.Start(), StatusCode::Ok);
 
   RpcClient client(bootstrap);
-  std::atomic<int> idle_hits{0};
+  std::atomic<int> long_idle_hits{0};
   RecoveryPolicy policy;
-  policy.idleTimeoutMs = 50;
-  policy.idleNotifyIntervalMs = 20;
-  policy.onIdle = [&](uint64_t) {
-    idle_hits.fetch_add(1);
+  policy.onIdle = [&](uint64_t idle_ms) {
+    if (idle_ms >= 120) {
+      long_idle_hits.fetch_add(1);
+    }
     return RecoveryDecision{RecoveryAction::Ignore, 0};
   };
   client.SetRecoveryPolicy(std::move(policy));
   ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  // Send requests periodically to keep the client active.
+  // Keep resetting idle time before it can grow into a longer idle window.
   for (int i = 0; i < 5; ++i) {
     RpcCall call;
     call.opcode = kTestEchoOpcode;
@@ -127,8 +125,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
-  // No idle callbacks should have fired since we kept sending requests.
-  EXPECT_EQ(idle_hits.load(), 0);
+  EXPECT_EQ(long_idle_hits.load(), 0);
 
   client.Shutdown();
   server.Stop();
@@ -150,8 +147,6 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
   RpcClient client(bootstrap);
   RecoveryPolicy policy;
-  policy.idleTimeoutMs = 50;
-  policy.idleNotifyIntervalMs = 20;
   policy.onIdle = [](uint64_t) {
     return RecoveryDecision{RecoveryAction::CloseSession, 0};
   };

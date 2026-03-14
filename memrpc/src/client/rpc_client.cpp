@@ -177,7 +177,6 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   std::thread watchdogThread_;
   std::atomic<bool> watchdogRunning_{false};
   std::atomic<uint32_t> lastActivityMonoMs_{0};
-  uint32_t lastIdleNotifyMonoMs_{0};
   std::thread restartThread_;
   std::atomic<bool> recoveryPending_{false};
   std::atomic<bool> suppressDeathCallback_{false};
@@ -198,7 +197,6 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
   void ClearIdleReminder() {
     lastActivityMonoMs_.store(0, std::memory_order_relaxed);
-    lastIdleNotifyMonoMs_ = 0;
   }
 
   void SetReopenBlock(uint32_t delay_ms, StatusCode status) {
@@ -387,32 +385,13 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     }
   }
 
-  void HandleIdlePolicyDecision(uint32_t idle_ms) {
+  void HandleIdleReminder() {
     std::function<RecoveryDecision(uint64_t)> on_idle;
     {
       std::lock_guard<std::mutex> lock(policyMutex_);
       on_idle = recoveryPolicy_.onIdle;
     }
     if (!on_idle) {
-      return;
-    }
-    const RecoveryDecision decision = on_idle(idle_ms);
-    if (decision.action == RecoveryAction::Restart) {
-      RequestForcedRestart(decision.delayMs);
-    } else if (decision.action == RecoveryAction::CloseSession) {
-      RequestSessionClose();
-    }
-  }
-
-  void HandleIdleReminder() {
-    uint32_t idle_timeout_ms = 0;
-    uint32_t idle_notify_interval_ms = 0;
-    {
-      std::lock_guard<std::mutex> lock(policyMutex_);
-      idle_timeout_ms = recoveryPolicy_.idleTimeoutMs;
-      idle_notify_interval_ms = recoveryPolicy_.idleNotifyIntervalMs;
-    }
-    if (idle_timeout_ms == 0 || idle_notify_interval_ms == 0) {
       return;
     }
     if (!HasLiveSessionFastPath() || pendingCount_.load(std::memory_order_acquire) > 0 ||
@@ -422,16 +401,15 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
     const uint32_t now_ms = MonotonicNowMs();
     const uint32_t last_ms = lastActivityMonoMs_.load(std::memory_order_relaxed);
-    if (last_ms == 0 || now_ms - last_ms < idle_timeout_ms) {
-      lastIdleNotifyMonoMs_ = 0;
+    if (last_ms == 0) {
       return;
     }
-    if (lastIdleNotifyMonoMs_ != 0 &&
-        now_ms - lastIdleNotifyMonoMs_ < idle_notify_interval_ms) {
-      return;
+    const RecoveryDecision decision = on_idle(now_ms - last_ms);
+    if (decision.action == RecoveryAction::Restart) {
+      RequestForcedRestart(decision.delayMs);
+    } else if (decision.action == RecoveryAction::CloseSession) {
+      RequestSessionClose();
     }
-    lastIdleNotifyMonoMs_ = now_ms;
-    HandleIdlePolicyDecision(now_ms - last_ms);
   }
 
   void WatchdogLoop() {

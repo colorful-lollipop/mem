@@ -71,9 +71,10 @@ MemRpc::StatusCode VesClient::Init() {
         };
     };
     if (options_.idleShutdownTimeoutMs > 0) {
-        policy.idleTimeoutMs = options_.idleShutdownTimeoutMs;
-        policy.idleNotifyIntervalMs = options_.idleShutdownTimeoutMs;
-        policy.onIdle = [](uint64_t) {
+        policy.onIdle = [timeout = options_.idleShutdownTimeoutMs](uint64_t idleMs) {
+            if (idleMs < timeout) {
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+            }
             return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::CloseSession, 0};
         };
     }
