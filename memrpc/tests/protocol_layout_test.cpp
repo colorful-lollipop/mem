@@ -13,7 +13,7 @@ TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
   EXPECT_EQ(MemRpc::DEFAULT_MAX_RESPONSE_BYTES, 4U * 1024U);
   EXPECT_EQ(sizeof(MemRpc::RequestRingEntry), 32U);
   EXPECT_EQ(sizeof(MemRpc::SlotRuntimeState), 32U);
-  EXPECT_LE(sizeof(MemRpc::ResponseRingEntry), 64U);
+  EXPECT_EQ(sizeof(MemRpc::ResponseRingEntry), 40U);
 }
 
 TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {

@@ -55,7 +55,7 @@ TEST(TypedFutureTest, WaitDecodesReply) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
   server.RegisterHandler(kEchoOpcode,
                          [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
                            reply->status = MemRpc::StatusCode::Ok;
@@ -83,7 +83,7 @@ TEST(TypedFutureTest, ThenDecodesReply) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
   server.RegisterHandler(kEchoOpcode,
                          [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
                            reply->status = MemRpc::StatusCode::Ok;
@@ -128,7 +128,7 @@ TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
   // Return garbage payload that won't decode as TestMsg.
   server.RegisterHandler(kBadOpcode,
                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
@@ -158,7 +158,7 @@ TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
   server.RegisterHandler(kBadOpcode,
                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
                            reply->status = MemRpc::StatusCode::Ok;
@@ -198,7 +198,7 @@ TEST(TypedFutureTest, IsReadyDelegates) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
   server.RegisterHandler(kEchoOpcode,
                          [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
                            reply->status = MemRpc::StatusCode::Ok;

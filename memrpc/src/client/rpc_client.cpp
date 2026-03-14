@@ -1212,8 +1212,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
     RpcReply reply;
     reply.status = static_cast<StatusCode>(entry.statusCode);
-    reply.engineCode = entry.engineErrno;
-    reply.detailCode = entry.detailCode;
+    reply.errorCode = entry.errorCode;
     ResponseSlotPayload* responseSlot = session_.GetResponseSlotPayload(entry.slotIndex);
     uint8_t* responseBytes = session_.GetResponseSlotBytes(entry.slotIndex);
 

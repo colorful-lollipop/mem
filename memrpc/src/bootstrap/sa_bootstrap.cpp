@@ -21,15 +21,15 @@ SaBootstrapChannel::SaBootstrapChannel(SaBootstrapConfig config)
 
 SaBootstrapChannel::~SaBootstrapChannel() = default;
 
-const SaBootstrapConfig& SaBootstrapChannel::config() const {
+const SaBootstrapConfig& SaBootstrapChannel::Config() const {
   return impl_->config;
 }
 
-const std::string& SaBootstrapChannel::last_error() const {
+const std::string& SaBootstrapChannel::LastError() const {
   return impl_->lastError;
 }
 
-BootstrapHandles SaBootstrapChannel::server_handles() const {
+BootstrapHandles SaBootstrapChannel::ServerHandles() const {
   if (impl_->fallback == nullptr) {
     return {};
   }

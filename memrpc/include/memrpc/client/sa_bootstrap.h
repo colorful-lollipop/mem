@@ -24,9 +24,9 @@ class SaBootstrapChannel : public IBootstrapChannel {
   SaBootstrapChannel(SaBootstrapChannel&&) noexcept = default;
   SaBootstrapChannel& operator=(SaBootstrapChannel&&) noexcept = default;
 
-  [[nodiscard]] const SaBootstrapConfig& config() const;
-  [[nodiscard]] const std::string& last_error() const;
-  [[nodiscard]] BootstrapHandles server_handles() const;
+  [[nodiscard]] const SaBootstrapConfig& Config() const;
+  [[nodiscard]] const std::string& LastError() const;
+  [[nodiscard]] BootstrapHandles ServerHandles() const;
   void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
   StatusCode OpenSession(BootstrapHandles& handles) override;

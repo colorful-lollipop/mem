@@ -45,7 +45,7 @@ TEST(SaBootstrapStubTest, FakeSaBootstrapExposesServerHandlesForForkedEngine) {
   close(unused.reqCreditEventFd);
   close(unused.respCreditEventFd);
 
-  const MemRpc::BootstrapHandles handles = channel.server_handles();
+  const MemRpc::BootstrapHandles handles = channel.ServerHandles();
   EXPECT_GE(handles.shmFd, 0);
   EXPECT_GE(handles.highReqEventFd, 0);
   EXPECT_GE(handles.normalReqEventFd, 0);

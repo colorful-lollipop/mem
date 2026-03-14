@@ -51,16 +51,14 @@ enum class StatusCode : uint8_t {
 struct ScanResult {
   StatusCode status = StatusCode::Ok;
   ScanVerdict verdict = ScanVerdict::Unknown;
-  int32_t engineCode = 0;
-  int32_t detailCode = 0;
+  int32_t errorCode = 0;
   std::string message;
 };
 
 struct ScanBehaviorResult {
   StatusCode status = StatusCode::Ok;
   ScanVerdict verdict = ScanVerdict::Unknown;
-  int32_t engineCode = 0;
-  int32_t detailCode = 0;
+  int32_t errorCode = 0;
   std::string message;
 };
 

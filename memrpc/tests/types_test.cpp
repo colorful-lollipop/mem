@@ -13,8 +13,7 @@ TEST(TypesTest, ScanResultDefaultsAreStable) {
   const MemRpc::ScanResult result;
   EXPECT_EQ(result.status, MemRpc::StatusCode::Ok);
   EXPECT_EQ(result.verdict, MemRpc::ScanVerdict::Unknown);
-  EXPECT_EQ(result.engineCode, 0);
-  EXPECT_EQ(result.detailCode, 0);
+  EXPECT_EQ(result.errorCode, 0);
   EXPECT_TRUE(result.message.empty());
 }
 
@@ -22,8 +21,7 @@ TEST(TypesTest, ScanBehaviorResultDefaultsAreStable) {
   const MemRpc::ScanBehaviorResult result;
   EXPECT_EQ(result.status, MemRpc::StatusCode::Ok);
   EXPECT_EQ(result.verdict, MemRpc::ScanVerdict::Unknown);
-  EXPECT_EQ(result.engineCode, 0);
-  EXPECT_EQ(result.detailCode, 0);
+  EXPECT_EQ(result.errorCode, 0);
   EXPECT_TRUE(result.message.empty());
 }
 

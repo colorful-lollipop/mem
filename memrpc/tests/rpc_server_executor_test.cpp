@@ -97,7 +97,7 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->server_handles());
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
 
   auto executor = std::make_shared<TestExecutor>(0);
   MemRpc::ServerOptions options;

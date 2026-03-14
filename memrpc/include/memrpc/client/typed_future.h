@@ -24,7 +24,7 @@ class TypedFuture {
   TypedFuture(TypedFuture&&) noexcept = default;
   TypedFuture& operator=(TypedFuture&&) noexcept = default;
 
-  bool IsReady() const { return future_.IsReady(); }
+  [[nodiscard]] bool IsReady() const { return future_.IsReady(); }
 
   // Wait blocks until the reply is ready, decodes the payload into *reply, and
   // returns the status. Returns ProtocolMismatch if decode fails.
@@ -76,7 +76,7 @@ class TypedFuture {
 
   // Access the underlying RpcFuture for low-level use.
   RpcFuture& RawFuture() { return future_; }
-  const RpcFuture& RawFuture() const { return future_; }
+  [[nodiscard]] const RpcFuture& RawFuture() const { return future_; }
 
  private:
   RpcFuture future_;

@@ -432,15 +432,13 @@ struct RpcServer::Impl {
     CompletionItem item;
     item.entry.requestId = request_entry.requestId;
     item.entry.statusCode = static_cast<uint32_t>(reply.status);
-    item.entry.engineErrno = reply.engineCode;
-    item.entry.detailCode = reply.detailCode;
+    item.entry.errorCode = reply.errorCode;
     item.requestSlotIndex = request_entry.slotIndex;
     item.retryBudget = RESPONSE_RETRY_BUDGET;
     item.break_session_on_failure = true;
     if (reply.payload.size() > session.Header()->maxResponseBytes) {
       item.entry.statusCode = static_cast<uint32_t>(StatusCode::EngineInternalError);
-      item.entry.engineErrno = 0;
-      item.entry.detailCode = 0;
+      item.entry.errorCode = 0;
       return item;
     }
     item.payload = reply.payload;

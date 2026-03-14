@@ -49,8 +49,7 @@ struct ResponseRingEntry {
   ResponseMessageKind messageKind = ResponseMessageKind::Reply;
   uint16_t reserved = 0;
   uint32_t statusCode = 0;
-  int32_t engineErrno = 0;
-  int32_t detailCode = 0;
+  int32_t errorCode = 0;
   uint32_t eventDomain = 0;
   uint32_t eventType = 0;
   uint32_t flags = 0;
