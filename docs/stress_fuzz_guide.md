@@ -1,83 +1,58 @@
 # Stress & Fuzz Guide
 
-## Build (Release + Stress)
+## 推荐入口
+
+优先使用仓库脚本，而不是单独在子目录手工配构建：
 
 ```bash
-cmake -S virus_executor_service -B build_ves_stress -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build_ves_stress --target virus_executor_service_testkit_stress_runner
+tools/build_and_test.sh --help
+tools/ci_sweep.sh
 ```
 
-## Run 2h Random Stress
+常用命令：
 
 ```bash
-MEMRPC_STRESS_DURATION_SEC=7200 \
-MEMRPC_STRESS_WARMUP_SEC=600 \
-MEMRPC_STRESS_THREADS=8 \
-MEMRPC_STRESS_ECHO_WEIGHT=70 \
-MEMRPC_STRESS_ADD_WEIGHT=20 \
-MEMRPC_STRESS_SLEEP_WEIGHT=10 \
-MEMRPC_STRESS_PAYLOAD_SIZES=0,16,128,512,1024,2048 \
-./build_ves_stress/virus_executor_service_testkit_stress_runner
+tools/build_and_test.sh --test-regex virus_executor_service
+tools/build_and_test.sh --label stress
+tools/build_and_test.sh --asan
+tools/build_and_test.sh --tsan
+tools/build_and_test.sh --fuzz
+tools/push_gate.sh
+tools/push_gate.sh --deep
 ```
 
-## ASan/UBSan/LSan Build
+## 当前关注点
+
+和当前主线设计最相关的压力点是：
+
+- 固定 entry 小包主路径稳定性
+- request/response ring 满载时的背压行为
+- session 重建、heartbeat failure、engine death
+- 大请求切到同步 `AnyCall`
+- 大响应 / 大事件返回 `PayloadTooLarge`
+
+## 手动 stress
 
 ```bash
-cmake -S virus_executor_service -B build_ves_asan -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
-  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
-  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build_ves_asan
-ctest --test-dir build_ves_asan -L stress --output-on-failure
+ctest --test-dir build_ninja --output-on-failure -L stress
+./build_ninja/virus_executor_service/virus_executor_service_testkit_stress_runner
 ```
 
-## TSan Build
+如果要扩大随机覆盖，跨过 inline 阈值的 payload 大小也值得保留，用来同时覆盖：
+
+- 小请求的 `memrpc` 主路径
+- 大请求的 `AnyCall` 兜底路径
+
+## 手动 fuzz
 
 ```bash
-cmake -S virus_executor_service -B build_ves_tsan -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
-  -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
-  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build_ves_tsan
-ctest --test-dir build_ves_tsan -L stress --output-on-failure
+tools/build_and_test.sh --fuzz
+ctest --test-dir build_ninja --output-on-failure -L fuzz
 ```
 
-## Fuzz Build (Clang)
+## 手动 sanitizer
 
 ```bash
-cmake -S virus_executor_service -B build_ves_fuzz \
-  -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON \
-  -DVIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ=ON \
-  -DCMAKE_CXX_COMPILER=clang++
-cmake --build build_ves_fuzz --target virus_executor_service_codec_fuzz virus_executor_service_testkit_codec_fuzz
-./build_ves_fuzz/tests/fuzz/virus_executor_service_testkit_codec_fuzz -max_total_time=300
+tools/build_and_test.sh --asan
+tools/build_and_test.sh --tsan
 ```
-
-也可以直接跑 fuzz smoke：
-
-```bash
-ctest --test-dir build_ves_fuzz -L fuzz --output-on-failure
-```
-
-## PID / Log Sampling
-
-```bash
-mkdir -p stress_out
-MEMRPC_STRESS_DURATION_SEC=3600 \
-MEMRPC_STRESS_PID_FILE=stress_out/pids.txt \
-./build_ves_stress/virus_executor_service_testkit_stress_runner | tee stress_out/stress.log
-```
-
-## Environment Variables
-
-- `MEMRPC_STRESS_DURATION_SEC` / `MEMRPC_STRESS_WARMUP_SEC`
-- `MEMRPC_STRESS_THREADS`
-- `MEMRPC_STRESS_ECHO_WEIGHT` / `MEMRPC_STRESS_ADD_WEIGHT` / `MEMRPC_STRESS_SLEEP_WEIGHT`
-- `MEMRPC_STRESS_PAYLOAD_SIZES`
-- `MEMRPC_STRESS_HIGH_PRIORITY_PCT`
-- `MEMRPC_STRESS_MAX_SLEEP_MS`
-- `MEMRPC_STRESS_BURST_INTERVAL_MS` / `MEMRPC_STRESS_BURST_durationMs` / `MEMRPC_STRESS_BURST_MULTIPLIER`
-- `MEMRPC_STRESS_NO_PROGRESS_SEC`
-- `MEMRPC_STRESS_PID_FILE`
-- `MEMRPC_STRESS_SEED`
-- `MEMRPC_STRESS_MAX_REQUEST_BYTES` / `MEMRPC_STRESS_MAX_RESPONSE_BYTES`

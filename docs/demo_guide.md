@@ -1,61 +1,69 @@
 # Demo 使用说明
 
-## 编译
+## 构建
+
+仓库主线使用根构建目录：
 
 ```bash
-cmake -S . -B build
-cmake --build build --target virus_executor_service_supervisor virus_executor_service_client virus_executor_service_stress_client virus_executor_service_testkit_stress_runner
+tools/build_and_test.sh --build-only
+```
+
+如果只想手工编译主线可执行体：
+
+```bash
+cmake -S . -B build_ninja -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVIRUS_EXECUTOR_SERVICE_ENABLE_TESTS=ON
+cmake --build build_ninja --parallel
 ```
 
 ## 运行
 
-```bash
-./build/virus_executor_service/virus_executor_service_supervisor
-```
-
-推荐的自动化 smoke 方式：
+启动 supervisor：
 
 ```bash
-ctest --test-dir build --output-on-failure -R virus_executor_service_supervisor_integration_test
+./build_ninja/virus_executor_service/virus_executor_service_supervisor
 ```
 
-## 当前验证点
+推荐 smoke：
 
-当前主线 demo 是 `virus_executor_service`。它在 Linux 开发环境下使用 supervisor 拉起 engine SA，并在同一条 `memrpc` 通道上同时承载：
+```bash
+ctest --test-dir build_ninja --output-on-failure -R virus_executor_service_supervisor_integration_test
+```
 
-- `ves` 业务调用
-- `testkit` 的 `Echo/Add/Sleep` 与故障注入 RPC
+## 当前 demo 验证什么
+
+当前主线 demo 是 `virus_executor_service`。它验证的是“固定 entry 的小包共享内存 RPC + 同步控制面兜底”，不是旧的 `ring + slot` 方案。
 
 主要验证点：
 
-- 共享内存 + `eventfd` 的基础通信
-- 高优请求队列 / 普通请求队列
-- 单响应队列 + 单 `resp_eventfd`
-- 请求 slot 只承载请求内容
-- 响应通过 response ring + response slot 返回
-- `Reply/Event` 共用响应队列的协议基础
+- 高优请求队列 / 普通请求队列 / 响应队列
+- 固定 `512B` request / response ring entry
+- 请求和响应正文直接内嵌在 ring entry 中
+- `Reply/Event` 共用响应队列
 - `RpcClient` / `RpcServer` 公共接口
-- `VesClient` 与 `TestkitClient` 两类应用 facade 共用同一引擎服务端
-- `VesControlProxy` 保留业务 heartbeat 协议，`RpcClient` watchdog 统一调度健康检查
-- `VesClient` 默认不维护独立 heartbeat loop，可选订阅完整 VES health snapshot 做 DFX 展示
-- 业务集成测试、testkit perf/stress/DT/fuzz 测试共用一套主线可执行体
+- `VesClient` 对外同步 typed API
+- 大请求通过 `AnyCall` 控制面兜底
+- 大响应或大事件返回 `PayloadTooLarge`
+- `VesControlProxy` 保留 heartbeat 与健康快照协议，`RpcClient` watchdog 统一调度恢复
 
-手动压测可直接运行：
+当前不是主线验证点的内容：
+
+- request / response slot 生命周期
+- 大响应 heartbeat 回拉
+- `memrpc` 执行后自动 fallback 到 `AnyCall`
+
+## 手动运行
 
 ```bash
-./build/virus_executor_service/virus_executor_service_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
-./build/virus_executor_service/virus_executor_service_testkit_stress_runner
+./build_ninja/virus_executor_service/virus_executor_service_client
+./build_ninja/virus_executor_service/virus_executor_service_stress_client --threads 2 --iterations 100
+./build_ninja/virus_executor_service/virus_executor_service_testkit_stress_runner
 ```
 
-## 说明
+## HarmonyOS 迁移说明
 
-这不是鸿蒙正式部署方式。迁移到 HarmonyOS 时，应保留通信核心不变，只把 bootstrap 替换成基于 `GetSystemAbility` / `LoadSystemAbility` 的实现，并由 `init` 管理子进程生命周期。
+这个 demo 不是 HarmonyOS 正式部署方式。迁移到正式环境时，原则仍然是：
 
-当前 demo 的恢复边界也固定为：
-
-- `RpcClient`
-  - session reopen / replay / cooldown / idle close
-- supervisor / registry / harness
-  - engine process reap / respawn
-- snapshot 订阅
-  - 仅做旁路观测，不参与主恢复链路
+- 保留 `memrpc` 通信核心
+- 保留 VES 控制面协议
+- 只替换 bootstrap / SA 接入方式
+- 由 `init` 管理子进程生命周期
