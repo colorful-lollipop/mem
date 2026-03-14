@@ -1,6 +1,7 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_SESSION_SERVICE_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_SESSION_SERVICE_H_
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -37,7 +38,7 @@ class EngineSessionService final : public VesSessionProvider {
     std::unique_ptr<MemRpc::RpcServer> rpcServer_;
     std::mutex initMutex_;
     bool initialized_ = false;
-    uint64_t sessionId_ = 0;
+    std::atomic<uint64_t> sessionId_{0};
 };
 
 }  // namespace VirusExecutorService

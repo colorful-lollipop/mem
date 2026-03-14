@@ -76,7 +76,7 @@ MemRpc::StatusCode EngineSessionService::OpenSession(MemRpc::BootstrapHandles& h
     }
     auto status = bootstrap_->OpenSession(handles);
     if (status == MemRpc::StatusCode::Ok) {
-        sessionId_ = handles.sessionId;
+        sessionId_.store(handles.sessionId, std::memory_order_release);
     }
     return status;
 }
@@ -92,13 +92,13 @@ MemRpc::StatusCode EngineSessionService::CloseSession() {
     }
     bootstrap_.reset();
     initialized_ = false;
-    sessionId_ = 0;
+    sessionId_.store(0, std::memory_order_release);
     HILOGI("EngineSessionService closed");
     return MemRpc::StatusCode::Ok;
 }
 
 uint64_t EngineSessionService::session_id() const {
-    return sessionId_;
+    return sessionId_.load(std::memory_order_acquire);
 }
 
 }  // namespace VirusExecutorService

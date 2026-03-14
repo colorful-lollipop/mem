@@ -342,6 +342,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       COMMAND virus_executor_service_testkit_dt_perf_test)
   set_tests_properties(virus_executor_service_testkit_dt_perf_test PROPERTIES
       LABELS "dt_perf"
+      RUN_SERIAL TRUE
       ENVIRONMENT
         "MEMRPC_DT_BASELINE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/perf_baselines"
   )
@@ -422,21 +423,24 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   set_tests_properties(virus_executor_service_supervisor_integration_test PROPERTIES
       LABELS "integration"
-      TIMEOUT 60)
+      TIMEOUT 60
+      RUN_SERIAL TRUE)
 
   add_test(NAME virus_executor_service_stress_test
       COMMAND virus_executor_service_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   set_tests_properties(virus_executor_service_stress_test PROPERTIES
       LABELS "stress"
-      TIMEOUT 30)
+      TIMEOUT 30
+      RUN_SERIAL TRUE)
 
   add_test(NAME virus_executor_service_dt_crash_recovery_test
       COMMAND virus_executor_service_dt_crash_recovery
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   set_tests_properties(virus_executor_service_dt_crash_recovery_test PROPERTIES
       LABELS "dt"
-      TIMEOUT 60)
+      TIMEOUT 60
+      RUN_SERIAL TRUE)
 
   set_tests_properties(
       virus_executor_service_session_service_test

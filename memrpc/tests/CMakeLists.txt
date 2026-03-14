@@ -60,5 +60,6 @@ if (MEMRPC_ENABLE_DT_TESTS)
   memrpc_add_test(memrpc_dt_perf_test dt_perf_test.cpp)
   set_tests_properties(memrpc_dt_perf_test PROPERTIES
     LABELS "dt_perf"
+    RUN_SERIAL TRUE
     TIMEOUT ${MEMRPC_DT_TEST_TIMEOUT_SEC})
 endif()

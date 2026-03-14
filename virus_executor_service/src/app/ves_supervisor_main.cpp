@@ -11,9 +11,6 @@
 
 namespace {
 
-const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_registry.sock";
-const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_service.sock";
-
 volatile std::sig_atomic_t g_stop = 0;
 pid_t g_engine_pid = -1;
 pid_t g_client_pid = -1;
@@ -22,11 +19,17 @@ void SignalHandler(int) {
     g_stop = 1;
 }
 
-pid_t SpawnEngine(const std::string& enginePath) {
+std::string MakeSocketPath(const char* prefix) {
+    return std::string(prefix) + "_" + std::to_string(getpid()) + ".sock";
+}
+
+pid_t SpawnEngine(const std::string& enginePath,
+                  const std::string& registrySocket,
+                  const std::string& serviceSocket) {
     pid_t pid = fork();
     if (pid == 0) {
         execl(enginePath.c_str(), enginePath.c_str(),
-              REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
+              registrySocket.c_str(), serviceSocket.c_str(),
               nullptr);
         HILOGE("exec engine failed");
         _exit(1);
@@ -34,10 +37,10 @@ pid_t SpawnEngine(const std::string& enginePath) {
     return pid;
 }
 
-pid_t SpawnClient(const std::string& clientPath) {
+pid_t SpawnClient(const std::string& clientPath, const std::string& registrySocket) {
     pid_t pid = fork();
     if (pid == 0) {
-        setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", REGISTRY_SOCKET.c_str(), 1);
+        setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", registrySocket.c_str(), 1);
         execl(clientPath.c_str(), clientPath.c_str(), nullptr);
         HILOGE("exec client failed");
         _exit(1);
@@ -67,8 +70,10 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     }
     std::string enginePath = dir + "/VirusExecutorService";
     std::string clientPath = dir + "/virus_executor_service_client";
+    const std::string registrySocket = MakeSocketPath("/tmp/virus_executor_service_registry");
+    const std::string serviceSocket = MakeSocketPath("/tmp/virus_executor_service_service");
 
-    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
+    VirusExecutorService::RegistryServer registry(registrySocket);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
@@ -78,7 +83,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
             return true;
         }
         HILOGI("spawning engine SA for load request");
-        g_engine_pid = SpawnEngine(enginePath);
+        g_engine_pid = SpawnEngine(enginePath, registrySocket, serviceSocket);
         if (g_engine_pid < 0) {
             return false;
         }
@@ -99,9 +104,9 @@ int main([[maybe_unused]] int argc, char* argv[]) {
         HILOGE("failed to start registry");
         return 1;
     }
-    HILOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
+    HILOGI("registry started at %{public}s", registrySocket.c_str());
 
-    g_engine_pid = SpawnEngine(enginePath);
+    g_engine_pid = SpawnEngine(enginePath, registrySocket, serviceSocket);
     if (g_engine_pid < 0) {
         HILOGE("failed to spawn engine");
         registry.Stop();
@@ -111,7 +116,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    g_client_pid = SpawnClient(clientPath);
+    g_client_pid = SpawnClient(clientPath, registrySocket);
     if (g_client_pid < 0) {
         HILOGE("failed to spawn client");
         KillAndWait(g_engine_pid);

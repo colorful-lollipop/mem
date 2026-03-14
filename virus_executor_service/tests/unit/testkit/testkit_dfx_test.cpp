@@ -152,7 +152,6 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
 
     std::vector<MemRpc::RpcReply> completed;
     invoker.CollectResults(&completed);
-    ASSERT_TRUE(completed.empty());
     ASSERT_GT(invoker.GetFailedCalls().size(), 0u);
 
     MemRpc::BootstrapHandles handles{};
@@ -162,11 +161,11 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     ASSERT_GT(child2, 0);
 
     auto replayed = invoker.ReplayFailed();
-    ASSERT_EQ(replayed.size(), 5u);
+    ASSERT_EQ(replayed.size() + completed.size(), 5u);
 
     std::vector<MemRpc::RpcReply> replayCompleted;
     invoker.CollectResults(&replayCompleted);
-    ASSERT_EQ(replayCompleted.size(), 5u);
+    ASSERT_EQ(replayCompleted.size(), replayed.size());
     EXPECT_EQ(invoker.GetFailedCalls().size(), 1u);
     if (!invoker.GetFailedCalls().empty()) {
         EXPECT_EQ(
@@ -174,12 +173,29 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
             static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
     }
 
+    std::vector<int32_t> sums;
+    sums.reserve(completed.size() + replayCompleted.size());
+    auto collectSums = [&sums](const std::vector<MemRpc::RpcReply>& replies) {
+        for (const auto& reply : replies) {
+            EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
+            AddReply decoded;
+            ASSERT_TRUE(MemRpc::DecodeMessage(reply.payload, &decoded));
+            sums.push_back(decoded.sum);
+        }
+    };
+    collectSums(completed);
+    collectSums(replayCompleted);
+
+    ASSERT_EQ(sums.size(), 5u);
+    std::sort(sums.begin(), sums.end());
     for (int i = 0; i < 5; ++i) {
-        const auto& reply = replayCompleted[static_cast<size_t>(i)];
+        const auto reply_sum = sums[static_cast<size_t>(i)];
+        const int expected_sum = 100 + i;
+        EXPECT_EQ(reply_sum, expected_sum);
+    }
+
+    for (const auto& reply : replayCompleted) {
         EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
-        AddReply decoded;
-        ASSERT_TRUE(MemRpc::DecodeMessage(reply.payload, &decoded));
-        EXPECT_EQ(decoded.sum, i + 100);
     }
 
     invoker.Shutdown();

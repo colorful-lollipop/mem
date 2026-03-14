@@ -146,7 +146,8 @@ void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor exe
   state_->executor = std::move(executor);
 }
 
-struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
+// NOLINTBEGIN(clang-analyzer-optin.performance.Padding)
+struct RpcClient::Impl {
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap_channel)
       : bootstrap(std::move(bootstrap_channel)) {}
 
@@ -1640,6 +1641,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     return RpcFuture(std::move(pending));
   }
 };
+// NOLINTEND(clang-analyzer-optin.performance.Padding)
 
 RpcClient::RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap)
     : impl_(std::make_unique<Impl>(std::move(bootstrap))) {}
