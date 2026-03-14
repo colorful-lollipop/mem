@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include "transport/registry_protocol.h"
+
 namespace VirusExecutorService {
 
 class RegistryClient {
@@ -16,7 +18,7 @@ class RegistryClient {
     bool RegisterService(int32_t sa_id, const std::string& serviceSocketPath);
 
  private:
-    std::string SendRequest(uint8_t op, int32_t sa_id, const std::string& payload = {});
+    std::string SendRequest(RegistryOp op, int32_t sa_id, const std::string& payload = {});
 
     std::string registry_socket_path_;
 };

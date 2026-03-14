@@ -22,6 +22,7 @@ function(memrpc_disable_clang_tidy_for_target target)
     message(FATAL_ERROR "memrpc_disable_clang_tidy_for_target: unknown target '${target}'")
   endif()
   set_target_properties("${target}" PROPERTIES CXX_CLANG_TIDY "")
+  target_compile_options("${target}" PRIVATE -Wno-everything)
 endfunction()
 
 function(memrpc_configure_project_options)

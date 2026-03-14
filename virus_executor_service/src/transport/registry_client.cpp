@@ -14,8 +14,8 @@ RegistryClient::RegistryClient(const std::string& registrySocketPath)
 
 // Returns response payload on success (may be empty), or sentinel "\x01" on
 // connection/protocol error. err_code!=0 returns "\x01" too.
-std::string RegistryClient::SendRequest(uint8_t op, int32_t sa_id,
-                                         const std::string& payload) {
+std::string RegistryClient::SendRequest(RegistryOp op, int32_t sa_id,
+                                        const std::string& payload) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         return {"\x01"};
@@ -32,7 +32,7 @@ std::string RegistryClient::SendRequest(uint8_t op, int32_t sa_id,
     }
 
     RegistryRequest req;
-    req.op = static_cast<RegistryOp>(op);
+    req.op = op;
     req.sa_id = sa_id;
     req.payload = payload;
 
@@ -62,24 +62,23 @@ std::string RegistryClient::SendRequest(uint8_t op, int32_t sa_id,
 }
 
 std::string RegistryClient::GetServicePath(int32_t sa_id) {
-    std::string r = SendRequest(static_cast<uint8_t>(RegistryOp::Get), sa_id);
+    std::string r = SendRequest(RegistryOp::Get, sa_id);
     return (r == "\x01") ? std::string{} : r;
 }
 
 std::string RegistryClient::LoadServicePath(int32_t sa_id) {
-    std::string r = SendRequest(static_cast<uint8_t>(RegistryOp::Load), sa_id);
+    std::string r = SendRequest(RegistryOp::Load, sa_id);
     return (r == "\x01") ? std::string{} : r;
 }
 
 bool RegistryClient::UnloadService(int32_t sa_id) {
-    std::string r = SendRequest(static_cast<uint8_t>(RegistryOp::Unload), sa_id);
+    std::string r = SendRequest(RegistryOp::Unload, sa_id);
     return r != "\x01";
 }
 
 bool RegistryClient::RegisterService(int32_t sa_id,
                                       const std::string& serviceSocketPath) {
-    std::string r = SendRequest(static_cast<uint8_t>(RegistryOp::Register),
-                                 sa_id, serviceSocketPath);
+    std::string r = SendRequest(RegistryOp::Register, sa_id, serviceSocketPath);
     return r != "\x01";
 }
 
