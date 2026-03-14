@@ -2,7 +2,15 @@
 
 #include "testkit/testkit_service.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
+
+using VirusExecutorService::testkit::TestkitService;
+using MemRpc::EchoRequest;
+using MemRpc::EchoReply;
+using MemRpc::AddRequest;
+using MemRpc::AddReply;
+using MemRpc::SleepRequest;
+using MemRpc::SleepReply;
 
 TEST(TestkitServiceTest, EchoAndAddWork) {
     TestkitService service;
@@ -28,4 +36,4 @@ TEST(TestkitServiceTest, SleepWorks) {
     EXPECT_EQ(sleepReply.status, 0);
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

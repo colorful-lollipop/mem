@@ -22,10 +22,14 @@
 #include "testkit_stress_config.h"
 #include "virus_protection_service_log.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 namespace Mem = ::MemRpc;
+
+using VirusExecutorService::testkit::TestkitService;
+using MemRpc::EchoRequest;
+using MemRpc::EchoReply;
 
 void CloseHandles(Mem::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
@@ -272,11 +276,11 @@ bool RunStressMain(const StressConfig& config) {
     return RunStress(config);
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 int main() {
-    const auto config = virus_executor_service::testkit::ParseStressConfigFromEnv();
+    const auto config = VirusExecutorService::testkit::ParseStressConfigFromEnv();
     HILOGI("stress start: duration=%{public}d warmup=%{public}d threads=%{public}d",
            config.durationSec, config.warmupSec, config.threads);
-    return virus_executor_service::testkit::RunStressMain(config) ? 0 : 1;
+    return VirusExecutorService::testkit::RunStressMain(config) ? 0 : 1;
 }

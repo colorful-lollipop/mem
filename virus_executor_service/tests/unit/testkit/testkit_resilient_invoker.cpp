@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 ResilientBatchInvoker::ResilientBatchInvoker(
     std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
@@ -107,4 +107,4 @@ void ResilientBatchInvoker::Shutdown() {
     client_.Shutdown();
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

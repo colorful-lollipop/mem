@@ -23,3 +23,4 @@ third_party/*/build/
 *.log
 compile_commands.json
 .idea
+cmake-build-debug

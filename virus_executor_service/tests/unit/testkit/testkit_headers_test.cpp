@@ -7,7 +7,11 @@
 #include "testkit/testkit_protocol.h"
 #include "testkit/testkit_types.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
+
+using VirusExecutorService::testkit::EchoRequest;
+using VirusExecutorService::testkit::TestkitClient;
+using VirusExecutorService::testkit::TestkitOpcode;
 
 TEST(TestkitHeadersTest, HeaderLayoutComposes) {
     EXPECT_TRUE((std::is_default_constructible_v<EchoRequest>));
@@ -21,4 +25,4 @@ TEST(TestkitHeadersTest, ProtocolHeaderCompiles) {
     EXPECT_EQ(static_cast<uint16_t>(TestkitOpcode::CrashForTest), 203u);
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

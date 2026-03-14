@@ -12,7 +12,7 @@
 #include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
@@ -66,4 +66,4 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     server.Stop();
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

@@ -11,7 +11,7 @@
 #include "testkit/testkit_codec.h"
 #include "testkit/testkit_service.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 int GetEnvInt(const char* name, int defaultValue) {
@@ -99,4 +99,4 @@ TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
     }
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

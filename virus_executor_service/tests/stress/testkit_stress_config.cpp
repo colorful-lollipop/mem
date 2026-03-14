@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 int GetEnvInt(const char* name, int defaultValue) {
@@ -133,4 +133,4 @@ StressConfig ParseStressConfigFromEnv() {
     return config;
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

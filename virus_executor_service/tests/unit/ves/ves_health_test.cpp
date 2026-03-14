@@ -6,7 +6,7 @@
 #include "ves/ves_engine_service.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 TEST(VesHealthTest, SnapshotIdleDefaults) {
     VesEngineService service;
@@ -54,4 +54,4 @@ TEST(VesHealthTest, InFlightAndAgeDuringScan) {
     worker.join();
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

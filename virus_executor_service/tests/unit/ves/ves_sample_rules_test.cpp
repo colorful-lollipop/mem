@@ -2,7 +2,7 @@
 
 #include "ves/ves_sample_rules.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 TEST(VesSampleRulesTest, DetectsCrashKeyword) {
     auto behavior = EvaluateSamplePath("/data/crash_sample.apk");
@@ -30,4 +30,4 @@ TEST(VesSampleRulesTest, SleepCappedAtMax) {
     EXPECT_EQ(behavior.sleepMs, 5000u);
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

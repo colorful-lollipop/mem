@@ -3,7 +3,10 @@
 #include "ves/ves_codec.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
+
+using VirusExecutorService::ScanFileRequest;
+using VirusExecutorService::ScanFileReply;
 
 TEST(VesDemoCodecTest, ScanFileRequestRoundTrip) {
     ScanFileRequest req;
@@ -38,4 +41,4 @@ TEST(VesDemoCodecTest, DecodeRejectsTruncatedPayload) {
     EXPECT_FALSE(MemRpc::CodecTraits<ScanFileReply>::Decode(truncated.data(), truncated.size(), &decoded));
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

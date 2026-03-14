@@ -6,7 +6,10 @@
 #include "ves/ves_session_service.h"
 #include "ves/ves_engine_service.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
+
+using VirusExecutorService::VesEngineService;
+using VirusExecutorService::EngineSessionService;
 
 namespace {
 void CloseHandles(MemRpc::BootstrapHandles* handles) {
@@ -53,4 +56,4 @@ TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
     CloseHandles(&handles);
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

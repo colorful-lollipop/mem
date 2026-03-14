@@ -7,7 +7,7 @@
 
 #include "memrpc/core/protocol.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 struct StressConfig {
     int durationSec = 60;
@@ -30,6 +30,6 @@ struct StressConfig {
 
 StressConfig ParseStressConfigFromEnv();
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // VIRUS_EXECUTOR_SERVICE_TESTKIT_STRESS_CONFIG_H_

@@ -18,7 +18,7 @@
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 void CloseHandles(MemRpc::BootstrapHandles& handles) {
@@ -363,4 +363,4 @@ TEST(TestkitThroughputTest, RecordsAndValidatesBaseline) {
     EXPECT_TRUE(updated || !baseline.empty() || std::filesystem::exists(config.baselinePath));
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

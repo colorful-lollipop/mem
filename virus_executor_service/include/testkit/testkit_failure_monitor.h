@@ -9,7 +9,7 @@
 
 #include "memrpc/client/rpc_client.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 class FailureMonitor {
  public:
@@ -73,6 +73,6 @@ class FailureMonitor {
     std::deque<std::chrono::steady_clock::time_point> execTimeouts_;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TESTKIT_TESTKIT_FAILURE_MONITOR_H_

@@ -20,7 +20,7 @@
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 void CloseHandles(MemRpc::BootstrapHandles& handles) {
@@ -265,4 +265,4 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
     server.Stop();
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

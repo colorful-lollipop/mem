@@ -9,7 +9,7 @@
 
 #include "memrpc/client/rpc_client.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 
 struct FailedCallRecord {
     uint64_t sequenceId = 0;
@@ -61,6 +61,6 @@ class ResilientBatchInvoker {
     std::vector<FailedCallRecord> failedCalls_;
 };
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
 
 #endif  // VIRUS_EXECUTOR_SERVICE_TESTKIT_RESILIENT_INVOKER_H_

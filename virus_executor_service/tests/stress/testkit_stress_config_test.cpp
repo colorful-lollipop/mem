@@ -5,7 +5,7 @@
 
 #include "testkit_stress_config.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
 namespace {
 
 class ScopedEnv {
@@ -54,4 +54,4 @@ TEST(TestkitStressConfigTest, ParsesEnvOverrides) {
     EXPECT_EQ(config.burstIntervalMs, 500);
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit

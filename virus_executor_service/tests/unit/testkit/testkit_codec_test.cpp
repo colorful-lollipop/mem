@@ -3,7 +3,12 @@
 #include "testkit/testkit_codec.h"
 #include "testkit/testkit_types.h"
 
-namespace virus_executor_service::testkit {
+namespace VirusExecutorService::testkit {
+
+using MemRpc::EchoRequest;
+using MemRpc::EchoReply;
+using MemRpc::AddReply;
+using MemRpc::SleepReply;
 
 TEST(TestkitCodecTest, EchoRequestRoundTrip) {
     EchoRequest request;
@@ -36,4 +41,4 @@ TEST(TestkitCodecTest, SleepDecodeRejectsTruncatedPayload) {
         truncated.data(), truncated.size(), &decoded));
 }
 
-}  // namespace virus_executor_service::testkit
+}  // namespace VirusExecutorService::testkit
