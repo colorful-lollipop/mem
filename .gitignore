@@ -2,6 +2,7 @@ build/
 build_*/
 build-*/
 stress_out/
+perf_baselines/
 out/
 dist/
 .cache/
