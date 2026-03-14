@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "iremote_object.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
@@ -91,6 +92,30 @@ void RespawnEngine(const std::string& enginePath, StressStats* stats) {
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
 }
+
+class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
+ public:
+    EngineRespawnRecipient(const std::string& enginePath, StressStats* stats)
+        : enginePath_(enginePath), stats_(stats) {}
+
+    void Disable()
+    {
+        enabled_.store(false);
+    }
+
+    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
+    {
+        if (!enabled_.load()) {
+            return;
+        }
+        RespawnEngine(enginePath_, stats_);
+    }
+
+ private:
+    std::string enginePath_;
+    StressStats* stats_;
+    std::atomic<bool> enabled_{true};
+};
 
 void WorkerThread(const StressConfig& config, uint32_t threadId,
                   VirusExecutorService::VesClient* client, StressStats* stats) {
@@ -234,11 +259,17 @@ int main(int argc, char* argv[]) {
     }
 
     StressStats stats;
+    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &stats);
+    if (!remote->AddDeathRecipient(respawnRecipient)) {
+        HILOGE("failed to register DeathRecipient");
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        KillAndWait(g_engine_pid);
+        g_engine_pid = -1;
+        registry.Stop();
+        return 1;
+    }
 
     auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    client->SetEngineRestartCallback([&]() {
-        RespawnEngine(enginePath, &stats);
-    });
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -280,6 +311,7 @@ int main(int argc, char* argv[]) {
           static_cast<unsigned long long>(actualMs));
 
     // Cleanup.
+    respawnRecipient->Disable();
     client->Shutdown();
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);

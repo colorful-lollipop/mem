@@ -2,7 +2,6 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_
 
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <string>
 
@@ -33,9 +32,6 @@ class VesClient {
     MemRpc::StatusCode Init();
     void Shutdown();
 
-    using EngineRestartCallback = std::function<void()>;
-    void SetEngineRestartCallback(EngineRestartCallback callback);
-
     MemRpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
 
     bool EngineDied() const;
@@ -47,7 +43,6 @@ class VesClient {
     MemRpc::RpcClient client_;
     VesClientOptions options_;
     std::atomic<bool> engineDied_{false};
-    EngineRestartCallback restartCallback_;
 };
 
 }  // namespace VirusExecutorService

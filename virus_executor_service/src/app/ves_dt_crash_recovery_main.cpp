@@ -3,7 +3,7 @@
 // Step 1: normal scan → verify ok
 // Step 2: send crash sample → engine dies
 // Step 3: verify death callback fired
-// Step 4: engine respawned (via restart callback) → framework reconnects
+// Step 4: engine respawned (via DeathRecipient harness) → framework reconnects
 // Step 5: normal scan again → verify ok
 //
 // Uses the supervisor pattern: self-host registry, fork engine, VesClient.
@@ -18,6 +18,7 @@
 #include <thread>
 #include <unistd.h>
 
+#include "iremote_object.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
@@ -62,6 +63,41 @@ void KillAndWait(pid_t pid) {
         }                                                \
         HILOGI("PASS: %s", msg);                          \
     } while (0)
+
+class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
+ public:
+    EngineRespawnRecipient(const std::string& enginePath, std::atomic<int>* engineRestarts)
+        : enginePath_(enginePath), engineRestarts_(engineRestarts) {}
+
+    void Disable()
+    {
+        enabled_.store(false);
+    }
+
+    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
+    {
+        if (!enabled_.load()) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        if (g_engine_pid > 0) {
+            int status = 0;
+            waitpid(g_engine_pid, &status, WNOHANG);
+            g_engine_pid = -1;
+        }
+        g_engine_pid = SpawnEngine(enginePath_);
+        if (g_engine_pid > 0) {
+            engineRestarts_->fetch_add(1);
+            HILOGI("engine respawned pid=%{public}d", g_engine_pid);
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+    }
+
+ private:
+    std::string enginePath_;
+    std::atomic<int>* engineRestarts_;
+    std::atomic<bool> enabled_{true};
+};
 
 }  // namespace
 
@@ -114,24 +150,10 @@ int main(int argc, char* argv[]) {
     DT_CHECK(remote != nullptr, "LoadSystemAbility ok");
 
     std::atomic<int> engineRestarts{0};
+    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &engineRestarts);
+    DT_CHECK(remote->AddDeathRecipient(respawnRecipient), "DeathRecipient registered");
 
     auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    client->SetEngineRestartCallback([&]() {
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        // Reap the dead engine.
-        if (g_engine_pid > 0) {
-            int status = 0;
-            waitpid(g_engine_pid, &status, WNOHANG);
-            g_engine_pid = -1;
-        }
-        // Spawn new engine.
-        g_engine_pid = SpawnEngine(enginePath);
-        if (g_engine_pid > 0) {
-            engineRestarts++;
-            HILOGI("engine respawned pid=%{public}d", g_engine_pid);
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-        }
-    });
 
     auto initStatus = client->Init();
     DT_CHECK(initStatus == MemRpc::StatusCode::Ok, "VesClient Init ok");
@@ -227,11 +249,12 @@ int main(int argc, char* argv[]) {
 
     // === Cleanup ===
     HILOGI("=== Cleanup ===");
+    respawnRecipient->Disable();
     client->Shutdown();
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+            KillAndWait(g_engine_pid);
+            g_engine_pid = -1;
     }
     registry.Stop();
 

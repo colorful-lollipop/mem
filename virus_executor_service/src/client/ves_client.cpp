@@ -62,9 +62,6 @@ MemRpc::StatusCode VesClient::Init() {
                   static_cast<int>(suspect.lastState));
         }
         engineDied_ = true;
-        if (restartCallback_) {
-            restartCallback_();
-        }
         return MemRpc::RecoveryDecision{
             MemRpc::RecoveryAction::Restart,
             options_.engineDeathRestartDelayMs,
@@ -85,10 +82,6 @@ MemRpc::StatusCode VesClient::Init() {
 
 void VesClient::Shutdown() {
     client_.Shutdown();
-}
-
-void VesClient::SetEngineRestartCallback(EngineRestartCallback callback) {
-    restartCallback_ = std::move(callback);
 }
 
 bool VesClient::EngineDied() const {

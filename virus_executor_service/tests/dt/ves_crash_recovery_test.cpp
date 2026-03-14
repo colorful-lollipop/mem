@@ -10,6 +10,7 @@
 #include <thread>
 #include <unistd.h>
 
+#include "iremote_object.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
@@ -54,6 +55,40 @@ std::string EnginePathFromSelf() {
     return self.substr(0, pos) + "/virus_executor_service";
 }
 
+class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
+ public:
+    EngineRespawnRecipient(const std::string& enginePath, std::atomic<int>* engineRestarts)
+        : enginePath_(enginePath), engineRestarts_(engineRestarts) {}
+
+    void Disable()
+    {
+        enabled_.store(false);
+    }
+
+    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
+    {
+        if (!enabled_.load()) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        if (g_engine_pid > 0) {
+            int status = 0;
+            waitpid(g_engine_pid, &status, WNOHANG);
+            g_engine_pid = -1;
+        }
+        g_engine_pid = SpawnEngine(enginePath_);
+        if (g_engine_pid > 0) {
+            engineRestarts_->fetch_add(1);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+    }
+
+ private:
+    std::string enginePath_;
+    std::atomic<int>* engineRestarts_;
+    std::atomic<bool> enabled_{true};
+};
+
 }  // namespace
 
 TEST(VesCrashRecoveryTest, CrashThenRecover) {
@@ -94,21 +129,10 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     ASSERT_NE(remote, nullptr);
 
     std::atomic<int> engineRestarts{0};
+    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &engineRestarts);
+    ASSERT_TRUE(remote->AddDeathRecipient(respawnRecipient));
 
     auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    client->SetEngineRestartCallback([&]() {
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) {
-            int status = 0;
-            waitpid(g_engine_pid, &status, WNOHANG);
-            g_engine_pid = -1;
-        }
-        g_engine_pid = SpawnEngine(enginePath);
-        if (g_engine_pid > 0) {
-            engineRestarts++;
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }
-    });
 
     ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
 
@@ -127,6 +151,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_EQ(client->ScanFile("/data/clean_after.apk", &reply), MemRpc::StatusCode::Ok);
 
+    respawnRecipient->Disable();
     client->Shutdown();
     registry.Stop();
     {
