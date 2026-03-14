@@ -211,7 +211,9 @@ struct RpcServer::Impl {
         if (request_slot == nullptr) {
           continue;
         }
-        request_slot->runtime.lastHeartbeatMonoMs = now_ms;
+        UpdateSlotRuntime(&request_slot->runtime, [now_ms](SlotRuntimeState* runtime) {
+          AtomicStoreUint32(runtime->lastHeartbeatMonoMs, now_ms);
+        });
       }
     }
   }
@@ -482,8 +484,11 @@ struct RpcServer::Impl {
     if (request_slot == nullptr) {
       return;
     }
-    request_slot->runtime.state = SlotRuntimeStateCode::Responding;
-    request_slot->runtime.lastHeartbeatMonoMs = MonotonicNowMs();
+    const uint32_t now_ms = MonotonicNowMs();
+    UpdateSlotRuntime(&request_slot->runtime, [now_ms](SlotRuntimeState* runtime) {
+      AtomicStoreUint32(runtime->lastHeartbeatMonoMs, now_ms);
+      StoreSlotRuntimeStateCode(runtime, SlotRuntimeStateCode::Responding);
+    });
   }
 
   CompletionItem BuildResponseCompletionItem(const RequestRingEntry& request_entry,
@@ -602,11 +607,17 @@ struct RpcServer::Impl {
       return;
     }
 
-    payload->runtime.requestId = request_entry.requestId;
-    payload->runtime.state = SlotRuntimeStateCode::Executing;
-    payload->runtime.workerId = CurrentWorkerId();
-    payload->runtime.startExecMonoMs = MonotonicNowMs();
-    payload->runtime.lastHeartbeatMonoMs = payload->runtime.startExecMonoMs;
+    const uint32_t start_exec_ms = MonotonicNowMs();
+    const uint32_t worker_id = CurrentWorkerId();
+    UpdateSlotRuntime(&payload->runtime,
+                      [request_id = request_entry.requestId, worker_id, start_exec_ms](
+                          SlotRuntimeState* runtime) {
+                        AtomicStoreUint64(runtime->requestId, request_id);
+                        AtomicStoreUint32(runtime->workerId, worker_id);
+                        AtomicStoreUint32(runtime->startExecMonoMs, start_exec_ms);
+                        AtomicStoreUint32(runtime->lastHeartbeatMonoMs, start_exec_ms);
+                        StoreSlotRuntimeStateCode(runtime, SlotRuntimeStateCode::Executing);
+                      });
 
     const uint32_t now_ms = MonotonicNowMs();
     if (payload->request.queueTimeoutMs > 0 &&

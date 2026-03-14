@@ -65,7 +65,7 @@ struct SlotRuntimeState {
   uint32_t enqueueMonoMs = 0;
   uint32_t startExecMonoMs = 0;
   uint32_t lastHeartbeatMonoMs = 0;
-  uint32_t reserved = 0;
+  uint32_t seq = 0;  // Seqlock version for consistent shared-memory snapshots.
 };
 
 static_assert(sizeof(SlotRuntimeState) == 32U, "SlotRuntimeState size must stay fixed");

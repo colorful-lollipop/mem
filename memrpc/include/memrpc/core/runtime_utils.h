@@ -61,6 +61,119 @@ template <typename F>
   return static_cast<uint32_t>(MonotonicNowMs64() & 0xffffffffU);
 }
 
+inline void CpuRelax();
+
+[[nodiscard]] inline uint32_t AtomicLoadUint32(const uint32_t& value_ref) {
+  return __atomic_load_n(&value_ref, __ATOMIC_ACQUIRE);
+}
+
+inline void AtomicStoreUint32(uint32_t& value_ref, uint32_t value) {
+  __atomic_store_n(&value_ref, value, __ATOMIC_RELEASE);
+}
+
+[[nodiscard]] inline uint64_t AtomicLoadUint64(const uint64_t& value_ref) {
+  return __atomic_load_n(&value_ref, __ATOMIC_ACQUIRE);
+}
+
+inline void AtomicStoreUint64(uint64_t& value_ref, uint64_t value) {
+  __atomic_store_n(&value_ref, value, __ATOMIC_RELEASE);
+}
+
+[[nodiscard]] inline SlotRuntimeStateCode LoadSlotRuntimeStateCode(
+    const SlotRuntimeState* runtime) {
+  if (runtime == nullptr) {
+    return SlotRuntimeStateCode::Free;
+  }
+  const auto* state_ptr = reinterpret_cast<const uint32_t*>(&runtime->state);
+  return static_cast<SlotRuntimeStateCode>(AtomicLoadUint32(*state_ptr));
+}
+
+inline void StoreSlotRuntimeStateCode(SlotRuntimeState* runtime,
+                                      SlotRuntimeStateCode state) {
+  if (runtime == nullptr) {
+    return;
+  }
+  auto* state_ptr = reinterpret_cast<uint32_t*>(&runtime->state);
+  AtomicStoreUint32(*state_ptr, static_cast<uint32_t>(state));
+}
+
+[[nodiscard]] inline SlotRuntimeState LoadSlotRuntimeSnapshot(
+    const SlotRuntimeState* runtime) {
+  SlotRuntimeState snapshot;
+  if (runtime == nullptr) {
+    return snapshot;
+  }
+  constexpr int kMaxSpins = 1024;
+  for (int attempt = 0; attempt < kMaxSpins; ++attempt) {
+    const uint32_t seq_begin = AtomicLoadUint32(runtime->seq);
+    if ((seq_begin & 1U) != 0) {
+      CpuRelax();
+      continue;
+    }
+    snapshot.requestId = AtomicLoadUint64(runtime->requestId);
+    snapshot.state = LoadSlotRuntimeStateCode(runtime);
+    snapshot.workerId = AtomicLoadUint32(runtime->workerId);
+    snapshot.enqueueMonoMs = AtomicLoadUint32(runtime->enqueueMonoMs);
+    snapshot.startExecMonoMs = AtomicLoadUint32(runtime->startExecMonoMs);
+    snapshot.lastHeartbeatMonoMs = AtomicLoadUint32(runtime->lastHeartbeatMonoMs);
+    const uint32_t seq_end = AtomicLoadUint32(runtime->seq);
+    if (seq_begin == seq_end && (seq_end & 1U) == 0) {
+      snapshot.seq = seq_end;
+      return snapshot;
+    }
+    CpuRelax();
+  }
+  snapshot = {};
+  return snapshot;
+}
+
+[[nodiscard]] inline uint32_t BeginSlotRuntimeWrite(SlotRuntimeState* runtime) {
+  if (runtime == nullptr) {
+    return 0;
+  }
+  while (true) {
+    uint32_t seq = AtomicLoadUint32(runtime->seq);
+    if ((seq & 1U) != 0) {
+      CpuRelax();
+      continue;
+    }
+    const uint32_t write_seq = seq + 1U;
+    if (__atomic_compare_exchange_n(&runtime->seq, &seq, write_seq, false,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+      return write_seq;
+    }
+    CpuRelax();
+  }
+}
+
+inline void EndSlotRuntimeWrite(SlotRuntimeState* runtime, uint32_t write_seq) {
+  if (runtime == nullptr) {
+    return;
+  }
+  AtomicStoreUint32(runtime->seq, write_seq + 1U);
+}
+
+template <typename F>
+inline void UpdateSlotRuntime(SlotRuntimeState* runtime, F&& updater) {
+  if (runtime == nullptr) {
+    return;
+  }
+  const uint32_t write_seq = BeginSlotRuntimeWrite(runtime);
+  updater(runtime);
+  EndSlotRuntimeWrite(runtime, write_seq);
+}
+
+inline void ClearSlotRuntime(SlotRuntimeState* runtime) {
+  UpdateSlotRuntime(runtime, [](SlotRuntimeState* mutable_runtime) {
+    AtomicStoreUint32(mutable_runtime->workerId, 0);
+    AtomicStoreUint32(mutable_runtime->enqueueMonoMs, 0);
+    AtomicStoreUint32(mutable_runtime->startExecMonoMs, 0);
+    AtomicStoreUint32(mutable_runtime->lastHeartbeatMonoMs, 0);
+    AtomicStoreUint64(mutable_runtime->requestId, 0);
+    StoreSlotRuntimeStateCode(mutable_runtime, SlotRuntimeStateCode::Free);
+  });
+}
+
 [[nodiscard]] inline bool DeadlineReached(
     std::chrono::steady_clock::time_point deadline) {
   return std::chrono::steady_clock::now() >= deadline;
