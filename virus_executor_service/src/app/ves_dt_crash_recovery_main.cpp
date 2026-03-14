@@ -101,7 +101,7 @@ class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main([[maybe_unused]] int argc, char* argv[]) {
     // Determine engine path relative to our binary.
     std::string dir = ".";
     std::string argv0(argv[0]);

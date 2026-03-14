@@ -55,7 +55,7 @@ void KillAndWait(pid_t pid) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main([[maybe_unused]] int argc, char* argv[]) {
     std::signal(SIGTERM, SignalHandler);
     std::signal(SIGINT, SignalHandler);
 

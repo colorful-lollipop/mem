@@ -10,9 +10,19 @@ option(MEMRPC_ENABLE_STRICT_WARNINGS "Enable stricter warning flags for project 
 option(MEMRPC_WARNINGS_AS_ERRORS "Treat warnings as errors for project code" ${MEMRPC_DEFAULT_WARNINGS_AS_ERRORS})
 option(MEMRPC_ENABLE_CLANG_TIDY "Run clang-tidy during C++ compilation" OFF)
 option(MEMRPC_CLANG_TIDY_AS_ERRORS "Treat clang-tidy diagnostics as errors" ${MEMRPC_DEFAULT_WARNINGS_AS_ERRORS})
+option(MEMRPC_CLANG_TIDY_MAINLINE_ONLY
+  "Skip clang-tidy for test, mock, and testkit targets"
+  ON)
 option(MEMRPC_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(MEMRPC_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(MEMRPC_ENABLE_TSAN "Enable ThreadSanitizer instrumentation" OFF)
+
+function(memrpc_disable_clang_tidy_for_target target)
+  if (NOT TARGET "${target}")
+    message(FATAL_ERROR "memrpc_disable_clang_tidy_for_target: unknown target '${target}'")
+  endif()
+  set_target_properties("${target}" PROPERTIES CXX_CLANG_TIDY "")
+endfunction()
 
 function(memrpc_configure_project_options)
   if (DEFINED MEMRPC_PROJECT_OPTIONS_CONFIGURED)

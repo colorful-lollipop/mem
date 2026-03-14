@@ -5,6 +5,9 @@ set(MEMRPC_DT_TEST_TIMEOUT_SEC 60 CACHE STRING
 
 function(memrpc_add_test target source)
   add_executable(${target} ${source})
+  if (MEMRPC_ENABLE_CLANG_TIDY AND MEMRPC_CLANG_TIDY_MAINLINE_ONLY)
+    memrpc_disable_clang_tidy_for_target(${target})
+  endif()
   target_link_libraries(${target} PRIVATE memrpc GTest::gtest_main)
   target_include_directories(${target} PRIVATE
     ${PROJECT_SOURCE_DIR}/include

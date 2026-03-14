@@ -11,6 +11,12 @@ set(MEMRPC_MODULE_ROOT ${MEMRPC_ROOT}/memrpc)
 include(${MEMRPC_ROOT}/cmake/ProjectOptions.cmake)
 memrpc_configure_project_options()
 
+function(ves_maybe_disable_clang_tidy target)
+  if (MEMRPC_ENABLE_CLANG_TIDY AND MEMRPC_CLANG_TIDY_MAINLINE_ONLY)
+    memrpc_disable_clang_tidy_for_target(${target})
+  endif()
+endfunction()
+
 set(VIRUS_EXECUTOR_SERVICE_DEFAULT_TEST_TIMEOUT_SEC 30 CACHE STRING
     "Default timeout in seconds for virus_executor_service tests")
 set(VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC 60 CACHE STRING
@@ -52,6 +58,7 @@ add_library(ohos_sa_mock
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/scm_rights.cpp
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/src/mock_service_socket.cpp
 )
+ves_maybe_disable_clang_tidy(ohos_sa_mock)
 target_include_directories(ohos_sa_mock PUBLIC
     ${MEMRPC_ROOT}/third_party/ohos_sa_mock/include
 )
@@ -100,6 +107,7 @@ add_library(virus_executor_service_testkit
     src/testkit/testkit_async_client.cpp
     src/testkit/testkit_client.cpp
 )
+ves_maybe_disable_clang_tidy(virus_executor_service_testkit)
 target_include_directories(virus_executor_service_testkit PUBLIC
     ${VIRUS_EXECUTOR_SERVICE_PUBLIC_INCLUDE_DIRS}
 )
@@ -320,6 +328,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
 
   add_library(virus_executor_service_testkit_stress_config
       tests/stress/testkit_stress_config.cpp)
+  ves_maybe_disable_clang_tidy(virus_executor_service_testkit_stress_config)
   target_link_libraries(virus_executor_service_testkit_stress_config PUBLIC
       virus_executor_service_lib)
   target_compile_features(virus_executor_service_testkit_stress_config PUBLIC cxx_std_17)
@@ -442,5 +451,33 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
 
   if (VIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ)
     add_subdirectory(tests/fuzz)
+  endif()
+
+  if (MEMRPC_ENABLE_CLANG_TIDY AND MEMRPC_CLANG_TIDY_MAINLINE_ONLY)
+    set(virus_executor_service_tidy_excluded_targets
+        virus_executor_service_session_service_test
+        virus_executor_service_heartbeat_test
+        virus_executor_service_codec_test
+        virus_executor_service_testkit_headers_test
+        virus_executor_service_testkit_codec_test
+        virus_executor_service_testkit_service_test
+        virus_executor_service_testkit_baseline_test
+        virus_executor_service_testkit_client_test
+        virus_executor_service_testkit_dfx_test
+        virus_executor_service_testkit_backpressure_test
+        virus_executor_service_testkit_async_pipeline_test
+        virus_executor_service_testkit_latency_test
+        virus_executor_service_testkit_throughput_test
+        virus_executor_service_testkit_dt_stability_test
+        virus_executor_service_testkit_dt_perf_test
+        virus_executor_service_testkit_stress_config_test
+        virus_executor_service_testkit_stress_runner
+        virus_executor_service_sample_rules_test
+        virus_executor_service_health_test
+        virus_executor_service_policy_test
+        virus_executor_service_crash_recovery_test)
+    foreach(target IN LISTS virus_executor_service_tidy_excluded_targets)
+      ves_maybe_disable_clang_tidy(${target})
+    endforeach()
   endif()
 endif()

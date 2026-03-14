@@ -19,7 +19,9 @@ Options:
   --strict            Enable stricter warning flags for project code
   --no-strict         Disable stricter warning flags for project code
   --werror            Treat warnings as errors for project code
-  --clang-tidy        Run clang-tidy during the build
+  --clang-tidy        Run clang-tidy during the build (mainline targets only by default)
+  --clang-tidy-all-targets
+                      Include tests, mocks, and testkit targets in clang-tidy
   --asan              Enable AddressSanitizer + UndefinedBehaviorSanitizer
                       and leak detection at test time
   --ubsan             Enable UndefinedBehaviorSanitizer only
@@ -80,6 +82,7 @@ jobs="${JOBS:-$(detect_jobs)}"
 enable_fuzz="OFF"
 enable_strict="ON"
 enable_clang_tidy="OFF"
+clang_tidy_mainline_only="ON"
 warnings_as_errors="OFF"
 enable_asan="OFF"
 enable_ubsan="OFF"
@@ -125,6 +128,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clang-tidy)
             enable_clang_tidy="ON"
+            shift
+            ;;
+        --clang-tidy-all-targets)
+            enable_clang_tidy="ON"
+            clang_tidy_mainline_only="OFF"
             shift
             ;;
         --asan)
@@ -241,6 +249,7 @@ cmake_args=(
     -DMEMRPC_WARNINGS_AS_ERRORS="${warnings_as_errors}"
     -DMEMRPC_ENABLE_CLANG_TIDY="${enable_clang_tidy}"
     -DMEMRPC_CLANG_TIDY_AS_ERRORS="${warnings_as_errors}"
+    -DMEMRPC_CLANG_TIDY_MAINLINE_ONLY="${clang_tidy_mainline_only}"
     -DMEMRPC_ENABLE_ASAN="${enable_asan}"
     -DMEMRPC_ENABLE_UBSAN="${enable_ubsan}"
     -DMEMRPC_ENABLE_TSAN="${enable_tsan}"

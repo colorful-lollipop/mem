@@ -1,8 +1,10 @@
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <random>
 #include <string>
@@ -56,6 +58,37 @@ struct StressStats {
     std::atomic<int> engineRestarts{0};
     std::atomic<uint64_t> sleepMs{0};
 };
+
+bool ParseIntArg(const char* text, int* value) {
+    if (text == nullptr || value == nullptr) {
+        return false;
+    }
+    errno = 0;
+    char* end = nullptr;
+    const long parsed = std::strtol(text, &end, 10);
+    if (errno != 0 || end == text || (end != nullptr && *end != '\0') ||
+        parsed < std::numeric_limits<int>::min() ||
+        parsed > std::numeric_limits<int>::max()) {
+        return false;
+    }
+    *value = static_cast<int>(parsed);
+    return true;
+}
+
+bool ParseUint32Arg(const char* text, uint32_t* value) {
+    if (text == nullptr || value == nullptr) {
+        return false;
+    }
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(text, &end, 10);
+    if (errno != 0 || end == text || (end != nullptr && *end != '\0') ||
+        parsed > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
+    *value = static_cast<uint32_t>(parsed);
+    return true;
+}
 
 pid_t SpawnEngine(const std::string& enginePath) {
     pid_t pid = fork();
@@ -159,11 +192,20 @@ StressConfig ParseArgs(int argc, char* argv[]) {
     StressConfig config;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--threads") == 0 && i + 1 < argc) {
-            config.threads = std::atoi(argv[++i]);
+            const char* value = argv[++i];
+            if (!ParseIntArg(value, &config.threads)) {
+                HILOGW("invalid --threads value: %{public}s", value);
+            }
         } else if (std::strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
-            config.iterations = std::atoi(argv[++i]);
+            const char* value = argv[++i];
+            if (!ParseIntArg(value, &config.iterations)) {
+                HILOGW("invalid --iterations value: %{public}s", value);
+            }
         } else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
-            config.seed = static_cast<uint32_t>(std::atoi(argv[++i]));
+            const char* value = argv[++i];
+            if (!ParseUint32Arg(value, &config.seed)) {
+                HILOGW("invalid --seed value: %{public}s", value);
+            }
         } else if (std::strcmp(argv[i], "--no-crash") == 0) {
             config.enableCrash = false;
         }
@@ -281,7 +323,8 @@ int main(int argc, char* argv[]) {
 
     // Run worker threads sharing the single client.
     std::vector<std::thread> workers;
-    workers.reserve(config.threads);
+    const size_t workerCount = config.threads > 0 ? static_cast<size_t>(config.threads) : 0U;
+    workers.reserve(workerCount);
 
     const auto startTime = std::chrono::steady_clock::now();
 
