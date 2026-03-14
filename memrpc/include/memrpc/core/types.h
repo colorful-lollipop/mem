@@ -46,6 +46,8 @@ enum class StatusCode : uint8_t {
   EngineInternalError,
   InvalidArgument,
   CrashedDuringExecution,
+  CooldownActive,
+  ClientClosed,
 };
 
 struct ScanResult {

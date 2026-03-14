@@ -3,11 +3,14 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
+#include <unistd.h>
 
+#include "client/ves_client.h"
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
+#include "service/virus_executor_service.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
@@ -64,6 +67,49 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
 
     client.Shutdown();
     server.Stop();
+}
+
+TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
+    const std::string socketPath =
+        "/tmp/ves_idle_policy_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClientOptions options;
+    options.idleShutdownTimeoutMs = 80;
+    VesClient client(remote, options);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    ScanFileReply reply;
+    ASSERT_EQ(client.ScanFile("/data/clean.apk", &reply), MemRpc::StatusCode::Ok);
+
+    VesHeartbeatReply heartbeat{};
+    const auto idleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < idleDeadline) {
+        ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
+        if (heartbeat.sessionId == 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_EQ(heartbeat.sessionId, 0u);
+
+    ASSERT_EQ(client.ScanFile("/data/reopen.apk", &reply), MemRpc::StatusCode::Ok);
+
+    ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
+    EXPECT_NE(heartbeat.sessionId, 0u);
+
+    client.Shutdown();
+    service->OnStop();
 }
 
 }  // namespace VirusExecutorService

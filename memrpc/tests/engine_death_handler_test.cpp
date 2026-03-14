@@ -4,10 +4,13 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 namespace {
 
@@ -36,6 +39,15 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  private:
   MemRpc::EngineDeathCallback callback_;
 };
+
+void CloseHandles(MemRpc::BootstrapHandles& h) {
+  if (h.shmFd >= 0) close(h.shmFd);
+  if (h.highReqEventFd >= 0) close(h.highReqEventFd);
+  if (h.normalReqEventFd >= 0) close(h.normalReqEventFd);
+  if (h.respEventFd >= 0) close(h.respEventFd);
+  if (h.reqCreditEventFd >= 0) close(h.reqCreditEventFd);
+  if (h.respCreditEventFd >= 0) close(h.respCreditEventFd);
+}
 
 }  // namespace
 
@@ -178,4 +190,61 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean) {
   client.Shutdown();
   const auto elapsed = std::chrono::steady_clock::now() - start;
   EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 2000);
+}
+
+TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpires) {
+  constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(201);
+
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unused_handles;
+  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(unused_handles);
+
+  auto start_server = [&](MemRpc::RpcServer* server) {
+    server->SetBootstrapHandles(bootstrap->serverHandles());
+    server->RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+      reply->status = MemRpc::StatusCode::Ok;
+    });
+    ASSERT_EQ(server->Start(), MemRpc::StatusCode::Ok);
+  };
+
+  MemRpc::RpcServer server;
+  start_server(&server);
+
+  MemRpc::RpcClient client(bootstrap);
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 200};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcCall call;
+  call.opcode = kEchoOpcode;
+  auto ready_future = client.InvokeAsync(call);
+  MemRpc::RpcReply ready_reply;
+  ASSERT_EQ(ready_future.Wait(&ready_reply), MemRpc::StatusCode::Ok);
+
+  bootstrap->SimulateEngineDeathForTest();
+  server.Stop();
+
+  auto blocked_future = client.InvokeAsync(call);
+  MemRpc::RpcReply blocked_reply;
+  EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::CooldownActive);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  MemRpc::BootstrapHandles prewarm_handles;
+  ASSERT_EQ(bootstrap->OpenSession(prewarm_handles), MemRpc::StatusCode::Ok);
+  CloseHandles(prewarm_handles);
+
+  MemRpc::RpcServer restarted_server;
+  start_server(&restarted_server);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  auto recovered_future = client.InvokeAsync(call);
+  MemRpc::RpcReply recovered_reply;
+  EXPECT_EQ(recovered_future.Wait(&recovered_reply), MemRpc::StatusCode::Ok);
+
+  client.Shutdown();
+  restarted_server.Stop();
 }

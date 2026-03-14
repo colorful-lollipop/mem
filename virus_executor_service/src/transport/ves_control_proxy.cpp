@@ -153,6 +153,18 @@ MemRpc::StatusCode VesControlProxy::CloseSession() {
         close(sock_fd_);
         sock_fd_ = -1;
     }
+
+    int close_fd = ConnectToService(service_socket_path_);
+    if (close_fd < 0) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    char cmd = 2;
+    const ssize_t sent = send(close_fd, &cmd, 1, MSG_NOSIGNAL);
+    close(close_fd);
+    if (sent != 1) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
     return MemRpc::StatusCode::Ok;
 }
 

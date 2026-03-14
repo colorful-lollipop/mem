@@ -16,7 +16,7 @@ namespace VirusExecutorService {
 struct VesClientOptions {
     uint32_t execTimeoutRestartDelayMs = 200;
     uint32_t engineDeathRestartDelayMs = 200;
-    uint32_t idleRestartDelayMs = 0;
+    uint32_t idleShutdownTimeoutMs = 0;
 };
 
 class VesClient {

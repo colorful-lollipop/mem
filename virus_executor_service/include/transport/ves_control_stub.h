@@ -46,6 +46,7 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                 return true;
             }
             case 2:
+                reply->close_after_reply = true;
                 return CloseSession() == MemRpc::StatusCode::Ok;
             case 3: {
                 VesHeartbeatReply hb{};

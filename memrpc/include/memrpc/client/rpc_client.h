@@ -115,6 +115,7 @@ struct EngineDeathReport {
 enum class RecoveryAction {  // NOLINT(performance-enum-size)
   Ignore,
   Restart,
+  CloseSession,
 };
 
 struct RecoveryDecision {

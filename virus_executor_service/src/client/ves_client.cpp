@@ -28,7 +28,6 @@ void VesClient::RegisterProxyFactory() {
 }
 
 MemRpc::StatusCode VesClient::Init() {
-    // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
     auto bootstrap = OHOS::iface_cast<IVesControl>(remote_);
     if (bootstrap == nullptr) {
         HILOGE("iface_cast<IVesControl> failed");
@@ -66,15 +65,20 @@ MemRpc::StatusCode VesClient::Init() {
         if (restartCallback_) {
             restartCallback_();
         }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, options_.engineDeathRestartDelayMs};
+        return MemRpc::RecoveryDecision{
+            MemRpc::RecoveryAction::Restart,
+            options_.engineDeathRestartDelayMs,
+        };
     };
-    if (options_.idleRestartDelayMs > 0) {
-        policy.onIdle = [delay = options_.idleRestartDelayMs](uint64_t) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
+    if (options_.idleShutdownTimeoutMs > 0) {
+        policy.idleTimeoutMs = options_.idleShutdownTimeoutMs;
+        policy.idleNotifyIntervalMs = options_.idleShutdownTimeoutMs;
+        policy.onIdle = [](uint64_t) {
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::CloseSession, 0};
         };
     }
-    client_.SetRecoveryPolicy(std::move(policy));
 
+    client_.SetRecoveryPolicy(std::move(policy));
     return client_.Init();
 }
 

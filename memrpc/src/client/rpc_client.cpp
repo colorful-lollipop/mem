@@ -179,8 +179,11 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   std::atomic<uint32_t> lastActivityMonoMs_{0};
   uint32_t lastIdleNotifyMonoMs_{0};
   std::thread restartThread_;
-  std::atomic<bool> restartPending_{false};
+  std::atomic<bool> recoveryPending_{false};
   std::atomic<bool> suppressDeathCallback_{false};
+  std::atomic<uint32_t> reopenBlockedUntilMonoMs_{0};
+  std::atomic<StatusCode> reopenBlockedStatus_{StatusCode::Ok};
+  std::atomic<bool> clientClosed_{false};
 
   static RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
@@ -191,6 +194,48 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
   void TouchActivity() {
     lastActivityMonoMs_.store(MonotonicNowMs(), std::memory_order_relaxed);
+  }
+
+  void ClearIdleReminder() {
+    lastActivityMonoMs_.store(0, std::memory_order_relaxed);
+    lastIdleNotifyMonoMs_ = 0;
+  }
+
+  void SetReopenBlock(uint32_t delay_ms, StatusCode status) {
+    reopenBlockedStatus_.store(status, std::memory_order_release);
+    if (delay_ms == 0) {
+      reopenBlockedUntilMonoMs_.store(0, std::memory_order_release);
+      return;
+    }
+    const uint32_t now_ms = MonotonicNowMs();
+    const uint32_t blocked_until =
+        delay_ms > UINT32_MAX - now_ms ? UINT32_MAX : now_ms + delay_ms;
+    reopenBlockedUntilMonoMs_.store(blocked_until, std::memory_order_release);
+  }
+
+  void ClearReopenBlock() {
+    reopenBlockedUntilMonoMs_.store(0, std::memory_order_release);
+    reopenBlockedStatus_.store(StatusCode::Ok, std::memory_order_release);
+  }
+
+  StatusCode GetReopenBlockStatus() const {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return StatusCode::ClientClosed;
+    }
+    const uint32_t blocked_until = reopenBlockedUntilMonoMs_.load(std::memory_order_acquire);
+    if (blocked_until == 0) {
+      return StatusCode::Ok;
+    }
+    const uint32_t now_ms = MonotonicNowMs();
+    if (now_ms < blocked_until) {
+      return reopenBlockedStatus_.load(std::memory_order_acquire);
+    }
+    return StatusCode::Ok;
+  }
+
+  bool HasQueuedSubmissions() {
+    std::lock_guard<std::mutex> lock(submitMutex_);
+    return !submitQueue_.empty();
   }
 
   static PendingInfo MakePendingInfo(const PendingSubmit& submit) {
@@ -235,6 +280,8 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     RecoveryDecision decision = on_failure(failure);
     if (decision.action == RecoveryAction::Restart) {
       RequestForcedRestart(decision.delayMs);
+    } else if (decision.action == RecoveryAction::CloseSession) {
+      RequestSessionClose();
     }
   }
 
@@ -352,6 +399,8 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     const RecoveryDecision decision = on_idle(idle_ms);
     if (decision.action == RecoveryAction::Restart) {
       RequestForcedRestart(decision.delayMs);
+    } else if (decision.action == RecoveryAction::CloseSession) {
+      RequestSessionClose();
     }
   }
 
@@ -364,6 +413,10 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
       idle_notify_interval_ms = recoveryPolicy_.idleNotifyIntervalMs;
     }
     if (idle_timeout_ms == 0 || idle_notify_interval_ms == 0) {
+      return;
+    }
+    if (!HasLiveSessionFastPath() || pendingCount_.load(std::memory_order_acquire) > 0 ||
+        HasQueuedSubmissions()) {
       return;
     }
 
@@ -666,14 +719,44 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     submitCv_.notify_one();
   }
 
+  void RequestSessionClose() {
+    if (recoveryPending_.exchange(true)) {
+      return;
+    }
+    if (shuttingDown.load() || clientClosed_.load(std::memory_order_acquire)) {
+      recoveryPending_.store(false, std::memory_order_release);
+      return;
+    }
+    SetReopenBlock(UINT32_MAX, StatusCode::CooldownActive);
+
+    StopDispatcher();
+    ReplayableSnapshot snapshot;
+    {
+      std::lock_guard<std::mutex> lock(sessionMutex_);
+      snapshot = SnapshotAndTearDownLocked();
+    }
+    FailPoisonPills(snapshot.poison_list);
+    FailReplayList(snapshot.replay_list);
+
+    suppressDeathCallback_.store(true);
+    if (bootstrap != nullptr) {
+      bootstrap->CloseSession();
+    }
+    suppressDeathCallback_.store(false);
+    ClearIdleReminder();
+    ClearReopenBlock();
+    recoveryPending_.store(false, std::memory_order_release);
+  }
+
   void RequestForcedRestart(uint32_t delay_ms) {
-    if (restartPending_.exchange(true)) {
+    if (recoveryPending_.exchange(true)) {
       return;  // Another restart already in progress.
     }
     if (shuttingDown.load()) {
-      restartPending_.store(false);
+      recoveryPending_.store(false, std::memory_order_release);
       return;
     }
+    SetReopenBlock(delay_ms, StatusCode::CooldownActive);
     StopDispatcher();
     ReplayableSnapshot snapshot;
     {
@@ -695,7 +778,8 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     restartThread_ = std::thread([this, delay = delay_ms,
                                   saved = std::move(snapshot.replay_list)]() mutable {
       RestartAfterDeath(delay, std::move(saved));
-      restartPending_.store(false);
+      ClearReopenBlock();
+      recoveryPending_.store(false, std::memory_order_release);
     });
   }
 
@@ -711,12 +795,16 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   }
 
   void StartReplayRestartThread(uint32_t delay_ms, std::vector<PendingSubmit> replay_list) {
+    SetReopenBlock(delay_ms, StatusCode::CooldownActive);
+    recoveryPending_.store(true, std::memory_order_release);
     if (restartThread_.joinable()) {
       restartThread_.join();
     }
     restartThread_ = std::thread([this, delay = delay_ms,
                                   saved = std::move(replay_list)]() mutable {
       RestartAfterDeath(delay, std::move(saved));
+      ClearReopenBlock();
+      recoveryPending_.store(false, std::memory_order_release);
     });
   }
 
@@ -750,6 +838,14 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
     if (decision.action == RecoveryAction::Ignore) {
       FailReplayList(snapshot.replay_list);
+      return;
+    }
+    if (decision.action == RecoveryAction::CloseSession) {
+      FailReplayList(snapshot.replay_list);
+      if (bootstrap != nullptr) {
+        bootstrap->CloseSession();
+      }
+      ClearIdleReminder();
       return;
     }
     StartReplayRestartThread(decision.delayMs, std::move(snapshot.replay_list));
@@ -799,10 +895,24 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   }
 
   StatusCode EnsureLiveSession() {
+    const StatusCode gate_status = GetReopenBlockStatus();
+    if (gate_status != StatusCode::Ok) {
+      return gate_status;
+    }
+    if (reopenBlockedUntilMonoMs_.load(std::memory_order_acquire) != 0) {
+      ClearReopenBlock();
+    }
     if (HasLiveSessionFastPath()) {
       return StatusCode::Ok;
     }
     std::lock_guard<std::mutex> reconnect_lock(reconnectMutex_);
+    const StatusCode locked_gate_status = GetReopenBlockStatus();
+    if (locked_gate_status != StatusCode::Ok) {
+      return locked_gate_status;
+    }
+    if (reopenBlockedUntilMonoMs_.load(std::memory_order_relaxed) != 0) {
+      ClearReopenBlock();
+    }
     if (HasLiveSessionLocked()) {
       return StatusCode::Ok;
     }
@@ -1431,6 +1541,8 @@ StatusCode RpcClient::Init() {
   if (impl_->bootstrap == nullptr) {
     return StatusCode::InvalidArgument;
   }
+  impl_->clientClosed_.store(false, std::memory_order_release);
+  impl_->ClearReopenBlock();
   impl_->shuttingDown.store(false);
   impl_->bootstrap->SetEngineDeathCallback(
       [this](uint64_t session_id) { impl_->HandleEngineDeath(session_id); });
@@ -1478,6 +1590,8 @@ RpcClientRuntimeStats RpcClient::GetRuntimeStats() const {
 }
 
 void RpcClient::Shutdown() {
+  impl_->clientClosed_.store(true, std::memory_order_release);
+  impl_->SetReopenBlock(UINT32_MAX, StatusCode::ClientClosed);
   impl_->shuttingDown.store(true);
   if (impl_->bootstrap != nullptr) {
     impl_->bootstrap->SetEngineDeathCallback({});
@@ -1496,6 +1610,7 @@ void RpcClient::Shutdown() {
     impl_->session_.Reset();
     impl_->slotPool_.reset();
   }
+  impl_->ClearIdleReminder();
   impl_->FailAllPending(StatusCode::PeerDisconnected);
   if (impl_->bootstrap != nullptr) {
     impl_->bootstrap->CloseSession();
