@@ -49,11 +49,6 @@ class Session {
   [[nodiscard]] const BootstrapHandles& Handles() const;
   [[nodiscard]] SessionState State() const;
   void SetState(SessionState state);
-  SlotPayload* GetSlotPayload(uint32_t slot_index);
-  uint8_t* GetSlotRequestBytes(uint32_t slot_index);
-  ResponseSlotPayload* GetResponseSlotPayload(uint32_t slot_index);
-  uint8_t* GetResponseSlotBytes(uint32_t slot_index);
-  void* GetResponseSlotPoolRegion();
 
   // Push/Pop 接口封装 ring + eventfd 对应的共享内存协议细节。
   StatusCode PushRequest(QueueKind queue, const RequestRingEntry& entry);

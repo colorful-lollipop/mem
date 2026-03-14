@@ -13,6 +13,7 @@
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
 #include "service/virus_executor_service.h"
+#include "iservice_registry.h"
 #include "system_ability.h"
 #include "transport/ves_control_stub.h"
 #include "ves/ves_codec.h"
@@ -57,6 +58,14 @@ void CloseHandles(MemRpc::BootstrapHandles& handles)
     }
 }
 
+void UnloadControlService()
+{
+    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    if (sam != nullptr) {
+        (void)sam->UnloadSystemAbility(VES_CONTROL_SA_ID);
+    }
+}
+
 class FakeSubscriptionControlService final : public OHOS::SystemAbility,
                                              public VesControlStub {
  public:
@@ -93,6 +102,11 @@ class FakeSubscriptionControlService final : public OHOS::SystemAbility,
             reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
         }
         return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    {
+        return MemRpc::StatusCode::InvalidArgument;
     }
 
     void OnStart() override {}
@@ -146,6 +160,7 @@ class FakeSubscriptionControlService final : public OHOS::SystemAbility,
 }  // namespace
 
 TEST(VesHealthSubscriptionTest, DeliversSnapshotsWhenSubscribed) {
+    UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_health_subscription_" + std::to_string(getpid()) + ".sock";
 
@@ -175,9 +190,40 @@ TEST(VesHealthSubscriptionTest, DeliversSnapshotsWhenSubscribed) {
 
     client.Shutdown();
     service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesHealthSubscriptionTest, OversizedScanRequestFallsBackToAnyCall) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_health_subscription_anycall_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+    VesClient client(remote);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    const std::string longPath =
+        "/data/" + std::string(MemRpc::DEFAULT_MAX_REQUEST_BYTES + 64, 'a');
+    ScanFileReply reply;
+    EXPECT_EQ(client.ScanFile(longPath, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.code, 0);
+
+    client.Shutdown();
+    service->OnStop();
+    UnloadControlService();
 }
 
 TEST(VesHealthSubscriptionTest, BlockingSubscriberDoesNotBlockRecovery) {
+    UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_health_subscription_blocking_" + std::to_string(getpid()) + ".sock";
 
@@ -225,9 +271,11 @@ TEST(VesHealthSubscriptionTest, BlockingSubscriberDoesNotBlockRecovery) {
     client.Shutdown();
     server.Stop();
     service->OnStop();
+    UnloadControlService();
 }
 
 TEST(VesHealthSubscriptionTest, RecoveryStillWorksWithoutSubscriber) {
+    UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_health_subscription_none_" + std::to_string(getpid()) + ".sock";
 
@@ -271,6 +319,7 @@ TEST(VesHealthSubscriptionTest, RecoveryStillWorksWithoutSubscriber) {
     client.Shutdown();
     server.Stop();
     service->OnStop();
+    UnloadControlService();
 }
 
 }  // namespace VirusExecutorService

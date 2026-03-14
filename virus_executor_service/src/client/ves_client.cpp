@@ -100,6 +100,29 @@ bool VesClient::EngineDied() const {
 MemRpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* reply) {
     ScanFileRequest request;
     request.filePath = path;
+    std::vector<uint8_t> payload;
+    if (!MemRpc::EncodeMessage<ScanFileRequest>(request, &payload)) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    if (payload.size() > MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
+        if (proxy_ == nullptr) {
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+        VesAnyCallRequest anyRequest;
+        anyRequest.opcode = static_cast<uint16_t>(VesOpcode::ScanFile);
+        anyRequest.payload = std::move(payload);
+        VesAnyCallReply anyReply;
+        const MemRpc::StatusCode status = proxy_->AnyCall(anyRequest, anyReply);
+        if (status != MemRpc::StatusCode::Ok) {
+            return status;
+        }
+        if (anyReply.status != MemRpc::StatusCode::Ok) {
+            return anyReply.status;
+        }
+        return MemRpc::DecodeMessage<ScanFileReply>(anyReply.payload, reply)
+                   ? MemRpc::StatusCode::Ok
+                   : MemRpc::StatusCode::ProtocolMismatch;
+    }
     return MemRpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
         &client_,
         static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),

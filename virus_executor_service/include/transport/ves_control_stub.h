@@ -17,11 +17,60 @@ struct SessionMetadata {
     uint64_t session_id = 0;
 };
 
+struct AnyCallRequestHeader {
+    uint16_t opcode = 0;
+    uint16_t reserved = 0;
+    uint32_t flags = 0;
+    uint32_t timeoutMs = 0;
+    uint32_t payloadSize = 0;
+};
+
+struct AnyCallReplyHeader {
+    uint32_t status = 0;
+    int32_t errorCode = 0;
+    uint32_t payloadSize = 0;
+};
+
+inline bool DecodeAnyCallRequest(const OHOS::MockIpcRequest& request, VesAnyCallRequest* out)
+{
+    if (out == nullptr || request.data.size() < sizeof(AnyCallRequestHeader)) {
+        return false;
+    }
+    AnyCallRequestHeader header{};
+    std::memcpy(&header, request.data.data(), sizeof(header));
+    if (request.data.size() != sizeof(header) + header.payloadSize) {
+        return false;
+    }
+    out->opcode = header.opcode;
+    out->flags = header.flags;
+    out->timeoutMs = header.timeoutMs;
+    out->payload.assign(request.data.begin() + static_cast<std::ptrdiff_t>(sizeof(header)),
+                        request.data.end());
+    return true;
+}
+
+inline void EncodeAnyCallReply(const VesAnyCallReply& reply, std::vector<uint8_t>* out)
+{
+    if (out == nullptr) {
+        return;
+    }
+    AnyCallReplyHeader header{};
+    header.status = static_cast<uint32_t>(reply.status);
+    header.errorCode = reply.errorCode;
+    header.payloadSize = static_cast<uint32_t>(reply.payload.size());
+    out->resize(sizeof(header) + reply.payload.size());
+    std::memcpy(out->data(), &header, sizeof(header));
+    if (!reply.payload.empty()) {
+        std::memcpy(out->data() + sizeof(header), reply.payload.data(), reply.payload.size());
+    }
+}
+
 }  // namespace detail
 
 class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
  public:
-    bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
+    bool OnRemoteRequest(int command, const OHOS::MockIpcRequest& request,
+                         OHOS::MockIpcReply* reply) override {
         switch (command) {
             case 1: {
                 MemRpc::BootstrapHandles handles{};
@@ -41,8 +90,8 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                 detail::SessionMetadata meta{};
                 meta.protocol_version = handles.protocolVersion;
                 meta.session_id = handles.sessionId;
-                std::memcpy(reply->data, &meta, sizeof(meta));
-                reply->data_len = sizeof(meta);
+                reply->data.resize(sizeof(meta));
+                std::memcpy(reply->data.data(), &meta, sizeof(meta));
                 return true;
             }
             case 2:
@@ -53,8 +102,21 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                 if (Heartbeat(hb) != MemRpc::StatusCode::Ok) {
                     return false;
                 }
-                std::memcpy(reply->data, &hb, sizeof(hb));
-                reply->data_len = sizeof(hb);
+                reply->data.resize(sizeof(hb));
+                std::memcpy(reply->data.data(), &hb, sizeof(hb));
+                reply->close_after_reply = true;
+                return true;
+            }
+            case 4: {
+                VesAnyCallRequest anyRequest{};
+                if (!detail::DecodeAnyCallRequest(request, &anyRequest)) {
+                    return false;
+                }
+                VesAnyCallReply anyReply{};
+                if (AnyCall(anyRequest, anyReply) != MemRpc::StatusCode::Ok) {
+                    return false;
+                }
+                detail::EncodeAnyCallReply(anyReply, &reply->data);
                 reply->close_after_reply = true;
                 return true;
             }

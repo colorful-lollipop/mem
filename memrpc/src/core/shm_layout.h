@@ -7,7 +7,6 @@
 #include <pthread.h>
 
 #include "memrpc/core/protocol.h"
-#include "core/slot_pool.h"
 
 namespace MemRpc {
 
@@ -15,8 +14,6 @@ struct LayoutConfig {
   uint32_t highRingSize = 32;
   uint32_t normalRingSize = 32;
   uint32_t responseRingSize = 64;
-  uint32_t slotCount = 64;
-  uint32_t slotSize = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
   uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
 };
@@ -25,9 +22,6 @@ struct Layout {
   std::size_t highRingOffset = 0;
   std::size_t normalRingOffset = 0;
   std::size_t responseRingOffset = 0;
-  std::size_t slotPoolOffset = 0;
-  std::size_t responseSlotPoolOffset = 0;
-  std::size_t responseSlotsOffset = 0;
   std::size_t totalSize = 0;
 };
 
@@ -57,8 +51,10 @@ constexpr bool IsAlignedValue(uint32_t value, std::size_t alignment) {
 }
 
 constexpr bool HasAlignedPayloadSizes(uint32_t max_request_bytes, uint32_t max_response_bytes) {
-  return IsAlignedValue(max_request_bytes, alignof(SlotPayload)) &&
-         IsAlignedValue(max_response_bytes, alignof(ResponseSlotPayload));
+  return max_request_bytes > 0 &&
+         max_response_bytes > 0 &&
+         max_request_bytes <= RequestRingEntry::INLINE_PAYLOAD_BYTES &&
+         max_response_bytes <= ResponseRingEntry::INLINE_PAYLOAD_BYTES;
 }
 
 struct SharedMemoryHeader {
@@ -71,8 +67,6 @@ struct SharedMemoryHeader {
   uint32_t highRingSize = 32;
   uint32_t normalRingSize = 32;
   uint32_t responseRingSize = 64;
-  uint32_t slotCount = 64;
-  uint32_t slotSize = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
   uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
   RingCursor highRing{};
@@ -91,18 +85,9 @@ inline Layout ComputeLayout(const LayoutConfig& config) {
   layout.responseRingOffset = AlignOffset(
       layout.normalRingOffset + sizeof(RequestRingEntry) * config.normalRingSize,
       alignof(ResponseRingEntry));
-  layout.slotPoolOffset = AlignOffset(
+  layout.totalSize = AlignOffset(
       layout.responseRingOffset + sizeof(ResponseRingEntry) * config.responseRingSize,
-      alignof(SlotPayload));
-  layout.responseSlotPoolOffset = AlignOffset(
-      layout.slotPoolOffset + static_cast<std::size_t>(config.slotCount) * config.slotSize,
-      alignof(SharedSlotPoolHeader));
-  layout.responseSlotsOffset = AlignOffset(
-      layout.responseSlotPoolOffset + ComputeSharedSlotPoolBytes(config.responseRingSize),
-      alignof(ResponseSlotPayload));
-  layout.totalSize = layout.responseSlotsOffset +
-                      static_cast<std::size_t>(config.responseRingSize) *
-                          ComputeResponseSlotSize(config.maxResponseBytes);
+      alignof(std::max_align_t));
   return layout;
 }
 

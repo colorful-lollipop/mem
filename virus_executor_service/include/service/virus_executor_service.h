@@ -25,6 +25,7 @@ class VirusExecutorService : public OHOS::SystemAbility,
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override;
 
     void OnStart() override;
     void OnStop() override;

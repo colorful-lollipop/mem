@@ -192,8 +192,8 @@ bool SystemAbility::Publish(const sptr<IRemoteObject>& object)
   // Framework auto-starts mock transport if a service path is set.
   const std::string path = object->GetServicePath();
   if (!path.empty()) {
-    if (!transport_.Start(path, [object](int cmd, MockIpcReply* reply) {
-      return object->HandleRequest(cmd, reply);
+    if (!transport_.Start(path, [object](int cmd, const MockIpcRequest& request, MockIpcReply* reply) {
+      return object->HandleRequest(cmd, request, reply);
     })) {
       return false;
     }

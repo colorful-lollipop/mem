@@ -25,6 +25,7 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId);
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
 
@@ -35,8 +36,9 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     void StopMonitorThread();
     void CloseSocket();
     void ResetSocketConnection();
-    bool SendCommand(int fd, char cmd) const;
+    bool SendCommand(int fd, char cmd, const std::vector<uint8_t>& payload = {}) const;
     MemRpc::StatusCode HeartbeatWithTimeout(VesHeartbeatReply& reply, int timeoutMs) const;
+    MemRpc::StatusCode ReceiveSizedReply(int fd, std::vector<uint8_t>* payload, int timeoutMs) const;
     MemRpc::StatusCode ReceiveSessionHandles(MemRpc::BootstrapHandles& handles);
     bool IsPeerDisconnected() const;
     void NotifyPeerDisconnected();

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "iremote_broker.h"
 #include "memrpc/core/bootstrap.h"
@@ -46,12 +47,28 @@ struct VesHeartbeatReply {
     uint32_t reserved[3] = {};
 };
 
+struct VesAnyCallRequest {
+    uint16_t opcode = 0;
+    uint16_t reserved = 0;
+    uint32_t flags = 0;
+    uint32_t timeoutMs = 0;
+    std::vector<uint8_t> payload;
+};
+
+struct VesAnyCallReply {
+    MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
+    int32_t errorCode = 0;
+    std::vector<uint8_t> payload;
+};
+
 class IVesControl : public OHOS::IRemoteBroker {
  public:
     ~IVesControl() override = default;
     virtual MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;
     virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
+    virtual MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request,
+                                       VesAnyCallReply& reply) = 0;
 };
 
 }  // namespace VirusExecutorService

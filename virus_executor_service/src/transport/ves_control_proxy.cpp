@@ -43,6 +43,48 @@ struct SessionMetadata {
 
 constexpr size_t FD_COUNT = 6;
 
+struct AnyCallRequestHeader {
+    uint16_t opcode = 0;
+    uint16_t reserved = 0;
+    uint32_t flags = 0;
+    uint32_t timeoutMs = 0;
+    uint32_t payloadSize = 0;
+};
+
+struct AnyCallReplyHeader {
+    uint32_t status = 0;
+    int32_t errorCode = 0;
+    uint32_t payloadSize = 0;
+};
+
+bool SendAll(int fd, const void* buffer, size_t size)
+{
+    const auto* bytes = static_cast<const uint8_t*>(buffer);
+    size_t offset = 0;
+    while (offset < size) {
+        const ssize_t rc = send(fd, bytes + offset, size - offset, MSG_NOSIGNAL);
+        if (rc <= 0) {
+            return false;
+        }
+        offset += static_cast<size_t>(rc);
+    }
+    return true;
+}
+
+bool RecvAll(int fd, void* buffer, size_t size)
+{
+    auto* bytes = static_cast<uint8_t*>(buffer);
+    size_t offset = 0;
+    while (offset < size) {
+        const ssize_t rc = recv(fd, bytes + offset, size - offset, 0);
+        if (rc <= 0) {
+            return false;
+        }
+        offset += static_cast<size_t>(rc);
+    }
+    return true;
+}
+
 bool HasDisconnectSignal(const pollfd& pfd)
 {
     return (pfd.revents & (POLLHUP | POLLERR | POLLIN)) != 0;
@@ -73,7 +115,11 @@ void VesControlProxy::StopMonitorThread() {
         shutdown(sock_fd_, SHUT_RDWR);
     }
     if (monitor_thread_.joinable()) {
-        monitor_thread_.join();
+        if (monitor_thread_.get_id() == std::this_thread::get_id()) {
+            monitor_thread_.detach();
+        } else {
+            monitor_thread_.join();
+        }
     }
 }
 
@@ -89,8 +135,38 @@ void VesControlProxy::ResetSocketConnection() {
     CloseSocket();
 }
 
-bool VesControlProxy::SendCommand(int fd, char cmd) const {
-    return send(fd, &cmd, 1, MSG_NOSIGNAL) == 1;
+bool VesControlProxy::SendCommand(int fd, char cmd, const std::vector<uint8_t>& payload) const {
+    const uint32_t payloadSize = static_cast<uint32_t>(payload.size());
+    return send(fd, &cmd, 1, MSG_NOSIGNAL) == 1 &&
+           SendAll(fd, &payloadSize, sizeof(payloadSize)) &&
+           (payload.empty() || SendAll(fd, payload.data(), payload.size()));
+}
+
+MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_t>* payload,
+                                                      int timeoutMs) const {
+    if (payload == nullptr) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+    if (timeoutMs > 0) {
+        pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLIN | POLLHUP | POLLERR;
+        const int pollResult = poll(&pfd, 1, timeoutMs);
+        if (pollResult <= 0) {
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+    }
+
+    uint32_t replySize = 0;
+    if (!RecvAll(fd, &replySize, sizeof(replySize))) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+    payload->resize(replySize);
+    if (replySize > 0 && !RecvAll(fd, payload->data(), payload->size())) {
+        payload->clear();
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+    return MemRpc::StatusCode::Ok;
 }
 
 MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(MemRpc::BootstrapHandles& handles) {
@@ -125,6 +201,9 @@ bool VesControlProxy::IsPeerDisconnected() const {
 }
 
 void VesControlProxy::NotifyPeerDisconnected() {
+    if (stop_monitor_.load()) {
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(callbackMutex_);
         if (deathCallback_) {
@@ -173,30 +252,69 @@ MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& repl
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
-    if (timeoutMs > 0) {
-        pollfd pfd{};
-        pfd.fd = hb_fd;
-        pfd.events = POLLIN | POLLHUP | POLLERR;
-        const int poll_result = poll(&pfd, 1, timeoutMs);
-        if (poll_result <= 0) {
-            close(hb_fd);
-            return MemRpc::StatusCode::PeerDisconnected;
-        }
-    }
-
-    VesHeartbeatReply buf{};
-    ssize_t n = recv(hb_fd, &buf, sizeof(buf), MSG_WAITALL);
+    std::vector<uint8_t> payload;
+    const MemRpc::StatusCode receiveStatus = ReceiveSizedReply(hb_fd, &payload, timeoutMs);
     close(hb_fd);
-
-    if (n != static_cast<ssize_t>(sizeof(buf))) {
+    if (receiveStatus != MemRpc::StatusCode::Ok) {
+        return receiveStatus;
+    }
+    if (payload.size() != sizeof(VesHeartbeatReply)) {
         return MemRpc::StatusCode::ProtocolMismatch;
     }
+    VesHeartbeatReply buf{};
+    std::memcpy(&buf, payload.data(), sizeof(buf));
     reply = buf;
     return MemRpc::StatusCode::Ok;
 }
 
 MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
     return HeartbeatWithTimeout(reply, DEFAULT_HEARTBEAT_TIMEOUT_MS);
+}
+
+MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
+                                            VesAnyCallReply& reply) {
+    AnyCallRequestHeader header{};
+    header.opcode = request.opcode;
+    header.flags = request.flags;
+    header.timeoutMs = request.timeoutMs;
+    header.payloadSize = static_cast<uint32_t>(request.payload.size());
+
+    std::vector<uint8_t> wire(sizeof(header) + request.payload.size());
+    std::memcpy(wire.data(), &header, sizeof(header));
+    if (!request.payload.empty()) {
+        std::memcpy(wire.data() + sizeof(header), request.payload.data(), request.payload.size());
+    }
+
+    int fd = ConnectToService(service_socket_path_);
+    if (fd < 0) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+    if (!SendCommand(fd, 4, wire)) {
+        close(fd);
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    std::vector<uint8_t> payload;
+    const MemRpc::StatusCode receiveStatus =
+        ReceiveSizedReply(fd, &payload, request.timeoutMs > 0 ? static_cast<int>(request.timeoutMs) : 0);
+    close(fd);
+    if (receiveStatus != MemRpc::StatusCode::Ok) {
+        return receiveStatus;
+    }
+    if (payload.size() < sizeof(AnyCallReplyHeader)) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+
+    AnyCallReplyHeader replyHeader{};
+    std::memcpy(&replyHeader, payload.data(), sizeof(replyHeader));
+    if (payload.size() != sizeof(replyHeader) + replyHeader.payloadSize) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    reply.status = static_cast<MemRpc::StatusCode>(replyHeader.status);
+    reply.errorCode = replyHeader.errorCode;
+    reply.payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)),
+                         payload.end());
+    return MemRpc::StatusCode::Ok;
 }
 
 void VesControlProxy::PublishHealthSnapshot(const VesHeartbeatReply& reply) {
@@ -271,6 +389,9 @@ void VesControlProxy::MonitorSocket() {
 
     while (!stop_monitor_) {
         const int poll_result = poll(&pfd, 1, 500);
+        if (stop_monitor_) {
+            break;
+        }
         if (poll_result <= 0 || !HasDisconnectSignal(pfd) || !IsPeerDisconnected()) {
             continue;
         }

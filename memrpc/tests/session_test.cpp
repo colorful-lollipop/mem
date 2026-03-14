@@ -45,7 +45,7 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
                       MAP_SHARED, corrupt_handles.shmFd, 0);
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<MemRpc::SharedMemoryHeader*>(region);
-  header->slotSize = 0;
+  header->maxRequestBytes = 0;
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
@@ -79,7 +79,7 @@ TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
   EXPECT_EQ(session.Attach(attach_handles), MemRpc::StatusCode::ProtocolMismatch);
 }
 
-TEST(SessionTest, DefaultsToFourKilobytePayloadLimits) {
+TEST(SessionTest, DefaultsToInlinePayloadLimits) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
   MemRpc::BootstrapHandles handles;
@@ -88,8 +88,8 @@ TEST(SessionTest, DefaultsToFourKilobytePayloadLimits) {
   MemRpc::Session session;
   ASSERT_EQ(session.Attach(handles), MemRpc::StatusCode::Ok);
   ASSERT_NE(session.Header(), nullptr);
-  EXPECT_EQ(session.Header()->maxRequestBytes, 4096u);
-  EXPECT_EQ(session.Header()->maxResponseBytes, 4096u);
+  EXPECT_EQ(session.Header()->maxRequestBytes, MemRpc::DEFAULT_MAX_REQUEST_BYTES);
+  EXPECT_EQ(session.Header()->maxResponseBytes, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
 }
 
 TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
@@ -114,13 +114,10 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
 
   MemRpc::RequestRingEntry first;
   first.requestId = 1;
-  first.slotIndex = 0;
   MemRpc::RequestRingEntry second;
   second.requestId = 2;
-  second.slotIndex = 1;
   MemRpc::RequestRingEntry third;
   third.requestId = 3;
-  third.slotIndex = 0;
 
   ASSERT_EQ(client_session.PushRequest(MemRpc::QueueKind::NormalRequest, first),
             MemRpc::StatusCode::Ok);
@@ -194,7 +191,7 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
 }
 
-TEST(SessionTest, RequestPayloadLimitMustBePayloadAligned) {
+TEST(SessionTest, RequestPayloadLimitCannotExceedInlineQueueCapacity) {
   MemRpc::DevBootstrapConfig config;
   config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
 
@@ -203,16 +200,17 @@ TEST(SessionTest, RequestPayloadLimitMustBePayloadAligned) {
   EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
 }
 
-TEST(SessionTest, ResponsePayloadLimitMustBePayloadAligned) {
+TEST(SessionTest, ResponsePayloadLimitCanBeSmallerThanDefault) {
   MemRpc::DevBootstrapConfig config;
   config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES - 1;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-  MemRpc::BootstrapHandles invalid_handles;
-  EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
+  MemRpc::BootstrapHandles handles;
+  EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
+  CloseHandles(handles);
 }
 
-TEST(SessionTest, AttachRejectsUnalignedPayloadLimitsInHeader) {
+TEST(SessionTest, AttachRejectsOversizedPayloadLimitsInHeader) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
   MemRpc::BootstrapHandles corrupt_handles;
@@ -225,8 +223,6 @@ TEST(SessionTest, AttachRejectsUnalignedPayloadLimitsInHeader) {
   ASSERT_NE(region, MAP_FAILED);
   auto* header = static_cast<MemRpc::SharedMemoryHeader*>(region);
   header->maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
-  header->slotSize =
-      MemRpc::ComputeSlotSize(header->maxRequestBytes, header->maxResponseBytes);
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
@@ -254,12 +250,10 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
 
   MemRpc::RequestRingEntry first;
   first.requestId = 1;
-  first.slotIndex = 0;
   EXPECT_EQ(session.PushRequest(MemRpc::QueueKind::NormalRequest, first), MemRpc::StatusCode::Ok);
 
   MemRpc::RequestRingEntry second;
   second.requestId = 2;
-  second.slotIndex = 0;
   EXPECT_EQ(session.PushRequest(MemRpc::QueueKind::NormalRequest, second),
             MemRpc::StatusCode::QueueFull);
 }
@@ -296,7 +290,7 @@ TEST(SessionTest, AllowsNextClientAttachAfterReset) {
   EXPECT_EQ(second_session.Attach(second_handles), MemRpc::StatusCode::Ok);
 }
 
-TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
+TEST(SessionTest, RequestEntriesExposeInlinePayloadStorage) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
   MemRpc::BootstrapHandles handles;
@@ -305,19 +299,21 @@ TEST(SessionTest, SlotRuntimeStateDefaultsAreZeroed) {
   MemRpc::Session session;
   ASSERT_EQ(session.Attach(handles), MemRpc::StatusCode::Ok);
 
-  const MemRpc::SlotPayload* slot = session.GetSlotPayload(0);
-  ASSERT_NE(slot, nullptr);
-  EXPECT_EQ(slot->runtime.requestId, 0u);
-  EXPECT_EQ(slot->runtime.state, MemRpc::SlotRuntimeStateCode::Free);
-  EXPECT_EQ(slot->runtime.workerId, 0u);
-  EXPECT_EQ(slot->runtime.enqueueMonoMs, 0u);
-  EXPECT_EQ(slot->runtime.startExecMonoMs, 0u);
-  EXPECT_EQ(slot->runtime.lastHeartbeatMonoMs, 0u);
+  MemRpc::RequestRingEntry request;
+  request.requestId = 55;
+  request.payloadSize = 3;
+  request.payload[0] = 1;
+  request.payload[1] = 2;
+  request.payload[2] = 3;
+  ASSERT_EQ(session.PushRequest(MemRpc::QueueKind::NormalRequest, request), MemRpc::StatusCode::Ok);
 
-  const MemRpc::ResponseSlotPayload* response_slot = session.GetResponseSlotPayload(0);
-  ASSERT_NE(response_slot, nullptr);
-  EXPECT_EQ(response_slot->runtime.requestId, 0u);
-  EXPECT_EQ(response_slot->runtime.state, MemRpc::SlotRuntimeStateCode::Free);
+  MemRpc::RequestRingEntry observed;
+  ASSERT_TRUE(session.PopRequest(MemRpc::QueueKind::NormalRequest, &observed));
+  EXPECT_EQ(observed.requestId, 55u);
+  ASSERT_EQ(observed.payloadSize, 3u);
+  EXPECT_EQ(observed.payload[0], 1u);
+  EXPECT_EQ(observed.payload[1], 2u);
+  EXPECT_EQ(observed.payload[2], 3u);
 }
 
 TEST(SessionTest, AttachPreservesCreditEventFds) {

@@ -48,6 +48,7 @@ enum class StatusCode : uint8_t {
   CrashedDuringExecution,
   CooldownActive,
   ClientClosed,
+  PayloadTooLarge,
 };
 
 struct ScanResult {

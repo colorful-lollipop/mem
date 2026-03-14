@@ -14,7 +14,6 @@ namespace MemRpc {
 namespace {
 
 constexpr uint32_t MAX_RING_ENTRIES = 1U << 20;
-constexpr uint32_t MAX_SLOT_COUNT = 1U << 20;
 constexpr long LOCK_TIMEOUT_NS = 100L * 1000L * 1000L;
 constexpr long NS_PER_SECOND = 1000L * 1000L * 1000L;
 
@@ -81,15 +80,8 @@ bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
   if (config.responseRingSize == 0 || config.responseRingSize > MAX_RING_ENTRIES) {
     return false;
   }
-  if (config.slotCount == 0 || config.slotCount > MAX_SLOT_COUNT) {
-    return false;
-  }
   if (config.maxRequestBytes == 0 || config.maxResponseBytes == 0 ||
-      !HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes) ||
-      config.maxResponseBytes > DEFAULT_MAX_RESPONSE_BYTES) {
-    return false;
-  }
-  if (config.slotSize != ComputeSlotSize(config.maxRequestBytes, config.maxResponseBytes)) {
+      !HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes)) {
     return false;
   }
 
@@ -153,8 +145,6 @@ StatusCode Session::MapAndValidateHeader(int shmFd) {
   config.highRingSize = 32;
   config.normalRingSize = 32;
   config.responseRingSize = 64;
-  config.slotCount = 64;
-  config.slotSize = ComputeSlotSize(DEFAULT_MAX_REQUEST_BYTES, DEFAULT_MAX_RESPONSE_BYTES);
   config.maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   config.maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
 
@@ -186,8 +176,6 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
   config.highRingSize = header_->highRingSize;
   config.normalRingSize = header_->normalRingSize;
   config.responseRingSize = header_->responseRingSize;
-  config.slotCount = header_->slotCount;
-  config.slotSize = header_->slotSize;
   config.maxRequestBytes = header_->maxRequestBytes;
   config.maxResponseBytes = header_->maxResponseBytes;
   if (!ValidateLayoutConfig(config, static_cast<std::size_t>(file_stat.st_size)) ||
@@ -331,75 +319,6 @@ void Session::SetState(SessionState state) {
   }
 }
 
-SlotPayload* Session::GetSlotPayload(uint32_t slot_index) {
-  if (header_ == nullptr || slot_index >= header_->slotCount) {
-    return nullptr;
-  }
-  LayoutConfig config{header_->highRingSize,
-                      header_->normalRingSize,
-                      header_->responseRingSize,
-                      header_->slotCount,
-                      header_->slotSize,
-                      header_->maxRequestBytes,
-                      header_->maxResponseBytes};
-  Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mappedRegion_);
-  return reinterpret_cast<SlotPayload*>(base + layout.slotPoolOffset +
-                                        static_cast<std::size_t>(slot_index) * header_->slotSize);
-}
-
-uint8_t* Session::GetSlotRequestBytes(uint32_t slot_index) {
-  SlotPayload* payload = GetSlotPayload(slot_index);
-  if (payload == nullptr) {
-    return nullptr;
-  }
-  auto* base = reinterpret_cast<uint8_t*>(payload);
-  return base + sizeof(SlotPayload);
-}
-
-ResponseSlotPayload* Session::GetResponseSlotPayload(uint32_t slot_index) {
-  if (header_ == nullptr || slot_index >= header_->responseRingSize) {
-    return nullptr;
-  }
-  LayoutConfig config{header_->highRingSize,
-                      header_->normalRingSize,
-                      header_->responseRingSize,
-                      header_->slotCount,
-                      header_->slotSize,
-                      header_->maxRequestBytes,
-                      header_->maxResponseBytes};
-  Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mappedRegion_);
-  return reinterpret_cast<ResponseSlotPayload*>(
-      base + layout.responseSlotsOffset +
-      static_cast<std::size_t>(slot_index) * ComputeResponseSlotSize(header_->maxResponseBytes));
-}
-
-uint8_t* Session::GetResponseSlotBytes(uint32_t slot_index) {
-  ResponseSlotPayload* payload = GetResponseSlotPayload(slot_index);
-  if (payload == nullptr) {
-    return nullptr;
-  }
-  auto* base = reinterpret_cast<uint8_t*>(payload);
-  return base + sizeof(ResponseSlotPayload);
-}
-
-void* Session::GetResponseSlotPoolRegion() {
-  if (header_ == nullptr || mappedRegion_ == nullptr) {
-    return nullptr;
-  }
-  LayoutConfig config{header_->highRingSize,
-                      header_->normalRingSize,
-                      header_->responseRingSize,
-                      header_->slotCount,
-                      header_->slotSize,
-                      header_->maxRequestBytes,
-                      header_->maxResponseBytes};
-  Layout layout = ComputeLayout(config);
-  auto* base = static_cast<std::byte*>(mappedRegion_);
-  return base + layout.responseSlotPoolOffset;
-}
-
 StatusCode Session::PushRequest(QueueKind queue, const RequestRingEntry& entry) {
   return PushRingEntry<RequestRingEntry>(ResolveRing(queue), entry);
 }
@@ -423,8 +342,6 @@ Session::RingAccess Session::ResolveRing(QueueKind queue) {
   LayoutConfig config{header_->highRingSize,
                       header_->normalRingSize,
                       header_->responseRingSize,
-                      header_->slotCount,
-                      header_->slotSize,
                       header_->maxRequestBytes,
                       header_->maxResponseBytes};
   Layout layout = ComputeLayout(config);

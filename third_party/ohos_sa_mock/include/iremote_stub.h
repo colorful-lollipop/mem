@@ -17,9 +17,10 @@ class IRemoteStub : public T {
     }
   }
 
-  virtual bool OnRemoteRequest(int command, MockIpcReply* reply)
+  virtual bool OnRemoteRequest(int command, const MockIpcRequest& request, MockIpcReply* reply)
   {
     static_cast<void>(command);
+    static_cast<void>(request);
     static_cast<void>(reply);
     return false;
   }
@@ -34,12 +35,13 @@ class IRemoteStub : public T {
           std::dynamic_pointer_cast<IRemoteStub<T>>(RefBase::shared_from_this());
       wptr<IRemoteStub<T>> weak_self = self;
       remote_->AttachBroker(broker);
-      remote_->SetRequestHandler([weak_self](int cmd, MockIpcReply* reply) {
+      remote_->SetRequestHandler([weak_self](int cmd, const MockIpcRequest& request,
+                                             MockIpcReply* reply) {
         auto self = weak_self.lock();
         if (self == nullptr) {
           return false;
         }
-        return self->OnRemoteRequest(cmd, reply);
+        return self->OnRemoteRequest(cmd, request, reply);
       });
     }
     return remote_;

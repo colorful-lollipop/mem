@@ -136,7 +136,7 @@ void IRemoteObject::SetRequestHandler(RemoteRequestHandler handler)
   impl_->request_handler = std::move(handler);
 }
 
-bool IRemoteObject::HandleRequest(int command, MockIpcReply* reply)
+bool IRemoteObject::HandleRequest(int command, const MockIpcRequest& request, MockIpcReply* reply)
 {
   if (impl_ == nullptr) {
     return false;
@@ -149,7 +149,7 @@ bool IRemoteObject::HandleRequest(int command, MockIpcReply* reply)
   if (!handler) {
     return false;
   }
-  return handler(command, reply);
+  return handler(command, request, reply);
 }
 
 }  // namespace OHOS

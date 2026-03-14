@@ -11,7 +11,8 @@ namespace OHOS {
 
 class IRemoteBroker;
 
-using RemoteRequestHandler = std::function<bool(int command, MockIpcReply* reply)>;
+using RemoteRequestHandler = std::function<bool(int command, const MockIpcRequest& request,
+                                                MockIpcReply* reply)>;
 
 class IRemoteObject : public RefBase {
  public:
@@ -37,7 +38,7 @@ class IRemoteObject : public RefBase {
   std::string GetServicePath() const;
 
   void SetRequestHandler(RemoteRequestHandler handler);
-  bool HandleRequest(int command, MockIpcReply* reply);
+  bool HandleRequest(int command, const MockIpcRequest& request, MockIpcReply* reply);
 
  private:
   class Impl;

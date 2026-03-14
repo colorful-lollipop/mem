@@ -6,6 +6,9 @@
 #include <vector>
 
 #include "iservice_registry.h"
+#include "memrpc/core/codec.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
 #include "virus_protection_service_log.h"
 
 namespace VirusExecutorService {
@@ -63,36 +66,14 @@ MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& h
 
 MemRpc::StatusCode VirusExecutorService::CloseSession() {
     std::shared_ptr<EngineSessionService> sessionService;
-    bool shouldRequestUnload = false;
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
         sessionService = session_service_;
-        shouldRequestUnload = sessionService != nullptr &&
-                              !stopping_.load() &&
-                              !unloadRequested_ &&
-                              published_;
-        if (shouldRequestUnload) {
-            unloadRequested_ = true;
-        }
     }
     if (!sessionService) {
         return MemRpc::StatusCode::Ok;
     }
-    auto status = sessionService->CloseSession();
-
-    // After releasing session resources, trigger self-unload asynchronously.
-    // Must be async because the IPC caller is still waiting for our reply.
-    if (shouldRequestUnload) {
-        std::thread([sa_id = GetSystemAbilityId()]() {
-            HILOGI("requesting self-unload for sa_id=%{public}d", sa_id);
-            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-            if (sam != nullptr) {
-                sam->UnloadSystemAbility(sa_id);
-            }
-        }).detach();
-    }
-
-    return status;
+    return sessionService->CloseSession();
 }
 
 MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
@@ -128,6 +109,35 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
         return MemRpc::StatusCode::Ok;
     }
     PopulateHealthyReply(snapshot, sessionId, &reply);
+    return MemRpc::StatusCode::Ok;
+}
+
+MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& request,
+                                                 VesAnyCallReply& reply) {
+    reply = VesAnyCallReply{};
+    if (!service_.initialized()) {
+        reply.status = MemRpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    switch (static_cast<VesOpcode>(request.opcode)) {
+        case VesOpcode::ScanFile: {
+            ScanFileRequest scanRequest;
+            if (!MemRpc::DecodeMessage<ScanFileRequest>(request.payload, &scanRequest)) {
+                reply.status = MemRpc::StatusCode::ProtocolMismatch;
+                return MemRpc::StatusCode::Ok;
+            }
+            ScanFileReply scanReply = service_.ScanFile(scanRequest);
+            reply.status = MemRpc::StatusCode::Ok;
+            if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &reply.payload)) {
+                reply.status = MemRpc::StatusCode::EngineInternalError;
+                reply.payload.clear();
+            }
+            return MemRpc::StatusCode::Ok;
+        }
+    }
+
+    reply.status = MemRpc::StatusCode::InvalidArgument;
     return MemRpc::StatusCode::Ok;
 }
 

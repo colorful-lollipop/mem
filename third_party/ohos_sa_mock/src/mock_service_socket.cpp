@@ -1,5 +1,6 @@
 #include "mock_service_socket.h"
 
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <sys/socket.h>
@@ -9,6 +10,36 @@
 #include "scm_rights.h"
 
 namespace OHOS {
+
+namespace {
+
+bool RecvAll(int fd, void* buffer, size_t size) {
+    auto* bytes = static_cast<uint8_t*>(buffer);
+    size_t offset = 0;
+    while (offset < size) {
+        const ssize_t rc = recv(fd, bytes + offset, size - offset, 0);
+        if (rc <= 0) {
+            return false;
+        }
+        offset += static_cast<size_t>(rc);
+    }
+    return true;
+}
+
+bool SendAll(int fd, const void* buffer, size_t size) {
+    const auto* bytes = static_cast<const uint8_t*>(buffer);
+    size_t offset = 0;
+    while (offset < size) {
+        const ssize_t rc = send(fd, bytes + offset, size - offset, MSG_NOSIGNAL);
+        if (rc <= 0) {
+            return false;
+        }
+        offset += static_cast<size_t>(rc);
+    }
+    return true;
+}
+
+}  // namespace
 
 MockServiceSocket::~MockServiceSocket() {
     Stop();
@@ -104,6 +135,20 @@ void MockServiceSocket::AcceptLoop() {
             continue;
         }
 
+        uint32_t request_size = 0;
+        if (!RecvAll(client_fd, &request_size, sizeof(request_size))) {
+            close(client_fd);
+            continue;
+        }
+
+        MockIpcRequest request{};
+        request.data.resize(request_size);
+        if (request_size > 0 &&
+            !RecvAll(client_fd, request.data.data(), request.data.size())) {
+            close(client_fd);
+            continue;
+        }
+
         // Dispatch to handler.
         MockIpcReply reply{};
         MockIpcHandler handler;
@@ -111,7 +156,7 @@ void MockServiceSocket::AcceptLoop() {
             std::lock_guard<std::mutex> lock(mutex_);
             handler = handler_;
         }
-        if (!handler || !handler(static_cast<int>(cmd), &reply)) {
+        if (!handler || !handler(static_cast<int>(cmd), request, &reply)) {
             close(client_fd);
             continue;
         }
@@ -119,11 +164,16 @@ void MockServiceSocket::AcceptLoop() {
         // Send fds + data via SCM_RIGHTS, or data-only reply.
         if (reply.fd_count > 0) {
             if (!SendFds(client_fd, reply.fds, reply.fd_count,
-                         reply.data, reply.data_len)) {
+                         reply.data.data(), reply.data.size())) {
                 std::cerr << "[MockServiceSocket] failed to send fds" << std::endl;
             }
-        } else if (reply.data_len > 0) {
-            send(client_fd, reply.data, reply.data_len, MSG_NOSIGNAL);
+        } else {
+            const uint32_t reply_size = static_cast<uint32_t>(reply.data.size());
+            if (!SendAll(client_fd, &reply_size, sizeof(reply_size)) ||
+                (reply_size > 0 &&
+                 !SendAll(client_fd, reply.data.data(), reply.data.size()))) {
+                std::cerr << "[MockServiceSocket] failed to send data reply" << std::endl;
+            }
         }
 
         if (reply.close_after_reply) {

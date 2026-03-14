@@ -102,6 +102,7 @@ struct DevBootstrapChannel::Impl {
     return config.maxRequestBytes != 0 &&
            config.maxResponseBytes != 0 &&
            HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes) &&
+           config.maxRequestBytes <= DEFAULT_MAX_REQUEST_BYTES &&
            config.maxResponseBytes <= DEFAULT_MAX_RESPONSE_BYTES;
   }
 
@@ -109,9 +110,6 @@ struct DevBootstrapChannel::Impl {
     const LayoutConfig layout_config{config.highRingSize,
                                      config.normalRingSize,
                                      config.responseRingSize,
-                                     config.slotCount,
-                                     ComputeSlotSize(config.maxRequestBytes,
-                                                     config.maxResponseBytes),
                                      config.maxRequestBytes,
                                      config.maxResponseBytes};
     return ComputeLayout(layout_config);
@@ -125,18 +123,11 @@ struct DevBootstrapChannel::Impl {
     header->highRingSize = config.highRingSize;
     header->normalRingSize = config.normalRingSize;
     header->responseRingSize = config.responseRingSize;
-    header->slotCount = config.slotCount;
-    header->slotSize = ComputeSlotSize(config.maxRequestBytes, config.maxResponseBytes);
     header->maxRequestBytes = config.maxRequestBytes;
     header->maxResponseBytes = config.maxResponseBytes;
     header->highRing.capacity = config.highRingSize;
     header->normalRing.capacity = config.normalRingSize;
     header->responseRing.capacity = config.responseRingSize;
-  }
-
-  static void* ResponseSlotPoolRegion(void* region, const Layout& layout) {
-    auto* bytes = static_cast<uint8_t*>(region);
-    return std::next(bytes, static_cast<std::ptrdiff_t>(layout.responseSlotPoolOffset));
   }
 
   StatusCode InitializeSharedMemory(int shmFd, uint64_t* out_session_id) const {
@@ -156,9 +147,7 @@ struct DevBootstrapChannel::Impl {
     auto* header = static_cast<SharedMemoryHeader*>(region);
     PopulateHeader(header);
     *out_session_id = header->sessionId;
-    if (!InitMutex(&header->clientStateMutex) ||
-        !InitializeSharedSlotPool(ResponseSlotPoolRegion(region, layout),
-                                  config.responseRingSize)) {
+    if (!InitMutex(&header->clientStateMutex)) {
       HILOGE("InitMutex failed");
       munmap(region, layout.totalSize);
       return StatusCode::EngineInternalError;

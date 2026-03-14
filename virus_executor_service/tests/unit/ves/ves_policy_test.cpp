@@ -13,6 +13,7 @@
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
 #include "service/virus_executor_service.h"
+#include "iservice_registry.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
@@ -57,6 +58,14 @@ void CloseHandles(MemRpc::BootstrapHandles& handles)
     }
 }
 
+void UnloadControlService()
+{
+    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    if (sam != nullptr) {
+        (void)sam->UnloadSystemAbility(VES_CONTROL_SA_ID);
+    }
+}
+
 class FakeHealthControlService final : public OHOS::SystemAbility,
                                        public VesControlStub {
  public:
@@ -93,6 +102,11 @@ class FakeHealthControlService final : public OHOS::SystemAbility,
             reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
         }
         return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    {
+        return MemRpc::StatusCode::InvalidArgument;
     }
 
     void OnStart() override {}
@@ -198,6 +212,7 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
 }
 
 TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
+    UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_idle_policy_" + std::to_string(getpid()) + ".sock";
 
@@ -238,9 +253,11 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
 
     client.Shutdown();
     service->OnStop();
+    UnloadControlService();
 }
 
 TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
+    UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_watchdog_policy_" + std::to_string(getpid()) + ".sock";
 
@@ -286,6 +303,7 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     client.Shutdown();
     server.Stop();
     service->OnStop();
+    UnloadControlService();
 }
 
 }  // namespace VirusExecutorService
