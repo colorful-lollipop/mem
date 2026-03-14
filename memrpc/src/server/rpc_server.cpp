@@ -37,6 +37,7 @@ uint32_t CurrentWorkerId() {
 
 constexpr auto RESPONSE_RETRY_BUDGET = std::chrono::milliseconds(50);
 constexpr auto EVENT_RETRY_BUDGET = std::chrono::milliseconds(10);
+constexpr uint32_t DEFAULT_EXECUTION_HEARTBEAT_INTERVAL_MS = 25;
 
 class ThreadPoolExecutor final : public TaskExecutor {
  public:
@@ -161,6 +162,13 @@ struct RpcServer::Impl {
   std::mutex executingSlotsMutex;
   std::unordered_set<uint32_t> executingSlots;
 
+  [[nodiscard]] std::chrono::milliseconds ExecutionHeartbeatInterval() const {
+    const uint32_t configured_ms = options.executionHeartbeatIntervalMs;
+    return std::chrono::milliseconds(configured_ms == 0
+                                         ? DEFAULT_EXECUTION_HEARTBEAT_INTERVAL_MS
+                                         : configured_ms);
+  }
+
   void RegisterExecutingSlot(uint32_t request_slot_index) {
     std::lock_guard<std::mutex> lock(executingSlotsMutex);
     executingSlots.insert(request_slot_index);
@@ -184,9 +192,9 @@ struct RpcServer::Impl {
   }
 
   void ExecutionHeartbeatLoop() {
-    constexpr auto HEARTBEAT_INTERVAL = std::chrono::milliseconds(25);
+    const auto heartbeat_interval = ExecutionHeartbeatInterval();
     while (running.load(std::memory_order_acquire)) {
-      std::this_thread::sleep_for(HEARTBEAT_INTERVAL);
+      std::this_thread::sleep_for(heartbeat_interval);
       if (!running.load(std::memory_order_acquire)) {
         break;
       }

@@ -324,7 +324,9 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionAdvancesRuntimeHeartbeatB
   ASSERT_EQ(inspectSession.Attach(inspectHandles, MemRpc::Session::AttachRole::Server),
             MemRpc::StatusCode::Ok);
 
-  MemRpc::RpcServer server;
+  MemRpc::ServerOptions options;
+  options.executionHeartbeatIntervalMs = 10;
+  MemRpc::RpcServer server({}, options);
   server.SetBootstrapHandles(bootstrap->serverHandles());
   server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
