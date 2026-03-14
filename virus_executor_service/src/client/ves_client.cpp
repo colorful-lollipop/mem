@@ -3,7 +3,7 @@
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
 #include "virus_protection_service_log.h"
@@ -20,30 +20,29 @@ VesClient::~VesClient() = default;
 
 void VesClient::RegisterProxyFactory() {
     OHOS::BrokerRegistration::GetInstance().Register(
-        VES_SA_ID,
+        VES_CONTROL_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
             std::string servicePath = remote->GetServicePath();
-            return std::make_shared<VesBootstrapProxy>(remote, servicePath);
+            return std::make_shared<VesControlProxy>(remote, servicePath);
         });
 }
 
 MemRpc::StatusCode VesClient::Init() {
     // Use iface_cast to get the proxy (BrokerRegistration creates it for cross-process).
-    auto bootstrap = OHOS::iface_cast<IVesBootstrap>(remote_);
+    auto bootstrap = OHOS::iface_cast<IVesControl>(remote_);
     if (bootstrap == nullptr) {
-        HILOGE("iface_cast<IVesBootstrap> failed");
+        HILOGE("iface_cast<IVesControl> failed");
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    // Alias shared_ptr to use VesBootstrapProxy as IBootstrapChannel.
-    proxy_ = std::dynamic_pointer_cast<VesBootstrapProxy>(bootstrap);
+    proxy_ = std::dynamic_pointer_cast<VesControlProxy>(bootstrap);
     if (proxy_ == nullptr) {
-        HILOGE("dynamic_pointer_cast to VesBootstrapProxy failed");
+        HILOGE("dynamic_pointer_cast to VesControlProxy failed");
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    // Set the bootstrap channel on the RpcClient.
-    client_.SetBootstrapChannel(std::static_pointer_cast<MemRpc::IBootstrapChannel>(proxy_));
+    bootstrapChannel_ = std::make_shared<VesControlChannelAdapter>(proxy_);
+    client_.SetBootstrapChannel(bootstrapChannel_);
 
     MemRpc::RecoveryPolicy policy;
     policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const MemRpc::RpcFailure& failure) {

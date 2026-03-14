@@ -5,7 +5,7 @@
 #include <mutex>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
 #include "memrpc/server/rpc_server.h"
@@ -33,7 +33,7 @@ class EngineSessionService final : public VesSessionProvider {
     MemRpc::StatusCode EnsureInitialized();
 
     std::vector<RpcHandlerRegistrar*> registrars_;
-    std::shared_ptr<MemRpc::PosixDemoBootstrapChannel> bootstrap_;
+    std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
     std::unique_ptr<MemRpc::RpcServer> rpcServer_;
     std::mutex initMutex_;
     bool initialized_ = false;

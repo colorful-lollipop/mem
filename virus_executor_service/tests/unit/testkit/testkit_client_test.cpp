@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_async_client.h"
@@ -54,8 +54,8 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     _exit(0);
 }
 
-std::shared_ptr<MemRpc::PosixDemoBootstrapChannel> CreateBootstrap() {
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(&handles);

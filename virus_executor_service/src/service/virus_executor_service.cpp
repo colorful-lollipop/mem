@@ -20,7 +20,7 @@ bool IsTestkitFaultInjectionEnabled() {
 }  // namespace
 
 VirusExecutorService::VirusExecutorService()
-    : OHOS::SystemAbility(VES_SA_ID, true) {}
+    : OHOS::SystemAbility(VES_CONTROL_SA_ID, true) {}
 
 MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& handles) {
     if (!session_service_) {

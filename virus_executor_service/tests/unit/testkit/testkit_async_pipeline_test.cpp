@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_async_client.h"
 #include "testkit/testkit_client.h"
@@ -51,7 +51,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
     const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);

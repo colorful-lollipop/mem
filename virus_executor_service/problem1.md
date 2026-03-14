@@ -47,6 +47,6 @@ EngineSessionService initialized
 ## 相关文件
 
 - `src/client/rpc_client.cpp` — `RestartAfterDeath`, `EnsureLiveSession`, `HandleEngineDeath`
-- `virus_executor_service/src/transport/ves_bootstrap_proxy.cpp` — `OpenSession` reconnect 清理逻辑
+- `virus_executor_service/src/transport/ves_control_proxy.cpp` — `OpenSession` reconnect 清理逻辑
 - `virus_executor_service/src/client/ves_client.cpp` — `SetEngineDeathHandler`, restart callback
 - `virus_executor_service/src/app/ves_dt_crash_recovery_main.cpp` — DT 复现用例

@@ -1,12 +1,12 @@
-#ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_STUB_H_
-#define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_STUB_H_
+#ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_STUB_H_
+#define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_STUB_H_
 
 #include <cstring>
 
 #include "iremote_stub.h"
 #include "mock_ipc_types.h"
 #include "memrpc/core/bootstrap.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 
 namespace VirusExecutorService {
 
@@ -19,7 +19,7 @@ struct SessionMetadata {
 
 }  // namespace
 
-class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
+class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
  public:
     bool OnRemoteRequest(int command, OHOS::MockIpcReply* reply) override {
         switch (command) {
@@ -65,4 +65,4 @@ class VesBootstrapStub : public OHOS::IRemoteStub<IVesBootstrap> {
 
 }  // namespace VirusExecutorService
 
-#endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_STUB_H_
+#endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_STUB_H_

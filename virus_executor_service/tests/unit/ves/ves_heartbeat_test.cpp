@@ -6,11 +6,11 @@
 #include <unistd.h>
 
 #include "service/virus_executor_service.h"
-#include "transport/ves_bootstrap_interface.h"
-#include "transport/ves_bootstrap_proxy.h"
+#include "transport/ves_control_interface.h"
+#include "transport/ves_control_proxy.h"
 #include "ves/ves_types.h"
 
-namespace virus_executor_service {
+namespace VirusExecutorService {
 
 TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
     VirusExecutorService service;
@@ -52,7 +52,7 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    VesBootstrapProxy proxy(stub->AsObject(), socketPath);
+    VesControlProxy proxy(stub->AsObject(), socketPath);
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
@@ -75,7 +75,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        virus_executor_service::ScanFileRequest req;
+        ScanFileRequest req;
         req.filePath = "/data/sleep50.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
@@ -95,4 +95,4 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     service.OnStop();
 }
 
-}  // namespace virus_executor_service
+}  // namespace VirusExecutorService

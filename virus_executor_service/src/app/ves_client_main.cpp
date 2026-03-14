@@ -5,7 +5,7 @@
 
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 #include "client/ves_client.h"
 #include "virus_protection_service_log.h"
 
@@ -16,13 +16,13 @@ constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
 std::unique_ptr<VirusExecutorService::VesClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->GetSystemAbility(VirusExecutorService::VES_SA_ID);
+    auto remote = sam->GetSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
     if (remote == nullptr) {
         // Service not registered yet; try LoadSystemAbility.
-        remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
+        remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
     }
     if (remote == nullptr) {
-        HILOGE("ConnectToEngine failed for saId=%{public}d", VirusExecutorService::VES_SA_ID);
+        HILOGE("ConnectToEngine failed for saId=%{public}d", VirusExecutorService::VES_CONTROL_SA_ID);
         return nullptr;
     }
 
@@ -37,11 +37,11 @@ std::unique_ptr<VirusExecutorService::VesClient> ConnectToEngine() {
 std::unique_ptr<VirusExecutorService::VesClient> LoadAndConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
 
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
     if (remote == nullptr) {
         // Retry once after a delay.
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, LOAD_TIMEOUT_MS);
+        remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
     }
 
     if (remote == nullptr) {
@@ -89,7 +89,7 @@ int main() {
     // Request engine unload (triggers death callback via RecoveryPolicy).
     HILOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    sam->UnloadSystemAbility(VirusExecutorService::VES_SA_ID);
+    sam->UnloadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     HILOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");

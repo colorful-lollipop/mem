@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -231,7 +231,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     const int threadCount = std::max(1, config.threads);
     const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     if (bootstrap->OpenSession(handles) != MemRpc::StatusCode::Ok) {
         for (const auto kind : kinds) {

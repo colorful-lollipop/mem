@@ -8,7 +8,7 @@
 
 #include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
-#include "transport/ves_bootstrap_proxy.h"
+#include "transport/ves_control_proxy.h"
 #include "ves/ves_types.h"
 
 namespace VirusExecutorService {
@@ -42,7 +42,8 @@ class VesClient {
 
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;
-    std::shared_ptr<VesBootstrapProxy> proxy_;
+    std::shared_ptr<VesControlProxy> proxy_;
+    std::shared_ptr<MemRpc::IBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
     std::atomic<bool> engineDied_{false};

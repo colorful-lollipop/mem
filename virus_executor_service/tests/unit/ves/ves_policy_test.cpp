@@ -4,7 +4,7 @@
 #include <chrono>
 #include <thread>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
@@ -15,7 +15,7 @@
 namespace virus_executor_service {
 
 TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unused{};
     ASSERT_EQ(bootstrap->OpenSession(unused), MemRpc::StatusCode::Ok);
 

@@ -5,7 +5,7 @@
 #include <thread>
 #include <unistd.h>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -27,7 +27,7 @@ void CloseHandles(MemRpc::BootstrapHandles& h) {
 namespace MemRpc {
 
 TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
-  auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
   BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
@@ -64,7 +64,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
 }
 
 TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
-  auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
   BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);

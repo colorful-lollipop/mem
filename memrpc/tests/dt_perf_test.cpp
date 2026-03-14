@@ -15,7 +15,7 @@
 #include <vector>
 #include <unistd.h>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -126,7 +126,7 @@ TEST(DtPerfTest, ShortPerfBaseline) {
   const int max_p99_us = GetEnvInt("MEMRPC_DT_MAX_P99_US", 20000);
   const uint32_t threadCount = GetThreadCount();
 
-  auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
   MemRpc::BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);

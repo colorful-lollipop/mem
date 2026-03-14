@@ -22,7 +22,7 @@ if (NOT TARGET memrpc_core)
   add_library(memrpc_core
       ${MEMRPC_MODULE_ROOT}/src/client/rpc_client.cpp
       ${MEMRPC_MODULE_ROOT}/src/server/rpc_server.cpp
-      ${MEMRPC_MODULE_ROOT}/src/bootstrap/posix_demo_bootstrap.cpp
+      ${MEMRPC_MODULE_ROOT}/src/bootstrap/dev_bootstrap.cpp
       ${MEMRPC_MODULE_ROOT}/src/bootstrap/sa_bootstrap.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_reader.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_writer.cpp
@@ -67,7 +67,7 @@ add_library(virus_executor_service_transport
     src/transport/registry_server.cpp
     src/transport/registry_client.cpp
     src/transport/registry_backend.cpp
-    src/transport/ves_bootstrap_proxy.cpp
+    src/transport/ves_control_proxy.cpp
 )
 target_include_directories(virus_executor_service_transport PUBLIC
     ${VIRUS_EXECUTOR_SERVICE_PUBLIC_INCLUDE_DIRS}

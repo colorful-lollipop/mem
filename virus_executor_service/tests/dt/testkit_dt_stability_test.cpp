@@ -11,7 +11,7 @@
 #include <vector>
 #include <unistd.h>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -55,7 +55,7 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
     const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
     const uint32_t threadCount = GetThreadCount();
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);

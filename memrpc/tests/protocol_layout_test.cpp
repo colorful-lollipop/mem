@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/protocol.h"
 #include "core/shm_layout.h"
 
@@ -31,7 +31,7 @@ TEST(ProtocolLayoutTest, SlotSizeOnlyDependsOnRequestArea) {
 }
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {
-  MemRpc::DemoBootstrapConfig config;
+  MemRpc::DevBootstrapConfig config;
   EXPECT_EQ(config.highRingSize, 32U);
   EXPECT_EQ(config.normalRingSize, 32U);
   EXPECT_EQ(config.responseRingSize, 64U);

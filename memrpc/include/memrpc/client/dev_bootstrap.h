@@ -1,5 +1,5 @@
-#ifndef MEMRPC_CLIENT_DEMO_BOOTSTRAP_H_
-#define MEMRPC_CLIENT_DEMO_BOOTSTRAP_H_
+#ifndef MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
+#define MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
 
 #include <memory>
 #include <string>
@@ -9,7 +9,7 @@
 
 namespace MemRpc {
 
-struct DemoBootstrapConfig {
+struct DevBootstrapConfig {
   uint32_t highRingSize = 32;
   uint32_t normalRingSize = 32;
   uint32_t responseRingSize = 64;
@@ -19,10 +19,10 @@ struct DemoBootstrapConfig {
   std::string shmName;
 };
 
-class PosixDemoBootstrapChannel : public IBootstrapChannel {
+class DevBootstrapChannel : public IBootstrapChannel {
  public:
-  explicit PosixDemoBootstrapChannel(DemoBootstrapConfig config = {});
-  ~PosixDemoBootstrapChannel() override;
+  explicit DevBootstrapChannel(DevBootstrapConfig config = {});
+  ~DevBootstrapChannel() override;
 
   StatusCode OpenSession(BootstrapHandles& handles) override;
   StatusCode CloseSession() override;
@@ -42,4 +42,4 @@ namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
 }  // namespace OHOS::Security::VirusProtectionService
 
-#endif  // MEMRPC_CLIENT_DEMO_BOOTSTRAP_H_
+#endif  // MEMRPC_CLIENT_DEV_BOOTSTRAP_H_

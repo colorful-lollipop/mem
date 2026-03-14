@@ -1,5 +1,5 @@
-#ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_INTERFACE_H_
-#define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_INTERFACE_H_
+#ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_INTERFACE_H_
+#define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_INTERFACE_H_
 
 #include <cstdint>
 #include <cstring>
@@ -9,7 +9,7 @@
 
 namespace VirusExecutorService {
 
-constexpr int32_t VES_SA_ID = 1251;
+constexpr int32_t VES_CONTROL_SA_ID = 1251;
 
 enum class VesHeartbeatStatus : uint32_t {
     Ok = 0,
@@ -26,9 +26,9 @@ struct VesHeartbeatReply {
     uint32_t reserved[4] = {};
 };
 
-class IVesBootstrap : public OHOS::IRemoteBroker {
+class IVesControl : public OHOS::IRemoteBroker {
  public:
-    ~IVesBootstrap() override = default;
+    ~IVesControl() override = default;
     virtual MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;
     virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
@@ -36,4 +36,4 @@ class IVesBootstrap : public OHOS::IRemoteBroker {
 
 }  // namespace VirusExecutorService
 
-#endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_BOOTSTRAP_INTERFACE_H_
+#endif  // INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_INTERFACE_H_

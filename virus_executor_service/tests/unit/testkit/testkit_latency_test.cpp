@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -82,7 +82,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
     const int iterations = GetEnvInt("MEMRPC_LATENCY_ITERATIONS", 2000);
     const int warmup = GetEnvInt("MEMRPC_LATENCY_WARMUP", 200);
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);

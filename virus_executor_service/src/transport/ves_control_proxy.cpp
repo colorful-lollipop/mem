@@ -1,9 +1,10 @@
-#include "transport/ves_bootstrap_proxy.h"
+#include "transport/ves_control_proxy.h"
 
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <poll.h>
+#include <utility>
 #include <unistd.h>
 
 #include "scm_rights.h"
@@ -36,13 +37,13 @@ struct SessionMetadata {
 
 }  // namespace
 
-VesBootstrapProxy::VesBootstrapProxy(
+VesControlProxy::VesControlProxy(
     const OHOS::sptr<OHOS::IRemoteObject>& remote,
     const std::string& serviceSocketPath)
-    : OHOS::IRemoteProxy<IVesBootstrap>(remote),
+    : OHOS::IRemoteProxy<IVesControl>(remote),
       service_socket_path_(serviceSocketPath) {}
 
-VesBootstrapProxy::~VesBootstrapProxy() {
+VesControlProxy::~VesControlProxy() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {
         shutdown(sock_fd_, SHUT_RDWR);
@@ -56,7 +57,7 @@ VesBootstrapProxy::~VesBootstrapProxy() {
     }
 }
 
-MemRpc::StatusCode VesBootstrapProxy::OpenSession(MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handles) {
     // Clean up any previous connection (reconnect after engine death).
     stop_monitor_ = true;
     if (monitor_thread_.joinable()) {
@@ -111,12 +112,12 @@ MemRpc::StatusCode VesBootstrapProxy::OpenSession(MemRpc::BootstrapHandles& hand
 
     // Start monitoring the socket for disconnect (death detection).
     stop_monitor_ = false;
-    monitor_thread_ = std::thread(&VesBootstrapProxy::MonitorSocket, this);
+    monitor_thread_ = std::thread(&VesControlProxy::MonitorSocket, this);
 
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
+MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
     // Use a short-lived connection for heartbeat (server closes after reply).
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
@@ -140,7 +141,7 @@ MemRpc::StatusCode VesBootstrapProxy::Heartbeat(VesHeartbeatReply& reply) {
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesBootstrapProxy::CloseSession() {
+MemRpc::StatusCode VesControlProxy::CloseSession() {
     stop_monitor_ = true;
     if (sock_fd_ >= 0) {
         shutdown(sock_fd_, SHUT_RDWR);
@@ -155,12 +156,12 @@ MemRpc::StatusCode VesBootstrapProxy::CloseSession() {
     return MemRpc::StatusCode::Ok;
 }
 
-void VesBootstrapProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
+void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
     std::lock_guard<std::mutex> lock(callbackMutex_);
     deathCallback_ = std::move(callback);
 }
 
-void VesBootstrapProxy::MonitorSocket() {
+void VesControlProxy::MonitorSocket() {
     struct pollfd pfd{};
     pfd.fd = sock_fd_;
     pfd.events = POLLIN | POLLHUP | POLLERR;
@@ -188,6 +189,33 @@ void VesBootstrapProxy::MonitorSocket() {
                 break;
             }
         }
+    }
+}
+
+VesControlChannelAdapter::VesControlChannelAdapter(
+    std::shared_ptr<VesControlProxy> proxy)
+    : proxy_(std::move(proxy)) {}
+
+MemRpc::StatusCode VesControlChannelAdapter::OpenSession(
+    MemRpc::BootstrapHandles& handles) {
+    if (proxy_ == nullptr) {
+        handles = MemRpc::BootstrapHandles{};
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+    return proxy_->OpenSession(handles);
+}
+
+MemRpc::StatusCode VesControlChannelAdapter::CloseSession() {
+    if (proxy_ == nullptr) {
+        return MemRpc::StatusCode::Ok;
+    }
+    return proxy_->CloseSession();
+}
+
+void VesControlChannelAdapter::SetEngineDeathCallback(
+    MemRpc::EngineDeathCallback callback) {
+    if (proxy_ != nullptr) {
+        proxy_->SetEngineDeathCallback(std::move(callback));
     }
 }
 

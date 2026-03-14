@@ -1,4 +1,4 @@
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 
 #include <array>
 #include <cstddef>
@@ -78,8 +78,8 @@ bool InitMutex(pthread_mutex_t* mutex) {
 
 }  // namespace
 
-struct PosixDemoBootstrapChannel::Impl {
-  DemoBootstrapConfig config;
+struct DevBootstrapChannel::Impl {
+  DevBootstrapConfig config;
   BootstrapHandles handles{};
   bool initialized = false;
   EngineDeathCallback death_callback;
@@ -236,17 +236,17 @@ struct PosixDemoBootstrapChannel::Impl {
   }
 };
 
-PosixDemoBootstrapChannel::PosixDemoBootstrapChannel(DemoBootstrapConfig config)
+DevBootstrapChannel::DevBootstrapChannel(DevBootstrapConfig config)
     : impl_(std::make_shared<Impl>()) {
   impl_->config = std::move(config);
   if (impl_->config.shmName.empty()) {
-    impl_->config.shmName = "/MemRpc-demo-" + std::to_string(::getpid());
+    impl_->config.shmName = "/MemRpc-dev-" + std::to_string(::getpid());
   }
 }
 
-PosixDemoBootstrapChannel::~PosixDemoBootstrapChannel() = default;
+DevBootstrapChannel::~DevBootstrapChannel() = default;
 
-StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
+StatusCode DevBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   const StatusCode init_status = impl_->EnsureInitialized();
   if (init_status != StatusCode::Ok) {
     return init_status;
@@ -259,15 +259,15 @@ StatusCode PosixDemoBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   return StatusCode::Ok;
 }
 
-StatusCode PosixDemoBootstrapChannel::CloseSession() {
+StatusCode DevBootstrapChannel::CloseSession() {
   return StatusCode::Ok;
 }
 
-void PosixDemoBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
+void DevBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
   impl_->death_callback = std::move(callback);
 }
 
-BootstrapHandles PosixDemoBootstrapChannel::serverHandles() const {
+BootstrapHandles DevBootstrapChannel::serverHandles() const {
   BootstrapHandles handles;
   if (!DuplicateHandles(impl_->handles, &handles)) {
     HILOGE("server_handles failed while duplicating bootstrap handles");
@@ -275,7 +275,7 @@ BootstrapHandles PosixDemoBootstrapChannel::serverHandles() const {
   return handles;
 }
 
-void PosixDemoBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
+void DevBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
   const uint64_t dead_session_id =
       session_id == 0 ? impl_->handles.sessionId : session_id;
   if (session_id == 0 || session_id == impl_->handles.sessionId) {

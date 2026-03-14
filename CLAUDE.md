@@ -28,7 +28,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 
 **Key abstractions:**
 
-- `IBootstrapChannel` — platform abstraction for process creation and shared memory setup. Implementations: `PosixDemoBootstrapChannel` (fork-based, Linux dev) and `SaBootstrapChannel` (HarmonyOS SA)
+- `IBootstrapChannel` — platform abstraction for process creation and shared memory setup. Implementations: `DevBootstrapChannel` (fork-based, Linux dev) and `SaBootstrapChannel` (HarmonyOS SA)
 - `Session` — manages shared memory layout, ring buffers, slot pools, and eventfd channels
 - `RpcClient` / `RpcFuture` — parent-side async/sync call API
 - `RpcServer` / `RpcHandler` — child-side request dispatch and handler registration

@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "transport/registry_server.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 #include "virus_protection_service_log.h"
 
 namespace {
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
             return false;
         }
         if (g_engine_pid > 0) {
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_SA_ID) {
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
             return;
         }
         HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);

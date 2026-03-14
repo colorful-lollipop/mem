@@ -1,7 +1,7 @@
 add_library(memrpc_core
   client/rpc_client.cpp
   server/rpc_server.cpp
-  bootstrap/posix_demo_bootstrap.cpp
+  bootstrap/dev_bootstrap.cpp
   bootstrap/sa_bootstrap.cpp
   core/byte_reader.cpp
   core/byte_writer.cpp

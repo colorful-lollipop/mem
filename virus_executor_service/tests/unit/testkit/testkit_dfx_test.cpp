@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_codec.h"
@@ -39,7 +39,7 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     _exit(0);
 }
 
-pid_t ForkServer(const std::shared_ptr<MemRpc::PosixDemoBootstrapChannel>& bootstrap) {
+pid_t ForkServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap) {
     const pid_t child = fork();
     if (child == 0) {
         RunTestkitServerProcess(bootstrap->serverHandles());
@@ -83,8 +83,8 @@ MemRpc::RpcCall MakeFaultCall(MemRpc::Opcode opcode) {
     return call;
 }
 
-std::shared_ptr<MemRpc::PosixDemoBootstrapChannel> CreateBootstrap() {
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);

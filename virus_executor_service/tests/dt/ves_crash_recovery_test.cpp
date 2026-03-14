@@ -13,7 +13,7 @@
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 #include "client/ves_client.h"
 #include "ves/ves_types.h"
 
@@ -59,9 +59,9 @@ std::string EnginePathFromSelf() {
 TEST(VesCrashRecoveryTest, CrashThenRecover) {
     const std::string enginePath = EnginePathFromSelf();
 
-    virus_executor_service::RegistryServer registry(REGISTRY_SOCKET);
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) return false;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) return true;
         g_engine_pid = SpawnEngine(enginePath);
@@ -70,7 +70,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
         return true;
     });
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != virus_executor_service::VES_BOOTSTRAP_SA_ID) return;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
@@ -78,9 +78,9 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
 
     ASSERT_TRUE(registry.Start());
 
-    auto backend = std::make_shared<virus_executor_service::RegistryBackend>(REGISTRY_SOCKET);
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    virus_executor_service::VesClient::RegisterProxyFactory();
+    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -90,12 +90,12 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(virus_executor_service::VES_BOOTSTRAP_SA_ID, 5000);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
     ASSERT_NE(remote, nullptr);
 
     std::atomic<int> engineRestarts{0};
 
-    auto client = std::make_unique<virus_executor_service::VesClient>(remote);
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
     client->SetEngineRestartCallback([&]() {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) {
@@ -112,7 +112,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
 
     ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
 
-    virus_executor_service::ScanFileReply reply;
+    VirusExecutorService::ScanFileReply reply;
     ASSERT_EQ(client->ScanFile("/data/clean.apk", &reply), MemRpc::StatusCode::Ok);
 
     // Crash request

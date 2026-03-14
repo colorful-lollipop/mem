@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/runtime_utils.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/server/rpc_server.h"
@@ -129,11 +129,11 @@ void RecordError(SharedState* state, const std::string& message) {
 }
 
 bool RunStress(const StressConfig& config) {
-    Mem::DemoBootstrapConfig bootstrapConfig;
+    Mem::DevBootstrapConfig bootstrapConfig;
     bootstrapConfig.maxRequestBytes = config.maxRequestBytes;
     bootstrapConfig.maxResponseBytes = config.maxResponseBytes;
 
-    auto bootstrap = std::make_shared<Mem::PosixDemoBootstrapChannel>(bootstrapConfig);
+    auto bootstrap = std::make_shared<Mem::DevBootstrapChannel>(bootstrapConfig);
     Mem::BootstrapHandles handles{};
     if (bootstrap->OpenSession(handles) != Mem::StatusCode::Ok) {
         HILOGE("stress bootstrap open session failed");

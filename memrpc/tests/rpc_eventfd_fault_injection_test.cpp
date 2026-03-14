@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -47,9 +47,9 @@ struct ClientFaultConfig {
 
 class FaultInjectingBootstrap final : public MemRpc::IBootstrapChannel {
  public:
-  explicit FaultInjectingBootstrap(MemRpc::DemoBootstrapConfig config = {},
+  explicit FaultInjectingBootstrap(MemRpc::DevBootstrapConfig config = {},
                                    ClientFaultConfig faults = {})
-      : inner_(std::make_shared<MemRpc::PosixDemoBootstrapChannel>(std::move(config))),
+      : inner_(std::make_shared<MemRpc::DevBootstrapChannel>(std::move(config))),
         faults_(faults) {}
 
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
@@ -79,7 +79,7 @@ class FaultInjectingBootstrap final : public MemRpc::IBootstrapChannel {
   }
 
  private:
-  std::shared_ptr<MemRpc::PosixDemoBootstrapChannel> inner_;
+  std::shared_ptr<MemRpc::DevBootstrapChannel> inner_;
   ClientFaultConfig faults_;
 };
 
@@ -103,7 +103,7 @@ namespace MemRpc {
 
 TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling) {
   auto bootstrap = std::make_shared<FaultInjectingBootstrap>(
-      DemoBootstrapConfig{}, ClientFaultConfig{true, false});
+      DevBootstrapConfig{}, ClientFaultConfig{true, false});
   BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);
@@ -134,7 +134,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
 }
 
 TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmission) {
-  DemoBootstrapConfig config;
+  DevBootstrapConfig config;
   config.slotCount = 1;
   config.highRingSize = 2;
   config.normalRingSize = 2;
@@ -166,7 +166,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
 }
 
 TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling) {
-  auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
   BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);
@@ -196,7 +196,7 @@ TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling
 }
 
 TEST(RpcEventFdFaultInjectionTest, ServerEventSignalFailureStillDeliversCallback) {
-  auto bootstrap = std::make_shared<PosixDemoBootstrapChannel>();
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
   BootstrapHandles unused_handles;
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);

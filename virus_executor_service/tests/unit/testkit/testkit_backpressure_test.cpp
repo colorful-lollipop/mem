@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -39,7 +39,7 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs) {
 }  // namespace
 
 TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
-    MemRpc::DemoBootstrapConfig config;
+    MemRpc::DevBootstrapConfig config;
     config.slotCount = 4;
     config.highRingSize = 8;
     config.normalRingSize = 8;
@@ -47,7 +47,7 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
     config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
@@ -98,7 +98,7 @@ TEST(TestkitBackpressureTest, SlotExhaustionAndRecovery) {
 }
 
 TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
-    MemRpc::DemoBootstrapConfig config;
+    MemRpc::DevBootstrapConfig config;
     config.slotCount = 2;
     config.highRingSize = 4;
     config.normalRingSize = 4;
@@ -106,7 +106,7 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES;
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
-    auto bootstrap = std::make_shared<MemRpc::PosixDemoBootstrapChannel>(config);
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);

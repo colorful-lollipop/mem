@@ -39,7 +39,7 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized() {
     }
 
     if (!bootstrap_) {
-        bootstrap_ = std::make_shared<MemRpc::PosixDemoBootstrapChannel>();
+        bootstrap_ = std::make_shared<MemRpc::DevBootstrapChannel>();
     }
 
     MemRpc::BootstrapHandles throwaway{};

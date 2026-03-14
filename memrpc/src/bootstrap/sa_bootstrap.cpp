@@ -2,17 +2,17 @@
 
 #include <utility>
 
-#include "memrpc/client/demo_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 
 namespace MemRpc {
 
 struct SaBootstrapChannel::Impl {
   explicit Impl(SaBootstrapConfig value)
       : config(std::move(value)),
-        fallback(std::make_shared<PosixDemoBootstrapChannel>()) {}
+        fallback(std::make_shared<DevBootstrapChannel>()) {}
 
   SaBootstrapConfig config;
-  std::shared_ptr<PosixDemoBootstrapChannel> fallback;
+  std::shared_ptr<DevBootstrapChannel> fallback;
   std::string lastError;
 };
 
@@ -45,12 +45,12 @@ void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
 StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (impl_->fallback == nullptr) {
     handles = BootstrapHandles{};
-    impl_->lastError = "Fake SA bootstrap has no POSIX fallback channel.";
+    impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
     return StatusCode::EngineInternalError;
   }
   const StatusCode status = impl_->fallback->OpenSession(handles);
   if (status != StatusCode::Ok) {
-    impl_->lastError = "Fake SA bootstrap OpenSession failed on POSIX fallback.";
+    impl_->lastError = "Fake SA bootstrap OpenSession failed on dev fallback.";
   } else {
     impl_->lastError.clear();
   }
@@ -59,7 +59,7 @@ StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
 
 StatusCode SaBootstrapChannel::CloseSession() {
   if (impl_->fallback == nullptr) {
-    impl_->lastError = "Fake SA bootstrap has no POSIX fallback channel.";
+    impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
     return StatusCode::EngineInternalError;
   }
   return impl_->fallback->CloseSession();

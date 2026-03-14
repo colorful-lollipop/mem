@@ -21,7 +21,7 @@
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
-#include "transport/ves_bootstrap_interface.h"
+#include "transport/ves_control_interface.h"
 #include "client/ves_client.h"
 #include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_SA_ID) return false;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (g_engine_pid > 0) return true;
         HILOGI("load callback: spawning engine");
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_SA_ID) return;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_SA_ID, 5000);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
     DT_CHECK(remote != nullptr, "LoadSystemAbility ok");
 
     std::atomic<int> engineRestarts{0};
