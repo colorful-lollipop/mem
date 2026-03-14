@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -51,6 +52,13 @@ uint32_t GetThreadCount() {
 
 std::vector<uint8_t> MakePayload(size_t size, uint8_t seed) {
   return std::vector<uint8_t>(size, static_cast<uint8_t>(seed));
+}
+
+std::vector<size_t> StablePayloadSizes() {
+  const size_t maxInlinePayload =
+      std::min<size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+  const size_t mediumPayload = std::min<size_t>(256, maxInlinePayload);
+  return {0, 64, mediumPayload, maxInlinePayload};
 }
 
 }  // namespace
@@ -100,7 +108,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
   for (uint32_t i = 0; i < threadCount; ++i) {
     workers.emplace_back([&, i]() {
       std::mt19937 rng(static_cast<uint32_t>(i + 1));
-      const std::vector<size_t> sizes = {0, 128, 512, 2048, 4096};
+      const std::vector<size_t> sizes = StablePayloadSizes();
       while (std::chrono::steady_clock::now() < deadline) {
         const size_t payload_size = sizes[rng() % sizes.size()];
         MemRpc::RpcCall call;

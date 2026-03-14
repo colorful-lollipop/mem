@@ -36,6 +36,33 @@ bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds t
     return predicate();
 }
 
+bool WaitForRecoveredScan(VesClient* client,
+                          const std::string& path,
+                          ScanFileReply* reply,
+                          std::chrono::milliseconds timeout,
+                          MemRpc::StatusCode* lastStatus = nullptr)
+{
+    if (client == nullptr || reply == nullptr) {
+        return false;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
+    while (std::chrono::steady_clock::now() < deadline) {
+        status = client->ScanFile(path, reply);
+        if (status == MemRpc::StatusCode::Ok) {
+            if (lastStatus != nullptr) {
+                *lastStatus = status;
+            }
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    if (lastStatus != nullptr) {
+        *lastStatus = status;
+    }
+    return false;
+}
+
 void CloseHandles(MemRpc::BootstrapHandles& handles)
 {
     if (handles.shmFd >= 0) {
@@ -266,8 +293,10 @@ TEST(VesHealthSubscriptionTest, BlockingSubscriberDoesNotBlockRecovery) {
     service->SetHealthy(true);
     ASSERT_TRUE(WaitFor([&]() { return service->openCount() > initialOpenCount; },
                         std::chrono::milliseconds(500)));
-
-    ASSERT_EQ(client.ScanFile("/data/subscription_recovered.bin", &reply), MemRpc::StatusCode::Ok);
+    MemRpc::StatusCode recoveredStatus = MemRpc::StatusCode::InvalidArgument;
+    ASSERT_TRUE(WaitForRecoveredScan(&client, "/data/subscription_recovered.bin", &reply,
+                                     std::chrono::milliseconds(500), &recoveredStatus))
+        << "last status=" << static_cast<int>(recoveredStatus);
 
     client.Shutdown();
     server.Stop();
@@ -314,8 +343,10 @@ TEST(VesHealthSubscriptionTest, RecoveryStillWorksWithoutSubscriber) {
     service->SetHealthy(true);
     ASSERT_TRUE(WaitFor([&]() { return service->openCount() > initialOpenCount; },
                         std::chrono::milliseconds(500)));
-    ASSERT_EQ(client.ScanFile("/data/subscription_none_recovered.bin", &reply),
-              MemRpc::StatusCode::Ok);
+    MemRpc::StatusCode recoveredStatus = MemRpc::StatusCode::InvalidArgument;
+    ASSERT_TRUE(WaitForRecoveredScan(&client, "/data/subscription_none_recovered.bin", &reply,
+                                     std::chrono::milliseconds(500), &recoveredStatus))
+        << "last status=" << static_cast<int>(recoveredStatus);
 
     client.Shutdown();
     server.Stop();

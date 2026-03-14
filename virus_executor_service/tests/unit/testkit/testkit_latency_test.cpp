@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -76,6 +77,12 @@ void PrintStats(const char* label, const LatencyStats& stats) {
               << "n=" << stats.samples << std::endl;
 }
 
+std::size_t MaxEchoTextBytes() {
+    const std::size_t inlineLimit = std::min<std::size_t>(
+        MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+    return inlineLimit > sizeof(uint32_t) ? inlineLimit - sizeof(uint32_t) : 0;
+}
+
 }  // namespace
 
 TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
@@ -100,11 +107,12 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
         const char* name;
         std::string text;
     };
+    const std::size_t maxEchoTextBytes = MaxEchoTextBytes();
     const std::vector<PayloadCase> cases = {
         {"0B", ""},
         {"64B", std::string(64, 'x')},
-        {"512B", std::string(512, 'x')},
-        {"4KB", std::string(4000, 'x')},
+        {"256B", std::string(std::min<std::size_t>(256, maxEchoTextBytes), 'x')},
+        {"max-inline", std::string(maxEchoTextBytes, 'x')},
     };
 
     std::cout << "\n=== Testkit RPC Latency Distribution ===" << std::endl;
@@ -145,8 +153,8 @@ TEST(TestkitLatencyTest, DirectCallBaselineLatency) {
     const std::vector<std::pair<const char*, std::string>> cases = {
         {"0B (direct)", ""},
         {"64B (direct)", std::string(64, 'x')},
-        {"512B (direct)", std::string(512, 'x')},
-        {"4KB (direct)", std::string(4000, 'x')},
+        {"256B (direct)", std::string(std::min<std::size_t>(256, MaxEchoTextBytes()), 'x')},
+        {"max-inline (direct)", std::string(MaxEchoTextBytes(), 'x')},
     };
 
     for (const auto& payloadCase : cases) {

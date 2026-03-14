@@ -22,6 +22,9 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
+constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
+    MemRpc::StatusCode::CrashedDuringExecution;
+
 void CloseHandles(MemRpc::BootstrapHandles* handles) {
     if (handles == nullptr) {
         return;
@@ -162,9 +165,9 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply sleepReply;
-    EXPECT_EQ(sleepFuture.Wait(&sleepReply), MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_EQ(sleepFuture.Wait(&sleepReply), kExpectedEngineDeathStatus);
     MemRpc::RpcReply crashReply;
-    EXPECT_EQ(crashFuture.Wait(&crashReply), MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);

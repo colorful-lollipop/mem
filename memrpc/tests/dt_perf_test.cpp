@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -117,6 +118,11 @@ PerfStats ComputeStats(const std::vector<double>& latencies_us, double duration_
   return stats;
 }
 
+std::size_t MaxInlinePayloadBytes() {
+  return std::min<std::size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES,
+                               MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+}
+
 }  // namespace
 
 TEST(DtPerfTest, ShortPerfBaseline) {
@@ -149,7 +155,7 @@ TEST(DtPerfTest, ShortPerfBaseline) {
 
   const std::vector<std::pair<const char*, size_t>> cases = {
       {"echo_0B", 0},
-      {"echo_4KB", 4096},
+      {"echo_max_inline", MaxInlinePayloadBytes()},
   };
 
   std::map<std::string, double> baseline = LoadBaseline(BaselinePath());

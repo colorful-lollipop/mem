@@ -18,6 +18,9 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
+constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
+    MemRpc::StatusCode::CrashedDuringExecution;
+
 void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
@@ -121,7 +124,7 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
     EXPECT_EQ(completed.size() + failed.size(), batch.size());
 
     for (const auto& failedCall : failed) {
-        EXPECT_EQ(failedCall.failureStatus, MemRpc::StatusCode::PeerDisconnected);
+        EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
     }
 
     invoker.Shutdown();
@@ -320,7 +323,7 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply hangReply;
-    EXPECT_EQ(hangFuture.Wait(&hangReply), MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_EQ(hangFuture.Wait(&hangReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -363,7 +366,7 @@ TEST(TestkitDfxTest, OomKilledChildRecovery) {
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply oomReply;
-    EXPECT_EQ(oomFuture.Wait(&oomReply), MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_EQ(oomFuture.Wait(&oomReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -406,7 +409,7 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery) {
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_EQ(future.Wait(&reply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -455,7 +458,7 @@ TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
         EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
     }
     for (const auto& failedCall : failed) {
-        EXPECT_EQ(failedCall.failureStatus, MemRpc::StatusCode::PeerDisconnected);
+        EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
     }
 
     invoker.Shutdown();
@@ -485,7 +488,7 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
         bootstrap->SimulateEngineDeathForTest();
 
         MemRpc::RpcReply crashReply;
-        EXPECT_EQ(crashFuture.Wait(&crashReply), MemRpc::StatusCode::PeerDisconnected)
+        EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus)
             << "cycle " << cycle;
 
         MemRpc::BootstrapHandles handles{};

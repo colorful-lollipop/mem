@@ -120,6 +120,12 @@ PerfStats ComputeStats(const std::vector<double>& latenciesUs,
     return stats;
 }
 
+std::size_t MaxEchoTextBytes() {
+    const std::size_t inlineLimit = std::min<std::size_t>(
+        MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+    return inlineLimit > sizeof(uint32_t) ? inlineLimit - sizeof(uint32_t) : 0;
+}
+
 }  // namespace
 
 TEST(TestkitDtPerfTest, ShortPerfBaseline) {
@@ -147,12 +153,9 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
     TestkitClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    const size_t maxEchoPayload =
-        MemRpc::DEFAULT_MAX_REQUEST_BYTES > 4 ? MemRpc::DEFAULT_MAX_REQUEST_BYTES - 4 : 0;
-    const size_t echoLargePayload = std::min<size_t>(4096, maxEchoPayload);
     const std::vector<std::pair<const char*, size_t>> cases = {
         {"echo_0B", 0},
-        {"echo_4KB", echoLargePayload},
+        {"echo_max_inline", MaxEchoTextBytes()},
         {"add", 0},
     };
 
