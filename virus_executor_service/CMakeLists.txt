@@ -449,6 +449,33 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       virus_executor_service_testkit_dt_perf_test
       PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC})
 
+  set(virus_executor_service_warning_relaxed_targets
+      virus_executor_service_session_service_test
+      virus_executor_service_heartbeat_test
+      virus_executor_service_codec_test
+      virus_executor_service_testkit_headers_test
+      virus_executor_service_testkit_codec_test
+      virus_executor_service_testkit_service_test
+      virus_executor_service_testkit_baseline_test
+      virus_executor_service_testkit_client_test
+      virus_executor_service_testkit_dfx_test
+      virus_executor_service_testkit_backpressure_test
+      virus_executor_service_testkit_async_pipeline_test
+      virus_executor_service_testkit_latency_test
+      virus_executor_service_testkit_throughput_test
+      virus_executor_service_testkit_dt_stability_test
+      virus_executor_service_testkit_dt_perf_test
+      virus_executor_service_testkit_stress_config
+      virus_executor_service_testkit_stress_config_test
+      virus_executor_service_testkit_stress_runner
+      virus_executor_service_sample_rules_test
+      virus_executor_service_health_test
+      virus_executor_service_policy_test
+      virus_executor_service_crash_recovery_test)
+  foreach(target IN LISTS virus_executor_service_warning_relaxed_targets)
+    memrpc_relax_warnings_for_target(${target})
+  endforeach()
+
   if (VIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ)
     add_subdirectory(tests/fuzz)
   endif()

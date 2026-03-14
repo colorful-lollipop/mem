@@ -1,8 +1,10 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_ENGINE_SERVICE_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_ENGINE_SERVICE_H_
 
+#include <cstdint>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "memrpc/server/rpc_server.h"
 #include "service/rpc_handler_registrar.h"
@@ -26,11 +28,18 @@ class VesEngineService : public RpcHandlerRegistrar {
     VesHealthSnapshot GetHealthSnapshot() const;
 
  private:
+    struct ActiveTask {
+        uint32_t startMonoMs = 0;
+        std::string filePath;
+    };
+
+    uint64_t AddActiveTask(const std::string& filePath);
+    void RemoveActiveTask(uint64_t taskId);
+
     bool initialized_ = false;
     mutable std::mutex healthMutex_;
-    uint32_t inFlight_ = 0;
-    uint32_t lastTaskStartMonoMs_ = 0;
-    std::string currentTask_ = "idle";
+    uint64_t nextTaskId_ = 1;
+    std::unordered_map<uint64_t, ActiveTask> activeTasks_;
 };
 
 }  // namespace VirusExecutorService

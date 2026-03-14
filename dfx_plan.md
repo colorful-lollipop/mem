@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 把 Virus Executor Service 的 DFX / 心跳 / 恢复链路收口成单一、清晰、可诊断的设计，让故障检测、恢复决策、恢复动作、进程监督各自职责明确。
+**Goal:** 把 Virus Executor Service 的 DFX / 心跳 / 恢复链路收口成统一、清晰、可复用的设计：heartbeat 协议保留在 bootstrap/proxy 层，heartbeat 调度由 `MemRpc::RpcClient` 的 watchdog 驱动，`MemRpc` 只消费通用健康结果，上层 client 默认不参与主恢复闭环，只保留可选扩展 snapshot 订阅能力。
 
-**Architecture:** 采用“单一恢复 owner”设计。`MemRpc::RpcClient` 是唯一 session 恢复执行者；`VesClient` 负责汇聚 heartbeat / idle / engine death / timeout 等信号并生成统一恢复请求；`VesControlProxy` 只负责 transport 级 liveness 输入；supervisor / harness 只负责进程 respawn，不负责 session replay。heartbeat 不再直接 `CloseSession()`，而是作为健康信号进入统一恢复入口。
+**Architecture:** 采用“协议下沉、调度上收、恢复收口、观测旁路”的分层设计。`VesControlProxy` 负责实现 VES-specific heartbeat RPC 并把 reply 翻译成通用健康结果；`IBootstrapChannel` 对外暴露 `CheckHealth()` 这类通用接口；`MemRpc::RpcClient` 在自己的 watchdog 中周期性检查健康、统一执行 restart/close；`VesClient` 只负责业务默认参数、业务日志、可选 snapshot 订阅。supervisor / harness 只负责 process respawn，不参与 session replay。
 
 **Tech Stack:** C++17, shared memory, eventfd, Unix-domain socket, `MemRpc::RecoveryPolicy`, OHOS SA mock transport, GoogleTest, DT/stress/integration tests
 
@@ -12,145 +12,207 @@
 
 ## 1. Background
 
-当前代码里已经有不少恢复相关零件，但语义边界不够清楚：
+当前代码已经有这些能力：
 
-- `RpcClient` 已有 `RecoveryPolicy`、forced restart、session reopen、safe replay、poison-pill fail。
-- `VirusExecutorService::Heartbeat()` 已提供基础健康快照。
-- `VesControlProxy` 已支持 heartbeat 请求，也能通过 control socket 断开感知 engine death。
-- `VesClient` 目前只接了 `onFailure / onIdle / onEngineDeath`，heartbeat 还没有真正接进运行时恢复闭环。
-- `ExecTimeout` 目前仍是软超时，能触发客户端失败，但不等于“服务端 hang 已被治理”。
-- supervisor、DT harness、stress harness 在 crash respawn 上各有一套做法。
+- `RpcClient` 有 watchdog、timeout scan、idle 处理、forced restart、safe replay。
+- `VesControlProxy` 已支持 `Heartbeat()` RPC，也有 control socket death monitor。
+- `VirusExecutorService::Heartbeat()` 已返回基础业务健康快照。
+- `VesClient` 已配置 `onFailure / onIdle / onEngineDeath`。
 
-`problem1` 已默认修复，本计划不再处理它；本轮重点是把现有能力打磨成可长期维护的 DFX / 恢复体系。
+但现在仍有三个主要问题：
+
+1. heartbeat 没进入统一恢复主链路。
+2. heartbeat、engine death、idle、exec-timeout 的 owner 仍然不清晰。
+3. heartbeat 调度放哪层、业务 reply 是否进入 `memrpc`，还没有定型。
+
+`problem1` 默认已修复，本计划不再针对那个 bug；本轮关注架构收口和可维护性。
 
 ## 2. Core Problem
 
-现在最混乱的点不是“有没有功能”，而是“谁负责什么”不够统一：
+现状里最容易乱的点：
 
-1. heartbeat 发现问题后，到底应该直接 `CloseSession()`，还是走 callback/recovery policy，不清楚。
-2. `CloseSession` 和 `Restart` 的语义没有被明确区分。
-3. `engine death`、`heartbeat unhealthy`、`exec-timeout`、`idle close` 都会影响恢复，但没有统一 reason 模型。
-4. transport、framework、client facade、supervisor 都在碰恢复，容易双重触发。
-5. 文档和代码已经发生漂移，后续实现容易继续变乱。
+1. heartbeat 发现故障后，是否应直接 `CloseSession()`，语义不清。
+2. 如果 heartbeat loop 放在上层 `VesClient`，会和 `RpcClient` watchdog、`EngineDeathCallback`、proxy monitor 形成多 owner。
+3. 如果让 `memrpc` 直接解析 `VesHeartbeatReply`，会把业务协议污染进框架 core。
+4. 如果把 heartbeat 调度完全放到 proxy 自己线程里，又会和 `RpcClient` 的 watchdog 节拍分裂。
 
 ## 3. Design Goals
 
-完成后需要达到：
+完成后应达到：
 
-1. 故障检测、恢复决策、恢复动作、进程监督四层职责清晰。
-2. heartbeat 进入统一恢复通道，不再自己偷偷做恢复动作。
-3. `CloseSession` 只保留“有意关闭”语义；故障恢复统一走 `Restart`。
-4. 所有恢复动作都能带着明确的 `reason` 被记录、测试和解释。
-5. DFX 日志能回答三个问题：
-   - 为什么恢复？
-   - 谁发起恢复？
-   - 恢复做到了哪一步？
+1. heartbeat 协议留在 bootstrap/proxy，`memrpc` 不依赖业务 heartbeat reply 结构。
+2. `RpcClient` 的 watchdog 成为统一健康检查调度者。
+3. `RpcClient` 成为唯一 session 恢复执行者。
+4. 上层 `VesClient` 默认不需要参与 heartbeat 恢复闭环。
+5. 上层若要做 DFX 展示，可以订阅 VES-specific snapshot。
+6. `CloseSession` 与 `Restart` 的语义完全分开：
+   - `CloseSession` 只用于 intentional close
+   - 故障恢复统一走 `Restart`
 
 ## 4. Non-Goals
 
 - 不重新设计 shared-memory wire protocol
 - 不引入多 client / 多 session
-- 不实现真正 hard kill handler
-- 不做复杂 metrics/dashboard 平台接入
-- 不在本轮解决所有性能问题
+- 不实现 hard kill handler
+- 不把 `VesHeartbeatReply` 引入 `memrpc` core
+- 不在本轮处理所有性能问题
 
 ## 5. Chosen Design
 
-### 5.1 Single Recovery Owner
+### 5.1 Layering
 
-选定设计：
+最终分层：
 
-- `RpcClient`：唯一恢复执行者
-- `VesClient`：唯一恢复请求汇聚者
-- `VesControlProxy`：只负责检测 transport 级信号
-- supervisor / harness：只负责进程 respawn
+- `VesControlProxy`
+  - 实现 VES heartbeat 请求/应答协议
+  - 解析 `VesHeartbeatReply`
+  - 把业务 reply 翻译成通用 `ChannelHealthResult`
+  - 可选对外发布 VES-specific snapshot
 
-含义是：
+- `IBootstrapChannel`
+  - 暴露通用健康检查接口
+  - 不暴露业务 heartbeat 结构
 
-- heartbeat 不直接调用恢复动作
-- proxy 不直接决定恢复策略
-- `RpcClient` 不直接知道 heartbeat 细节，只接收一个统一的“外部恢复请求”
+- `MemRpc::RpcClient`
+  - 在 watchdog 中调用 `CheckHealth()`
+  - 根据通用健康结果发起统一恢复
+  - 维护 cooldown / replay / poison-pill 语义
 
-### 5.2 Signal / Decision / Action Split
+- `VesClient`
+  - 默认策略配置
+  - 业务 facade
+  - 可选 health snapshot 订阅
+  - 业务日志与 DFX 展示
 
-统一分成三层：
+- supervisor / harness
+  - engine process respawn
+  - `waitpid/reap`
+  - process 生命周期
 
-1. **Signal**
-   - heartbeat timeout
-   - heartbeat unhealthy
-   - heartbeat session mismatch
-   - engine death
-   - exec-timeout
-   - idle threshold reached
+### 5.2 Single Recovery Owner
 
-2. **Decision**
-   - Ignore
-   - Restart
-   - CloseSession
+唯一 session 恢复 owner：
 
-3. **Action**
-   - `RequestForcedRestart(delay)`
-   - `RequestSessionClose()`
-   - no-op
+- `MemRpc::RpcClient`
 
-### 5.3 Explicit Semantics
+含义：
 
-必须写死这几个语义：
+- heartbeat 不直接 `CloseSession()`
+- heartbeat 不 fake `EngineDeathCallback`
+- proxy 不直接决定 restart
+- `VesClient` 不直接执行恢复动作
 
-- `CloseSession`
-  - 只用于有意关闭
-  - 典型场景：idle unload、manual shutdown
-  - 目标：让服务退出、释放资源
+### 5.3 Protocol Down, Scheduling Up
 
-- `Restart`
-  - 用于故障恢复
-  - 典型场景：heartbeat failure、engine death、exec-timeout
-  - 目标：`CloseSession -> cooldown -> OpenSession -> replay safe calls`
+这是本版设计的核心：
 
-- `EngineDeath`
-  - 只是一个 signal / reason，不是一个动作
+- **协议下沉**
+  - VES-specific heartbeat request/reply 仍在 `VesControlProxy`
+- **调度上收**
+  - heartbeat 的周期性检查由 `RpcClient` watchdog 发起
 
-- `HeartbeatFailure`
-  - 也是 signal / reason，不是动作
+这样能同时满足：
 
-### 5.4 Heartbeat Best Design
+- 不增加额外长期 heartbeat 线程
+- 复用 `RpcClient` 既有 watchdog 节拍
+- 把 timeout/idle/health check 放在统一 owner 下
 
-heartbeat 的最佳设计是：
+### 5.4 Generic Health Check Interface
 
-- `VesClient` 内部维护 heartbeat loop
-- heartbeat loop 周期性调用 `VesControlProxy::Heartbeat()`
-- 如果出现以下情况：
-  - `PeerDisconnected`
-  - `ProtocolMismatch`
-  - reply version invalid
-  - `reply.status != OK`
-  - `reply.sessionId != currentSessionId`
-- `VesClient` 只做两件事：
-  - 记录恢复 reason
-  - 向 `RpcClient` 提交统一恢复请求
+`memrpc` 不应该知道 `VesHeartbeatReply`。  
+因此 `IBootstrapChannel` 应新增一个通用健康检查接口，例如：
 
-heartbeat 不做：
+```cpp
+enum class ChannelHealthStatus {
+  Healthy,
+  Timeout,
+  Malformed,
+  Unhealthy,
+  SessionMismatch,
+  Unsupported,
+};
 
-- 不直接 `proxy_->CloseSession()`
-- 不手工伪造 `EngineDeathCallback`
-- 不在 proxy 层硬编码 restart policy
+struct ChannelHealthResult {
+  ChannelHealthStatus status = ChannelHealthStatus::Unsupported;
+  uint64_t sessionId = 0;
+};
 
-### 5.5 New API Surface
+class IBootstrapChannel {
+ public:
+  virtual ChannelHealthResult CheckHealth(uint64_t expectedSessionId) = 0;
+};
+```
 
-为避免 heartbeat 只能“伪装成 engine death”，本计划引入新的统一入口。
+这个接口的职责：
+
+- 只返回通用健康结论
+- 不返回业务扩展数据
+- 允许不支持 heartbeat 的 bootstrap 返回 `Unsupported`
+
+### 5.5 Where The Business Reply Lives
+
+业务 heartbeat reply 仍然存在，但只停留在 VES transport 层。
+
+必须写死：
+
+- `VesControlProxy` 可以直接收发 `VesHeartbeatReply`
+- `VesControlProxy::CheckHealth()` 内部可以解析它
+- 但 `VesHeartbeatReply` 不能进入 `memrpc` core
+
+也就是说，数据流必须是：
+
+- **恢复链路**
+  - `VesHeartbeatReply -> proxy translation -> ChannelHealthResult -> RpcClient`
+
+- **观测链路**
+  - `VesHeartbeatReply -> optional snapshot subscriber -> VesClient / DFX`
+
+绝不允许：
+
+- `VesHeartbeatReply -> memrpc core`
+- `memrpc` include `ves_control_interface.h`
+
+### 5.6 Optional Snapshot Subscription
+
+恢复链路和观测链路必须分离。
+
+恢复链路只依赖：
+
+- `ChannelHealthResult`
+
+观测链路可以依赖：
+
+- `VesHeartbeatReply`
+- 或者一个 VES-specific health snapshot wrapper
+
+可以接受的实现方式：
+
+- `VesControlProxy` 提供 snapshot callback
+- `VesClient` 透传订阅接口
+
+必须明确：
+
+- snapshot callback 是 side-channel
+- side-channel 失败不能影响主恢复链路
+- 没有 snapshot subscriber 时，heartbeat 恢复仍必须正常工作
+
+### 5.7 `RpcClient` External Recovery Entry
+
+为了让通用健康结果进入统一恢复骨架，需要给 `RpcClient` 增加外部恢复入口。
 
 推荐 API：
 
 ```cpp
 enum class ExternalRecoverySignal {
-  HeartbeatTimeout,
-  HeartbeatMalformed,
-  HeartbeatUnhealthy,
-  HeartbeatSessionMismatch,
+  ChannelHealthTimeout,
+  ChannelHealthMalformed,
+  ChannelHealthUnhealthy,
+  ChannelHealthSessionMismatch,
 };
 
 struct ExternalRecoveryRequest {
   ExternalRecoverySignal signal;
+  uint64_t sessionId = 0;
   uint32_t delayMs = 0;
 };
 
@@ -160,15 +222,53 @@ class RpcClient {
 };
 ```
 
-设计原则：
+设计要求：
 
-- `RequestExternalRecovery()` 只负责把外部健康失败导入已有恢复骨架
-- 内部最终仍复用 `RequestForcedRestart()`
-- gating / cooldown / replay / poison-pill 逻辑全部保留在 `RpcClient`
+- 只负责导入外部故障信号
+- 内部最终复用 `RequestForcedRestart()`
+- 保留 cooldown / replay / restart gating
+- 不伪造 engine death report
 
-### 5.6 Recovery Reason Model
+### 5.8 Watchdog Integration
 
-新增统一 reason：
+`RpcClient` watchdog 未来需要做三件事：
+
+1. timeout scan
+2. idle handling
+3. channel health check
+
+推荐顺序：
+
+1. scan pending timeouts
+2. check channel health
+3. handle idle reminder
+
+注意：
+
+- `CheckHealth()` 必须有短超时，不能卡住 watchdog
+- 调用 `CheckHealth()` 时不能持有会与 reopen/close 冲突的重锁
+
+### 5.9 Explicit Semantics
+
+必须明确：
+
+- `CloseSession`
+  - 仅用于 intentional close
+  - 场景：idle unload、manual shutdown
+
+- `Restart`
+  - 用于故障恢复
+  - 场景：heartbeat failure、engine death、exec-timeout
+
+- `EngineDeath`
+  - 是 signal / reason，不是动作
+
+- `HeartbeatFailure`
+  - 也是 signal / reason，不是动作
+
+### 5.10 Recovery Reason Model
+
+统一 reason：
 
 - `Unknown`
 - `IdleThresholdReached`
@@ -182,18 +282,10 @@ class RpcClient {
 - `ProtocolMismatch`
 - `ManualClose`
 
-reason 用于：
+### 5.11 VES Health Snapshot Model
 
-- DFX 日志
-- 对外 debug 接口
-- 单元测试断言
-- DT/stress 回归验证
-
-### 5.7 Health Snapshot Model
-
-heartbeat reply 需要从“简单状态”提升到“可解释状态”。
-
-推荐最终模型：
+heartbeat reply 仍由 VES 层定义。  
+推荐增强字段：
 
 - `version`
 - `status`
@@ -204,9 +296,7 @@ heartbeat reply 需要从“简单状态”提升到“可解释状态”。
 - `currentTask`
 - `flags`
 
-如果 wire 兼容必须保守，至少增加 `reasonCode`。
-
-服务端状态建议：
+服务端健康状态建议：
 
 - `OkIdle`
 - `OkBusy`
@@ -215,40 +305,31 @@ heartbeat reply 需要从“简单状态”提升到“可解释状态”。
 - `UnhealthyStopping`
 - `UnhealthyInternalError`
 
-### 5.8 Process Supervision Boundary
+### 5.12 Process Supervision Boundary
 
-明确边界：
+必须写死：
 
-- `RpcClient`
-  - session 级恢复
-  - replay-safe 请求恢复
-- `VesClient`
-  - heartbeat loop
-  - reason 归因
-  - 发起外部恢复请求
-- `VesControlProxy`
-  - 仅上报 transport death
-- supervisor / DT / stress harness
-  - 进程 respawn
-  - `waitpid/reap`
-  - engine process 生命周期
+- session 恢复：`RpcClient`
+- process respawn：supervisor / DT / stress harness
 
-process respawn 不进入 `RpcClient`。
+`RpcClient` 不负责 fork/exec engine。  
+supervisor 不负责 replay-safe 请求恢复。
 
-## 6. Implementation Strategy
+## 6. Execution Order
 
-顺序必须是：
+建议顺序：
 
-1. 先定语义和测试
-2. 再补 `RpcClient::RequestExternalRecovery`
-3. 再接 `VesClient` heartbeat runtime
-4. 再丰富 health snapshot
-5. 再统一 supervisor / harness
-6. 最后更新文档和 gate
+1. 先冻结语义测试
+2. 再加 `IBootstrapChannel::CheckHealth()`
+3. 再加 `RpcClient::RequestExternalRecovery()`
+4. 再把 watchdog 接到 `CheckHealth()`
+5. 再补 snapshot side-channel
+6. 再丰富 heartbeat snapshot
+7. 最后统一 supervisor / harness 和文档
 
 ---
 
-### Task 1: Freeze The New Recovery Semantics In Tests
+### Task 1: Freeze The New Layering And Semantics In Tests
 
 **Files:**
 - Modify: `virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp`
@@ -260,22 +341,13 @@ process respawn 不进入 `RpcClient`。
 
 **Step 1: Write the failing tests**
 
-先写语义测试，锁死以下规则：
+锁死以下语义：
 
+- heartbeat failure 触发 `Restart`
 - idle 触发 `CloseSession`
-- engine death 触发 `Restart`
-- heartbeat timeout / unhealthy / session mismatch 触发 `Restart`
-- heartbeat failure 不会被归类成 engine death
-- `ExecTimeout` 与 `HeartbeatTimeout` reason 不同
-
-至少包含：
-
-```cpp
-TEST(VesRecoveryReasonTest, HeartbeatTimeoutRequestsRestart);
-TEST(VesRecoveryReasonTest, HeartbeatUnhealthyRequestsRestart);
-TEST(VesRecoveryReasonTest, IdleRequestsCloseSession);
-TEST(VesRecoveryReasonTest, EngineDeathReasonStaysDistinct);
-```
+- heartbeat failure 不等于 engine death
+- `VesClient` 不需要自己维护 heartbeat loop 才能恢复
+- snapshot 订阅是可选 side-channel
 
 **Step 2: Run tests to verify they fail**
 
@@ -287,17 +359,13 @@ tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_policy|ves_recovery_reas
 
 Expected:
 
-- FAIL，因为当前还没有统一 recovery reason 和外部恢复请求入口
+- FAIL，因为当前分层和语义还没收口
 
 **Step 3: Add minimal test scaffolding**
 
-只补最小编译脚手架：
+先补最小脚手架，保证后续可以逐步推进。
 
-- reason enum 占位
-- 访问接口占位
-- test seam
-
-**Step 4: Run tests again**
+**Step 4: Re-run tests**
 
 Run:
 
@@ -308,7 +376,7 @@ tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_policy|ves_recovery_reas
 Expected:
 
 - 编译通过
-- 语义断言仍失败
+- 行为断言仍失败
 
 **Step 5: Commit**
 
@@ -319,17 +387,90 @@ git add virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp \
         memrpc/tests/rpc_client_timeout_watchdog_test.cpp \
         memrpc/tests/rpc_client_idle_callback_test.cpp \
         virus_executor_service/CMakeLists.txt
-git commit -m "test: freeze ves recovery semantics"
+git commit -m "test: freeze ves dfx layering semantics"
 ```
 
-### Task 2: Add A Unified External Recovery Entry To `RpcClient`
+### Task 2: Add Generic `CheckHealth()` To `IBootstrapChannel`
+
+**Files:**
+- Modify: `memrpc/include/memrpc/core/bootstrap.h`
+- Modify: `memrpc/include/memrpc/client/dev_bootstrap.h`
+- Modify: `memrpc/src/bootstrap/dev_bootstrap.cpp`
+- Modify: `memrpc/include/memrpc/client/sa_bootstrap.h`
+- Modify: `memrpc/src/bootstrap/sa_bootstrap.cpp`
+- Modify: `virus_executor_service/include/transport/ves_control_proxy.h`
+- Modify: `virus_executor_service/src/transport/ves_control_proxy.cpp`
+- Create: `memrpc/tests/bootstrap_health_check_test.cpp`
+- Modify: `memrpc/tests/CMakeLists.txt`
+
+**Step 1: Write the failing test**
+
+补测试覆盖：
+
+- `IBootstrapChannel::CheckHealth()` 存在
+- 对不支持 heartbeat 的 bootstrap 返回 `Unsupported`
+- `VesControlProxy` 能把业务 heartbeat reply 翻译成通用 `ChannelHealthResult`
+- `memrpc` test 不依赖 `VesHeartbeatReply`
+
+**Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+tools/build_and_test.sh --test-regex 'bootstrap_health_check'
+```
+
+Expected:
+
+- FAIL，因为当前没有 `CheckHealth()`
+
+**Step 3: Write minimal implementation**
+
+新增：
+
+- `ChannelHealthStatus`
+- `ChannelHealthResult`
+- `IBootstrapChannel::CheckHealth(uint64_t expectedSessionId)`
+
+要求：
+
+- `memrpc` core 只看到 generic result
+- VES-specific reply 只停留在 proxy 内部
+
+**Step 4: Run test to verify it passes**
+
+Run:
+
+```bash
+tools/build_and_test.sh --test-regex 'bootstrap_health_check'
+```
+
+Expected:
+
+- PASS
+
+**Step 5: Commit**
+
+```bash
+git add memrpc/include/memrpc/core/bootstrap.h \
+        memrpc/include/memrpc/client/dev_bootstrap.h \
+        memrpc/src/bootstrap/dev_bootstrap.cpp \
+        memrpc/include/memrpc/client/sa_bootstrap.h \
+        memrpc/src/bootstrap/sa_bootstrap.cpp \
+        virus_executor_service/include/transport/ves_control_proxy.h \
+        virus_executor_service/src/transport/ves_control_proxy.cpp \
+        memrpc/tests/bootstrap_health_check_test.cpp \
+        memrpc/tests/CMakeLists.txt
+git commit -m "feat: add bootstrap channel health check api"
+```
+
+### Task 3: Add `RpcClient::RequestExternalRecovery()`
 
 **Files:**
 - Modify: `memrpc/include/memrpc/client/rpc_client.h`
 - Modify: `memrpc/src/client/rpc_client.cpp`
-- Modify: `memrpc/tests/engine_death_handler_test.cpp`
-- Modify: `memrpc/tests/rpc_client_recovery_policy_test.cpp`
 - Create: `memrpc/tests/rpc_client_external_recovery_test.cpp`
+- Modify: `memrpc/tests/engine_death_handler_test.cpp`
 - Modify: `memrpc/tests/CMakeLists.txt`
 
 **Step 1: Write the failing test**
@@ -337,21 +478,21 @@ git commit -m "test: freeze ves recovery semantics"
 补测试覆盖：
 
 - `RequestExternalRecovery()` 存在
-- 它会复用 forced restart 路径
-- 如果 restart 已在进行，新的外部恢复请求会被 gate
-- 外部恢复不会伪造 engine death report
+- 它复用 forced restart 流程
+- cooldown / gating 生效
+- 不伪造 engine death
 
 **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'rpc_client_external_recovery|engine_death_handler|rpc_client_recovery_policy'
+tools/build_and_test.sh --test-regex 'rpc_client_external_recovery|engine_death_handler'
 ```
 
 Expected:
 
-- FAIL，因为当前没有 `RequestExternalRecovery()`
+- FAIL，因为当前没有外部恢复入口
 
 **Step 3: Write minimal implementation**
 
@@ -359,20 +500,19 @@ Expected:
 
 - `ExternalRecoverySignal`
 - `ExternalRecoveryRequest`
-- `RpcClient::RequestExternalRecovery()`
+- `RequestExternalRecovery()`
 
-实现要求：
+要求：
 
-- 只做 signal 导入
-- 内部统一落到 `RequestForcedRestart()`
-- 保留现有 cooldown / replay / restart_pending 逻辑
+- 只导入外部故障信号
+- 内部仍复用 `RequestForcedRestart()`
 
 **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'rpc_client_external_recovery|engine_death_handler|rpc_client_recovery_policy'
+tools/build_and_test.sh --test-regex 'rpc_client_external_recovery|engine_death_handler'
 ```
 
 Expected:
@@ -384,60 +524,56 @@ Expected:
 ```bash
 git add memrpc/include/memrpc/client/rpc_client.h \
         memrpc/src/client/rpc_client.cpp \
-        memrpc/tests/engine_death_handler_test.cpp \
-        memrpc/tests/rpc_client_recovery_policy_test.cpp \
         memrpc/tests/rpc_client_external_recovery_test.cpp \
+        memrpc/tests/engine_death_handler_test.cpp \
         memrpc/tests/CMakeLists.txt
 git commit -m "feat: add rpc client external recovery entry"
 ```
 
-### Task 3: Introduce A First-Class VES Recovery Reason Model
+### Task 4: Integrate `CheckHealth()` Into `RpcClient` Watchdog
 
 **Files:**
-- Create: `virus_executor_service/include/client/ves_dfx_types.h`
-- Create: `virus_executor_service/src/client/ves_dfx_types.cpp`
-- Modify: `virus_executor_service/include/client/ves_client.h`
-- Modify: `virus_executor_service/src/client/ves_client.cpp`
-- Modify: `virus_executor_service/tests/unit/ves/ves_recovery_reason_test.cpp`
+- Modify: `memrpc/src/client/rpc_client.cpp`
+- Modify: `memrpc/tests/rpc_client_timeout_watchdog_test.cpp`
+- Modify: `memrpc/tests/rpc_client_idle_callback_test.cpp`
 - Modify: `virus_executor_service/tests/unit/ves/ves_policy_test.cpp`
 
 **Step 1: Write the failing test**
 
 补测试覆盖：
 
-- `VesClient` 能记录最近恢复 reason
-- 不同 signal 会记录不同 reason
-- `LastRecoveryReason()` 可读
+- watchdog 会周期性调用 `CheckHealth()`
+- `Healthy` 不触发恢复
+- `Timeout/Malformed/Unhealthy/SessionMismatch` 会走 `RequestExternalRecovery()`
+- `Unsupported` 不影响现有 bootstrap
 
 **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_recovery_reason|ves_policy'
+tools/build_and_test.sh --test-regex 'rpc_client_timeout_watchdog|rpc_client_idle_callback|ves_policy'
 ```
 
 Expected:
 
-- FAIL，因为 `VesRecoveryReason` 及访问接口尚不存在
+- FAIL，因为当前 watchdog 还没有健康检查
 
 **Step 3: Write minimal implementation**
 
-新增：
+要求：
 
-- `enum class VesRecoveryReason`
-- `ToString(VesRecoveryReason)`
-- `VesClient::LastRecoveryReason()`
-- 设置 reason 的内部 helper
-
-这一步仍不接 heartbeat loop。
+- `WatchdogLoop()` 中接入 `CheckHealth()`
+- 不让 `CheckHealth()` 持锁阻塞恢复路径
+- 映射成 `RequestExternalRecovery()`
+- `VesClient` 不增加 heartbeat loop
 
 **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_recovery_reason|ves_policy'
+tools/build_and_test.sh --test-regex 'rpc_client_timeout_watchdog|rpc_client_idle_callback|ves_policy'
 ```
 
 Expected:
@@ -447,69 +583,57 @@ Expected:
 **Step 5: Commit**
 
 ```bash
-git add virus_executor_service/include/client/ves_dfx_types.h \
-        virus_executor_service/src/client/ves_dfx_types.cpp \
-        virus_executor_service/include/client/ves_client.h \
-        virus_executor_service/src/client/ves_client.cpp \
-        virus_executor_service/tests/unit/ves/ves_recovery_reason_test.cpp \
+git add memrpc/src/client/rpc_client.cpp \
+        memrpc/tests/rpc_client_timeout_watchdog_test.cpp \
+        memrpc/tests/rpc_client_idle_callback_test.cpp \
         virus_executor_service/tests/unit/ves/ves_policy_test.cpp
-git commit -m "feat: add ves recovery reason model"
+git commit -m "feat: integrate channel health checks into rpc watchdog"
 ```
 
-### Task 4: Move Heartbeat Scheduling And Recovery Wiring Into `VesClient`
+### Task 5: Add Optional VES Snapshot Subscription
 
 **Files:**
-- Modify: `virus_executor_service/include/client/ves_client.h`
-- Modify: `virus_executor_service/src/client/ves_client.cpp`
 - Modify: `virus_executor_service/include/transport/ves_control_proxy.h`
 - Modify: `virus_executor_service/src/transport/ves_control_proxy.cpp`
-- Modify: `virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp`
-- Modify: `virus_executor_service/tests/unit/ves/ves_policy_test.cpp`
+- Modify: `virus_executor_service/include/client/ves_client.h`
+- Modify: `virus_executor_service/src/client/ves_client.cpp`
+- Create: `virus_executor_service/tests/unit/ves/ves_health_subscription_test.cpp`
+- Modify: `virus_executor_service/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
 补测试覆盖：
 
-- `VesClient::Init()` 后 heartbeat loop 启动
-- heartbeat timeout 会调用 `RequestExternalRecovery()`
-- heartbeat unhealthy 会调用 `RequestExternalRecovery()`
-- heartbeat session mismatch 会调用 `RequestExternalRecovery()`
-- heartbeat failure 不会直接走 `CloseSession`
+- 上层可订阅完整 VES health snapshot
+- 没有订阅时不影响恢复主链路
+- snapshot callback 的异常/阻塞不会阻断恢复主链路
 
 **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_policy'
+tools/build_and_test.sh --test-regex 'ves_health_subscription'
 ```
 
 Expected:
 
-- FAIL，因为当前 heartbeat 没进 runtime 恢复闭环
+- FAIL，因为当前没有 side-channel snapshot subscription
 
 **Step 3: Write minimal implementation**
 
 实现策略：
 
-- heartbeat loop 放在 `VesClient`
-- `VesControlProxy` 继续只提供 `Heartbeat()` 调用和 socket death signal
-- `VesClient` 获取 heartbeat reply 后完成：
-  - reply 校验
-  - reason 归因
-  - 调 `client_.RequestExternalRecovery(...)`
-
-禁止做法：
-
-- 不在 heartbeat failure 里直接 `proxy_->CloseSession()`
-- 不手动 fake `EngineDeathCallback`
+- `VesControlProxy` 提供 VES-specific snapshot callback
+- `VesClient` 透传订阅接口
+- 保持 snapshot 订阅完全独立于主恢复链路
 
 **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_policy'
+tools/build_and_test.sh --test-regex 'ves_health_subscription'
 ```
 
 Expected:
@@ -519,67 +643,62 @@ Expected:
 **Step 5: Commit**
 
 ```bash
-git add virus_executor_service/include/client/ves_client.h \
-        virus_executor_service/src/client/ves_client.cpp \
-        virus_executor_service/include/transport/ves_control_proxy.h \
+git add virus_executor_service/include/transport/ves_control_proxy.h \
         virus_executor_service/src/transport/ves_control_proxy.cpp \
-        virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp \
-        virus_executor_service/tests/unit/ves/ves_policy_test.cpp
-git commit -m "feat: wire ves heartbeat through unified recovery path"
+        virus_executor_service/include/client/ves_client.h \
+        virus_executor_service/src/client/ves_client.cpp \
+        virus_executor_service/tests/unit/ves/ves_health_subscription_test.cpp \
+        virus_executor_service/CMakeLists.txt
+git commit -m "feat: add optional ves heartbeat snapshot subscription"
 ```
 
-### Task 5: Enrich Heartbeat Health Snapshot
+### Task 6: Enrich VES Health Snapshot And DFX Reasons
 
 **Files:**
 - Modify: `virus_executor_service/include/transport/ves_control_interface.h`
-- Modify: `virus_executor_service/include/service/virus_executor_service.h`
 - Modify: `virus_executor_service/src/service/virus_executor_service.cpp`
 - Modify: `virus_executor_service/include/ves/ves_engine_service.h`
 - Modify: `virus_executor_service/src/service/ves_engine_service.cpp`
 - Modify: `virus_executor_service/tests/unit/ves/ves_health_test.cpp`
 - Modify: `virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp`
+- Modify: `virus_executor_service/tests/unit/ves/ves_recovery_reason_test.cpp`
 
 **Step 1: Write the failing test**
 
 补测试覆盖：
 
-- idle 时为 `OkIdle`
-- 正常 in-flight 时为 `OkBusy`
-- 长任务时为 `DegradedLongRunning`
-- session 不存在时为 `UnhealthyNoSession`
-- `reasonCode` 与 `status` 一致
+- `OkIdle`
+- `OkBusy`
+- `DegradedLongRunning`
+- `UnhealthyNoSession`
+- `reasonCode` 与状态一致
 
 **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_health|ves_heartbeat'
+tools/build_and_test.sh --test-regex 'ves_health|ves_heartbeat|ves_recovery_reason'
 ```
 
 Expected:
 
-- FAIL，因为当前 heartbeat 只有简单 `Ok/Unhealthy`
+- FAIL，因为当前 snapshot 还不够细
 
 **Step 3: Write minimal implementation**
 
-新增或扩展：
+增强 VES heartbeat reply：
 
 - `reasonCode`
 - `flags`
-- 服务端 health state helper
-
-要求：
-
-- 保持 reply 结构可解释
-- 避免把所有 unhealthy 折叠成同一状态
+- 更清晰的 health state helper
 
 **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_health|ves_heartbeat'
+tools/build_and_test.sh --test-regex 'ves_health|ves_heartbeat|ves_recovery_reason'
 ```
 
 Expected:
@@ -590,16 +709,16 @@ Expected:
 
 ```bash
 git add virus_executor_service/include/transport/ves_control_interface.h \
-        virus_executor_service/include/service/virus_executor_service.h \
         virus_executor_service/src/service/virus_executor_service.cpp \
         virus_executor_service/include/ves/ves_engine_service.h \
         virus_executor_service/src/service/ves_engine_service.cpp \
         virus_executor_service/tests/unit/ves/ves_health_test.cpp \
-        virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp
-git commit -m "feat: enrich ves heartbeat health snapshot"
+        virus_executor_service/tests/unit/ves/ves_heartbeat_test.cpp \
+        virus_executor_service/tests/unit/ves/ves_recovery_reason_test.cpp
+git commit -m "feat: enrich ves heartbeat health snapshot and reasons"
 ```
 
-### Task 6: Improve Soft ExecTimeout DFX Fidelity
+### Task 7: Improve ExecTimeout DFX Fidelity
 
 **Files:**
 - Modify: `memrpc/src/server/rpc_server.cpp`
@@ -611,9 +730,9 @@ git commit -m "feat: enrich ves heartbeat health snapshot"
 
 补测试覆盖：
 
-- 长执行期间 `lastHeartbeatMonoMs` 会推进
-- timeout 归因为 `ExecTimeout`
-- timeout 后不会被错误归因为 heartbeat failure
+- 长执行期间 runtime heartbeat 推进
+- timeout 仍归因为 `ExecTimeout`
+- 不被误记为 heartbeat failure
 
 **Step 2: Run test to verify it fails**
 
@@ -625,14 +744,13 @@ tools/build_and_test.sh --test-regex 'rpc_client_timeout_watchdog|ves_policy'
 
 Expected:
 
-- FAIL，因为当前长执行 heartbeat 更新不够清晰
+- FAIL，因为当前 long-running DFX fidelity 仍不够
 
 **Step 3: Write minimal implementation**
 
-实现目标：
+要求：
 
-- 让 worker 执行长任务期间持续更新 runtime heartbeat
-- client watchdog 保留更准确的 last state / timing 信息
+- 周期性更新 `lastHeartbeatMonoMs`
 - 只增强 DFX，不改 soft timeout 语义
 
 **Step 4: Run test to verify it passes**
@@ -657,25 +775,25 @@ git add memrpc/src/server/rpc_server.cpp \
 git commit -m "feat: improve exec-timeout dfx fidelity"
 ```
 
-### Task 7: Unify Supervisor And Harness Process Recovery Ownership
+### Task 8: Unify Process Respawn Ownership In Supervisor And Harnesses
 
 **Files:**
 - Modify: `virus_executor_service/src/app/ves_supervisor_main.cpp`
 - Modify: `virus_executor_service/src/app/ves_dt_crash_recovery_main.cpp`
 - Modify: `virus_executor_service/src/app/ves_stress_client_main.cpp`
-- Modify: `virus_executor_service/tests/dt/ves_crash_recovery_test.cpp`
 - Create: `virus_executor_service/tests/dt/ves_heartbeat_recovery_test.cpp`
 - Create: `virus_executor_service/tests/dt/ves_idle_reopen_test.cpp`
+- Modify: `virus_executor_service/tests/dt/ves_crash_recovery_test.cpp`
 - Modify: `virus_executor_service/CMakeLists.txt`
 
 **Step 1: Write the failing test**
 
 补 DT 覆盖：
 
-- heartbeat failure -> process respawn -> session reopen -> next call succeeds
-- idle close -> next call reopen succeeds
-- engine death 与 heartbeat overlap 时不会双重恢复
-- supervisor 能 reap 并 respawn runtime-crashed engine
+- heartbeat failure -> process respawn -> session reopen
+- idle close -> next call reopen
+- heartbeat failure 与 engine death overlap 不会双重恢复
+- supervisor 能 runtime reap/respawn
 
 **Step 2: Run test to verify it fails**
 
@@ -687,19 +805,15 @@ tools/build_and_test.sh --test-regex 'virus_executor_service_crash_recovery|ves_
 
 Expected:
 
-- FAIL，因为 supervisor / harness 语义目前不统一
+- FAIL，因为 process respawn owner 还不统一
 
 **Step 3: Write minimal implementation**
 
 要求：
 
-- `ves_supervisor_main` 增加 runtime `waitpid/reap/respawn`
-- DT / stress harness 共用一致的 respawn 模式
-- 明确日志：
-  - detected
-  - reaped
-  - respawning
-  - ready
+- supervisor 负责 process reap/respawn
+- `RpcClient` 负责 session 恢复
+- 日志必须区分 process respawn 与 session replay
 
 **Step 4: Run test to verify it passes**
 
@@ -719,14 +833,14 @@ Expected:
 git add virus_executor_service/src/app/ves_supervisor_main.cpp \
         virus_executor_service/src/app/ves_dt_crash_recovery_main.cpp \
         virus_executor_service/src/app/ves_stress_client_main.cpp \
-        virus_executor_service/tests/dt/ves_crash_recovery_test.cpp \
         virus_executor_service/tests/dt/ves_heartbeat_recovery_test.cpp \
         virus_executor_service/tests/dt/ves_idle_reopen_test.cpp \
+        virus_executor_service/tests/dt/ves_crash_recovery_test.cpp \
         virus_executor_service/CMakeLists.txt
-git commit -m "feat: unify ves process recovery ownership"
+git commit -m "feat: unify ves process respawn ownership"
 ```
 
-### Task 8: Align Documentation And Gates
+### Task 9: Align Docs And Gates
 
 **Files:**
 - Modify: `docs/architecture.md`
@@ -736,43 +850,44 @@ git commit -m "feat: unify ves process recovery ownership"
 - Modify: `tools/ci_sweep.sh`
 - Create: `docs/plans/2026-03-14-ves-dfx-recovery-closure.md`
 
-**Step 1: Write the failing doc checklist**
+**Step 1: Write the mismatch checklist**
 
-列出必须改掉的旧说法：
+确认必须更新：
 
-- heartbeat failure 直接 close/restart 的混乱描述
-- session replay 与 process respawn 边界不清
-- 旧 idle callback / engine death 说明落后于当前代码
+- heartbeat 调度由 `RpcClient` watchdog 驱动
+- heartbeat 协议仍在 proxy
+- `memrpc` 不依赖业务 heartbeat reply
+- snapshot 订阅是 side-channel
 
 **Step 2: Verify the mismatch**
 
 Run:
 
 ```bash
-rg -n "heartbeat|replay|idle|engine death|InvokeSync" docs tools memrpc virus_executor_service
+rg -n "heartbeat|CheckHealth|CloseSession|Restart|replay|engine death" docs tools memrpc virus_executor_service
 ```
 
 Expected:
 
-- 能定位文档与设计不一致处
+- 能定位不一致点
 
 **Step 3: Write minimal updates**
 
-文档必须明确：
+文档明确：
 
-- single recovery owner
-- heartbeat -> `VesClient` -> `RpcClient::RequestExternalRecovery`
-- `CloseSession` 只用于 intentional close
-- process respawn 与 session replay 的边界
+- protocol down, scheduling up
+- `IBootstrapChannel::CheckHealth()`
+- `RpcClient` 统一健康检查与恢复
+- process respawn 不属于 `RpcClient`
 
-同时把相关 DFX DT case 纳入 gate。
+并把新的 DT case 纳入 gate。
 
 **Step 4: Re-scan for consistency**
 
 Run:
 
 ```bash
-rg -n "RequestExternalRecovery|Heartbeat|CloseSession|Restart|replay" docs tools
+rg -n "CheckHealth|RequestExternalRecovery|Heartbeat|CloseSession|Restart" docs tools
 ```
 
 Expected:
@@ -788,17 +903,17 @@ git add docs/architecture.md \
         tools/push_gate.sh \
         tools/ci_sweep.sh \
         docs/plans/2026-03-14-ves-dfx-recovery-closure.md
-git commit -m "docs: align ves dfx recovery architecture"
+git commit -m "docs: align ves dfx recovery layering"
 ```
 
 ---
 
 ## 7. Verification Matrix
 
-阶段性验证：
+阶段验证：
 
 ```bash
-tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_health|ves_policy|ves_recovery_reason|rpc_client_timeout_watchdog|rpc_client_idle_callback|rpc_client_external_recovery'
+tools/build_and_test.sh --test-regex 'ves_heartbeat|ves_health|ves_policy|ves_recovery_reason|ves_health_subscription|bootstrap_health_check|rpc_client_external_recovery|rpc_client_timeout_watchdog|rpc_client_idle_callback'
 ```
 
 DT 验证：
@@ -815,32 +930,30 @@ tools/push_gate.sh --deep
 
 ## 8. Risks
 
-1. heartbeat 与 engine death 可能同时上报，导致双重恢复。
-2. 新 heartbeat loop 可能带来 shutdown race。
-3. 扩展 heartbeat reply 结构可能影响 mock SA 协议兼容。
-4. supervisor runtime respawn 改动可能影响现有 demo 时序。
-5. 如果把 process respawn 责任错误地下沉到 `RpcClient`，会再次把边界搅乱。
+1. `CheckHealth()` 如果超时控制不好，会卡住 watchdog。
+2. control socket death monitor 与健康检查可能重复触发恢复。
+3. 如果把业务 snapshot 误放进 `memrpc` 通用接口，会破坏分层。
+4. process respawn 与 session replay 仍可能被错误实现成双重恢复。
 
 ## 9. Mitigations
 
-- 所有恢复请求统一走 `RpcClient::RequestExternalRecovery()` 或既有 `RecoveryPolicy` 动作。
-- 所有 signal 都携带 reason，便于 de-dup 和日志解释。
-- `CloseSession` 与 `Restart` 的语义通过测试先锁死，再改实现。
-- heartbeat 只负责发现问题，不直接执行恢复。
-- supervisor 只负责进程，不碰 session replay。
+- `CheckHealth()` 必须有短超时和明确返回语义。
+- `RpcClient::RequestExternalRecovery()` 做统一 de-dup/gating。
+- snapshot 订阅保持 VES-specific，不进入 `memrpc` core。
+- 代码审查中检查是否有任何 `memrpc` 文件直接依赖 VES heartbeat 定义。
 
 ## 10. Recommended First Slice
 
-如果先做最有价值的一小段，建议顺序：
+优先顺序：
 
 1. Task 1
 2. Task 2
 3. Task 3
 4. Task 4
 
-这四步会先把最关键的语义收口：
+这四步先把最关键的主链路收口：
 
-- heartbeat 不再和 `CloseSession` / fake death callback 混用
-- `RpcClient` 成为明确的恢复执行入口
-- `VesClient` 成为 heartbeat 与 DFX reason 的汇聚点
-- 整个系统开始有“清晰设计”，而不是“能跑但边界乱”
+- heartbeat 协议留在 proxy
+- 健康检查统一从 `IBootstrapChannel::CheckHealth()` 暴露
+- watchdog 统一驱动健康检查
+- `RpcClient` 成为单一恢复执行者

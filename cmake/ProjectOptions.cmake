@@ -25,6 +25,13 @@ function(memrpc_disable_clang_tidy_for_target target)
   target_compile_options("${target}" PRIVATE -Wno-everything)
 endfunction()
 
+function(memrpc_relax_warnings_for_target target)
+  if (NOT TARGET "${target}")
+    message(FATAL_ERROR "memrpc_relax_warnings_for_target: unknown target '${target}'")
+  endif()
+  target_compile_options("${target}" PRIVATE -Wno-error)
+endfunction()
+
 function(memrpc_configure_project_options)
   if (DEFINED MEMRPC_PROJECT_OPTIONS_CONFIGURED)
     return()

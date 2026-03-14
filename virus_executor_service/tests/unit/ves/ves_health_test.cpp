@@ -54,4 +54,60 @@ TEST(VesHealthTest, InFlightAndAgeDuringScan) {
     worker.join();
 }
 
+TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
+    VesEngineService service;
+    service.Initialize();
+
+    std::atomic<bool> longStarted{false};
+    std::atomic<bool> shortStarted{false};
+
+    std::thread longWorker([&]() {
+        ScanFileRequest req;
+        req.filePath = "/data/sleep200_long.bin";
+        longStarted.store(true);
+        (void)service.ScanFile(req);
+    });
+
+    while (!longStarted.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    while (true) {
+        auto snapshot = service.GetHealthSnapshot();
+        if (snapshot.inFlight >= 1u &&
+            snapshot.currentTask == "/data/sleep200_long.bin") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    std::thread shortWorker([&]() {
+        ScanFileRequest req;
+        req.filePath = "/data/sleep50_short.bin";
+        shortStarted.store(true);
+        (void)service.ScanFile(req);
+    });
+
+    while (!shortStarted.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    VesHealthSnapshot snapshot;
+    while (true) {
+        snapshot = service.GetHealthSnapshot();
+        if (snapshot.inFlight >= 2u) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    EXPECT_EQ(snapshot.currentTask, "/data/sleep200_long.bin");
+    EXPECT_GE(snapshot.lastTaskAgeMs, 20u);
+
+    shortWorker.join();
+    longWorker.join();
+}
+
 }  // namespace VirusExecutorService

@@ -82,9 +82,16 @@ void TestkitService::RegisterHandlers(MemRpc::RpcServer* server) {
     server->RegisterHandler(
         static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winfinite-recursion"
+#endif
             struct Recurse {
                 static void Go(volatile int depth) { Go(depth + 1); }
             };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
             Recurse::Go(0);
         });
 }

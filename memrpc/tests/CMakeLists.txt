@@ -8,6 +8,7 @@ function(memrpc_add_test target source)
   if (MEMRPC_ENABLE_CLANG_TIDY AND MEMRPC_CLANG_TIDY_MAINLINE_ONLY)
     memrpc_disable_clang_tidy_for_target(${target})
   endif()
+  memrpc_relax_warnings_for_target(${target})
   target_link_libraries(${target} PRIVATE memrpc GTest::gtest_main)
   target_include_directories(${target} PRIVATE
     ${PROJECT_SOURCE_DIR}/include

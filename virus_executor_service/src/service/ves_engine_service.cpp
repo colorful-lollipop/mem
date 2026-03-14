@@ -1,5 +1,6 @@
 #include "ves/ves_engine_service.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
@@ -26,13 +27,20 @@ bool VesEngineService::initialized() const {
     return initialized_;
 }
 
+uint64_t VesEngineService::AddActiveTask(const std::string& filePath) {
+    std::lock_guard<std::mutex> lock(healthMutex_);
+    const uint64_t taskId = nextTaskId_++;
+    activeTasks_.emplace(taskId, ActiveTask{MemRpc::MonotonicNowMs(), filePath});
+    return taskId;
+}
+
+void VesEngineService::RemoveActiveTask(uint64_t taskId) {
+    std::lock_guard<std::mutex> lock(healthMutex_);
+    activeTasks_.erase(taskId);
+}
+
 ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
-    {
-        std::lock_guard<std::mutex> lock(healthMutex_);
-        inFlight_++;
-        currentTask_ = request.filePath;
-        lastTaskStartMonoMs_ = MemRpc::MonotonicNowMs();
-    }
+    const uint64_t taskId = AddActiveTask(request.filePath);
 
     ScanFileReply result;
     if (!initialized_) {
@@ -51,14 +59,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
     }
     HILOGI("ScanFile(%{public}s): threat=%{public}d",
           request.filePath.c_str(), result.threatLevel);
-
-    {
-        std::lock_guard<std::mutex> lock(healthMutex_);
-        inFlight_--;
-        if (inFlight_ == 0) {
-            currentTask_ = "idle";
-        }
-    }
+    RemoveActiveTask(taskId);
 
     return result;
 }
@@ -66,11 +67,20 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
 VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     std::lock_guard<std::mutex> lock(healthMutex_);
     VesHealthSnapshot snapshot;
-    snapshot.inFlight = inFlight_;
-    snapshot.currentTask = currentTask_;
-    if (inFlight_ > 0 && lastTaskStartMonoMs_ > 0) {
-        snapshot.lastTaskAgeMs = MemRpc::MonotonicNowMs() - lastTaskStartMonoMs_;
+    snapshot.inFlight = static_cast<uint32_t>(activeTasks_.size());
+    if (activeTasks_.empty()) {
+        snapshot.currentTask = "idle";
+        return snapshot;
     }
+
+    const uint32_t nowMs = MemRpc::MonotonicNowMs();
+    const auto oldestTask = std::min_element(
+        activeTasks_.begin(), activeTasks_.end(),
+        [](const auto& lhs, const auto& rhs) {
+            return lhs.second.startMonoMs < rhs.second.startMonoMs;
+        });
+    snapshot.currentTask = oldestTask->second.filePath;
+    snapshot.lastTaskAgeMs = nowMs - oldestTask->second.startMonoMs;
     return snapshot;
 }
 

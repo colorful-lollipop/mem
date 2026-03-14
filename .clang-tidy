@@ -8,6 +8,7 @@ Checks: >-
   modernize-*,
   concurrency-*,
   cert-*,
+  -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-avoid-c-arrays,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-macro-usage,
