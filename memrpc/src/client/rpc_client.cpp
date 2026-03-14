@@ -786,6 +786,35 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     });
   }
 
+  ReplayableSnapshot CaptureReplayableSnapshot() {
+    std::lock_guard<std::mutex> lock(sessionMutex_);
+    return SnapshotAndTearDownLocked();
+  }
+
+  void CloseBootstrapSessionQuietly() {
+    if (bootstrap != nullptr) {
+      bootstrap->CloseSession();
+    }
+  }
+
+  void FinishEngineDeathHandling(const RecoveryDecision& decision,
+                                 ReplayableSnapshot snapshot) {
+    FailPoisonPills(snapshot.poison_list);
+    switch (decision.action) {
+      case RecoveryAction::Ignore:
+        FailReplayList(snapshot.replay_list);
+        return;
+      case RecoveryAction::CloseSession:
+        FailReplayList(snapshot.replay_list);
+        CloseBootstrapSessionQuietly();
+        ClearIdleReminder();
+        return;
+      case RecoveryAction::Restart:
+        StartReplayRestartThread(decision.delayMs, std::move(snapshot.replay_list));
+        return;
+    }
+  }
+
   void HandleEngineDeath(uint64_t dead_session_id) {
     if (shuttingDown.load() || suppressDeathCallback_.load()) {
       return;
@@ -804,29 +833,9 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
       return;
     }
 
-    ReplayableSnapshot snapshot;
-    {
-      std::lock_guard<std::mutex> lock(sessionMutex_);
-      snapshot = SnapshotAndTearDownLocked();
-    }
-
-    EngineDeathReport report = BuildDeathReport(dead_session_id, snapshot);
-    RecoveryDecision decision = on_engine_death(report);
-    FailPoisonPills(snapshot.poison_list);
-
-    if (decision.action == RecoveryAction::Ignore) {
-      FailReplayList(snapshot.replay_list);
-      return;
-    }
-    if (decision.action == RecoveryAction::CloseSession) {
-      FailReplayList(snapshot.replay_list);
-      if (bootstrap != nullptr) {
-        bootstrap->CloseSession();
-      }
-      ClearIdleReminder();
-      return;
-    }
-    StartReplayRestartThread(decision.delayMs, std::move(snapshot.replay_list));
+    ReplayableSnapshot snapshot = CaptureReplayableSnapshot();
+    const RecoveryDecision decision = on_engine_death(BuildDeathReport(dead_session_id, snapshot));
+    FinishEngineDeathHandling(decision, std::move(snapshot));
   }
 
   [[nodiscard]] bool HasLiveSessionFastPath() const {
@@ -872,7 +881,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     return StatusCode::Ok;
   }
 
-  StatusCode EnsureLiveSession() {
+  StatusCode RefreshReopenBlockStatus() {
     const StatusCode gate_status = GetReopenBlockStatus();
     if (gate_status != StatusCode::Ok) {
       return gate_status;
@@ -880,21 +889,10 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     if (reopenBlockedUntilMonoMs_.load(std::memory_order_acquire) != 0) {
       ClearReopenBlock();
     }
-    if (HasLiveSessionFastPath()) {
-      return StatusCode::Ok;
-    }
-    std::lock_guard<std::mutex> reconnect_lock(reconnectMutex_);
-    const StatusCode locked_gate_status = GetReopenBlockStatus();
-    if (locked_gate_status != StatusCode::Ok) {
-      return locked_gate_status;
-    }
-    if (reopenBlockedUntilMonoMs_.load(std::memory_order_relaxed) != 0) {
-      ClearReopenBlock();
-    }
-    if (HasLiveSessionLocked()) {
-      return StatusCode::Ok;
-    }
+    return StatusCode::Ok;
+  }
 
+  StatusCode ReopenSession() {
     BootstrapHandles handles;
     const StatusCode open_status = OpenBootstrapSession(&handles);
     if (open_status != StatusCode::Ok) {
@@ -907,6 +905,25 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     TouchActivity();
     StartDispatcher();
     return StatusCode::Ok;
+  }
+
+  StatusCode EnsureLiveSession() {
+    const StatusCode gate_status = RefreshReopenBlockStatus();
+    if (gate_status != StatusCode::Ok) {
+      return gate_status;
+    }
+    if (HasLiveSessionFastPath()) {
+      return StatusCode::Ok;
+    }
+    std::lock_guard<std::mutex> reconnect_lock(reconnectMutex_);
+    const StatusCode locked_gate_status = RefreshReopenBlockStatus();
+    if (locked_gate_status != StatusCode::Ok) {
+      return locked_gate_status;
+    }
+    if (HasLiveSessionLocked()) {
+      return StatusCode::Ok;
+    }
+    return ReopenSession();
   }
 
   bool SubmissionBelongsToDeadSession(const PendingSubmit& pending_submit) {

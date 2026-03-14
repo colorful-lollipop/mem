@@ -27,6 +27,13 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
 
  private:
     void MonitorSocket();
+    void StopMonitorThread();
+    void CloseSocket();
+    void ResetSocketConnection();
+    bool SendCommand(int fd, char cmd) const;
+    MemRpc::StatusCode ReceiveSessionHandles(MemRpc::BootstrapHandles& handles);
+    bool IsPeerDisconnected() const;
+    void NotifyPeerDisconnected();
 
     std::string service_socket_path_;
     int sock_fd_ = -1;
