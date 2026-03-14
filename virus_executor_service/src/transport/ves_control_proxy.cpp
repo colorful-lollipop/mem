@@ -14,6 +14,8 @@
 namespace VirusExecutorService {
 
 namespace {
+constexpr int DEFAULT_HEARTBEAT_TIMEOUT_MS = 500;
+constexpr int HEALTH_CHECK_TIMEOUT_MS = 100;
 
 int ConnectToService(const std::string& path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -149,8 +151,8 @@ MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handle
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
-    // Use a short-lived connection for heartbeat (server closes after reply).
+MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& reply,
+                                                         int timeoutMs) const {
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
         return MemRpc::StatusCode::PeerDisconnected;
@@ -159,6 +161,17 @@ MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
     if (!SendCommand(hb_fd, 3)) {
         close(hb_fd);
         return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    if (timeoutMs > 0) {
+        pollfd pfd{};
+        pfd.fd = hb_fd;
+        pfd.events = POLLIN | POLLHUP | POLLERR;
+        const int poll_result = poll(&pfd, 1, timeoutMs);
+        if (poll_result <= 0) {
+            close(hb_fd);
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
     }
 
     VesHeartbeatReply buf{};
@@ -170,6 +183,43 @@ MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
     }
     reply = buf;
     return MemRpc::StatusCode::Ok;
+}
+
+MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
+    return HeartbeatWithTimeout(reply, DEFAULT_HEARTBEAT_TIMEOUT_MS);
+}
+
+void VesControlProxy::PublishHealthSnapshot(const VesHeartbeatReply& reply) {
+    HealthSnapshotCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        callback = healthSnapshotCallback_;
+    }
+    if (callback) {
+        callback(reply);
+    }
+}
+
+MemRpc::ChannelHealthResult VesControlProxy::CheckHealth(uint64_t expectedSessionId) {
+    VesHeartbeatReply reply{};
+    const MemRpc::StatusCode status = HeartbeatWithTimeout(reply, HEALTH_CHECK_TIMEOUT_MS);
+    if (status == MemRpc::StatusCode::Ok) {
+        PublishHealthSnapshot(reply);
+        MemRpc::ChannelHealthResult result;
+        result.sessionId = reply.sessionId;
+        if (expectedSessionId != 0 && reply.sessionId != 0 && reply.sessionId != expectedSessionId) {
+            result.status = MemRpc::ChannelHealthStatus::SessionMismatch;
+            return result;
+        }
+        result.status = reply.status == static_cast<uint32_t>(VesHeartbeatStatus::Ok)
+                            ? MemRpc::ChannelHealthStatus::Healthy
+                            : MemRpc::ChannelHealthStatus::Unhealthy;
+        return result;
+    }
+    if (status == MemRpc::StatusCode::ProtocolMismatch) {
+        return {MemRpc::ChannelHealthStatus::Malformed, 0};
+    }
+    return {MemRpc::ChannelHealthStatus::Timeout, 0};
 }
 
 MemRpc::StatusCode VesControlProxy::CloseSession() {
@@ -186,6 +236,11 @@ MemRpc::StatusCode VesControlProxy::CloseSession() {
         return MemRpc::StatusCode::PeerDisconnected;
     }
     return MemRpc::StatusCode::Ok;
+}
+
+void VesControlProxy::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
+    std::lock_guard<std::mutex> lock(callbackMutex_);
+    healthSnapshotCallback_ = std::move(callback);
 }
 
 void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
@@ -226,6 +281,13 @@ MemRpc::StatusCode VesControlChannelAdapter::CloseSession() {
         return MemRpc::StatusCode::Ok;
     }
     return proxy_->CloseSession();
+}
+
+MemRpc::ChannelHealthResult VesControlChannelAdapter::CheckHealth(uint64_t expectedSessionId) {
+    if (proxy_ == nullptr) {
+        return {};
+    }
+    return proxy_->CheckHealth(expectedSessionId);
 }
 
 void VesControlChannelAdapter::SetEngineDeathCallback(

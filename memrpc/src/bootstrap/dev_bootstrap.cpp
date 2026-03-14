@@ -263,6 +263,11 @@ StatusCode DevBootstrapChannel::CloseSession() {
   return StatusCode::Ok;
 }
 
+ChannelHealthResult DevBootstrapChannel::CheckHealth(uint64_t expectedSessionId) {
+  (void)expectedSessionId;
+  return {};
+}
+
 void DevBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
   impl_->death_callback = std::move(callback);
 }

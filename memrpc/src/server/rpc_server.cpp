@@ -520,6 +520,12 @@ struct RpcServer::Impl {
                              .count();
     if (payload->request.execTimeoutMs > 0 &&
         elapsed > static_cast<long long>(payload->request.execTimeoutMs)) {
+      HILOGE("exec timeout request_id=%{public}llu slot=%{public}u opcode=%{public}u elapsed_ms=%{public}lld timeout_ms=%{public}u",
+             static_cast<unsigned long long>(request_entry.requestId),
+             request_entry.slotIndex,
+             static_cast<unsigned>(request_entry.opcode),
+             static_cast<long long>(elapsed),
+             payload->request.execTimeoutMs);
       reply.status = StatusCode::ExecTimeout;
     }
     return reply;

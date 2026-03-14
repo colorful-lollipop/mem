@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <thread>
 #include <unistd.h>
 
@@ -12,6 +13,64 @@
 namespace {
 
 constexpr MemRpc::Opcode kTestEchoOpcode = static_cast<MemRpc::Opcode>(200);
+
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (predicate()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return predicate();
+}
+
+class HealthAwareBootstrapChannel final : public MemRpc::IBootstrapChannel {
+ public:
+  explicit HealthAwareBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
+      : delegate_(std::move(delegate)) {}
+
+  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
+    openCount_.fetch_add(1);
+    return delegate_->OpenSession(handles);
+  }
+
+  MemRpc::StatusCode CloseSession() override {
+    closeCount_.fetch_add(1);
+    return delegate_->CloseSession();
+  }
+
+  MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override {
+    checkCount_.fetch_add(1);
+    const auto status = healthStatus_.load(std::memory_order_relaxed);
+    if (status == MemRpc::ChannelHealthStatus::SessionMismatch) {
+      return {status, expectedSessionId + 1};
+    }
+    const uint64_t sessionId =
+        status == MemRpc::ChannelHealthStatus::Healthy ? expectedSessionId : 0;
+    return {status, sessionId};
+  }
+
+  void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
+    delegate_->SetEngineDeathCallback(std::move(callback));
+  }
+
+  void SetHealthStatus(MemRpc::ChannelHealthStatus status) {
+    healthStatus_.store(status, std::memory_order_relaxed);
+  }
+
+  [[nodiscard]] int openCount() const { return openCount_.load(); }
+  [[nodiscard]] int closeCount() const { return closeCount_.load(); }
+  [[nodiscard]] int checkCount() const { return checkCount_.load(); }
+
+ private:
+  std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
+  std::atomic<MemRpc::ChannelHealthStatus> healthStatus_{
+      MemRpc::ChannelHealthStatus::Unsupported};
+  std::atomic<int> openCount_{0};
+  std::atomic<int> closeCount_{0};
+  std::atomic<int> checkCount_{0};
+};
 
 void CloseHandles(MemRpc::BootstrapHandles& h) {
   if (h.shmFd >= 0) {
@@ -155,6 +214,86 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
 
   client.Shutdown();
   server.Stop();
+}
+
+TEST(RpcClientTimeoutWatchdogTest, UnsupportedHealthCheckDoesNotRestartSession) {
+  auto rawBootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles;
+  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(rawBootstrap->serverHandles());
+  server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+    reply->status = MemRpc::StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  auto bootstrap = std::make_shared<HealthAwareBootstrapChannel>(rawBootstrap);
+  bootstrap->SetHealthStatus(MemRpc::ChannelHealthStatus::Unsupported);
+
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  ASSERT_TRUE(WaitFor([&]() { return bootstrap->checkCount() >= 2; },
+                      std::chrono::milliseconds(500)));
+  EXPECT_EQ(bootstrap->closeCount(), 0);
+  EXPECT_EQ(bootstrap->openCount(), 1);
+
+  MemRpc::RpcCall call;
+  call.opcode = kTestEchoOpcode;
+  auto future = client.InvokeAsync(call);
+  MemRpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart) {
+  constexpr MemRpc::ChannelHealthStatus kSignals[] = {
+      MemRpc::ChannelHealthStatus::Timeout,
+      MemRpc::ChannelHealthStatus::Malformed,
+      MemRpc::ChannelHealthStatus::Unhealthy,
+      MemRpc::ChannelHealthStatus::SessionMismatch,
+  };
+
+  for (MemRpc::ChannelHealthStatus signal : kSignals) {
+    auto rawBootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+    MemRpc::BootstrapHandles unusedHandles;
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+    CloseHandles(unusedHandles);
+
+    MemRpc::RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kTestEchoOpcode,
+                           [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                             reply->status = MemRpc::StatusCode::Ok;
+                           });
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    auto bootstrap = std::make_shared<HealthAwareBootstrapChannel>(rawBootstrap);
+    bootstrap->SetHealthStatus(MemRpc::ChannelHealthStatus::Healthy);
+
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    bootstrap->SetHealthStatus(signal);
+    ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; },
+                        std::chrono::milliseconds(500)));
+    bootstrap->SetHealthStatus(MemRpc::ChannelHealthStatus::Healthy);
+    ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; },
+                        std::chrono::milliseconds(500)));
+
+    MemRpc::RpcCall call;
+    call.opcode = kTestEchoOpcode;
+    auto future = client.InvokeAsync(call);
+    MemRpc::RpcReply reply;
+    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+
+    client.Shutdown();
+    server.Stop();
+  }
 }
 
 }  // namespace MemRpc

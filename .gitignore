@@ -26,3 +26,5 @@ third_party/*/build/
 compile_commands.json
 .idea
 cmake-build-debug
+.codemate
+.vscode

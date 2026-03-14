@@ -66,6 +66,52 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStop();
 }
 
+TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
+    const std::string socketPath = "/tmp/virus_executor_service_health_" + std::to_string(getpid());
+
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->AsObject()->SetServicePath(socketPath);
+    stub->OnStart();
+    ASSERT_TRUE(stub->Publish(stub.get()));
+
+    VesControlProxy proxy(stub->AsObject(), socketPath);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    const auto result = proxy.CheckHealth(handles.sessionId);
+    EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Healthy);
+    EXPECT_EQ(result.sessionId, handles.sessionId);
+
+    proxy.CloseSession();
+    stub->OnStop();
+}
+
+TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) {
+    const std::string socketPath =
+        "/tmp/virus_executor_service_health_mismatch_" + std::to_string(getpid());
+
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->AsObject()->SetServicePath(socketPath);
+    stub->OnStart();
+    ASSERT_TRUE(stub->Publish(stub.get()));
+
+    VesControlProxy proxy(stub->AsObject(), socketPath);
+
+    const auto unhealthy = proxy.CheckHealth(42);
+    EXPECT_EQ(unhealthy.status, MemRpc::ChannelHealthStatus::Unhealthy);
+    EXPECT_EQ(unhealthy.sessionId, 0u);
+
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    const auto mismatch = proxy.CheckHealth(handles.sessionId + 1);
+    EXPECT_EQ(mismatch.status, MemRpc::ChannelHealthStatus::SessionMismatch);
+    EXPECT_EQ(mismatch.sessionId, handles.sessionId);
+
+    proxy.CloseSession();
+    stub->OnStop();
+}
+
 TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     VirusExecutorService service;
     service.OnStart();

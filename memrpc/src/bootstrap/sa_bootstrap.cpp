@@ -65,6 +65,14 @@ StatusCode SaBootstrapChannel::CloseSession() {
   return impl_->fallback->CloseSession();
 }
 
+ChannelHealthResult SaBootstrapChannel::CheckHealth(uint64_t expectedSessionId) {
+  if (impl_->fallback == nullptr) {
+    impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
+    return {};
+  }
+  return impl_->fallback->CheckHealth(expectedSessionId);
+}
+
 void SaBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
   if (impl_->fallback != nullptr) {
     impl_->fallback->SetEngineDeathCallback(std::move(callback));

@@ -45,6 +45,23 @@ void SignalEventFdIfNeeded(int fd, bool should_signal) {
   (void)SignalEventFd(fd);
 }
 
+std::optional<ExternalRecoverySignal> ToExternalRecoverySignal(ChannelHealthStatus status) {
+  switch (status) {
+    case ChannelHealthStatus::Timeout:
+      return ExternalRecoverySignal::ChannelHealthTimeout;
+    case ChannelHealthStatus::Malformed:
+      return ExternalRecoverySignal::ChannelHealthMalformed;
+    case ChannelHealthStatus::Unhealthy:
+      return ExternalRecoverySignal::ChannelHealthUnhealthy;
+    case ChannelHealthStatus::SessionMismatch:
+      return ExternalRecoverySignal::ChannelHealthSessionMismatch;
+    case ChannelHealthStatus::Healthy:
+    case ChannelHealthStatus::Unsupported:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 struct RpcFuture::State {
@@ -154,6 +171,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   std::unique_ptr<SlotPool> slotPool_;
   std::mutex reconnectMutex_;
   std::mutex sessionMutex_;
+  std::mutex pendingMutex_;
   std::vector<std::shared_ptr<RpcFuture::State>> pendingSlots_;
   std::vector<std::optional<PendingInfo>> pendingInfoSlots_;
   std::atomic<uint32_t> pendingCount_{0};
@@ -412,6 +430,30 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     }
   }
 
+  void CheckChannelHealth() {
+    if (!HasLiveSessionFastPath() || recoveryPending_.load(std::memory_order_acquire) ||
+        bootstrap == nullptr) {
+      return;
+    }
+
+    const uint64_t expected_session_id = currentSessionId_.load(std::memory_order_acquire);
+    if (expected_session_id == 0) {
+      return;
+    }
+
+    const ChannelHealthResult health = bootstrap->CheckHealth(expected_session_id);
+    if (health.status == ChannelHealthStatus::Healthy ||
+        health.status == ChannelHealthStatus::Unsupported) {
+      return;
+    }
+
+    const auto signal = ToExternalRecoverySignal(health.status);
+    if (!signal.has_value()) {
+      return;
+    }
+    RequestExternalRecovery({*signal, expected_session_id, 0});
+  }
+
   void WatchdogLoop() {
     constexpr uint32_t WATCHDOG_INTERVAL_MS = MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS;
     while (watchdogRunning_.load()) {
@@ -420,6 +462,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
         break;
       }
       ScanPendingTimeoutsIfNeeded();
+      CheckChannelHealth();
       HandleIdleReminder();
     }
   }
@@ -464,20 +507,27 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   }
 
   void ExpireTimedOutSlot(size_t slotIndex, StatusCode status, const SlotRuntimeState& rt) {
-    if (slotIndex >= pendingInfoSlots_.size()) {
-      return;
+    std::shared_ptr<RpcFuture::State> pending;
+    PendingInfo timeout_info;
+    {
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+      if (slotIndex >= pendingInfoSlots_.size()) {
+        return;
+      }
+      const std::optional<PendingInfo> timeout_info_opt = pendingInfoSlots_[slotIndex];
+      if (!timeout_info_opt.has_value()) {
+        return;
+      }
+      timeout_info = timeout_info_opt.value_or(PendingInfo{});
+      timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
+      timeout_info.replay_hint = ClassifyReplayHint(rt.state);
+      pending = std::move(pendingSlots_[slotIndex]);
+      pendingSlots_[slotIndex].reset();
+      pendingInfoSlots_[slotIndex].reset();
     }
-    const std::optional<PendingInfo> timeout_info_opt = pendingInfoSlots_[slotIndex];
-    if (!timeout_info_opt.has_value()) {
-      return;
+    if (pending != nullptr) {
+      pendingCount_.fetch_sub(1, std::memory_order_relaxed);
     }
-    PendingInfo timeout_info = timeout_info_opt.value_or(PendingInfo{});
-    timeout_info.last_runtime_state = ToRpcRuntimeState(rt.state);
-    timeout_info.replay_hint = ClassifyReplayHint(rt.state);
-    auto pending = std::move(pendingSlots_[slotIndex]);
-    pendingSlots_[slotIndex].reset();
-    pendingInfoSlots_[slotIndex].reset();
-    pendingCount_.fetch_sub(1, std::memory_order_relaxed);
     FailAndResolve(timeout_info, status, FailureStage::Timeout, pending);
     if (slotPool_ != nullptr) {
       SlotPayload* mutable_payload = session_.GetSlotPayload(static_cast<uint32_t>(slotIndex));
@@ -491,15 +541,19 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   void ScanPendingTimeouts() {
     const uint32_t now_ms = MonotonicNowMs();
     for (size_t i = 0; i < pendingSlots_.size(); ++i) {
-      const auto& pending_info = pendingInfoSlots_[i];
-      if (pendingSlots_[i] == nullptr || !pending_info.has_value()) {
-        continue;
+      std::optional<PendingInfo> pending_info;
+      {
+        std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+        if (pendingSlots_[i] == nullptr || !pendingInfoSlots_[i].has_value()) {
+          continue;
+        }
+        pending_info = pendingInfoSlots_[i];
       }
       const SlotPayload* payload = session_.GetSlotPayload(static_cast<uint32_t>(i));
       if (payload == nullptr) {
         continue;
       }
-      const auto check = CheckSlotTimeout(payload->runtime, pending_info.value(), now_ms);
+      const auto check = CheckSlotTimeout(payload->runtime, pending_info.value_or(PendingInfo{}), now_ms);
       if (check.timed_out) {
         ExpireTimedOutSlot(i, check.status, payload->runtime);
       }
@@ -507,17 +561,35 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   }
 
   void FailAllPending(StatusCode status_code) {
-    for (size_t i = 0; i < pendingSlots_.size(); ++i) {
-      auto pending = std::move(pendingSlots_[i]);
-      pendingSlots_[i].reset();
-      if (pending != nullptr && i < pendingInfoSlots_.size() && pendingInfoSlots_[i].has_value()) {
-        const PendingInfo info = pendingInfoSlots_[i].value_or(PendingInfo{});
-        NotifyFailure(info, status_code, FailureStage::Session);
-        pendingInfoSlots_[i].reset();
+    struct PendingFailure {
+      std::shared_ptr<RpcFuture::State> future;
+      std::optional<PendingInfo> info;
+    };
+    std::vector<PendingFailure> failures;
+    {
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+      failures.reserve(pendingSlots_.size());
+      for (size_t i = 0; i < pendingSlots_.size(); ++i) {
+        auto pending = std::move(pendingSlots_[i]);
+        pendingSlots_[i].reset();
+        if (pending != nullptr) {
+          PendingFailure failure;
+          failure.future = std::move(pending);
+          if (i < pendingInfoSlots_.size() && pendingInfoSlots_[i].has_value()) {
+            failure.info = pendingInfoSlots_[i].value_or(PendingInfo{});
+            pendingInfoSlots_[i].reset();
+          }
+          failures.push_back(std::move(failure));
+        }
       }
-      ResolveFuture(pending, status_code);  // NOLINT(FailAndResolve not used here: info may not exist)
+      pendingCount_.store(0, std::memory_order_relaxed);
     }
-    pendingCount_.store(0, std::memory_order_relaxed);
+    for (auto& failure : failures) {
+      if (failure.info.has_value()) {
+        NotifyFailure(*failure.info, status_code, FailureStage::Session);
+      }
+      ResolveFuture(failure.future, status_code);  // NOLINT(FailAndResolve not used here: info may not exist)
+    }
   }
 
   struct ReplayableSnapshot {
@@ -562,24 +634,26 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   // Separates pending requests into replay-safe and poison-pill categories.
   ReplayableSnapshot SaveReplayableRequests() {
     ReplayableSnapshot snapshot;
-
-    for (size_t i = 0; i < pendingSlots_.size(); ++i) {
-      const auto& pending_info = pendingInfoSlots_[i];
-      if (pendingSlots_[i] == nullptr || !pending_info.has_value()) {
-        continue;
+    {
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+      for (size_t i = 0; i < pendingSlots_.size(); ++i) {
+        const auto& pending_info = pendingInfoSlots_[i];
+        if (pendingSlots_[i] == nullptr || !pending_info.has_value()) {
+          continue;
+        }
+        const PendingInfo info = pending_info.value_or(PendingInfo{});
+        if (info.replay_hint == ReplayHint::SafeToReplay) {
+          PendingSubmit ps = BuildReplayableSubmit(i, info);
+          ps.future = std::move(pendingSlots_[i]);
+          snapshot.replay_list.push_back(std::move(ps));
+        } else {
+          snapshot.poison_list.push_back({info, std::move(pendingSlots_[i])});
+        }
+        pendingSlots_[i].reset();
+        pendingInfoSlots_[i].reset();
       }
-      const PendingInfo info = pending_info.value_or(PendingInfo{});
-      if (info.replay_hint == ReplayHint::SafeToReplay) {
-        PendingSubmit ps = BuildReplayableSubmit(i, info);
-        ps.future = std::move(pendingSlots_[i]);
-        snapshot.replay_list.push_back(std::move(ps));
-      } else {
-        snapshot.poison_list.push_back({info, std::move(pendingSlots_[i])});
-      }
-      pendingSlots_[i].reset();
-      pendingInfoSlots_[i].reset();
+      pendingCount_.store(0, std::memory_order_relaxed);
     }
-    pendingCount_.store(0, std::memory_order_relaxed);
     DrainQueuedSubmissionsForReplay(&snapshot.replay_list);
     return snapshot;
   }
@@ -594,16 +668,19 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   // Must be called under sessionMutex_.
   void AnnotatePendingRuntimeStates() {
     for (size_t i = 0; i < pendingInfoSlots_.size(); ++i) {
+      const SlotPayload* payload = session_.GetSlotPayload(static_cast<uint32_t>(i));
+      if (payload == nullptr) {
+        continue;
+      }
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
       auto& pending_info = pendingInfoSlots_[i];
       if (!pending_info.has_value() || pendingSlots_[i] == nullptr) {
         continue;
       }
-      const SlotPayload* payload = session_.GetSlotPayload(static_cast<uint32_t>(i));
-      if (payload != nullptr) {
-        PendingInfo& info = pending_info.value();
-        info.last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
-        info.replay_hint = ClassifyReplayHint(payload->runtime.state);
-      }
+      PendingInfo info = pending_info.value_or(PendingInfo{});
+      info.last_runtime_state = ToRpcRuntimeState(payload->runtime.state);
+      info.replay_hint = ClassifyReplayHint(payload->runtime.state);
+      pending_info = info;
     }
   }
 
@@ -795,6 +872,21 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     if (bootstrap != nullptr) {
       bootstrap->CloseSession();
     }
+  }
+
+  void RequestExternalRecovery(ExternalRecoveryRequest request) {
+    if (shuttingDown.load(std::memory_order_acquire) ||
+        clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
+    if (request.sessionId != 0) {
+      const uint64_t current_session_id = currentSessionId_.load(std::memory_order_acquire);
+      if (current_session_id == 0 || current_session_id != request.sessionId) {
+        return;
+      }
+    }
+    (void)request.signal;
+    RequestForcedRestart(request.delayMs);
   }
 
   void FinishEngineDeathHandling(const RecoveryDecision& decision,
@@ -1048,9 +1140,16 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
 
   PushOutcome FailQueuedRequest(uint32_t slot, StatusCode queue_status,
                                 const PendingSubmit& pending_submit, const PendingInfo& info) {
-    pendingSlots_[slot].reset();
-    pendingInfoSlots_[slot].reset();
-    pendingCount_.fetch_sub(1, std::memory_order_relaxed);
+    bool had_pending = false;
+    {
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+      had_pending = pendingSlots_[slot] != nullptr;
+      pendingSlots_[slot].reset();
+      pendingInfoSlots_[slot].reset();
+    }
+    if (had_pending) {
+      pendingCount_.fetch_sub(1, std::memory_order_relaxed);
+    }
     slotPool_->Release(slot);
     if (queue_status == StatusCode::QueueFull) {
       return PushOutcome::RetryWithCredit;
@@ -1145,8 +1244,11 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
       }
       FillSlotPayload(reservation.payload, reservation.request_bytes, pending_submit);
       auto entry = BuildRingEntry(pending_submit, *reservation.slot, reservation.payload);
-      pendingSlots_[*reservation.slot] = pending_submit.future;
-      pendingInfoSlots_[*reservation.slot] = info;
+      {
+        std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+        pendingSlots_[*reservation.slot] = pending_submit.future;
+        pendingInfoSlots_[*reservation.slot] = info;
+      }
       pendingCount_.fetch_add(1, std::memory_order_relaxed);
       const auto outcome =
           PushAndSignalRequest(entry, *reservation.slot, pending_submit, info);
@@ -1209,11 +1311,14 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     if (result.request_slot_idx >= pendingSlots_.size()) {
       return result;
     }
-    result.future = std::move(pendingSlots_[result.request_slot_idx]);
-    pendingSlots_[result.request_slot_idx].reset();
-    if (result.request_slot_idx < pendingInfoSlots_.size()) {
-      result.info = pendingInfoSlots_[result.request_slot_idx];
-      pendingInfoSlots_[result.request_slot_idx].reset();
+    {
+      std::lock_guard<std::mutex> pending_lock(pendingMutex_);
+      result.future = std::move(pendingSlots_[result.request_slot_idx]);
+      pendingSlots_[result.request_slot_idx].reset();
+      if (result.request_slot_idx < pendingInfoSlots_.size()) {
+        result.info = pendingInfoSlots_[result.request_slot_idx];
+        pendingInfoSlots_[result.request_slot_idx].reset();
+      }
     }
     if (result.future != nullptr) {
       pendingCount_.fetch_sub(1, std::memory_order_relaxed);
@@ -1530,6 +1635,10 @@ void RpcClient::SetEventCallback(RpcEventCallback callback) {
 void RpcClient::SetRecoveryPolicy(RecoveryPolicy policy) {
   std::lock_guard<std::mutex> lock(impl_->policyMutex_);
   impl_->recoveryPolicy_ = std::move(policy);
+}
+
+void RpcClient::RequestExternalRecovery(ExternalRecoveryRequest request) {
+  impl_->RequestExternalRecovery(request);
 }
 
 StatusCode RpcClient::Init() {

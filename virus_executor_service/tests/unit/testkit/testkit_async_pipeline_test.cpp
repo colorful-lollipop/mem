@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -129,15 +130,25 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
                 futures.push_back(asyncClient.EchoAsync(request));
             }
             bool allOk = true;
+            std::vector<int> failedStatuses;
             for (auto& future : futures) {
                 EchoReply reply;
                 const auto status = future.Wait(&reply);
                 if (status != MemRpc::StatusCode::Ok) {
                     allOk = false;
+                    failedStatuses.push_back(static_cast<int>(status));
                 }
             }
             if (!allOk) {
-                ADD_FAILURE() << "async batch failed for batchSize=" << batchSize;
+                std::ostringstream failure;
+                failure << "async batch failed for batchSize=" << batchSize << " statuses=";
+                for (size_t idx = 0; idx < failedStatuses.size(); ++idx) {
+                    if (idx != 0) {
+                        failure << ',';
+                    }
+                    failure << failedStatuses[idx];
+                }
+                ADD_FAILURE() << failure.str();
                 break;
             }
             totalOps += batchSize;

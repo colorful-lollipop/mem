@@ -2,6 +2,7 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_PROXY_H_
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -15,6 +16,8 @@ namespace VirusExecutorService {
 
 class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
  public:
+    using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
+
     VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                       const std::string& serviceSocketPath);
     ~VesControlProxy() override;
@@ -22,6 +25,8 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
+    MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId);
+    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
 
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback);
 
@@ -31,9 +36,11 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     void CloseSocket();
     void ResetSocketConnection();
     bool SendCommand(int fd, char cmd) const;
+    MemRpc::StatusCode HeartbeatWithTimeout(VesHeartbeatReply& reply, int timeoutMs) const;
     MemRpc::StatusCode ReceiveSessionHandles(MemRpc::BootstrapHandles& handles);
     bool IsPeerDisconnected() const;
     void NotifyPeerDisconnected();
+    void PublishHealthSnapshot(const VesHeartbeatReply& reply);
 
     std::string service_socket_path_;
     int sock_fd_ = -1;
@@ -41,6 +48,7 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     std::thread monitor_thread_;
     uint64_t sessionId_ = 0;
     MemRpc::EngineDeathCallback deathCallback_;
+    HealthSnapshotCallback healthSnapshotCallback_;
     std::mutex callbackMutex_;
 };
 
@@ -51,6 +59,7 @@ class VesControlChannelAdapter : public MemRpc::IBootstrapChannel {
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
+    MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:

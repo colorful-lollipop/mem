@@ -132,6 +132,19 @@ struct RecoveryPolicy {
   std::function<RecoveryDecision(const EngineDeathReport&)> onEngineDeath;
 };
 
+enum class ExternalRecoverySignal : uint8_t {
+  ChannelHealthTimeout = 0,
+  ChannelHealthMalformed = 1,
+  ChannelHealthUnhealthy = 2,
+  ChannelHealthSessionMismatch = 3,
+};
+
+struct ExternalRecoveryRequest {
+  ExternalRecoverySignal signal = ExternalRecoverySignal::ChannelHealthTimeout;
+  uint64_t sessionId = 0;
+  uint32_t delayMs = 0;
+};
+
 class RpcClient {
  public:
   explicit RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap = nullptr);
@@ -145,6 +158,7 @@ class RpcClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetRecoveryPolicy(RecoveryPolicy policy);
+  void RequestExternalRecovery(ExternalRecoveryRequest request);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
   StatusCode Init();
   // InvokeAsync 是框架层一等接口；失败时返回 ready future。

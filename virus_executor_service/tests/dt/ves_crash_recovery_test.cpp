@@ -48,11 +48,11 @@ void KillAndWait(pid_t pid) {
 std::string EnginePathFromSelf() {
     char buf[1024] = {};
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0) return "./virus_executor_service";
+    if (len <= 0) return "./VirusExecutorService";
     std::string self(buf, static_cast<size_t>(len));
     auto pos = self.rfind('/');
-    if (pos == std::string::npos) return "./virus_executor_service";
-    return self.substr(0, pos) + "/virus_executor_service";
+    if (pos == std::string::npos) return "./VirusExecutorService";
+    return self.substr(0, pos) + "/VirusExecutorService";
 }
 
 class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
@@ -132,7 +132,10 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &engineRestarts);
     ASSERT_TRUE(remote->AddDeathRecipient(respawnRecipient));
 
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
+    VirusExecutorService::VesClientOptions options;
+    options.execTimeoutRestartDelayMs = 0;
+    options.engineDeathRestartDelayMs = 0;
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote, options);
 
     ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
 

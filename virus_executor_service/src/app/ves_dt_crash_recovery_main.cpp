@@ -153,7 +153,10 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &engineRestarts);
     DT_CHECK(remote->AddDeathRecipient(respawnRecipient), "DeathRecipient registered");
 
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
+    VirusExecutorService::VesClientOptions options;
+    options.execTimeoutRestartDelayMs = 0;
+    options.engineDeathRestartDelayMs = 0;
+    auto client = std::make_unique<VirusExecutorService::VesClient>(remote, options);
 
     auto initStatus = client->Init();
     DT_CHECK(initStatus == MemRpc::StatusCode::Ok, "VesClient Init ok");

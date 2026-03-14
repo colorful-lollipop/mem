@@ -26,6 +26,7 @@ class DevBootstrapChannel : public IBootstrapChannel {
 
   StatusCode OpenSession(BootstrapHandles& handles) override;
   StatusCode CloseSession() override;
+  ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
   void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
   [[nodiscard]] BootstrapHandles serverHandles() const;

@@ -1,6 +1,8 @@
 #include "system_ability.h"
 
+#include <chrono>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 
 #include "if_system_ability_manager.h"
@@ -104,16 +106,23 @@ class RemoteSystemAbilityManager : public IRemoteStub<ISystemAbilityManager> {
   }
 
   sptr<IRemoteObject> LoadSystemAbility(int32_t systemAbilityId,
-                                         int32_t /*timeout*/) override
+                                         int32_t timeout) override
   {
-    std::string path = backend_->LoadService(systemAbilityId);
-    if (path.empty()) {
-      return nullptr;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(timeout > 0 ? timeout : 0);
+    while (true) {
+      std::string path = backend_->LoadService(systemAbilityId);
+      if (!path.empty()) {
+        auto remote = std::make_shared<IRemoteObject>();
+        remote->SetSaId(systemAbilityId);
+        remote->SetServicePath(path);
+        return remote;
+      }
+      if (timeout <= 0 || std::chrono::steady_clock::now() >= deadline) {
+        return nullptr;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    auto remote = std::make_shared<IRemoteObject>();
-    remote->SetSaId(systemAbilityId);
-    remote->SetServicePath(path);
-    return remote;
   }
 
   ErrCode UnloadSystemAbility(int32_t systemAbilityId) override
