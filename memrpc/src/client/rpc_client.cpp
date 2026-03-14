@@ -45,6 +45,10 @@ void SignalEventFdIfNeeded(int fd, bool should_signal) {
   (void)SignalEventFd(fd);
 }
 
+int DuplicateFdIfValid(int fd) {
+  return fd >= 0 ? dup(fd) : -1;
+}
+
 std::optional<ExternalRecoverySignal> ToExternalRecoverySignal(ChannelHealthStatus status) {
   switch (status) {
     case ChannelHealthStatus::Timeout:
@@ -707,6 +711,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
     sessionLive_.store(false, std::memory_order_release);
     sessionDead_ = true;
     currentSessionId_ = 0;
+    SignalEventFdIfNeeded(session_.Handles().reqCreditEventFd, true);
     session_.Reset();
     slotPool_.reset();
   }
@@ -965,11 +970,7 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   StatusCode ReplaceSession(BootstrapHandles handles) {
     StopDispatcher();
     std::lock_guard<std::mutex> lock(sessionMutex_);
-    sessionLive_.store(false, std::memory_order_release);
-    sessionDead_ = true;
-    currentSessionId_ = 0;
-    session_.Reset();
-    slotPool_.reset();
+    ResetSessionState();
 
     const StatusCode attach_status = session_.Attach(handles);
     if (attach_status != StatusCode::Ok) {
@@ -1040,10 +1041,15 @@ struct RpcClient::Impl {  // NOLINT(clang-analyzer-optin.performance.Padding)
   }
 
   PollEventFdResult WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
-    const int fd = session_.Handles().reqCreditEventFd;
+    int fd = -1;
+    {
+      std::lock_guard<std::mutex> lock(sessionMutex_);
+      fd = DuplicateFdIfValid(session_.Handles().reqCreditEventFd);
+    }
     if (fd < 0) {
       return PollEventFdResult::Failed;
     }
+    [[maybe_unused]] const auto close_fd = MakeScopeExit([fd] { close(fd); });
     pollfd poll_fd{fd, POLLIN, 0};
     submitterWaitingForCredit_.store(true);
     [[maybe_unused]] const auto clear_waiting =

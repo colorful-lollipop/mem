@@ -2,6 +2,7 @@
 #define OHOS_SA_MOCK_MOCK_SERVICE_SOCKET_H_
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -23,6 +24,7 @@ class MockServiceSocket {
  private:
     void AcceptLoop();
 
+    std::mutex mutex_;
     MockIpcHandler handler_;
     std::string socket_path_;
     int listen_fd_ = -1;

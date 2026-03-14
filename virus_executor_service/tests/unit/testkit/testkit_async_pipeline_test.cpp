@@ -18,6 +18,18 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
+bool ThreadSanitizerEnabled() {
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+    return true;
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+    return true;
+#endif
+    return false;
+}
+
 void CloseHandles(MemRpc::BootstrapHandles& handles) {
     if (handles.shmFd >= 0) close(handles.shmFd);
     if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
@@ -49,8 +61,10 @@ struct PipelineResult {
 }  // namespace
 
 TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
-    const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
-    const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
+    const int defaultDurationMs = ThreadSanitizerEnabled() ? 250 : 1000;
+    const int defaultWarmupMs = ThreadSanitizerEnabled() ? 50 : 200;
+    const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", defaultDurationMs);
+    const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", defaultWarmupMs);
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles{};

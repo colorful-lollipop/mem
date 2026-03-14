@@ -127,7 +127,7 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
     invoker.Shutdown();
 }
 
-TEST(TestkitDfxTest, ReplayPolicyResubmitsAfterCrash) {
+TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -143,6 +143,65 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAfterCrash) {
     std::vector<MemRpc::RpcCall> batch;
     for (int i = 0; i < 5; ++i) {
         batch.push_back(MakeAddCall(i, 100));
+    }
+    batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)));
+    invoker.SubmitBatch(batch);
+
+    waitpid(child, nullptr, 0);
+    bootstrap->SimulateEngineDeathForTest();
+
+    std::vector<MemRpc::RpcReply> completed;
+    invoker.CollectResults(&completed);
+    ASSERT_TRUE(completed.empty());
+    ASSERT_GT(invoker.GetFailedCalls().size(), 0u);
+
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
+    CloseHandles(handles);
+    pid_t child2 = ForkServer(bootstrap);
+    ASSERT_GT(child2, 0);
+
+    auto replayed = invoker.ReplayFailed();
+    ASSERT_EQ(replayed.size(), 5u);
+
+    std::vector<MemRpc::RpcReply> replayCompleted;
+    invoker.CollectResults(&replayCompleted);
+    ASSERT_EQ(replayCompleted.size(), 5u);
+    EXPECT_EQ(invoker.GetFailedCalls().size(), 1u);
+    if (!invoker.GetFailedCalls().empty()) {
+        EXPECT_EQ(
+            invoker.GetFailedCalls()[0].opcode,
+            static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        const auto& reply = replayCompleted[static_cast<size_t>(i)];
+        EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
+        AddReply decoded;
+        ASSERT_TRUE(MemRpc::DecodeMessage(reply.payload, &decoded));
+        EXPECT_EQ(decoded.sum, i + 100);
+    }
+
+    invoker.Shutdown();
+    KillAndReap(child2);
+}
+
+TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
+    auto bootstrap = CreateBootstrap();
+    pid_t child = ForkServer(bootstrap);
+    ASSERT_GT(child, 0);
+
+    auto replayNonFault = [](const FailedCallRecord& record) {
+        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)
+                   ? ReplayDecision::Skip
+                   : ReplayDecision::Replay;
+    };
+    ResilientBatchInvoker invoker(bootstrap, replayNonFault);
+    ASSERT_EQ(invoker.Init(), MemRpc::StatusCode::Ok);
+
+    std::vector<MemRpc::RpcCall> batch;
+    for (int i = 0; i < 5; ++i) {
+        batch.push_back(MakeSleepCall(200));
     }
     batch.push_back(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)));
     invoker.SubmitBatch(batch);

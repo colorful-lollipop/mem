@@ -10,7 +10,12 @@ namespace OHOS {
 template <typename T>
 class IRemoteStub : public T {
  public:
-  ~IRemoteStub() override = default;
+  ~IRemoteStub() override
+  {
+    if (remote_ != nullptr) {
+      remote_->SetRequestHandler({});
+    }
+  }
 
   virtual bool OnRemoteRequest(int command, MockIpcReply* reply)
   {
@@ -25,9 +30,16 @@ class IRemoteStub : public T {
       remote_ = std::make_shared<IRemoteObject>();
       auto broker =
           std::dynamic_pointer_cast<IRemoteBroker>(RefBase::shared_from_this());
+      auto self =
+          std::dynamic_pointer_cast<IRemoteStub<T>>(RefBase::shared_from_this());
+      wptr<IRemoteStub<T>> weak_self = self;
       remote_->AttachBroker(broker);
-      remote_->SetRequestHandler([this](int cmd, MockIpcReply* reply) {
-        return OnRemoteRequest(cmd, reply);
+      remote_->SetRequestHandler([weak_self](int cmd, MockIpcReply* reply) {
+        auto self = weak_self.lock();
+        if (self == nullptr) {
+          return false;
+        }
+        return self->OnRemoteRequest(cmd, reply);
       });
     }
     return remote_;

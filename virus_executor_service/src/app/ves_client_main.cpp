@@ -92,7 +92,7 @@ int main() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->UnloadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     HILOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
 
     client->Shutdown();

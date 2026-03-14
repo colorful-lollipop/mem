@@ -128,7 +128,16 @@ if [[ "${run_tsan}" -eq 1 ]]; then
         --strict \
         --werror \
         --timeout 90 \
-        --test-regex 'memrpc_(engine_death_handler|rpc_client_.*|typed_future|session|dt_.*)|virus_executor_service_(session_service|heartbeat|health_subscription|recovery_reason|testkit_.*|policy|crash_recovery|supervisor_integration|stress_test|dt_crash_recovery_test)'
+        --test-regex 'memrpc_(engine_death_handler|rpc_client_.*|typed_future|session|dt_.*)|virus_executor_service_(session_service|heartbeat|health_subscription|recovery_reason|testkit_.*|policy|crash_recovery|stress_test|dt_crash_recovery_test)'
+
+    run_build_and_test "tsan-supervisor-integration" \
+        --build-dir "${repo_root}/build_tsan" \
+        --tsan \
+        --strict \
+        --werror \
+        --jobs 1 \
+        --timeout 120 \
+        --test-regex 'virus_executor_service_supervisor_integration_test'
 fi
 
 if [[ "${run_repeat}" -eq 1 ]]; then

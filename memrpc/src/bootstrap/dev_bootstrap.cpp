@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <fcntl.h>
+#include <mutex>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -79,6 +80,7 @@ bool InitMutex(pthread_mutex_t* mutex) {
 }  // namespace
 
 struct DevBootstrapChannel::Impl {
+  mutable std::mutex mutex;
   DevBootstrapConfig config;
   BootstrapHandles handles{};
   bool initialized = false;
@@ -248,6 +250,7 @@ DevBootstrapChannel::DevBootstrapChannel(DevBootstrapConfig config)
 DevBootstrapChannel::~DevBootstrapChannel() = default;
 
 StatusCode DevBootstrapChannel::OpenSession(BootstrapHandles& handles) {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
   const StatusCode init_status = impl_->EnsureInitialized();
   if (init_status != StatusCode::Ok) {
     return init_status;
@@ -270,11 +273,13 @@ ChannelHealthResult DevBootstrapChannel::CheckHealth(uint64_t expectedSessionId)
 }
 
 void DevBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->death_callback = std::move(callback);
 }
 
 BootstrapHandles DevBootstrapChannel::serverHandles() const {
   BootstrapHandles handles;
+  std::lock_guard<std::mutex> lock(impl_->mutex);
   if (!DuplicateHandles(impl_->handles, &handles)) {
     HILOGE("server_handles failed while duplicating bootstrap handles");
   }
@@ -282,16 +287,21 @@ BootstrapHandles DevBootstrapChannel::serverHandles() const {
 }
 
 void DevBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
-  const uint64_t dead_session_id =
-      session_id == 0 ? impl_->handles.sessionId : session_id;
-  if (session_id == 0 || session_id == impl_->handles.sessionId) {
-    impl_->ResetHandles();
-    if (!impl_->config.shmName.empty()) {
-      shm_unlink(impl_->config.shmName.c_str());
+  EngineDeathCallback callback;
+  uint64_t dead_session_id = session_id;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    dead_session_id = session_id == 0 ? impl_->handles.sessionId : session_id;
+    if (session_id == 0 || session_id == impl_->handles.sessionId) {
+      impl_->ResetHandles();
+      if (!impl_->config.shmName.empty()) {
+        shm_unlink(impl_->config.shmName.c_str());
+      }
     }
+    callback = impl_->death_callback;
   }
-  if (impl_->death_callback) {
-    impl_->death_callback(dead_session_id);
+  if (callback) {
+    callback(dead_session_id);
   }
 }
 

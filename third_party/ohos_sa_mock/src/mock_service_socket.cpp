@@ -15,12 +15,15 @@ MockServiceSocket::~MockServiceSocket() {
 }
 
 bool MockServiceSocket::Start(const std::string& path, MockIpcHandler handler) {
-    handler_ = std::move(handler);
-    socket_path_ = path;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        handler_ = std::move(handler);
+        socket_path_ = path;
+    }
     unlink(path.c_str());
 
-    listen_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (listen_fd_ < 0) {
+    int listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (listen_fd < 0) {
         return false;
     }
 
@@ -28,42 +31,67 @@ bool MockServiceSocket::Start(const std::string& path, MockIpcHandler handler) {
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
 
-    if (bind(listen_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        close(listen_fd_);
-        listen_fd_ = -1;
+    if (bind(listen_fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        close(listen_fd);
         return false;
     }
 
-    if (listen(listen_fd_, 4) < 0) {
-        close(listen_fd_);
-        listen_fd_ = -1;
+    if (listen(listen_fd, 4) < 0) {
+        close(listen_fd);
         return false;
     }
 
     stop_ = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        listen_fd_ = listen_fd;
+    }
     accept_thread_ = std::thread(&MockServiceSocket::AcceptLoop, this);
     return true;
 }
 
 void MockServiceSocket::Stop() {
     stop_ = true;
-    if (listen_fd_ >= 0) {
-        shutdown(listen_fd_, SHUT_RDWR);
-        close(listen_fd_);
+    int listen_fd = -1;
+    std::string socket_path;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        listen_fd = listen_fd_;
         listen_fd_ = -1;
+        socket_path = std::move(socket_path_);
+    }
+    if (listen_fd >= 0) {
+        shutdown(listen_fd, SHUT_RDWR);
+        close(listen_fd);
     }
     if (accept_thread_.joinable()) {
-        accept_thread_.join();
+        if (accept_thread_.get_id() == std::this_thread::get_id()) {
+            accept_thread_.detach();
+        } else {
+            accept_thread_.join();
+        }
     }
-    if (!socket_path_.empty()) {
-        unlink(socket_path_.c_str());
-        socket_path_.clear();
+    if (!socket_path.empty()) {
+        unlink(socket_path.c_str());
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        handler_ = {};
     }
 }
 
 void MockServiceSocket::AcceptLoop() {
     while (!stop_) {
-        int client_fd = accept(listen_fd_, nullptr, nullptr);
+        int listen_fd = -1;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            listen_fd = listen_fd_;
+        }
+        if (listen_fd < 0) {
+            break;
+        }
+
+        int client_fd = accept(listen_fd, nullptr, nullptr);
         if (client_fd < 0) {
             break;
         }
@@ -78,7 +106,12 @@ void MockServiceSocket::AcceptLoop() {
 
         // Dispatch to handler.
         MockIpcReply reply{};
-        if (!handler_ || !handler_(static_cast<int>(cmd), &reply)) {
+        MockIpcHandler handler;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            handler = handler_;
+        }
+        if (!handler || !handler(static_cast<int>(cmd), &reply)) {
             close(client_fd);
             continue;
         }

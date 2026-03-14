@@ -296,6 +296,8 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
   )
   add_test(NAME virus_executor_service_testkit_async_pipeline_test
       COMMAND virus_executor_service_testkit_async_pipeline_test)
+  set_tests_properties(virus_executor_service_testkit_async_pipeline_test PROPERTIES
+      RUN_SERIAL TRUE)
 
   add_executable(virus_executor_service_testkit_latency_test
       tests/unit/testkit/testkit_latency_test.cpp)
@@ -420,7 +422,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   set_tests_properties(virus_executor_service_supervisor_integration_test PROPERTIES
       LABELS "integration"
-      TIMEOUT 30)
+      TIMEOUT 60)
 
   add_test(NAME virus_executor_service_stress_test
       COMMAND virus_executor_service_stress_client --threads 2 --iterations 100 --seed 42 --no-crash
