@@ -1,5 +1,0 @@
-# memrpc dt perf baseline
-memrpc.echo_0B.threads=4.ops_per_sec=9974.333
-memrpc.echo_0B.threads=4.p99_us=366.288
-memrpc.echo_4KB.threads=4.ops_per_sec=6606.000
-memrpc.echo_4KB.threads=4.p99_us=1048.098
