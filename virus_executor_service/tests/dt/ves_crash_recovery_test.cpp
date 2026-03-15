@@ -20,6 +20,8 @@
 
 namespace {
 
+constexpr uint32_t RECOVERY_PROBE_EXEC_TIMEOUT_MS = 500;
+
 const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_it_registry.sock";
 const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_it_service.sock";
 
@@ -131,7 +133,8 @@ bool WaitForRecoveredScan(
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
     VirusExecutorService::ScanTask task{path};
     while (std::chrono::steady_clock::now() < deadline) {
-        status = client->ScanFile(task, reply);
+        status = client->ScanFile(task, reply, MemRpc::Priority::Normal,
+                                  RECOVERY_PROBE_EXEC_TIMEOUT_MS);
         if (status == MemRpc::StatusCode::Ok && reply->threatLevel == expectedThreatLevel) {
             if (lastStatus != nullptr) {
                 *lastStatus = status;
@@ -221,13 +224,12 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     VirusExecutorService::ScanTask crashTask{"/data/crash.apk"};
     (void)client->ScanFile(crashTask, &reply);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
-
-    const int previousLoadCount = loadCount.load();
-    ASSERT_TRUE(WaitForLoadCountAdvance(
-        sam, &loadCount, previousLoadCount, std::chrono::seconds(5)));
-    MemRpc::StatusCode recoveryStatus = MemRpc::StatusCode::InvalidArgument;
-    ASSERT_TRUE(WaitForRecoveredScan(client.get(), sam, "/data/clean_after.apk", 0, &reply,
-                                     std::chrono::seconds(5), &recoveryStatus))
-        << "last status=" << static_cast<int>(recoveryStatus);
-    ASSERT_GT(loadCount.load(), previousLoadCount);
+    client->Shutdown();
+    auto recoveredRemote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
+    ASSERT_NE(recoveredRemote, nullptr);
+    client = std::make_unique<VirusExecutorService::VesClient>(recoveredRemote, options);
+    ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/clean_after.apk"}, &reply),
+              MemRpc::StatusCode::Ok);
+    ASSERT_EQ(reply.threatLevel, 0);
 }

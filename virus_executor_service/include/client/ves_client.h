@@ -33,11 +33,13 @@ class VesClient {
 
     MemRpc::StatusCode Init();
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
+    void RequestRecovery(uint32_t delayMs = 0);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const ScanTask& scanTask,
                                 ScanFileReply* reply,
-                                MemRpc::Priority priority = MemRpc::Priority::Normal);
+                                MemRpc::Priority priority = MemRpc::Priority::Normal,
+                                uint32_t execTimeoutMs = 30000);
 
     [[nodiscard]] bool EngineDied() const;
 

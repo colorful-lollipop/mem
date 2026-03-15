@@ -525,7 +525,8 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
         virus_executor_service_sample_rules_test
         virus_executor_service_health_test
         virus_executor_service_policy_test
-        virus_executor_service_crash_recovery_test)
+        virus_executor_service_crash_recovery_test
+        virus_executor_service_dt_crash_recovery)
     foreach(target IN LISTS virus_executor_service_tidy_excluded_targets)
       ves_maybe_disable_clang_tidy(${target})
     endforeach()

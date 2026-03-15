@@ -18,7 +18,8 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
                                              VesOpcode opcode,
                                              const Request& request,
                                              Reply* reply,
-                                             MemRpc::Priority priority) {
+                                             MemRpc::Priority priority,
+                                             uint32_t execTimeoutMs) {
     std::vector<uint8_t> payload;
     if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
         return MemRpc::StatusCode::ProtocolMismatch;
@@ -30,7 +31,8 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
             static_cast<MemRpc::Opcode>(opcode),
             request,
             reply,
-            priority);
+            priority,
+            execTimeoutMs);
     }
 
     if (proxy == nullptr) {
@@ -138,6 +140,14 @@ void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
     }
 }
 
+void VesClient::RequestRecovery(uint32_t delayMs) {
+    client_.RequestExternalRecovery({
+        MemRpc::ExternalRecoverySignal::ChannelHealthTimeout,
+        0,
+        delayMs,
+    });
+}
+
 void VesClient::Shutdown() {
     client_.Shutdown();
     bootstrapChannel_.reset();
@@ -150,7 +160,8 @@ bool VesClient::EngineDied() const {
 
 MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
                                        ScanFileReply* reply,
-                                       MemRpc::Priority priority) {
+                                       MemRpc::Priority priority,
+                                       uint32_t execTimeoutMs) {
     if (reply == nullptr) {
         return MemRpc::StatusCode::InvalidArgument;
     }
@@ -161,7 +172,8 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
         VesOpcode::ScanFile,
         scanTask,
         reply,
-        priority);
+        priority,
+        execTimeoutMs);
 }
 
 }  // namespace VirusExecutorService

@@ -12,7 +12,7 @@ namespace VirusExecutorService {
 
 constexpr int32_t VES_CONTROL_SA_ID = 1251;
 
-enum class VesHeartbeatStatus : uint32_t {
+enum class VesHeartbeatStatus : uint8_t {
     OkIdle = 0,
     OkBusy = 1,
     DegradedLongRunning = 2,
@@ -21,7 +21,7 @@ enum class VesHeartbeatStatus : uint32_t {
     UnhealthyInternalError = 5,
 };
 
-enum class VesHeartbeatReasonCode : uint32_t {
+enum class VesHeartbeatReasonCode : uint8_t {
     None = 0,
     Busy = 1,
     LongRunning = 2,

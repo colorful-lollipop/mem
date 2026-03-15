@@ -80,7 +80,8 @@ bool RpcFuture::IsReady() const {
 StatusCode RpcFuture::Wait(RpcReply* reply) {
   if (!state_) {
     if (reply != nullptr) {
-      *reply = RpcReply{StatusCode::PeerDisconnected};
+      *reply = RpcReply{};
+      reply->status = StatusCode::PeerDisconnected;
     }
     return StatusCode::PeerDisconnected;
   }
@@ -96,7 +97,8 @@ StatusCode RpcFuture::Wait(RpcReply* reply) {
 StatusCode RpcFuture::WaitAndTake(RpcReply* reply) {
   if (!state_) {
     if (reply != nullptr) {
-      *reply = RpcReply{StatusCode::PeerDisconnected};
+      *reply = RpcReply{};
+      reply->status = StatusCode::PeerDisconnected;
     }
     return StatusCode::PeerDisconnected;
   }
@@ -112,14 +114,16 @@ StatusCode RpcFuture::WaitAndTake(RpcReply* reply) {
 StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout) {
   if (!state_) {
     if (reply != nullptr) {
-      *reply = RpcReply{StatusCode::PeerDisconnected};
+      *reply = RpcReply{};
+      reply->status = StatusCode::PeerDisconnected;
     }
     return StatusCode::PeerDisconnected;
   }
   std::unique_lock<std::mutex> lock(state_->mutex);
   if (!state_->cv.wait_for(lock, timeout, [this] { return state_->ready; })) {
     if (reply != nullptr) {
-      *reply = RpcReply{StatusCode::QueueTimeout};
+      *reply = RpcReply{};
+      reply->status = StatusCode::QueueTimeout;
     }
     return StatusCode::QueueTimeout;
   }
@@ -582,7 +586,7 @@ struct RpcClient::Impl {
     return StatusCode::Ok;
   }
 
-  void SubmitOne(PendingSubmit submit) {
+  void SubmitOne(const PendingSubmit& submit) {
     const bool infiniteWait = submit.call.admissionTimeoutMs == 0;
     const auto deadline = infiniteWait ? std::chrono::steady_clock::time_point::max()
                                        : std::chrono::steady_clock::now() +
@@ -651,7 +655,7 @@ struct RpcClient::Impl {
         submit = std::move(submitQueue_.front());
         submitQueue_.pop_front();
       }
-      SubmitOne(std::move(submit));
+      SubmitOne(submit);
     }
   }
 
@@ -743,10 +747,12 @@ struct RpcClient::Impl {
       }
 
       int fd = -1;
+      uint64_t polledSessionId = 0;
       {
         std::lock_guard<std::mutex> lock(sessionMutex_);
         if (session_.Valid()) {
           fd = session_.Handles().respEventFd;
+          polledSessionId = currentSessionId_.load(std::memory_order_acquire);
         }
       }
       if (fd < 0) {
@@ -757,7 +763,7 @@ struct RpcClient::Impl {
       pollfd pollFd{fd, POLLIN, 0};
       const auto waitResult = PollEventFd(&pollFd, 100);
       if (waitResult == PollEventFdResult::Failed) {
-        HandleEngineDeath(currentSessionId_.load(std::memory_order_acquire));
+        HandleEngineDeath(polledSessionId);
       }
     }
   }

@@ -42,7 +42,8 @@ Checks: >-
   -performance-inefficient-vector-operation,
   -cert-dcl21-cpp,
   -cert-err58-cpp,
-  -readability-redundant-access-specifiers
+  -readability-redundant-access-specifiers,
+  -clang-diagnostic-missing-field-initializers
 WarningsAsErrors: ''
 FormatStyle: none
 HeaderFilterRegex: '(.*/)?(memrpc|virus_executor_service|third_party/ohos_sa_mock)/(include|src|tests)/.*'
