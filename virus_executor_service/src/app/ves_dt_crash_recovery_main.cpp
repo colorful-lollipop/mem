@@ -114,8 +114,9 @@ bool WaitForRecoveredScan(
     }
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
+    VirusExecutorService::ScanTask task{path};
     while (std::chrono::steady_clock::now() < deadline) {
-        status = client->ScanFile(path, reply);
+        status = client->ScanFile(&task, reply);
         if (status == MemRpc::StatusCode::Ok && reply->threatLevel == expectedThreatLevel) {
             if (lastStatus != nullptr) {
                 *lastStatus = status;
@@ -238,13 +239,15 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     HILOGI("=== Step 1: normal scan ===");
     {
         VirusExecutorService::ScanFileReply reply;
-        auto status = client->ScanFile("/data/dt_clean.apk", &reply);
+        VirusExecutorService::ScanTask cleanTask{"/data/dt_clean.apk"};
+        auto status = client->ScanFile(&cleanTask, &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: clean scan RPC ok");
         DT_CHECK(reply.threatLevel == 0, "step1: clean file threat=0");
     }
     {
         VirusExecutorService::ScanFileReply reply;
-        auto status = client->ScanFile("/data/dt_virus.apk", &reply);
+        VirusExecutorService::ScanTask virusTask{"/data/dt_virus.apk"};
+        auto status = client->ScanFile(&virusTask, &reply);
         DT_CHECK(status == MemRpc::StatusCode::Ok, "step1: virus scan RPC ok");
         DT_CHECK(reply.threatLevel == 1, "step1: virus file threat=1");
     }
@@ -254,7 +257,8 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     const pid_t firstCrashPid = g_engine_pid;
     {
         VirusExecutorService::ScanFileReply reply;
-        auto status = client->ScanFile("/data/dt_crash.apk", &reply);
+        VirusExecutorService::ScanTask crashTask{"/data/dt_crash.apk"};
+        auto status = client->ScanFile(&crashTask, &reply);
         // The engine aborts — this request will fail.
         HILOGI("step2: crash scan returned status=%{public}d (expected failure)",
               static_cast<int>(status));
@@ -296,7 +300,8 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     {
         VirusExecutorService::ScanFileReply reply;
         HILOGI("step5: sending crash...");
-        auto status = client->ScanFile("/data/dt_crash2.apk", &reply);
+        VirusExecutorService::ScanTask secondCrashTask{"/data/dt_crash2.apk"};
+        auto status = client->ScanFile(&secondCrashTask, &reply);
         HILOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
     }
     DT_CHECK(WaitForEngineExit(secondCrashPid, std::chrono::seconds(10)),
@@ -327,8 +332,9 @@ int main([[maybe_unused]] int argc, char* argv[]) {
         HILOGI("step5: call %{public}d/10 ...", i + 1);
         VirusExecutorService::ScanFileReply reply;
         const auto t0 = std::chrono::steady_clock::now();
-        auto status = client->ScanFile(
-            "/data/dt_post_recover_" + std::to_string(i) + ".apk", &reply);
+        VirusExecutorService::ScanTask task{
+            "/data/dt_post_recover_" + std::to_string(i) + ".apk"};
+        auto status = client->ScanFile(&task, &reply);
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
         HILOGI("step5: call %{public}d/10 status=%{public}d threat=%{public}d elapsed=%{public}lld ms",

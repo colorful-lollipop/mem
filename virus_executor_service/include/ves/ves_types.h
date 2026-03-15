@@ -10,6 +10,10 @@ struct InitReply {
     int32_t code = 0;
 };
 
+struct ScanTask {
+    std::string path;
+};
+
 struct ScanFileRequest {
     std::string filePath;
 };

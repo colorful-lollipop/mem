@@ -35,7 +35,7 @@ class VesClient {
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void Shutdown();
 
-    MemRpc::StatusCode ScanFile(const std::string& path, ScanFileReply* reply);
+    MemRpc::StatusCode ScanFile(const ScanTask* scanTask, ScanFileReply* reply);
 
     [[nodiscard]] bool EngineDied() const;
 

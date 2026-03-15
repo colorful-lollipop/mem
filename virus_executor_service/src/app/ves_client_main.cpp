@@ -16,7 +16,7 @@ constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
 std::unique_ptr<VirusExecutorService::VesClient> ConnectToEngine() {
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->GetSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
+    auto remote = sam->CheckSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
     if (remote == nullptr) {
         // Service not registered yet; try LoadSystemAbility.
         remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
@@ -81,10 +81,12 @@ int main() {
     }
 
     VirusExecutorService::ScanFileReply scanReply;
-    client->ScanFile("/data/test_file_1.apk", &scanReply);
+    VirusExecutorService::ScanTask firstTask{"/data/test_file_1.apk"};
+    client->ScanFile(&firstTask, &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
-    client->ScanFile("/data/test_file_2.apk", &scanReply);
+    VirusExecutorService::ScanTask secondTask{"/data/test_file_2.apk"};
+    client->ScanFile(&secondTask, &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
     // Request engine unload (triggers death callback via RecoveryPolicy).
@@ -102,7 +104,8 @@ int main() {
     auto client2 = LoadAndConnectToEngine();
     if (client2) {
         VirusExecutorService::ScanFileReply scan2;
-        client2->ScanFile("/data/test_file_3.apk", &scan2);
+        VirusExecutorService::ScanTask thirdTask{"/data/test_file_3.apk"};
+        client2->ScanFile(&thirdTask, &scan2);
         HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
 
         client2->Shutdown();

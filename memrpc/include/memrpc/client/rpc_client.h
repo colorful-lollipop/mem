@@ -131,6 +131,24 @@ struct RecoveryPolicy {
   std::function<RecoveryDecision(const EngineDeathReport&)> onEngineDeath;
 };
 
+enum class SessionOpenReason : uint8_t {
+  InitialInit = 0,
+  RestartRecovery = 1,
+  ExternalRecovery = 2,
+  DemandReconnect = 3,
+};
+
+struct SessionReadyReport {
+  uint64_t sessionId = 0;
+  uint64_t previousSessionId = 0;
+  uint32_t generation = 0;
+  uint32_t scheduledDelayMs = 0;
+  uint64_t monotonicMs = 0;
+  SessionOpenReason reason = SessionOpenReason::InitialInit;
+};
+
+using SessionReadyCallback = std::function<void(const SessionReadyReport&)>;
+
 enum class ExternalRecoverySignal : uint8_t {
   ChannelHealthTimeout = 0,
   ChannelHealthMalformed = 1,
@@ -156,6 +174,7 @@ class RpcClient {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
+  void SetSessionReadyCallback(SessionReadyCallback callback);
   void SetRecoveryPolicy(RecoveryPolicy policy);
   void RequestExternalRecovery(ExternalRecoveryRequest request);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
@@ -183,6 +202,7 @@ class RpcSyncClient {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
+  void SetSessionReadyCallback(SessionReadyCallback callback);
   void SetRecoveryPolicy(RecoveryPolicy policy);
   StatusCode Init();
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);

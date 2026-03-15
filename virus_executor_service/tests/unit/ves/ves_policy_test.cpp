@@ -233,8 +233,9 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
     VesClient client(remote, options);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
+    ScanTask cleanTask{"/data/clean.apk"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile("/data/clean.apk", &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(&cleanTask, &reply), MemRpc::StatusCode::Ok);
 
     VesHeartbeatReply heartbeat{};
     const auto idleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -247,7 +248,8 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
     }
     EXPECT_EQ(heartbeat.sessionId, 0u);
 
-    ASSERT_EQ(client.ScanFile("/data/reopen.apk", &reply), MemRpc::StatusCode::Ok);
+    ScanTask reopenTask{"/data/reopen.apk"};
+    ASSERT_EQ(client.ScanFile(&reopenTask, &reply), MemRpc::StatusCode::Ok);
 
     ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
     EXPECT_NE(heartbeat.sessionId, 0u);
@@ -287,8 +289,9 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     VesClient client(remote);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
+    ScanTask healthyTask{"/data/healthy.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile("/data/healthy.bin", &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(&healthyTask, &reply), MemRpc::StatusCode::Ok);
 
     const int initialOpenCount = service->openCount();
     service->SetHealthy(false);
@@ -298,7 +301,8 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     ASSERT_TRUE(WaitFor([&]() { return service->openCount() > initialOpenCount; },
                         std::chrono::milliseconds(500)));
 
-    ASSERT_EQ(client.ScanFile("/data/recovered.bin", &reply), MemRpc::StatusCode::Ok);
+    ScanTask recoveredTask{"/data/recovered.bin"};
+    ASSERT_EQ(client.ScanFile(&recoveredTask, &reply), MemRpc::StatusCode::Ok);
     EXPECT_FALSE(client.EngineDied());
 
     client.Shutdown();

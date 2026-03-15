@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -99,6 +101,12 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow) {
 
   auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
   RpcClient client(bootstrap);
+  std::mutex sessionMutex;
+  std::vector<SessionReadyReport> reports;
+  client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    reports.push_back(report);
+  });
 
   std::atomic<int> engineDeathCalls{0};
   RecoveryPolicy policy;
@@ -116,7 +124,28 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow) {
                       std::chrono::milliseconds(500)));
   ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; },
                       std::chrono::milliseconds(500)));
+  ASSERT_TRUE(WaitFor([&]() {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    return reports.size() >= 2;
+  }, std::chrono::milliseconds(500)));
   EXPECT_EQ(engineDeathCalls.load(), 0);
+
+  SessionReadyReport initialReport;
+  SessionReadyReport recoveredReport;
+  {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    ASSERT_GE(reports.size(), 2u);
+    initialReport = reports[0];
+    recoveredReport = reports[1];
+  }
+  EXPECT_EQ(initialReport.reason, SessionOpenReason::InitialInit);
+  EXPECT_EQ(initialReport.previousSessionId, 0u);
+  EXPECT_EQ(initialReport.generation, 1u);
+  EXPECT_EQ(recoveredReport.reason, SessionOpenReason::ExternalRecovery);
+  EXPECT_EQ(recoveredReport.previousSessionId, initialReport.sessionId);
+  EXPECT_EQ(recoveredReport.generation, 2u);
+  EXPECT_EQ(recoveredReport.scheduledDelayMs, 0u);
+  EXPECT_NE(recoveredReport.sessionId, 0u);
 
   RpcCall call;
   call.opcode = kEchoOpcode;

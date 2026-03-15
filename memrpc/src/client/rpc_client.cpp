@@ -184,8 +184,10 @@ struct RpcClient::Impl {
   mutable std::mutex submitMutex_;
   mutable std::mutex recoveryMutex_;
   mutable std::mutex eventMutex_;
+  mutable std::mutex sessionReadyMutex_;
   RecoveryPolicy recoveryPolicy_;
   RpcEventCallback eventCallback_;
+  SessionReadyCallback sessionReadyCallback_;
   std::deque<PendingSubmit> submitQueue_;
   std::unordered_map<uint64_t, PendingRequest> pending_;
   std::condition_variable submitCv_;
@@ -199,7 +201,11 @@ struct RpcClient::Impl {
   std::atomic<uint64_t> nextRequestId_{1};
   std::atomic<uint64_t> cooldownUntilMs_{0};
   std::atomic<uint64_t> lastActivityMs_{0};
+  std::atomic<uint64_t> lastClosedSessionId_{0};
   std::atomic<uint64_t> currentSessionId_{0};
+  std::atomic<uint32_t> sessionGeneration_{0};
+  SessionOpenReason nextSessionOpenReason_{SessionOpenReason::InitialInit};
+  uint32_t nextSessionOpenDelayMs_ = 0;
 
   static RpcFuture MakeReadyFuture(StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
@@ -216,6 +222,50 @@ struct RpcClient::Impl {
     std::lock_guard<std::mutex> lock(recoveryMutex_);
     bootstrap_ = std::move(bootstrap);
     InstallDeathCallbackLocked();
+  }
+
+  void SetSessionReadyCallback(SessionReadyCallback callback) {
+    std::lock_guard<std::mutex> lock(sessionReadyMutex_);
+    sessionReadyCallback_ = std::move(callback);
+  }
+
+  void MarkNextSessionOpen(SessionOpenReason reason, uint32_t delayMs) {
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    nextSessionOpenReason_ = reason;
+    nextSessionOpenDelayMs_ = delayMs;
+  }
+
+  void PrepareForInitOpen() {
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    nextSessionOpenReason_ = sessionGeneration_.load(std::memory_order_acquire) == 0
+                                 ? SessionOpenReason::InitialInit
+                                 : SessionOpenReason::DemandReconnect;
+    nextSessionOpenDelayMs_ = 0;
+  }
+
+  void NotifySessionReady(uint64_t sessionId) {
+    SessionReadyCallback callback;
+    {
+      std::lock_guard<std::mutex> lock(sessionReadyMutex_);
+      callback = sessionReadyCallback_;
+    }
+
+    SessionReadyReport report;
+    {
+      std::lock_guard<std::mutex> lock(recoveryMutex_);
+      report.reason = nextSessionOpenReason_;
+      report.scheduledDelayMs = nextSessionOpenDelayMs_;
+      nextSessionOpenReason_ = SessionOpenReason::DemandReconnect;
+      nextSessionOpenDelayMs_ = 0;
+    }
+    report.sessionId = sessionId;
+    report.previousSessionId = lastClosedSessionId_.load(std::memory_order_acquire);
+    report.generation = sessionGeneration_.fetch_add(1, std::memory_order_acq_rel) + 1;
+    report.monotonicMs = MonotonicNowMs64();
+
+    if (callback) {
+      callback(report);
+    }
   }
 
   void InstallDeathCallbackLocked() {
@@ -353,14 +403,18 @@ struct RpcClient::Impl {
       return openStatus;
     }
 
-    std::lock_guard<std::mutex> lock(sessionMutex_);
-    const StatusCode attachStatus = session_.Attach(handles, Session::AttachRole::Client);
-    if (attachStatus != StatusCode::Ok) {
-      return attachStatus;
+    const uint64_t sessionId = handles.sessionId;
+    {
+      std::lock_guard<std::mutex> lock(sessionMutex_);
+      const StatusCode attachStatus = session_.Attach(handles, Session::AttachRole::Client);
+      if (attachStatus != StatusCode::Ok) {
+        return attachStatus;
+      }
+      session_.SetState(Session::SessionState::Alive);
+      currentSessionId_.store(sessionId, std::memory_order_release);
+      TouchActivity();
     }
-    session_.SetState(Session::SessionState::Alive);
-    currentSessionId_.store(handles.sessionId, std::memory_order_release);
-    TouchActivity();
+    NotifySessionReady(sessionId);
     return StatusCode::Ok;
   }
 
@@ -372,8 +426,12 @@ struct RpcClient::Impl {
     }
     {
       std::lock_guard<std::mutex> lock(sessionMutex_);
+      const uint64_t closedSessionId = currentSessionId_.load(std::memory_order_acquire);
       session_.Reset();
       currentSessionId_.store(0, std::memory_order_release);
+      if (closedSessionId != 0) {
+        lastClosedSessionId_.store(closedSessionId, std::memory_order_release);
+      }
     }
     if (bootstrap != nullptr) {
       (void)bootstrap->CloseSession();
@@ -785,6 +843,7 @@ struct RpcClient::Impl {
   }
 
   void BeginRestart(uint32_t delayMs, bool fromEngineDeath) {
+    MarkNextSessionOpen(SessionOpenReason::RestartRecovery, delayMs);
     cooldownUntilMs_.store(MonotonicNowMs64() + delayMs, std::memory_order_release);
     CloseLiveSession();
     if (!fromEngineDeath) {
@@ -823,6 +882,7 @@ struct RpcClient::Impl {
     if (request.sessionId != 0 && current != 0 && request.sessionId != current) {
       return;
     }
+    MarkNextSessionOpen(SessionOpenReason::ExternalRecovery, request.delayMs);
     cooldownUntilMs_.store(MonotonicNowMs64() + request.delayMs, std::memory_order_release);
     CloseLiveSession();
     if (request.delayMs == 0) {
@@ -907,6 +967,10 @@ void RpcClient::SetEventCallback(RpcEventCallback callback) {
   impl_->eventCallback_ = std::move(callback);
 }
 
+void RpcClient::SetSessionReadyCallback(SessionReadyCallback callback) {
+  impl_->SetSessionReadyCallback(std::move(callback));
+}
+
 void RpcClient::SetRecoveryPolicy(RecoveryPolicy policy) {
   std::lock_guard<std::mutex> lock(impl_->recoveryMutex_);
   impl_->recoveryPolicy_ = std::move(policy);
@@ -923,6 +987,7 @@ StatusCode RpcClient::Init() {
   impl_->clientClosed_.store(false, std::memory_order_release);
   impl_->cooldownUntilMs_.store(0, std::memory_order_release);
   impl_->lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
+  impl_->PrepareForInitOpen();
   impl_->StartThreads();
   const StatusCode status = impl_->EnsureLiveSession();
   if (status != StatusCode::Ok) {
@@ -958,6 +1023,10 @@ void RpcSyncClient::SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> boots
 
 void RpcSyncClient::SetEventCallback(RpcEventCallback callback) {
   client_.SetEventCallback(std::move(callback));
+}
+
+void RpcSyncClient::SetSessionReadyCallback(SessionReadyCallback callback) {
+  client_.SetSessionReadyCallback(std::move(callback));
 }
 
 void RpcSyncClient::SetRecoveryPolicy(RecoveryPolicy policy) {

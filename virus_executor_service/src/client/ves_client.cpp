@@ -101,9 +101,13 @@ bool VesClient::EngineDied() const {
     return engineDied_.load();
 }
 
-MemRpc::StatusCode VesClient::ScanFile(const std::string& path, ScanFileReply* reply) {
+MemRpc::StatusCode VesClient::ScanFile(const ScanTask* scanTask, ScanFileReply* reply) {
+    if (scanTask == nullptr || reply == nullptr) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
     ScanFileRequest request;
-    request.filePath = path;
+    request.filePath = scanTask->path;
     std::vector<uint8_t> payload;
     if (!MemRpc::EncodeMessage<ScanFileRequest>(request, &payload)) {
         return MemRpc::StatusCode::ProtocolMismatch;

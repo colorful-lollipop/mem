@@ -5,11 +5,14 @@
 #include <mutex>
 #include <thread>
 #include <type_traits>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
+#include "memrpc/server/rpc_server.h"
 
 constexpr MemRpc::Opcode kTestOpcode = 1u;
 
@@ -32,6 +35,15 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  private:
   MemRpc::EngineDeathCallback callback_;
 };
+
+void CloseHandles(MemRpc::BootstrapHandles& handles) {
+  if (handles.shmFd >= 0) close(handles.shmFd);
+  if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
+  if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
+  if (handles.respEventFd >= 0) close(handles.respEventFd);
+  if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
+  if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+}
 
 }  // namespace
 
@@ -159,6 +171,59 @@ TEST(RpcClientApiTest, ThenWithoutExecutorRunsInline) {
   future.Then([&](const MemRpc::RpcReply&) { called = true; });
 
   EXPECT_TRUE(called);
+}
+
+TEST(RpcClientApiTest, SessionReadyCallbackReportsInitialInit) {
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kTestOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+    reply->status = MemRpc::StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+  std::mutex mutex;
+  MemRpc::SessionReadyReport captured;
+  int calls = 0;
+  client.SetSessionReadyCallback([&](const MemRpc::SessionReadyReport& report) {
+    std::lock_guard<std::mutex> lock(mutex);
+    captured = report;
+    ++calls;
+  });
+
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool observed = false;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      observed = calls == 1;
+    }
+    if (observed) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(calls, 1);
+    EXPECT_EQ(captured.reason, MemRpc::SessionOpenReason::InitialInit);
+    EXPECT_EQ(captured.previousSessionId, 0u);
+    EXPECT_EQ(captured.generation, 1u);
+    EXPECT_EQ(captured.scheduledDelayMs, 0u);
+    EXPECT_EQ(captured.sessionId, bootstrap->serverHandles().sessionId);
+    EXPECT_NE(captured.monotonicMs, 0u);
+  }
+
+  client.Shutdown();
+  server.Stop();
 }
 
 TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {

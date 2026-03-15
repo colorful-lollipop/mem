@@ -37,6 +37,21 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryDecisionDefaults) {
   EXPECT_EQ(decision.delayMs, 0u);
 }
 
+TEST(RpcClientRecoveryPolicyTest, SessionReadyReportDefaults) {
+  MemRpc::SessionReadyReport report;
+  EXPECT_EQ(report.sessionId, 0u);
+  EXPECT_EQ(report.previousSessionId, 0u);
+  EXPECT_EQ(report.generation, 0u);
+  EXPECT_EQ(report.scheduledDelayMs, 0u);
+  EXPECT_EQ(report.monotonicMs, 0u);
+  EXPECT_EQ(report.reason, MemRpc::SessionOpenReason::InitialInit);
+}
+
+TEST(RpcClientRecoveryPolicyTest, SessionReadyCallbackCanBeSet) {
+  MemRpc::RpcClient client;
+  client.SetSessionReadyCallback([](const MemRpc::SessionReadyReport&) {});
+}
+
 TEST(RpcClientRecoveryPolicyTest, SyncClientPolicyCanBeSet) {
   MemRpc::RpcSyncClient client;
   MemRpc::RecoveryPolicy policy;
@@ -44,4 +59,9 @@ TEST(RpcClientRecoveryPolicyTest, SyncClientPolicyCanBeSet) {
     return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 200};
   };
   client.SetRecoveryPolicy(std::move(policy));
+}
+
+TEST(RpcClientRecoveryPolicyTest, SyncClientSessionReadyCallbackCanBeSet) {
+  MemRpc::RpcSyncClient client;
+  client.SetSessionReadyCallback([](const MemRpc::SessionReadyReport&) {});
 }

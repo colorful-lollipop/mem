@@ -129,8 +129,9 @@ bool WaitForRecoveredScan(
     }
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
+    VirusExecutorService::ScanTask task{path};
     while (std::chrono::steady_clock::now() < deadline) {
-        status = client->ScanFile(path, reply);
+        status = client->ScanFile(&task, reply);
         if (status == MemRpc::StatusCode::Ok && reply->threatLevel == expectedThreatLevel) {
             if (lastStatus != nullptr) {
                 *lastStatus = status;
@@ -210,13 +211,15 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
 
     ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
 
+    VirusExecutorService::ScanTask cleanTask{"/data/clean.apk"};
     VirusExecutorService::ScanFileReply reply;
-    ASSERT_EQ(client->ScanFile("/data/clean.apk", &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(&cleanTask, &reply), MemRpc::StatusCode::Ok);
 
     const pid_t crashedPid = g_engine_pid;
 
     // Crash request
-    (void)client->ScanFile("/data/crash.apk", &reply);
+    VirusExecutorService::ScanTask crashTask{"/data/crash.apk"};
+    (void)client->ScanFile(&crashTask, &reply);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
 
     const int previousLoadCount = loadCount.load();

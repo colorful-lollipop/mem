@@ -169,8 +169,9 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
         }
         stats->sleepMs += behavior.sleepMs;
 
+        VirusExecutorService::ScanTask task{path};
         VirusExecutorService::ScanFileReply reply;
-        auto status = client->ScanFile(path, &reply);
+        auto status = client->ScanFile(&task, &reply);
         stats->total++;
 
         if (status != MemRpc::StatusCode::Ok) {

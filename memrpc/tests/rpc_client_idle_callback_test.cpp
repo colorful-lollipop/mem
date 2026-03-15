@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -158,6 +160,12 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
 
   auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
   RpcClient client(bootstrap);
+  std::mutex sessionMutex;
+  std::vector<SessionReadyReport> reports;
+  client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    reports.push_back(report);
+  });
   RecoveryPolicy policy;
   policy.onIdle = [](uint64_t) {
     return RecoveryDecision{RecoveryAction::CloseSession, 0};
@@ -177,6 +185,33 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   RpcReply reply;
   EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
   EXPECT_GE(bootstrap->openCount(), 2);
+
+  const auto reopen_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  while (std::chrono::steady_clock::now() < reopen_deadline) {
+    bool observed = false;
+    {
+      std::lock_guard<std::mutex> lock(sessionMutex);
+      observed = reports.size() >= 2;
+    }
+    if (observed) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  SessionReadyReport initialReport;
+  SessionReadyReport reopenedReport;
+  {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    ASSERT_GE(reports.size(), 2u);
+    initialReport = reports[0];
+    reopenedReport = reports[1];
+  }
+  EXPECT_EQ(initialReport.reason, SessionOpenReason::InitialInit);
+  EXPECT_EQ(reopenedReport.reason, SessionOpenReason::DemandReconnect);
+  EXPECT_EQ(reopenedReport.previousSessionId, initialReport.sessionId);
+  EXPECT_EQ(reopenedReport.generation, 2u);
+  EXPECT_EQ(reopenedReport.scheduledDelayMs, 0u);
 
   client.Shutdown();
   server.Stop();
