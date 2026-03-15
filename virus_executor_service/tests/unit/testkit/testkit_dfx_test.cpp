@@ -18,6 +18,15 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
+bool ThreadSanitizerEnabled() {
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+    return true;
+#endif
+#endif
+    return false;
+}
+
 constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
     MemRpc::StatusCode::CrashedDuringExecution;
 
@@ -97,6 +106,10 @@ std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
 }  // namespace
 
 TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -131,6 +144,10 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
 }
 
 TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -206,6 +223,10 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
 }
 
 TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -259,6 +280,10 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
 }
 
 TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -308,6 +333,10 @@ TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
 }
 
 TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -343,6 +372,10 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
 }
 
 TEST(TestkitDfxTest, OomKilledChildRecovery) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -386,6 +419,10 @@ TEST(TestkitDfxTest, OomKilledChildRecovery) {
 }
 
 TEST(TestkitDfxTest, StackOverflowChildRecovery) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -429,6 +466,10 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery) {
 }
 
 TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
     pid_t child = ForkServer(bootstrap);
     ASSERT_GT(child, 0);
@@ -465,6 +506,10 @@ TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
 }
 
 TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
 
     MemRpc::RpcClient client(bootstrap);

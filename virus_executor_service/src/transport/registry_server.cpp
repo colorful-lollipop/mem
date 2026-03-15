@@ -10,6 +10,29 @@
 
 namespace VirusExecutorService {
 
+namespace {
+
+bool IsReachableServiceSocket(const std::string& socketPath) {
+    if (socketPath.empty()) {
+        return false;
+    }
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    struct sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, socketPath.c_str(), sizeof(addr.sun_path) - 1);
+    const bool connected =
+        connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0;
+    close(fd);
+    return connected;
+}
+
+}  // namespace
+
 RegistryServer::RegistryServer(const std::string& socketPath)
     : socket_path_(socketPath) {}
 
@@ -119,9 +142,22 @@ void RegistryServer::HandleClient(int client_fd) {
         }
         case RegistryOp::Load: {
             bool found = false;
+            std::string servicePath;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                found = services_.count(req.sa_id) > 0;
+                auto it = services_.find(req.sa_id);
+                if (it != services_.end()) {
+                    servicePath = it->second;
+                    found = true;
+                }
+            }
+            if (found && !IsReachableServiceSocket(servicePath)) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                auto it = services_.find(req.sa_id);
+                if (it != services_.end() && it->second == servicePath) {
+                    services_.erase(it);
+                }
+                found = false;
             }
             if (!found && load_cb_) {
                 // Ask supervisor to start the SA.

@@ -22,6 +22,15 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
+bool ThreadSanitizerEnabled() {
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+    return true;
+#endif
+#endif
+    return false;
+}
+
 constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
     MemRpc::StatusCode::CrashedDuringExecution;
 
@@ -130,6 +139,10 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
 }
 
 TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRestart) {
+    if (ThreadSanitizerEnabled()) {
+        GTEST_SKIP() << "fork-based recovery test is unsupported under ThreadSanitizer";
+    }
+
     auto bootstrap = CreateBootstrap();
 
     const pid_t firstChild = fork();

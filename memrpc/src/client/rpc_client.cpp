@@ -156,6 +156,14 @@ void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor exe
 }
 
 struct RpcClient::Impl {
+  struct SessionSnapshot {
+    uint64_t sessionId = 0;
+    int reqCreditEventFd = -1;
+    int respEventFd = -1;
+    int respCreditEventFd = -1;
+    bool alive = false;
+  };
+
   struct PendingInfo {
     Opcode opcode = OPCODE_INVALID;
     Priority priority = Priority::Normal;
@@ -201,11 +209,11 @@ struct RpcClient::Impl {
   std::atomic<bool> shuttingDown{false};
   std::atomic<bool> clientClosed_{false};
   std::atomic<bool> submitterWaitingForCredit_{false};
+  std::shared_ptr<const SessionSnapshot> sessionSnapshot_ = std::make_shared<SessionSnapshot>();
   std::atomic<uint64_t> nextRequestId_{1};
   std::atomic<uint64_t> cooldownUntilMs_{0};
   std::atomic<uint64_t> lastActivityMs_{0};
   std::atomic<uint64_t> lastClosedSessionId_{0};
-  std::atomic<uint64_t> currentSessionId_{0};
   std::atomic<uint32_t> sessionGeneration_{0};
   SessionOpenReason nextSessionOpenReason_{SessionOpenReason::InitialInit};
   uint32_t nextSessionOpenDelayMs_ = 0;
@@ -219,6 +227,19 @@ struct RpcClient::Impl {
 
   void TouchActivity() {
     lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
+  }
+
+  std::shared_ptr<const SessionSnapshot> LoadSessionSnapshot() const {
+    return std::atomic_load_explicit(&sessionSnapshot_, std::memory_order_acquire);
+  }
+
+  uint64_t CurrentSessionId() const {
+    return LoadSessionSnapshot()->sessionId;
+  }
+
+  void PublishSessionSnapshotLocked(const SessionSnapshot& snapshot) {
+    std::shared_ptr<const SessionSnapshot> nextSnapshot = std::make_shared<SessionSnapshot>(snapshot);
+    std::atomic_store_explicit(&sessionSnapshot_, std::move(nextSnapshot), std::memory_order_release);
   }
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap) {
@@ -286,7 +307,7 @@ struct RpcClient::Impl {
     info.queueTimeoutMs = submit.call.queueTimeoutMs;
     info.execTimeoutMs = submit.call.execTimeoutMs;
     info.requestId = submit.requestId;
-    info.sessionId = currentSessionId_.load(std::memory_order_acquire);
+    info.sessionId = CurrentSessionId();
     return info;
   }
 
@@ -412,7 +433,13 @@ struct RpcClient::Impl {
         return attachStatus;
       }
       session_.SetState(Session::SessionState::Alive);
-      currentSessionId_.store(sessionId, std::memory_order_release);
+      SessionSnapshot snapshot;
+      snapshot.sessionId = sessionId;
+      snapshot.reqCreditEventFd = handles.reqCreditEventFd;
+      snapshot.respEventFd = handles.respEventFd;
+      snapshot.respCreditEventFd = handles.respCreditEventFd;
+      snapshot.alive = true;
+      PublishSessionSnapshotLocked(snapshot);
       TouchActivity();
     }
     NotifySessionReady(sessionId);
@@ -427,9 +454,9 @@ struct RpcClient::Impl {
     }
     {
       std::lock_guard<std::mutex> lock(sessionMutex_);
-      const uint64_t closedSessionId = currentSessionId_.load(std::memory_order_acquire);
+      const uint64_t closedSessionId = LoadSessionSnapshot()->sessionId;
+      PublishSessionSnapshotLocked({});
       session_.Reset();
-      currentSessionId_.store(0, std::memory_order_release);
       if (closedSessionId != 0) {
         lastClosedSessionId_.store(closedSessionId, std::memory_order_release);
       }
@@ -450,11 +477,9 @@ struct RpcClient::Impl {
     if (CooldownActive()) {
       return StatusCode::CooldownActive;
     }
-    {
-      std::lock_guard<std::mutex> lock(sessionMutex_);
-      if (session_.Valid() && session_.State() == Session::SessionState::Alive) {
-        return StatusCode::Ok;
-      }
+    const auto snapshot = LoadSessionSnapshot();
+    if (snapshot->alive) {
+      return StatusCode::Ok;
     }
     return OpenSession();
   }
@@ -470,14 +495,12 @@ struct RpcClient::Impl {
   void StopThreads() {
     running_.store(false, std::memory_order_release);
     submitCv_.notify_all();
-    {
-      std::lock_guard<std::mutex> lock(sessionMutex_);
-      if (session_.Handles().reqCreditEventFd >= 0) {
-        (void)SignalEventFd(session_.Handles().reqCreditEventFd);
-      }
-      if (session_.Handles().respEventFd >= 0) {
-        (void)SignalEventFd(session_.Handles().respEventFd);
-      }
+    const auto snapshot = LoadSessionSnapshot();
+    if (snapshot->reqCreditEventFd >= 0) {
+      (void)SignalEventFd(snapshot->reqCreditEventFd);
+    }
+    if (snapshot->respEventFd >= 0) {
+      (void)SignalEventFd(snapshot->respEventFd);
     }
     if (submitThread_.joinable()) {
       submitThread_.join();
@@ -508,11 +531,7 @@ struct RpcClient::Impl {
   }
 
   PollEventFdResult WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
-    int fd = -1;
-    {
-      std::lock_guard<std::mutex> lock(sessionMutex_);
-      fd = session_.Handles().reqCreditEventFd;
-    }
+    const int fd = LoadSessionSnapshot()->reqCreditEventFd;
     if (fd < 0) {
       return PollEventFdResult::Failed;
     }
@@ -561,7 +580,7 @@ struct RpcClient::Impl {
     PendingRequest pending;
     pending.future = submit.future;
     pending.info = MakePendingInfo(submit);
-    pending.info.sessionId = currentSessionId_.load(std::memory_order_acquire);
+    pending.info.sessionId = CurrentSessionId();
     {
       std::lock_guard<std::mutex> pendingLock(pendingMutex_);
       pending_[submit.requestId] = pending;
@@ -729,7 +748,7 @@ struct RpcClient::Impl {
       }
 
       if (entry.resultSize > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
-        HandleEngineDeath(currentSessionId_.load(std::memory_order_acquire));
+        HandleEngineDeath(CurrentSessionId());
         return true;
       }
       if (entry.messageKind == ResponseMessageKind::Event) {
@@ -741,29 +760,61 @@ struct RpcClient::Impl {
   }
 
   void ResponseLoop() {
+    int activePollFd = -1;
+    uint64_t activePollSessionId = 0;
+    const auto resetActivePollFd = [&]() {
+      if (activePollFd >= 0) {
+        (void)close(activePollFd);
+        activePollFd = -1;
+      }
+      activePollSessionId = 0;
+    };
+    const auto closeActivePollFd = MakeScopeExit([&]() { resetActivePollFd(); });
+
     while (running_.load(std::memory_order_acquire)) {
       if (DrainResponseRing()) {
         continue;
       }
 
-      int fd = -1;
-      uint64_t polledSessionId = 0;
-      {
+      const auto snapshot = LoadSessionSnapshot();
+      const uint64_t currentSessionId = snapshot->sessionId;
+      int nextPollFd = -1;
+      bool sessionChanged = false;
+      if (currentSessionId != activePollSessionId) {
         std::lock_guard<std::mutex> lock(sessionMutex_);
         if (session_.Valid()) {
-          fd = session_.Handles().respEventFd;
-          polledSessionId = currentSessionId_.load(std::memory_order_acquire);
+          const uint64_t lockedSessionId = LoadSessionSnapshot()->sessionId;
+          if (lockedSessionId != activePollSessionId) {
+            sessionChanged = true;
+            const int responseFd = session_.Handles().respEventFd;
+            if (responseFd >= 0) {
+              nextPollFd = dup(responseFd);
+            }
+          }
+        }
+      } else if (currentSessionId == 0 && activePollSessionId != 0) {
+        sessionChanged = true;
+      }
+
+      if (sessionChanged) {
+        resetActivePollFd();
+        if (nextPollFd >= 0) {
+          activePollFd = nextPollFd;
+          activePollSessionId = snapshot->sessionId;
         }
       }
-      if (fd < 0) {
+
+      if (activePollFd < 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         continue;
       }
 
-      pollfd pollFd{fd, POLLIN, 0};
+      pollfd pollFd{activePollFd, POLLIN, 0};
       const auto waitResult = PollEventFd(&pollFd, 100);
       if (waitResult == PollEventFdResult::Failed) {
-        HandleEngineDeath(polledSessionId);
+        const uint64_t failedSessionId = activePollSessionId;
+        resetActivePollFd();
+        HandleEngineDeath(failedSessionId);
       }
     }
   }
@@ -789,7 +840,7 @@ struct RpcClient::Impl {
         return;
       }
     }
-    const uint64_t sessionId = currentSessionId_.load(std::memory_order_acquire);
+    const uint64_t sessionId = CurrentSessionId();
     if (sessionId == 0) {
       return;
     }
@@ -808,7 +859,7 @@ struct RpcClient::Impl {
     if (bootstrap == nullptr) {
       return;
     }
-    const uint64_t expectedSessionId = currentSessionId_.load(std::memory_order_acquire);
+    const uint64_t expectedSessionId = CurrentSessionId();
     if (expectedSessionId == 0) {
       return;
     }
@@ -855,7 +906,7 @@ struct RpcClient::Impl {
   }
 
   void HandleEngineDeath(uint64_t sessionId) {
-    const uint64_t current = currentSessionId_.load(std::memory_order_acquire);
+    const uint64_t current = CurrentSessionId();
     if (sessionId != 0 && current != 0 && sessionId != current) {
       return;
     }
@@ -878,7 +929,7 @@ struct RpcClient::Impl {
   }
 
   void RequestExternalRecovery(ExternalRecoveryRequest request) {
-    const uint64_t current = currentSessionId_.load(std::memory_order_acquire);
+    const uint64_t current = CurrentSessionId();
     if (request.sessionId != 0 && current != 0 && request.sessionId != current) {
       return;
     }
@@ -904,7 +955,7 @@ struct RpcClient::Impl {
       info.queueTimeoutMs = call.queueTimeoutMs;
       info.execTimeoutMs = call.execTimeoutMs;
       info.requestId = requestId;
-      info.sessionId = currentSessionId_.load(std::memory_order_acquire);
+      info.sessionId = CurrentSessionId();
       if (status != StatusCode::ClientClosed) {
         NotifyFailure(info, status, FailureStage::Admission);
       }
