@@ -122,8 +122,8 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
 
     switch (static_cast<VesOpcode>(request.opcode)) {
         case VesOpcode::ScanFile: {
-            ScanFileRequest scanRequest;
-            if (!MemRpc::DecodeMessage<ScanFileRequest>(request.payload, &scanRequest)) {
+            ScanTask scanRequest;
+            if (!MemRpc::DecodeMessage<ScanTask>(request.payload, &scanRequest)) {
                 reply.status = MemRpc::StatusCode::ProtocolMismatch;
                 return MemRpc::StatusCode::Ok;
             }

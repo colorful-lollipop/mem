@@ -295,7 +295,6 @@ struct RpcServer::Impl {
     call.priority = IsHighPriority(requestEntry) ? Priority::High : Priority::Normal;
     call.queueTimeoutMs = requestEntry.queueTimeoutMs;
     call.execTimeoutMs = requestEntry.execTimeoutMs;
-    call.flags = requestEntry.flags;
     call.payload = PayloadView(requestEntry.payload.data(), requestEntry.payloadSize);
     return call;
   }

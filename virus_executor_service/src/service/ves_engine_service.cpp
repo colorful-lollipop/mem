@@ -39,16 +39,16 @@ void VesEngineService::RemoveActiveTask(uint64_t taskId) {
     activeTasks_.erase(taskId);
 }
 
-ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
-    const uint64_t taskId = AddActiveTask(request.filePath);
+ScanFileReply VesEngineService::ScanFile(const ScanTask& request) {
+    const uint64_t taskId = AddActiveTask(request.path);
 
     ScanFileReply result;
     if (!initialized_) {
         result.code = -1;
     } else {
-        const auto behavior = EvaluateSamplePath(request.filePath);
+        const auto behavior = EvaluateSamplePath(request.path);
         if (behavior.shouldCrash) {
-            HILOGE("ScanFile(%{public}s): crash requested", request.filePath.c_str());
+            HILOGE("ScanFile(%{public}s): crash requested", request.path.c_str());
             std::abort();
         }
         if (behavior.sleepMs > 0) {
@@ -58,7 +58,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanFileRequest& request) {
         result.threatLevel = behavior.threatLevel;
     }
     HILOGI("ScanFile(%{public}s): threat=%{public}d",
-          request.filePath.c_str(), result.threatLevel);
+          request.path.c_str(), result.threatLevel);
     RemoveActiveTask(taskId);
 
     return result;
@@ -105,9 +105,9 @@ void VesEngineService::RegisterHandlers(MemRpc::RpcServer* server) {
         return;
     }
 
-    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
         server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [this](const ScanFileRequest& r) { return ScanFile(r); });
+        [this](const ScanTask& r) { return ScanFile(r); });
 }
 
 }  // namespace VirusExecutorService

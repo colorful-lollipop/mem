@@ -45,8 +45,7 @@ constexpr size_t FD_COUNT = 6;
 
 struct AnyCallRequestHeader {
     uint16_t opcode = 0;
-    uint16_t reserved = 0;
-    uint32_t flags = 0;
+    uint16_t priority = static_cast<uint16_t>(MemRpc::Priority::Normal);
     uint32_t timeoutMs = 0;
     uint32_t payloadSize = 0;
 };
@@ -297,7 +296,7 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
                                             VesAnyCallReply& reply) {
     AnyCallRequestHeader header{};
     header.opcode = request.opcode;
-    header.flags = request.flags;
+    header.priority = request.priority;
     header.timeoutMs = request.timeoutMs;
     header.payloadSize = static_cast<uint32_t>(request.payload.size());
 

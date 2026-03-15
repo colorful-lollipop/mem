@@ -30,8 +30,8 @@ TEST(VesHealthTest, SnapshotUpdatesAfterScan) {
     EXPECT_EQ(idleSnapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
     EXPECT_EQ(idleSnapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
 
-    ScanFileRequest req;
-    req.filePath = "/data/virus.apk";
+    ScanTask req;
+    req.path = "/data/virus.apk";
 
     auto reply = service.ScanFile(req);
     EXPECT_EQ(reply.code, 0);
@@ -50,8 +50,8 @@ TEST(VesHealthTest, InFlightAndAgeDuringScan) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep50.bin";
+        ScanTask req;
+        req.path = "/data/sleep50.bin";
         started.store(true);
         (void)service.ScanFile(req);
     });
@@ -79,8 +79,8 @@ TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
     std::atomic<bool> shortStarted{false};
 
     std::thread longWorker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep200_long.bin";
+        ScanTask req;
+        req.path = "/data/sleep200_long.bin";
         longStarted.store(true);
         (void)service.ScanFile(req);
     });
@@ -101,8 +101,8 @@ TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     std::thread shortWorker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep50_short.bin";
+        ScanTask req;
+        req.path = "/data/sleep50_short.bin";
         shortStarted.store(true);
         (void)service.ScanFile(req);
     });
@@ -135,8 +135,8 @@ TEST(VesHealthTest, SnapshotMarksLongRunningTaskAge) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep200_threshold.bin";
+        ScanTask req;
+        req.path = "/data/sleep200_threshold.bin";
         started.store(true);
         (void)service.ScanFile(req);
     });

@@ -259,7 +259,6 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   EXPECT_EQ(captured.stage, MemRpc::FailureStage::Admission);
   EXPECT_EQ(captured.opcode, call.opcode);
   EXPECT_EQ(captured.priority, call.priority);
-  EXPECT_EQ(captured.flags, call.flags);
   EXPECT_EQ(captured.admissionTimeoutMs, call.admissionTimeoutMs);
   EXPECT_EQ(captured.queueTimeoutMs, call.queueTimeoutMs);
   EXPECT_EQ(captured.execTimeoutMs, call.execTimeoutMs);

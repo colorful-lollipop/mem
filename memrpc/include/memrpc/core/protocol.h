@@ -22,6 +22,12 @@ enum class ResponseMessageKind : uint16_t {  // NOLINT(performance-enum-size)
   Event = 1,
 };
 
+template <typename... Ts>
+constexpr std::size_t SumFieldBytes()
+{
+  return (0U + ... + sizeof(Ts));
+}
+
 struct RequestRingEntry {
   uint64_t requestId = 0;
   uint32_t enqueueMonoMs = 0;
@@ -30,9 +36,10 @@ struct RequestRingEntry {
   uint16_t opcode = OPCODE_INVALID;
   uint8_t priority = 0;
   uint8_t reserved0 = 0;
-  uint32_t flags = 0;
   uint32_t payloadSize = 0;
-  static constexpr std::size_t INLINE_PAYLOAD_BYTES = RING_ENTRY_BYTES - 32U;
+  static constexpr std::size_t HEADER_BYTES =
+      SumFieldBytes<uint64_t, uint32_t, uint32_t, uint32_t, Opcode, uint8_t, uint8_t, uint32_t>();
+  static constexpr std::size_t INLINE_PAYLOAD_BYTES = RING_ENTRY_BYTES - HEADER_BYTES;
   std::array<uint8_t, INLINE_PAYLOAD_BYTES> payload{};
 };
 
@@ -47,7 +54,17 @@ struct ResponseRingEntry {
   ResponseMessageKind messageKind = ResponseMessageKind::Reply;
   uint16_t reserved = 0;
   uint32_t reserved0 = 0;
-  static constexpr std::size_t INLINE_PAYLOAD_BYTES = RING_ENTRY_BYTES - 40U;
+  static constexpr std::size_t HEADER_BYTES = SumFieldBytes<uint64_t,
+                                                            uint32_t,
+                                                            int32_t,
+                                                            uint32_t,
+                                                            uint32_t,
+                                                            uint32_t,
+                                                            uint32_t,
+                                                            ResponseMessageKind,
+                                                            uint16_t,
+                                                            uint32_t>();
+  static constexpr std::size_t INLINE_PAYLOAD_BYTES = RING_ENTRY_BYTES - HEADER_BYTES;
   std::array<uint8_t, INLINE_PAYLOAD_BYTES> payload{};
 };
 
@@ -56,6 +73,10 @@ inline constexpr uint32_t DEFAULT_MAX_REQUEST_BYTES =
 inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES =
     static_cast<uint32_t>(ResponseRingEntry::INLINE_PAYLOAD_BYTES);
 
+static_assert(offsetof(RequestRingEntry, payload) == RequestRingEntry::HEADER_BYTES,
+              "RequestRingEntry header size constant must match payload offset");
+static_assert(offsetof(ResponseRingEntry, payload) == ResponseRingEntry::HEADER_BYTES,
+              "ResponseRingEntry header size constant must match payload offset");
 static_assert(sizeof(RequestRingEntry) == RING_ENTRY_BYTES, "RequestRingEntry size must stay fixed");
 static_assert(sizeof(ResponseRingEntry) == RING_ENTRY_BYTES, "ResponseRingEntry size must stay fixed");
 

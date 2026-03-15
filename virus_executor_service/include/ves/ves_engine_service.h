@@ -30,7 +30,7 @@ class VesEngineService : public RpcHandlerRegistrar {
     void Initialize();
     bool initialized() const;
 
-    ScanFileReply ScanFile(const ScanFileRequest& request);
+    ScanFileReply ScanFile(const ScanTask& request);
     VesHealthSnapshot GetHealthSnapshot() const;
 
  private:

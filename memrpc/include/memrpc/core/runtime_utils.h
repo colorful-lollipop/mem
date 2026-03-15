@@ -125,10 +125,10 @@ template <typename Cursor>
   if (fd < 0) {
     return false;
   }
-  const uint64_t signal_value = 1;
+  constexpr  uint64_t signalValue = 1;
   while (true) {
-    const ssize_t write_bytes = write(fd, &signal_value, sizeof(signal_value));
-    if (write_bytes == sizeof(signal_value)) {
+    const ssize_t write_bytes = write(fd, &signalValue, sizeof(signalValue));
+    if (write_bytes == sizeof(signalValue)) {
       return true;
     }
     if (write_bytes < 0 && errno == EINTR) {

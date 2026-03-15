@@ -49,8 +49,7 @@ struct VesHeartbeatReply {
 
 struct VesAnyCallRequest {
     uint16_t opcode = 0;
-    uint16_t reserved = 0;
-    uint32_t flags = 0;
+    uint16_t priority = static_cast<uint16_t>(MemRpc::Priority::Normal);
     uint32_t timeoutMs = 0;
     std::vector<uint8_t> payload;
 };

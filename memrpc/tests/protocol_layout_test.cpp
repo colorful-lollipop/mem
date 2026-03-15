@@ -21,10 +21,10 @@ TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
 TEST(ProtocolLayoutTest, InlinePayloadLimitsStayWithinEntryBudget) {
   EXPECT_EQ(sizeof(MemRpc::RequestRingEntry) -
                 MemRpc::RequestRingEntry::INLINE_PAYLOAD_BYTES,
-            32U);
+            MemRpc::RequestRingEntry::HEADER_BYTES);
   EXPECT_EQ(sizeof(MemRpc::ResponseRingEntry) -
                 MemRpc::ResponseRingEntry::INLINE_PAYLOAD_BYTES,
-            40U);
+            MemRpc::ResponseRingEntry::HEADER_BYTES);
 }
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {

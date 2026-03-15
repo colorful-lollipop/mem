@@ -127,8 +127,8 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep50.bin";
+        ScanTask req;
+        req.path = "/data/sleep50.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
     });
@@ -159,8 +159,8 @@ TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep200_long.bin";
+        ScanTask req;
+        req.path = "/data/sleep200_long.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
     });

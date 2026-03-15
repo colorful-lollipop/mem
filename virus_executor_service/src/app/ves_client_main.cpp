@@ -82,11 +82,11 @@ int main() {
 
     VirusExecutorService::ScanFileReply scanReply;
     VirusExecutorService::ScanTask firstTask{"/data/test_file_1.apk"};
-    client->ScanFile(&firstTask, &scanReply);
+    client->ScanFile(firstTask, &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
     VirusExecutorService::ScanTask secondTask{"/data/test_file_2.apk"};
-    client->ScanFile(&secondTask, &scanReply);
+    client->ScanFile(secondTask, &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
 
     // Request engine unload (triggers death callback via RecoveryPolicy).
@@ -105,7 +105,7 @@ int main() {
     if (client2) {
         VirusExecutorService::ScanFileReply scan2;
         VirusExecutorService::ScanTask thirdTask{"/data/test_file_3.apk"};
-        client2->ScanFile(&thirdTask, &scan2);
+        client2->ScanFile(thirdTask, &scan2);
         HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
 
         client2->Shutdown();

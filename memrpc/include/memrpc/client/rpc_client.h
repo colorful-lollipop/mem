@@ -24,7 +24,6 @@ struct RpcCall {
   uint32_t queueTimeoutMs = 0;
   // exec_timeout_ms 作用在服务端 handler 执行阶段；当前为软超时，不强杀 handler。
   uint32_t execTimeoutMs = 30000;
-  uint32_t flags = 0;
   std::vector<uint8_t> payload;
 };
 
@@ -87,7 +86,6 @@ struct RpcFailure {
   StatusCode status = StatusCode::Ok;
   Opcode opcode = OPCODE_INVALID;
   Priority priority = Priority::Normal;
-  uint32_t flags = 0;
   uint32_t admissionTimeoutMs = 0;
   uint32_t queueTimeoutMs = 0;
   uint32_t execTimeoutMs = 0;

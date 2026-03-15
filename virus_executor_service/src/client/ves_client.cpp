@@ -10,6 +10,53 @@
 
 namespace VirusExecutorService {
 
+namespace {
+
+template <typename Request, typename Reply>
+MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
+                                             const std::shared_ptr<VesControlProxy>& proxy,
+                                             VesOpcode opcode,
+                                             const Request& request,
+                                             Reply* reply,
+                                             MemRpc::Priority priority) {
+    std::vector<uint8_t> payload;
+    if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+
+    if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
+        return MemRpc::InvokeTypedSync<Request, Reply>(
+            client,
+            static_cast<MemRpc::Opcode>(opcode),
+            request,
+            reply,
+            priority);
+    }
+
+    if (proxy == nullptr) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    VesAnyCallRequest anyRequest;
+    anyRequest.opcode = static_cast<uint16_t>(opcode);
+    anyRequest.priority = static_cast<uint16_t>(priority);
+    anyRequest.payload = std::move(payload);
+
+    VesAnyCallReply anyReply;
+    const MemRpc::StatusCode status = proxy->AnyCall(anyRequest, anyReply);
+    if (status != MemRpc::StatusCode::Ok) {
+        return status;
+    }
+    if (anyReply.status != MemRpc::StatusCode::Ok) {
+        return anyReply.status;
+    }
+    return MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)
+               ? MemRpc::StatusCode::Ok
+               : MemRpc::StatusCode::ProtocolMismatch;
+}
+
+}  // namespace
+
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VesClientOptions options)
     : remote_(remote),
@@ -101,40 +148,20 @@ bool VesClient::EngineDied() const {
     return engineDied_.load();
 }
 
-MemRpc::StatusCode VesClient::ScanFile(const ScanTask* scanTask, ScanFileReply* reply) {
-    if (scanTask == nullptr || reply == nullptr) {
+MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
+                                       ScanFileReply* reply,
+                                       MemRpc::Priority priority) {
+    if (reply == nullptr) {
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    ScanFileRequest request;
-    request.filePath = scanTask->path;
-    std::vector<uint8_t> payload;
-    if (!MemRpc::EncodeMessage<ScanFileRequest>(request, &payload)) {
-        return MemRpc::StatusCode::ProtocolMismatch;
-    }
-    if (payload.size() > MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
-        if (proxy_ == nullptr) {
-            return MemRpc::StatusCode::PeerDisconnected;
-        }
-        VesAnyCallRequest anyRequest;
-        anyRequest.opcode = static_cast<uint16_t>(VesOpcode::ScanFile);
-        anyRequest.payload = std::move(payload);
-        VesAnyCallReply anyReply;
-        const MemRpc::StatusCode status = proxy_->AnyCall(anyRequest, anyReply);
-        if (status != MemRpc::StatusCode::Ok) {
-            return status;
-        }
-        if (anyReply.status != MemRpc::StatusCode::Ok) {
-            return anyReply.status;
-        }
-        return MemRpc::DecodeMessage<ScanFileReply>(anyReply.payload, reply)
-                   ? MemRpc::StatusCode::Ok
-                   : MemRpc::StatusCode::ProtocolMismatch;
-    }
-    return MemRpc::InvokeTypedSync<ScanFileRequest, ScanFileReply>(
+    return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
         &client_,
-        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        request, reply);
+        proxy_,
+        VesOpcode::ScanFile,
+        scanTask,
+        reply,
+        priority);
 }
 
 }  // namespace VirusExecutorService

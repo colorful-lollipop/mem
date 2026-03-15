@@ -30,8 +30,8 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep50_reason.bin";
+        ScanTask req;
+        req.path = "/data/sleep50_reason.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
     });
@@ -59,8 +59,8 @@ TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason) {
 
     std::atomic<bool> started{false};
     std::thread worker([&]() {
-        ScanFileRequest req;
-        req.filePath = "/data/sleep200_reason.bin";
+        ScanTask req;
+        req.path = "/data/sleep200_reason.bin";
         started.store(true);
         (void)service.service().ScanFile(req);
     });

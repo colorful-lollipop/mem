@@ -166,9 +166,9 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     ASSERT_EQ(bootstrap->OpenSession(unused), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server(bootstrap->serverHandles());
-    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
         &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [](const ScanFileRequest& req) {
+        [](const ScanTask& req) {
             // Force exec timeout by sleeping longer than client timeout.
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             ScanFileReply reply;
@@ -193,13 +193,13 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
 
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    ScanFileRequest req;
-    req.filePath = "/data/sleep50.bin";
+    ScanTask req;
+    req.path = "/data/sleep50.bin";
 
     MemRpc::RpcCall call;
     call.opcode = static_cast<MemRpc::Opcode>(VesOpcode::ScanFile);
     call.execTimeoutMs = 5;  // short timeout
-    MemRpc::CodecTraits<ScanFileRequest>::Encode(req, &call.payload);
+    MemRpc::CodecTraits<ScanTask>::Encode(req, &call.payload);
 
     auto future = client.InvokeAsync(call);
     MemRpc::RpcReply reply;
@@ -235,7 +235,7 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
 
     ScanTask cleanTask{"/data/clean.apk"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(&cleanTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
 
     VesHeartbeatReply heartbeat{};
     const auto idleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -249,7 +249,7 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
     EXPECT_EQ(heartbeat.sessionId, 0u);
 
     ScanTask reopenTask{"/data/reopen.apk"};
-    ASSERT_EQ(client.ScanFile(&reopenTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(reopenTask, &reply), MemRpc::StatusCode::Ok);
 
     ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
     EXPECT_NE(heartbeat.sessionId, 0u);
@@ -270,9 +270,9 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     ASSERT_TRUE(service->Publish(service.get()));
 
     MemRpc::RpcServer server(service->serverHandles());
-    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
         &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [](const ScanFileRequest&) {
+        [](const ScanTask&) {
             ScanFileReply reply;
             reply.code = 0;
             reply.threatLevel = 0;
@@ -291,7 +291,7 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
 
     ScanTask healthyTask{"/data/healthy.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(&healthyTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(healthyTask, &reply), MemRpc::StatusCode::Ok);
 
     const int initialOpenCount = service->openCount();
     service->SetHealthy(false);
@@ -302,8 +302,70 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
                         std::chrono::milliseconds(500)));
 
     ScanTask recoveredTask{"/data/recovered.bin"};
-    ASSERT_EQ(client.ScanFile(&recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     EXPECT_FALSE(client.EngineDied());
+
+    client.Shutdown();
+    server.Stop();
+    service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesPolicyTest, VesClientScanFileForwardsPriority) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_priority_policy_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<FakeHealthControlService>();
+    service->SetServicePathForTest(socketPath);
+    service->PrepareServerHandlesForTest();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    std::atomic<int> invocationCount{0};
+    std::atomic<int> lastPriority{static_cast<int>(MemRpc::Priority::Normal)};
+    MemRpc::RpcServer server(service->serverHandles());
+    server.RegisterHandler(static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+        [&](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+            if (reply == nullptr) {
+                return;
+            }
+            ScanTask request;
+            if (!MemRpc::DecodeMessage<ScanTask>(call.payload, &request)) {
+                reply->status = MemRpc::StatusCode::ProtocolMismatch;
+                return;
+            }
+            ScanFileReply scanReply;
+            scanReply.code = 0;
+            scanReply.threatLevel = request.path.find("high") != std::string::npos ? 1 : 0;
+            if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &reply->payload)) {
+                reply->status = MemRpc::StatusCode::EngineInternalError;
+                return;
+            }
+            invocationCount.fetch_add(1);
+            lastPriority.store(static_cast<int>(call.priority));
+        });
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClient client(remote);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    ScanTask normalTask{"/data/normal.bin"};
+    ScanFileReply reply;
+    ASSERT_EQ(client.ScanFile(normalTask, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.threatLevel, 0);
+    EXPECT_EQ(lastPriority.load(), static_cast<int>(MemRpc::Priority::Normal));
+
+    ScanTask highTask{"/data/high.bin"};
+    ASSERT_EQ(client.ScanFile(highTask, &reply, MemRpc::Priority::High), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.threatLevel, 1);
+    EXPECT_EQ(lastPriority.load(), static_cast<int>(MemRpc::Priority::High));
+    EXPECT_EQ(invocationCount.load(), 2);
 
     client.Shutdown();
     server.Stop();

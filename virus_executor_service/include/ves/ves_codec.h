@@ -25,17 +25,17 @@ struct CodecTraits<VirusExecutorService::InitReply> {
 };
 
 template <>
-struct CodecTraits<VirusExecutorService::ScanFileRequest> {
-    static bool Encode(const VirusExecutorService::ScanFileRequest& request, std::vector<uint8_t>* bytes) {
+struct CodecTraits<VirusExecutorService::ScanTask> {
+    static bool Encode(const VirusExecutorService::ScanTask& request, std::vector<uint8_t>* bytes) {
         ByteWriter writer;
-        return writer.WriteString(request.filePath) && detail::AssignBytes(writer, bytes);
+        return writer.WriteString(request.path) && detail::AssignBytes(writer, bytes);
     }
-    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanFileRequest* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanTask* request) {
         if (request == nullptr) {
             return false;
         }
         ByteReader reader(bytes, size);
-        return reader.ReadString(&request->filePath);
+        return reader.ReadString(&request->path);
     }
 };
 

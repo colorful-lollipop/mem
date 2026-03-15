@@ -58,7 +58,6 @@ struct RpcServerCall {
   Priority priority = Priority::Normal;
   uint32_t queueTimeoutMs = 0;
   uint32_t execTimeoutMs = 0;
-  uint32_t flags = 0;
   PayloadView payload;
 };
 

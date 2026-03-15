@@ -14,10 +14,6 @@ struct ScanTask {
     std::string path;
 };
 
-struct ScanFileRequest {
-    std::string filePath;
-};
-
 struct ScanFileReply {
     int32_t code = 0;
     int32_t threatLevel = 0;

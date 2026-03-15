@@ -155,7 +155,6 @@ struct RpcClient::Impl {
   struct PendingInfo {
     Opcode opcode = OPCODE_INVALID;
     Priority priority = Priority::Normal;
-    uint32_t flags = 0;
     uint32_t admissionTimeoutMs = 0;
     uint32_t queueTimeoutMs = 0;
     uint32_t execTimeoutMs = 0;
@@ -279,7 +278,6 @@ struct RpcClient::Impl {
     PendingInfo info;
     info.opcode = submit.call.opcode;
     info.priority = submit.call.priority;
-    info.flags = submit.call.flags;
     info.admissionTimeoutMs = submit.call.admissionTimeoutMs;
     info.queueTimeoutMs = submit.call.queueTimeoutMs;
     info.execTimeoutMs = submit.call.execTimeoutMs;
@@ -329,7 +327,6 @@ struct RpcClient::Impl {
     failure.status = status;
     failure.opcode = info.opcode;
     failure.priority = info.priority;
-    failure.flags = info.flags;
     failure.admissionTimeoutMs = info.admissionTimeoutMs;
     failure.queueTimeoutMs = info.queueTimeoutMs;
     failure.execTimeoutMs = info.execTimeoutMs;
@@ -552,7 +549,6 @@ struct RpcClient::Impl {
     entry.execTimeoutMs = submit.call.execTimeoutMs;
     entry.opcode = submit.call.opcode;
     entry.priority = static_cast<uint8_t>(submit.call.priority);
-    entry.flags = submit.call.flags;
     entry.payloadSize = static_cast<uint32_t>(submit.call.payload.size());
     if (!submit.call.payload.empty()) {
       std::memcpy(entry.payload.data(), submit.call.payload.data(), submit.call.payload.size());
@@ -798,11 +794,9 @@ struct RpcClient::Impl {
   }
 
   void MaybeRunHealthCheck() {
-    RecoveryPolicy policy;
     std::shared_ptr<IBootstrapChannel> bootstrap;
     {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
-      policy = recoveryPolicy_;
       bootstrap = bootstrap_;
     }
     if (bootstrap == nullptr) {
@@ -900,7 +894,6 @@ struct RpcClient::Impl {
       PendingInfo info;
       info.opcode = call.opcode;
       info.priority = call.priority;
-      info.flags = call.flags;
       info.admissionTimeoutMs = call.admissionTimeoutMs;
       info.queueTimeoutMs = call.queueTimeoutMs;
       info.execTimeoutMs = call.execTimeoutMs;

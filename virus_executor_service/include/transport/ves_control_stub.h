@@ -19,8 +19,7 @@ struct SessionMetadata {
 
 struct AnyCallRequestHeader {
     uint16_t opcode = 0;
-    uint16_t reserved = 0;
-    uint32_t flags = 0;
+    uint16_t priority = static_cast<uint16_t>(MemRpc::Priority::Normal);
     uint32_t timeoutMs = 0;
     uint32_t payloadSize = 0;
 };
@@ -42,7 +41,7 @@ inline bool DecodeAnyCallRequest(const OHOS::MockIpcRequest& request, VesAnyCall
         return false;
     }
     out->opcode = header.opcode;
-    out->flags = header.flags;
+    out->priority = header.priority;
     out->timeoutMs = header.timeoutMs;
     out->payload.assign(request.data.begin() + static_cast<std::ptrdiff_t>(sizeof(header)),
                         request.data.end());

@@ -49,7 +49,7 @@ bool WaitForRecoveredScan(VesClient* client,
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
     ScanTask task{path};
     while (std::chrono::steady_clock::now() < deadline) {
-        status = client->ScanFile(&task, reply);
+        status = client->ScanFile(task, reply);
         if (status == MemRpc::StatusCode::Ok) {
             if (lastStatus != nullptr) {
                 *lastStatus = status;
@@ -244,7 +244,7 @@ TEST(VesHealthSubscriptionTest, OversizedScanRequestFallsBackToAnyCall) {
         "/data/" + std::string(MemRpc::DEFAULT_MAX_REQUEST_BYTES + 64, 'a');
     ScanTask task{longPath};
     ScanFileReply reply;
-    EXPECT_EQ(client.ScanFile(&task, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(client.ScanFile(task, &reply, MemRpc::Priority::High), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.code, 0);
 
     client.Shutdown();
@@ -252,7 +252,7 @@ TEST(VesHealthSubscriptionTest, OversizedScanRequestFallsBackToAnyCall) {
     UnloadControlService();
 }
 
-TEST(VesHealthSubscriptionTest, RejectsNullScanTask) {
+TEST(VesHealthSubscriptionTest, RejectsNullReply) {
     UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_health_subscription_null_task_" + std::to_string(getpid()) + ".sock";
@@ -270,8 +270,8 @@ TEST(VesHealthSubscriptionTest, RejectsNullScanTask) {
     VesClient client(remote);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    ScanFileReply reply;
-    EXPECT_EQ(client.ScanFile(nullptr, &reply), MemRpc::StatusCode::InvalidArgument);
+    ScanTask task{"/data/clean.apk"};
+    EXPECT_EQ(client.ScanFile(task, nullptr), MemRpc::StatusCode::InvalidArgument);
 
     client.Shutdown();
     service->OnStop();
@@ -289,9 +289,9 @@ TEST(VesHealthSubscriptionTest, BlockingSubscriberDoesNotBlockRecovery) {
     ASSERT_TRUE(service->Publish(service.get()));
 
     MemRpc::RpcServer server(service->serverHandles());
-    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
         &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [](const ScanFileRequest&) {
+        [](const ScanTask&) {
             ScanFileReply reply;
             reply.code = 0;
             return reply;
@@ -313,7 +313,7 @@ TEST(VesHealthSubscriptionTest, BlockingSubscriberDoesNotBlockRecovery) {
 
     ScanTask subscriptionTask{"/data/subscription.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(&subscriptionTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(subscriptionTask, &reply), MemRpc::StatusCode::Ok);
 
     const int initialOpenCount = service->openCount();
     service->SetHealthy(false);
@@ -344,9 +344,9 @@ TEST(VesHealthSubscriptionTest, RecoveryStillWorksWithoutSubscriber) {
     ASSERT_TRUE(service->Publish(service.get()));
 
     MemRpc::RpcServer server(service->serverHandles());
-    MemRpc::RegisterTypedHandler<ScanFileRequest, ScanFileReply>(
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
         &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [](const ScanFileRequest&) {
+        [](const ScanTask&) {
             ScanFileReply reply;
             reply.code = 0;
             return reply;
@@ -364,7 +364,7 @@ TEST(VesHealthSubscriptionTest, RecoveryStillWorksWithoutSubscriber) {
 
     ScanTask subscriptionNoneTask{"/data/subscription_none.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(&subscriptionNoneTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.ScanFile(subscriptionNoneTask, &reply), MemRpc::StatusCode::Ok);
 
     const int initialOpenCount = service->openCount();
     service->SetHealthy(false);

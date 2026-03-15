@@ -5,19 +5,19 @@
 
 namespace VirusExecutorService {
 
-using VirusExecutorService::ScanFileRequest;
+using VirusExecutorService::ScanTask;
 using VirusExecutorService::ScanFileReply;
 
-TEST(VesDemoCodecTest, ScanFileRequestRoundTrip) {
-    ScanFileRequest req;
-    req.filePath = "/data/scan/clean.apk";
+TEST(VesDemoCodecTest, ScanTaskRoundTrip) {
+    ScanTask req;
+    req.path = "/data/scan/clean.apk";
 
     std::vector<uint8_t> bytes;
-    ASSERT_TRUE(MemRpc::CodecTraits<ScanFileRequest>::Encode(req, &bytes));
+    ASSERT_TRUE(MemRpc::CodecTraits<ScanTask>::Encode(req, &bytes));
 
-    ScanFileRequest decoded;
-    ASSERT_TRUE(MemRpc::CodecTraits<ScanFileRequest>::Decode(bytes.data(), bytes.size(), &decoded));
-    EXPECT_EQ(decoded.filePath, req.filePath);
+    ScanTask decoded;
+    ASSERT_TRUE(MemRpc::CodecTraits<ScanTask>::Decode(bytes.data(), bytes.size(), &decoded));
+    EXPECT_EQ(decoded.path, req.path);
 }
 
 TEST(VesDemoCodecTest, ScanFileReplyRoundTrip) {

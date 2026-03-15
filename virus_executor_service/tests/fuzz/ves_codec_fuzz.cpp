@@ -33,13 +33,13 @@ std::string SanitizePath(std::string path) {
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    virus_executor_service::ScanFileRequest req;
-    if (!MemRpc::CodecTraits<virus_executor_service::ScanFileRequest>::Decode(data, size, &req)) {
+    virus_executor_service::ScanTask req;
+    if (!MemRpc::CodecTraits<virus_executor_service::ScanTask>::Decode(data, size, &req)) {
         return 0;
     }
 
-    req.filePath = SanitizePath(std::move(req.filePath));
-    (void)virus_executor_service::EvaluateSamplePath(req.filePath);
+    req.path = SanitizePath(std::move(req.path));
+    (void)virus_executor_service::EvaluateSamplePath(req.path);
 
     virus_executor_service::ScanFileReply reply;
     reply.code = 0;
