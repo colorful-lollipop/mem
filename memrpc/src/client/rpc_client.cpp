@@ -196,12 +196,14 @@ struct RpcClient::Impl {
   mutable std::mutex recoveryMutex_;
   mutable std::mutex eventMutex_;
   mutable std::mutex sessionReadyMutex_;
+  mutable std::mutex watchdogMutex_;
   RecoveryPolicy recoveryPolicy_;
   RpcEventCallback eventCallback_;
   SessionReadyCallback sessionReadyCallback_;
   std::deque<PendingSubmit> submitQueue_;
   std::unordered_map<uint64_t, PendingRequest> pending_;
   std::condition_variable submitCv_;
+  std::condition_variable watchdogCv_;
   std::thread submitThread_;
   std::thread responseThread_;
   std::thread watchdogThread_;
@@ -493,8 +495,15 @@ struct RpcClient::Impl {
   }
 
   void StopThreads() {
-    running_.store(false, std::memory_order_release);
+    {
+      std::lock_guard<std::mutex> lock(submitMutex_);
+      running_.store(false, std::memory_order_release);
+    }
     submitCv_.notify_all();
+    {
+      std::lock_guard<std::mutex> lock(watchdogMutex_);
+      watchdogCv_.notify_all();
+    }
     const auto snapshot = LoadSessionSnapshot();
     if (snapshot->reqCreditEventFd >= 0) {
       (void)SignalEventFd(snapshot->reqCreditEventFd);
@@ -889,7 +898,10 @@ struct RpcClient::Impl {
     while (running_.load(std::memory_order_acquire)) {
       MaybeRunHealthCheck();
       MaybeRunIdlePolicy();
-      std::this_thread::sleep_for(std::min(kHealthCheckPeriod, kIdlePollPeriod));
+      std::unique_lock<std::mutex> lock(watchdogMutex_);
+      watchdogCv_.wait_for(lock, std::min(kHealthCheckPeriod, kIdlePollPeriod), [this] {
+        return !running_.load(std::memory_order_acquire);
+      });
     }
   }
 

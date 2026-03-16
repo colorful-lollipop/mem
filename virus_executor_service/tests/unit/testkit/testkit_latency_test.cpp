@@ -56,13 +56,13 @@ LatencyStats ComputeStats(std::vector<double>& latenciesUs) {
         return stats;
     }
     std::sort(latenciesUs.begin(), latenciesUs.end());
-    stats.samples = latenciesUs.size();
+    const std::size_t sampleCount = latenciesUs.size();
+    stats.samples = static_cast<uint64_t>(sampleCount);
     stats.meanUs =
-        std::accumulate(latenciesUs.begin(), latenciesUs.end(), 0.0) / stats.samples;
-    stats.p50Us = latenciesUs[stats.samples * 50 / 100];
-    stats.p99Us = latenciesUs[stats.samples * 99 / 100];
-    stats.p999Us =
-        latenciesUs[std::min<size_t>(stats.samples - 1, stats.samples * 999 / 1000)];
+        std::accumulate(latenciesUs.begin(), latenciesUs.end(), 0.0) / static_cast<double>(sampleCount);
+    stats.p50Us = latenciesUs[sampleCount * 50 / 100];
+    stats.p99Us = latenciesUs[sampleCount * 99 / 100];
+    stats.p999Us = latenciesUs[std::min(sampleCount - 1, sampleCount * 999 / 1000)];
     stats.maxUs = latenciesUs.back();
     return stats;
 }
@@ -124,7 +124,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
         }
 
         std::vector<double> latencies;
-        latencies.reserve(iterations);
+        latencies.reserve(static_cast<std::size_t>(iterations));
         for (int i = 0; i < iterations; ++i) {
             EchoReply reply;
             const auto start = std::chrono::steady_clock::now();
@@ -132,7 +132,8 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
             const auto end = std::chrono::steady_clock::now();
             ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() /
+                static_cast<double>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
                 1000.0);
         }
         const LatencyStats stats = ComputeStats(latencies);
@@ -159,7 +160,7 @@ TEST(TestkitLatencyTest, DirectCallBaselineLatency) {
 
     for (const auto& payloadCase : cases) {
         std::vector<double> latencies;
-        latencies.reserve(iterations);
+        latencies.reserve(static_cast<std::size_t>(iterations));
         EchoRequest request;
         request.text = payloadCase.second;
         for (int i = 0; i < iterations; ++i) {
@@ -168,7 +169,8 @@ TEST(TestkitLatencyTest, DirectCallBaselineLatency) {
             const auto end = std::chrono::steady_clock::now();
             (void)reply;
             latencies.push_back(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() /
+                static_cast<double>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
                 1000.0);
         }
         const LatencyStats stats = ComputeStats(latencies);

@@ -178,8 +178,9 @@ bool RunStress(const StressConfig& config) {
 
     for (int i = 0; i < config.threads; ++i) {
         workers.emplace_back([&, i]() {
-            std::mt19937_64 rng(
-                config.seed ? config.seed + i : (Mem::MonotonicNowMs64() + i));
+            const uint64_t workerSeedBase =
+                config.seed != 0 ? config.seed : Mem::MonotonicNowMs64();
+            std::mt19937_64 rng(workerSeedBase + static_cast<uint64_t>(i));
             while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
                 const uint64_t elapsedMs = static_cast<uint64_t>(
                     std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -205,8 +206,9 @@ bool RunStress(const StressConfig& config) {
                         &client, static_cast<Mem::Opcode>(TestkitOpcode::Add), request, &reply,
                         priority);
                 } else {
-                    const uint32_t delayMs =
-                        static_cast<uint32_t>(rng() % std::max(1, config.maxSleepMs));
+                    const uint64_t maxSleepMs =
+                        static_cast<uint64_t>(std::max(1, config.maxSleepMs));
+                    const uint32_t delayMs = static_cast<uint32_t>(rng() % maxSleepMs);
                     SleepRequest request{delayMs};
                     SleepReply reply;
                     status = Mem::InvokeTypedSync(
@@ -227,8 +229,10 @@ bool RunStress(const StressConfig& config) {
                 }
 
                 if (!InBurstWindow(elapsedMs, config)) {
+                    const uint64_t burstMultiplier =
+                        static_cast<uint64_t>(std::max(1, config.burstMultiplier));
                     const int sleepUs =
-                        static_cast<int>((rng() % 1000) * config.burstMultiplier);
+                        static_cast<int>((rng() % 1000ULL) * burstMultiplier);
                     if (sleepUs > 0) {
                         std::this_thread::sleep_for(std::chrono::microseconds(sleepUs));
                     }

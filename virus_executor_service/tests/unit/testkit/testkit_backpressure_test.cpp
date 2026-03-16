@@ -53,7 +53,10 @@ TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
 
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    server.SetOptions({.highWorkerThreads = 4, .normalWorkerThreads = 4});
+    MemRpc::ServerOptions options;
+    options.highWorkerThreads = 4;
+    options.normalWorkerThreads = 4;
+    server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
@@ -111,7 +114,10 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
 
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    server.SetOptions({.highWorkerThreads = 2, .normalWorkerThreads = 2});
+    MemRpc::ServerOptions options;
+    options.highWorkerThreads = 2;
+    options.normalWorkerThreads = 2;
+    server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
@@ -124,7 +130,7 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     for (int i = 0; i < 2; ++i) {
         callers.emplace_back([&client, &results, i]() {
             SleepReply reply;
-            results[i] = client.Sleep(300, &reply);
+            results[static_cast<std::size_t>(i)] = client.Sleep(300, &reply);
         });
     }
 

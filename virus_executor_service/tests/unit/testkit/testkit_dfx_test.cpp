@@ -42,7 +42,9 @@ void CloseHandles(MemRpc::BootstrapHandles& handles) {
 void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(handles);
-    TestkitService service({.enableFaultInjection = true});
+    TestkitServiceOptions options;
+    options.enableFaultInjection = true;
+    TestkitService service(options);
     service.RegisterHandlers(&server);
     if (server.Start() != MemRpc::StatusCode::Ok) {
         _exit(2);

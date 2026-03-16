@@ -20,6 +20,15 @@ constexpr int DEFAULT_HEARTBEAT_TIMEOUT_MS = 500;
 constexpr int HEALTH_CHECK_TIMEOUT_MS = 100;
 constexpr int LOAD_SERVICE_TIMEOUT_MS = 5000;
 
+std::shared_ptr<VesControlProxy> RetainProxy(VesControlProxy* proxy)
+{
+    try {
+        return std::dynamic_pointer_cast<VesControlProxy>(proxy->OHOS::RefBase::shared_from_this());
+    } catch (const std::bad_weak_ptr&) {
+        return {};
+    }
+}
+
 int ConnectToService(const std::string& path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -211,11 +220,15 @@ bool VesControlProxy::IsPeerDisconnected(int fd) const {
 }
 
 void VesControlProxy::NotifyPeerDisconnected() {
+    // The death callback can synchronously reload the channel and release the old proxy.
+    const auto self = RetainProxy(this);
+    (void)self;
     if (stop_monitor_.load()) {
         return;
     }
     uint64_t sessionId = 0;
     MemRpc::EngineDeathCallback callback;
+    auto object = AsObject();
     {
         std::lock_guard<std::mutex> lock(connectionMutex_);
         sessionId = sessionId_;
@@ -227,7 +240,6 @@ void VesControlProxy::NotifyPeerDisconnected() {
     if (callback) {
         callback(sessionId);
     }
-    auto object = AsObject();
     if (object != nullptr) {
         object->NotifyRemoteDiedForTest();
     }
@@ -255,10 +267,16 @@ MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handle
     }
     {
         std::lock_guard<std::mutex> stateLock(connectionMutex_);
+        auto self = RetainProxy(this);
         stop_monitor_.store(false);
         sock_fd_ = fd;
         sessionId_ = handles.sessionId;
-        monitor_thread_ = std::thread(&VesControlProxy::MonitorSocket, this);
+        // Keep the proxy alive until the monitor thread exits.
+        if (self != nullptr) {
+            monitor_thread_ = std::thread([self]() { self->MonitorSocket(); });
+        } else {
+            monitor_thread_ = std::thread([this]() { MonitorSocket(); });
+        }
     }
     return MemRpc::StatusCode::Ok;
 }

@@ -92,7 +92,7 @@ TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
     const double durationSec = std::max(1, durationMs) / 1000.0;
     std::cout << "\n=== Testkit In-Process Baseline ===" << std::endl;
     for (const auto& current : cases) {
-        const double opsPerSec = current.ops / durationSec;
+        const double opsPerSec = static_cast<double>(current.ops) / durationSec;
         std::cout << std::setw(14) << current.name << ": " << std::fixed
                   << std::setprecision(0) << opsPerSec << " ops/sec" << std::endl;
         EXPECT_GT(current.ops, 0u);

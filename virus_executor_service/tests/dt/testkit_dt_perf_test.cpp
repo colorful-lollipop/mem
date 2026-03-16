@@ -111,7 +111,7 @@ PerfStats ComputeStats(const std::vector<double>& latenciesUs,
                        double durationSec,
                        uint64_t ops) {
     PerfStats stats;
-    stats.opsPerSec = durationSec > 0.0 ? ops / durationSec : 0.0;
+    stats.opsPerSec = durationSec > 0.0 ? static_cast<double>(ops) / durationSec : 0.0;
     if (!latenciesUs.empty()) {
         std::vector<double> sorted = latenciesUs;
         std::sort(sorted.begin(), sorted.end());
@@ -181,7 +181,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
 
         std::atomic<uint64_t> ops{0};
         std::vector<std::thread> workers;
-        workers.reserve(threadCount);
+        workers.reserve(static_cast<std::size_t>(threadCount));
 
         const auto start = std::chrono::steady_clock::now();
         const auto end = start + std::chrono::milliseconds(durationMs);
@@ -223,7 +223,8 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
             const auto t1 = std::chrono::steady_clock::now();
             ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count() /
+                static_cast<double>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()) /
                 1000.0);
         }
 

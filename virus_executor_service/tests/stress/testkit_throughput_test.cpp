@@ -158,9 +158,9 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
         return false;
     }
 
-    std::vector<WorkerResult> workerResults(threadCount);
+    std::vector<WorkerResult> workerResults(static_cast<std::size_t>(threadCount));
     std::vector<std::thread> workers;
-    workers.reserve(threadCount);
+    workers.reserve(static_cast<std::size_t>(threadCount));
 
     const auto startTime =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
@@ -169,7 +169,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
 
     for (int i = 0; i < threadCount; ++i) {
         workers.emplace_back([&, i]() {
-            WorkerResult& result = workerResults[i];
+            WorkerResult& result = workerResults[static_cast<std::size_t>(i)];
             while (std::chrono::steady_clock::now() < startTime) {
                 std::this_thread::yield();
             }
@@ -222,7 +222,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     for (const auto& result : workerResults) {
         totalOps += result.ops;
     }
-    *opsPerSec = totalOps / durationSeconds;
+    *opsPerSec = static_cast<double>(totalOps) / durationSeconds;
     return true;
 }
 

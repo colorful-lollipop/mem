@@ -103,7 +103,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
             ++syncOps;
         }
         const double durationSec = std::max(1, durationMs) / 1000.0;
-        syncOpsPerSec = syncOps / durationSec;
+        syncOpsPerSec = static_cast<double>(syncOps) / durationSec;
         syncClient.Shutdown();
     }
 
@@ -122,7 +122,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
             EchoRequest request;
             request.text = "ping";
             std::vector<MemRpc::TypedFuture<EchoReply>> futures;
-            futures.reserve(batchSize);
+            futures.reserve(static_cast<std::size_t>(batchSize));
             for (int i = 0; i < batchSize; ++i) {
                 futures.push_back(asyncClient.EchoAsync(request));
             }
@@ -139,7 +139,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
             EchoRequest request;
             request.text = "ping";
             std::vector<MemRpc::TypedFuture<EchoReply>> futures;
-            futures.reserve(batchSize);
+            futures.reserve(static_cast<std::size_t>(batchSize));
             for (int i = 0; i < batchSize; ++i) {
                 futures.push_back(asyncClient.EchoAsync(request));
             }
@@ -165,14 +165,14 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
                 ADD_FAILURE() << failure.str();
                 break;
             }
-            totalOps += batchSize;
+            totalOps += static_cast<uint64_t>(batchSize);
         }
 
         const double durationSec = std::max(1, durationMs) / 1000.0;
         PipelineResult result;
         result.batchSize = batchSize;
         result.totalOps = totalOps;
-        result.opsPerSec = totalOps / durationSec;
+        result.opsPerSec = static_cast<double>(totalOps) / durationSec;
         results.push_back(result);
 
         std::cout << "  batch=" << std::setw(3) << batchSize << ": " << std::fixed

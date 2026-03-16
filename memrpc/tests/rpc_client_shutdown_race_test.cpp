@@ -9,7 +9,8 @@
 namespace {
 
 constexpr MemRpc::Opcode kTestOpcode = 1u;
-constexpr int kShutdownRaceIterations = 200;
+// ci_sweep/push_gate rerun this test with until-fail coverage, so keep the base suite cheap.
+constexpr int kShutdownRaceIterations = 50;
 constexpr auto kMaxShutdownDuration = std::chrono::milliseconds(200);
 
 class FailingBootstrapChannel final : public MemRpc::IBootstrapChannel {

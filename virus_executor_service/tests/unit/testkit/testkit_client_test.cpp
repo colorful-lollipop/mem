@@ -57,7 +57,9 @@ void CloseHandles(MemRpc::BootstrapHandles* handles) {
 void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(handles);
-    TestkitService service({.enableFaultInjection = true});
+    TestkitServiceOptions options;
+    options.enableFaultInjection = true;
+    TestkitService service(options);
     service.RegisterHandlers(&server);
     if (server.Start() != MemRpc::StatusCode::Ok) {
         _exit(2);
@@ -113,7 +115,10 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
 
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
-    server.SetOptions({.highWorkerThreads = 1, .normalWorkerThreads = 1});
+    MemRpc::ServerOptions options;
+    options.highWorkerThreads = 1;
+    options.normalWorkerThreads = 1;
+    server.SetOptions(options);
     TestkitService service;
     service.RegisterHandlers(&server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
