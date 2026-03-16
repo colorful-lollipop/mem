@@ -23,12 +23,21 @@ class VesSessionProvider {
     virtual MemRpc::StatusCode CloseSession() = 0;
 };
 
-class EngineSessionService final : public VesSessionProvider {
+class VesEventPublisher {
+ public:
+    virtual ~VesEventPublisher() = default;
+    virtual MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) = 0;
+};
+
+class EngineSessionService final : public VesSessionProvider,
+                                   public VesEventPublisher {
  public:
     explicit EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars = {});
+    ~EngineSessionService() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
+    MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) override;
 
     [[nodiscard]] uint64_t session_id() const;
 
@@ -39,7 +48,7 @@ class EngineSessionService final : public VesSessionProvider {
 
     std::vector<RpcHandlerRegistrar*> registrars_;
     std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
-    std::unique_ptr<MemRpc::RpcServer> rpcServer_;
+    std::shared_ptr<MemRpc::RpcServer> rpcServer_;
     std::mutex initMutex_;
     bool initialized_ = false;
     std::atomic<uint64_t> sessionId_{0};

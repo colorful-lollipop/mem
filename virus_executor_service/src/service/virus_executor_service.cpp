@@ -152,6 +152,7 @@ void VirusExecutorService::OnStart() {
         session_service_ =
             std::make_shared<EngineSessionService>(
                 std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
+        service_.SetEventPublisher(session_service_);
     }
     service_.Initialize();
 }
@@ -163,6 +164,7 @@ void VirusExecutorService::OnStop() {
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
         sessionService = std::move(session_service_);
+        service_.SetEventPublisher({});
     }
     if (sessionService) {
         sessionService->CloseSession();

@@ -9,6 +9,7 @@
 #include "memrpc/server/typed_handler.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
+#include "ves/ves_session_service.h"
 #include "ves/ves_sample_rules.h"
 #include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
@@ -26,6 +27,11 @@ void VesEngineService::Initialize() {
 
 bool VesEngineService::initialized() const {
     return initialized_.load(std::memory_order_acquire);
+}
+
+void VesEngineService::SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher) {
+    std::lock_guard<std::mutex> lock(eventPublisherMutex_);
+    eventPublisher_ = std::move(publisher);
 }
 
 uint64_t VesEngineService::AddActiveTask() {
@@ -99,6 +105,37 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     snapshot.status = static_cast<uint32_t>(VesHeartbeatStatus::OkBusy);
     snapshot.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Busy);
     return snapshot;
+}
+
+MemRpc::StatusCode VesEngineService::PublishEvent(uint32_t eventType,
+                                                  const std::vector<uint8_t>& payload,
+                                                  uint32_t flags,
+                                                  uint32_t eventDomain) const {
+    std::shared_ptr<VesEventPublisher> publisher;
+    {
+        std::lock_guard<std::mutex> lock(eventPublisherMutex_);
+        publisher = eventPublisher_.lock();
+    }
+    if (publisher == nullptr) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    MemRpc::RpcEvent event;
+    event.eventDomain = eventDomain;
+    event.eventType = eventType;
+    event.flags = flags;
+    event.payload = payload;
+    return publisher->PublishEventBlocking(event);
+}
+
+MemRpc::StatusCode VesEngineService::PublishTextEvent(uint32_t eventType,
+                                                      const std::string& payload,
+                                                      uint32_t flags,
+                                                      uint32_t eventDomain) const {
+    return PublishEvent(eventType,
+                        std::vector<uint8_t>(payload.begin(), payload.end()),
+                        flags,
+                        eventDomain);
 }
 
 void VesEngineService::RegisterHandlers(MemRpc::RpcServer* server) {

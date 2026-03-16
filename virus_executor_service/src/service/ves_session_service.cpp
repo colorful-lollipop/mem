@@ -38,6 +38,10 @@ constexpr auto EVENT_PUBLISH_PERIOD_MAX = std::chrono::milliseconds(180);
 EngineSessionService::EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars)
     : registrars_(std::move(registrars)) {}
 
+EngineSessionService::~EngineSessionService() {
+    (void)CloseSession();
+}
+
 MemRpc::StatusCode EngineSessionService::EnsureInitialized() {
     std::lock_guard<std::mutex> lock(initMutex_);
     if (initialized_) {
@@ -58,7 +62,7 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized() {
     CloseHandles(&throwaway);
 
     const MemRpc::BootstrapHandles serverHandles = bootstrap_->serverHandles();
-    rpcServer_ = std::make_unique<MemRpc::RpcServer>(serverHandles);
+    rpcServer_ = std::make_shared<MemRpc::RpcServer>(serverHandles);
     for (auto* registrar : registrars_) {
         if (registrar != nullptr) {
             registrar->RegisterHandlers(rpcServer_.get());
@@ -103,9 +107,21 @@ MemRpc::StatusCode EngineSessionService::OpenSession(MemRpc::BootstrapHandles& h
     return status;
 }
 
+MemRpc::StatusCode EngineSessionService::PublishEventBlocking(const MemRpc::RpcEvent& event) {
+    std::shared_ptr<MemRpc::RpcServer> rpcServer;
+    {
+        std::lock_guard<std::mutex> lock(initMutex_);
+        if (!initialized_ || rpcServer_ == nullptr || sessionId_.load(std::memory_order_acquire) == 0) {
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+        rpcServer = rpcServer_;
+    }
+    return rpcServer->PublishEvent(event);
+}
+
 MemRpc::StatusCode EngineSessionService::CloseSession() {
     std::thread eventPublisherThread;
-    std::unique_ptr<MemRpc::RpcServer> rpcServer;
+    std::shared_ptr<MemRpc::RpcServer> rpcServer;
     {
         std::lock_guard<std::mutex> lock(initMutex_);
         if (!initialized_) {
@@ -155,18 +171,16 @@ void EngineSessionService::EventPublisherLoop() {
             }
         }
 
-        MemRpc::RpcServer* rpcServer = nullptr;
         uint64_t sessionId = 0;
         {
             std::lock_guard<std::mutex> lock(initMutex_);
             if (!initialized_ || rpcServer_ == nullptr) {
                 continue;
             }
-            rpcServer = rpcServer_.get();
             sessionId = sessionId_.load(std::memory_order_acquire);
         }
 
-        if (rpcServer == nullptr || sessionId == 0) {
+        if (sessionId == 0) {
             continue;
         }
 
@@ -181,7 +195,7 @@ void EngineSessionService::EventPublisherLoop() {
         event.eventDomain = VES_EVENT_DOMAIN_RUNTIME;
         event.eventType = eventType;
         event.payload.assign(payloadText.begin(), payloadText.end());
-        const MemRpc::StatusCode status = rpcServer->PublishEvent(event);
+        const MemRpc::StatusCode status = PublishEventBlocking(event);
         if (status != MemRpc::StatusCode::Ok &&
             status != MemRpc::StatusCode::QueueFull &&
             status != MemRpc::StatusCode::PeerDisconnected) {

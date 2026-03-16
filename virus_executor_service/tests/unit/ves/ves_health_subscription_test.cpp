@@ -263,6 +263,51 @@ TEST(VesHealthSubscriptionTest, DeliversPushedEventsWhenSubscribed) {
     UnloadControlService();
 }
 
+TEST(VesHealthSubscriptionTest, AllowsManualBlockingPublishFromServiceThread) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_manual_pushed_events_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClient client(remote);
+    constexpr uint32_t kManualEventType = static_cast<uint32_t>(VesEventType::RandomLifecycle);
+    const std::string manualPayload = "manual-blocking-event";
+    std::atomic<int> matchedEventCount{0};
+    client.SetEventCallback([&](const MemRpc::RpcEvent& event) {
+        const std::string payload(event.payload.begin(), event.payload.end());
+        if (event.eventDomain == VES_EVENT_DOMAIN_RUNTIME &&
+            event.eventType == kManualEventType &&
+            payload == manualPayload) {
+            matchedEventCount.fetch_add(1);
+        }
+    });
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::StatusCode publishStatus = MemRpc::StatusCode::InvalidArgument;
+    std::thread publisher([&] {
+        publishStatus = service->service().PublishTextEvent(kManualEventType, manualPayload);
+    });
+    publisher.join();
+
+    EXPECT_EQ(publishStatus, MemRpc::StatusCode::Ok);
+    ASSERT_TRUE(WaitFor([&]() { return matchedEventCount.load() > 0; },
+                        std::chrono::milliseconds(1000)));
+
+    client.Shutdown();
+    service->OnStop();
+    UnloadControlService();
+}
+
 TEST(VesHealthSubscriptionTest, OversizedScanRequestFallsBackToAnyCall) {
     UnloadControlService();
     const std::string socketPath =
