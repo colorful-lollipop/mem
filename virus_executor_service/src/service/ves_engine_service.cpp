@@ -16,15 +16,16 @@
 namespace VirusExecutorService {
 
 void VesEngineService::Initialize() {
-    if (initialized_) {
+    bool expected = false;
+    if (!initialized_.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel, std::memory_order_acquire)) {
         return;
     }
-    initialized_ = true;
     HILOGI("VesEngineService initialized");
 }
 
 bool VesEngineService::initialized() const {
-    return initialized_;
+    return initialized_.load(std::memory_order_acquire);
 }
 
 uint64_t VesEngineService::AddActiveTask() {
@@ -43,7 +44,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) {
     const uint64_t taskId = AddActiveTask();
 
     ScanFileReply result;
-    if (!initialized_) {
+    if (!initialized()) {
         result.code = -1;
     } else {
         const auto behavior = EvaluateSamplePath(request.path);
@@ -67,7 +68,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) {
 VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
     std::lock_guard<std::mutex> lock(healthMutex_);
     VesHealthSnapshot snapshot;
-    if (!initialized_) {
+    if (!initialized()) {
         return snapshot;
     }
 

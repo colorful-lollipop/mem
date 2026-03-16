@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -157,6 +158,53 @@ TEST(VesHealthTest, SnapshotMarksLongRunningTaskAge) {
     EXPECT_GE(snapshot.lastTaskAgeMs, VesEngineService::LONG_RUNNING_TASK_THRESHOLD_MS);
 
     worker.join();
+}
+
+TEST(VesHealthTest, ConcurrentInitializeAndHealthReadsAreSafe) {
+    VesEngineService service;
+
+    std::atomic<bool> startReaders{false};
+    std::atomic<bool> stopReaders{false};
+
+    std::thread reader([&]() {
+        while (!startReaders.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        while (!stopReaders.load()) {
+            (void)service.initialized();
+            (void)service.GetHealthSnapshot();
+        }
+    });
+
+    std::thread initializerA([&]() {
+        while (!startReaders.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        service.Initialize();
+    });
+
+    std::thread initializerB([&]() {
+        while (!startReaders.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        service.Initialize();
+    });
+
+    startReaders.store(true);
+
+    initializerA.join();
+    initializerB.join();
+    stopReaders.store(true);
+    reader.join();
+
+    EXPECT_TRUE(service.initialized());
+
+    const auto snapshot = service.GetHealthSnapshot();
+    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
+    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
+    EXPECT_EQ(snapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
+    EXPECT_EQ(snapshot.inFlight, 0u);
+    EXPECT_EQ(snapshot.currentTask, "idle");
 }
 
 }  // namespace VirusExecutorService

@@ -76,11 +76,11 @@ MemRpc::StatusCode VirusExecutorService::CloseSession() {
     return sessionService->CloseSession();
 }
 
-MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
-    reply = VesHeartbeatReply{};
+MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat) {
+    heartbeat = VesHeartbeatReply{};
     if (stopping_.load()) {
-        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyStopping);
-        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Stopping);
+        heartbeat.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyStopping);
+        heartbeat.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Stopping);
         return MemRpc::StatusCode::Ok;
     }
     std::shared_ptr<EngineSessionService> sessionService;
@@ -90,33 +90,33 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& reply) {
     }
     if (!sessionService) {
         if (service_.initialized()) {
-            reply.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
+            heartbeat.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
         }
-        std::snprintf(reply.currentTask, sizeof(reply.currentTask), "%s", "idle");
+        std::snprintf(heartbeat.currentTask, sizeof(heartbeat.currentTask), "%s", "idle");
         return MemRpc::StatusCode::Ok;
     }
     const auto snapshot = service_.GetHealthSnapshot();
     const uint64_t sessionId = sessionService->session_id();
     if (!service_.initialized()) {
-        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError);
-        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::InternalError);
+        heartbeat.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError);
+        heartbeat.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::InternalError);
         return MemRpc::StatusCode::Ok;
     }
     if (sessionId == 0) {
-        reply.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
-        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyNoSession);
-        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
+        heartbeat.flags |= VES_HEARTBEAT_FLAG_INITIALIZED;
+        heartbeat.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyNoSession);
+        heartbeat.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
         return MemRpc::StatusCode::Ok;
     }
-    PopulateHealthyReply(snapshot, sessionId, &reply);
+    PopulateHealthyReply(snapshot, sessionId, &heartbeat);
     return MemRpc::StatusCode::Ok;
 }
 
 MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& request,
-                                                 VesAnyCallReply& reply) {
-    reply = VesAnyCallReply{};
+                                                 VesAnyCallReply& vesReply) {
+    vesReply = VesAnyCallReply{};
     if (!service_.initialized()) {
-        reply.status = MemRpc::StatusCode::PeerDisconnected;
+        vesReply.status = MemRpc::StatusCode::PeerDisconnected;
         return MemRpc::StatusCode::Ok;
     }
 
@@ -124,20 +124,20 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
         case VesOpcode::ScanFile: {
             ScanTask scanRequest;
             if (!MemRpc::DecodeMessage<ScanTask>(request.payload, &scanRequest)) {
-                reply.status = MemRpc::StatusCode::ProtocolMismatch;
+                vesReply.status = MemRpc::StatusCode::ProtocolMismatch;
                 return MemRpc::StatusCode::Ok;
             }
             ScanFileReply scanReply = service_.ScanFile(scanRequest);
-            reply.status = MemRpc::StatusCode::Ok;
-            if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &reply.payload)) {
-                reply.status = MemRpc::StatusCode::EngineInternalError;
-                reply.payload.clear();
+            vesReply.status = MemRpc::StatusCode::Ok;
+            if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &vesReply.payload)) {
+                vesReply.status = MemRpc::StatusCode::EngineInternalError;
+                vesReply.payload.clear();
             }
             return MemRpc::StatusCode::Ok;
         }
     }
 
-    reply.status = MemRpc::StatusCode::InvalidArgument;
+    vesReply.status = MemRpc::StatusCode::InvalidArgument;
     return MemRpc::StatusCode::Ok;
 }
 
