@@ -983,6 +983,7 @@ struct RpcClient::Impl {
     MarkNextSessionOpen(SessionOpenReason::ExternalRecovery, request.delayMs);
     cooldownUntilMs_.store(MonotonicNowMs64() + request.delayMs, std::memory_order_release);
     CloseLiveSession();
+    FailAllPending(StatusCode::PeerDisconnected);
     if (request.delayMs == 0) {
       (void)EnsureLiveSession();
     }
