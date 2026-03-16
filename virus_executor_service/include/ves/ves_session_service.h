@@ -2,8 +2,10 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_VES_VES_SESSION_SERVICE_H_
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -32,6 +34,8 @@ class EngineSessionService final : public VesSessionProvider {
 
  private:
     MemRpc::StatusCode EnsureInitialized();
+    void StartEventPublisherLocked();
+    void EventPublisherLoop();
 
     std::vector<RpcHandlerRegistrar*> registrars_;
     std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
@@ -39,6 +43,11 @@ class EngineSessionService final : public VesSessionProvider {
     std::mutex initMutex_;
     bool initialized_ = false;
     std::atomic<uint64_t> sessionId_{0};
+    std::atomic<bool> eventPublisherRunning_{false};
+    std::thread eventPublisherThread_;
+    std::mutex eventPublisherMutex_;
+    std::condition_variable eventPublisherCv_;
+    std::atomic<uint32_t> eventSequence_{0};
 };
 
 }  // namespace VirusExecutorService

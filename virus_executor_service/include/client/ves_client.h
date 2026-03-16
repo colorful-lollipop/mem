@@ -21,6 +21,7 @@ struct VesClientOptions {
 class VesClient {
  public:
     using HealthSnapshotCallback = VesControlChannelAdapter::HealthSnapshotCallback;
+    using EventCallback = MemRpc::RpcEventCallback;
 
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                        VesClientOptions options = {});
@@ -32,6 +33,7 @@ class VesClient {
     static void RegisterProxyFactory();
 
     MemRpc::StatusCode Init();
+    void SetEventCallback(EventCallback callback);
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void RequestRecovery(uint32_t delayMs = 0);
     void Shutdown();

@@ -27,7 +27,17 @@ const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_it_registry.soc
 const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_it_service.sock";
 
 std::mutex g_engine_mutex;
-pid_t g_engine_pid = -1;
+std::atomic<pid_t> g_engine_pid{-1};
+
+pid_t LoadEnginePid()
+{
+    return g_engine_pid.load(std::memory_order_relaxed);
+}
+
+void StoreEnginePid(pid_t pid)
+{
+    g_engine_pid.store(pid, std::memory_order_relaxed);
+}
 
 pid_t SpawnEngine(const std::string& enginePath) {
     pid_t pid = fork();
@@ -58,16 +68,16 @@ bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout) {
         const pid_t result = waitpid(pid, &status, WNOHANG);
         if (result == pid) {
             std::lock_guard<std::mutex> lock(g_engine_mutex);
-            if (g_engine_pid == pid) {
-                g_engine_pid = -1;
+            if (LoadEnginePid() == pid) {
+                StoreEnginePid(-1);
             }
             return true;
         }
         if (result < 0) {
             if (errno == ECHILD) {
                 std::lock_guard<std::mutex> lock(g_engine_mutex);
-                if (g_engine_pid == pid) {
-                    g_engine_pid = -1;
+                if (LoadEnginePid() == pid) {
+                    StoreEnginePid(-1);
                 }
                 return true;
             }
@@ -173,16 +183,18 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) {
+        const pid_t currentPid = LoadEnginePid();
+        if (currentPid > 0) {
             int status = 0;
-            const pid_t result = waitpid(g_engine_pid, &status, WNOHANG);
+            const pid_t result = waitpid(currentPid, &status, WNOHANG);
             if (result == 0) {
                 return true;
             }
-            g_engine_pid = -1;
+            StoreEnginePid(-1);
         }
-        g_engine_pid = SpawnEngine(enginePath);
-        if (g_engine_pid < 0) return false;
+        const pid_t spawnedPid = SpawnEngine(enginePath);
+        StoreEnginePid(spawnedPid);
+        if (spawnedPid < 0) return false;
         loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return true;
@@ -190,8 +202,8 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     registry.SetUnloadCallback([&](int32_t sa_id) {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
     });
 
     ASSERT_TRUE(registry.Start());
@@ -202,9 +214,9 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        g_engine_pid = SpawnEngine(enginePath);
+        StoreEnginePid(SpawnEngine(enginePath));
     }
-    ASSERT_GT(g_engine_pid, 0);
+    ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
@@ -221,8 +233,8 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
         }
         registry.Stop();
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
     });
 
     ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
@@ -231,7 +243,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     VirusExecutorService::ScanFileReply reply;
     ASSERT_EQ(client->ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
 
-    const pid_t crashedPid = g_engine_pid;
+    const pid_t crashedPid = LoadEnginePid();
 
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
@@ -253,16 +265,18 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) {
+        const pid_t currentPid = LoadEnginePid();
+        if (currentPid > 0) {
             int status = 0;
-            const pid_t result = waitpid(g_engine_pid, &status, WNOHANG);
+            const pid_t result = waitpid(currentPid, &status, WNOHANG);
             if (result == 0) {
                 return true;
             }
-            g_engine_pid = -1;
+            StoreEnginePid(-1);
         }
-        g_engine_pid = SpawnEngine(enginePath);
-        if (g_engine_pid < 0) return false;
+        const pid_t spawnedPid = SpawnEngine(enginePath);
+        StoreEnginePid(spawnedPid);
+        if (spawnedPid < 0) return false;
         loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return true;
@@ -270,8 +284,8 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
     registry.SetUnloadCallback([&](int32_t sa_id) {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
     });
 
     ASSERT_TRUE(registry.Start());
@@ -282,9 +296,9 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        g_engine_pid = SpawnEngine(enginePath);
+        StoreEnginePid(SpawnEngine(enginePath));
     }
-    ASSERT_GT(g_engine_pid, 0);
+    ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
@@ -299,8 +313,8 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
         client.Shutdown();
         registry.Stop();
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
     });
 
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
@@ -310,7 +324,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
     ASSERT_EQ(client.ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
     ASSERT_EQ(reply.threatLevel, 0);
 
-    const pid_t crashedPid = g_engine_pid;
+    const pid_t crashedPid = LoadEnginePid();
     const int previousLoadCount = loadCount.load();
     const auto* originalClient = &client;
 

@@ -222,6 +222,47 @@ TEST(VesHealthSubscriptionTest, DeliversSnapshotsWhenSubscribed) {
     UnloadControlService();
 }
 
+TEST(VesHealthSubscriptionTest, DeliversPushedEventsWhenSubscribed) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_pushed_events_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClient client(remote);
+    std::atomic<int> eventCount{0};
+    std::atomic<uint32_t> latestDomain{0};
+    std::atomic<uint32_t> latestType{0};
+    std::atomic<size_t> latestPayloadSize{0};
+    client.SetEventCallback([&](const MemRpc::RpcEvent& event) {
+        latestDomain.store(event.eventDomain);
+        latestType.store(event.eventType);
+        latestPayloadSize.store(event.payload.size());
+        eventCount.fetch_add(1);
+    });
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    ASSERT_TRUE(WaitFor([&]() { return eventCount.load() > 0; },
+                        std::chrono::milliseconds(1000)));
+    EXPECT_EQ(latestDomain.load(), VES_EVENT_DOMAIN_RUNTIME);
+    EXPECT_GE(latestType.load(), static_cast<uint32_t>(VesEventType::RandomScanResult));
+    EXPECT_LE(latestType.load(), static_cast<uint32_t>(VesEventType::RandomLifecycle));
+    EXPECT_GT(latestPayloadSize.load(), 0u);
+
+    client.Shutdown();
+    service->OnStop();
+    UnloadControlService();
+}
+
 TEST(VesHealthSubscriptionTest, OversizedScanRequestFallsBackToAnyCall) {
     UnloadControlService();
     const std::string socketPath =

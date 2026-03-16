@@ -133,6 +133,10 @@ MemRpc::StatusCode VesClient::Init() {
     return client_.Init();
 }
 
+void VesClient::SetEventCallback(EventCallback callback) {
+    client_.SetEventCallback(std::move(callback));
+}
+
 void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
     healthSnapshotCallback_ = std::move(callback);
     if (bootstrapChannel_ != nullptr) {

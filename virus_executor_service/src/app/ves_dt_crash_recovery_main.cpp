@@ -34,7 +34,17 @@ const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_dt_crash_regist
 const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_dt_crash_service.sock";
 
 std::mutex g_engine_mutex;
-pid_t g_engine_pid = -1;
+std::atomic<pid_t> g_engine_pid{-1};
+
+pid_t LoadEnginePid()
+{
+    return g_engine_pid.load(std::memory_order_relaxed);
+}
+
+void StoreEnginePid(pid_t pid)
+{
+    g_engine_pid.store(pid, std::memory_order_relaxed);
+}
 
 pid_t SpawnEngine(const std::string& enginePath) {
     pid_t pid = fork();
@@ -67,16 +77,16 @@ bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout)
         const pid_t result = waitpid(pid, &status, WNOHANG);
         if (result == pid) {
             std::lock_guard<std::mutex> lock(g_engine_mutex);
-            if (g_engine_pid == pid) {
-                g_engine_pid = -1;
+            if (LoadEnginePid() == pid) {
+                StoreEnginePid(-1);
             }
             return true;
         }
         if (result < 0) {
             if (errno == ECHILD) {
                 std::lock_guard<std::mutex> lock(g_engine_mutex);
-                if (g_engine_pid == pid) {
-                    g_engine_pid = -1;
+                if (LoadEnginePid() == pid) {
+                    StoreEnginePid(-1);
                 }
                 return true;
             }
@@ -189,17 +199,19 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        if (g_engine_pid > 0) {
+        const pid_t currentPid = LoadEnginePid();
+        if (currentPid > 0) {
             int status = 0;
-            const pid_t result = waitpid(g_engine_pid, &status, WNOHANG);
+            const pid_t result = waitpid(currentPid, &status, WNOHANG);
             if (result == 0) {
                 return true;
             }
-            g_engine_pid = -1;
+            StoreEnginePid(-1);
         }
         HILOGI("load callback: spawning engine");
-        g_engine_pid = SpawnEngine(enginePath);
-        if (g_engine_pid < 0) return false;
+        const pid_t spawnedPid = SpawnEngine(enginePath);
+        StoreEnginePid(spawnedPid);
+        if (spawnedPid < 0) return false;
         loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         return true;
@@ -208,8 +220,8 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     registry.SetUnloadCallback([&](int32_t sa_id) {
         if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
     });
 
     DT_CHECK(registry.Start(), "registry started");
@@ -220,9 +232,9 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
-        g_engine_pid = SpawnEngine(enginePath);
+        StoreEnginePid(SpawnEngine(enginePath));
     }
-    DT_CHECK(g_engine_pid > 0, "engine spawned");
+    DT_CHECK(LoadEnginePid() > 0, "engine spawned");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
@@ -239,8 +251,8 @@ int main([[maybe_unused]] int argc, char* argv[]) {
         }
         {
             std::lock_guard<std::mutex> lock(g_engine_mutex);
-            KillAndWait(g_engine_pid);
-            g_engine_pid = -1;
+            KillAndWait(LoadEnginePid());
+            StoreEnginePid(-1);
         }
         registry.Stop();
     });
@@ -267,7 +279,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // === Step 2: force-kill engine ===
     HILOGI("=== Step 2: force-kill engine ===");
-    const pid_t firstCrashPid = g_engine_pid;
+    const pid_t firstCrashPid = LoadEnginePid();
     const int firstRecoveryLoadCount = loadCount.load();
     {
         DT_CHECK(kill(firstCrashPid, SIGKILL) == 0, "step2: engine kill sent");
@@ -309,7 +321,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
 
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
     HILOGI("=== Step 5: second crash + 10 sequential normal calls ===");
-    const pid_t secondCrashPid = g_engine_pid;
+    const pid_t secondCrashPid = LoadEnginePid();
     const int secondRecoveryLoadCount = loadCount.load();
     {
         HILOGI("step5: killing engine...");
