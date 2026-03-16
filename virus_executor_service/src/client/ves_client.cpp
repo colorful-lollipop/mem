@@ -1,5 +1,6 @@
 #include "client/ves_client.h"
 
+#include "iservice_registry.h"
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
 #include "memrpc/client/typed_invoker.h"
@@ -75,6 +76,34 @@ void VesClient::RegisterProxyFactory() {
             std::string servicePath = remote->GetServicePath();
             return std::make_shared<VesControlProxy>(remote, servicePath);
         });
+}
+
+std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options,
+                                              VesClientConnectOptions connectOptions) {
+    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    if (sam == nullptr) {
+        HILOGE("GetSystemAbilityManager failed");
+        return nullptr;
+    }
+
+    OHOS::sptr<OHOS::IRemoteObject> remote;
+    if (connectOptions.checkExisting) {
+        remote = sam->CheckSystemAbility(VES_CONTROL_SA_ID);
+    }
+    if (remote == nullptr && connectOptions.loadIfMissing) {
+        remote = sam->LoadSystemAbility(VES_CONTROL_SA_ID, connectOptions.loadTimeoutMs);
+    }
+    if (remote == nullptr) {
+        HILOGE("VesClient::Connect failed for saId=%{public}d", VES_CONTROL_SA_ID);
+        return nullptr;
+    }
+
+    auto client = std::make_unique<VesClient>(remote, options);
+    if (client->Init() != MemRpc::StatusCode::Ok) {
+        HILOGE("VesClient init failed");
+        return nullptr;
+    }
+    return client;
 }
 
 MemRpc::StatusCode VesClient::Init() {

@@ -14,50 +14,6 @@ namespace {
 const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
-std::unique_ptr<VirusExecutorService::VesClient> ConnectToEngine() {
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->CheckSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
-    if (remote == nullptr) {
-        // Service not registered yet; try LoadSystemAbility.
-        remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
-    }
-    if (remote == nullptr) {
-        HILOGE("ConnectToEngine failed for saId=%{public}d", VirusExecutorService::VES_CONTROL_SA_ID);
-        return nullptr;
-    }
-
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    if (client->Init() != MemRpc::StatusCode::Ok) {
-        HILOGE("VesClient init failed");
-        return nullptr;
-    }
-    return client;
-}
-
-std::unique_ptr<VirusExecutorService::VesClient> LoadAndConnectToEngine() {
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
-    if (remote == nullptr) {
-        // Retry once after a delay.
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, LOAD_TIMEOUT_MS);
-    }
-
-    if (remote == nullptr) {
-        HILOGE("LoadSystemAbility failed");
-        return nullptr;
-    }
-    HILOGI("service path: %{public}s", remote->GetServicePath().c_str());
-
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    if (client->Init() != MemRpc::StatusCode::Ok) {
-        HILOGE("VesClient init failed");
-        return nullptr;
-    }
-    return client;
-}
-
 }  // namespace
 
 int main() {
@@ -75,7 +31,7 @@ int main() {
 
     // --- First session ---
     HILOGI("=== First session ===");
-    auto client = ConnectToEngine();
+    auto client = VirusExecutorService::VesClient::Connect();
     if (!client) {
         return 1;
     }
@@ -101,7 +57,17 @@ int main() {
 
     // --- Restart: load again ---
     HILOGI("=== Second session (after restart) ===");
-    auto client2 = LoadAndConnectToEngine();
+    VirusExecutorService::VesClientConnectOptions connectOptions;
+    connectOptions.checkExisting = false;
+    connectOptions.loadIfMissing = true;
+    connectOptions.loadTimeoutMs = LOAD_TIMEOUT_MS;
+
+    auto client2 = VirusExecutorService::VesClient::Connect({}, connectOptions);
+    if (!client2) {
+        // Retry once after a delay.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        client2 = VirusExecutorService::VesClient::Connect({}, connectOptions);
+    }
     if (client2) {
         VirusExecutorService::ScanFileReply scan2;
         VirusExecutorService::ScanTask thirdTask{"/data/test_file_3.apk"};

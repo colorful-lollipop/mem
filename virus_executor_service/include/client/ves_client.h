@@ -2,6 +2,7 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -18,6 +19,12 @@ struct VesClientOptions {
     uint32_t idleShutdownTimeoutMs = 0;
 };
 
+struct VesClientConnectOptions {
+    bool checkExisting = true;
+    bool loadIfMissing = true;
+    int32_t loadTimeoutMs = 5000;
+};
+
 class VesClient {
  public:
     using HealthSnapshotCallback = VesControlChannelAdapter::HealthSnapshotCallback;
@@ -31,6 +38,8 @@ class VesClient {
     VesClient& operator=(const VesClient&) = delete;
 
     static void RegisterProxyFactory();
+    static std::unique_ptr<VesClient> Connect(VesClientOptions options = {},
+                                              VesClientConnectOptions connectOptions = {});
 
     MemRpc::StatusCode Init();
     void SetEventCallback(EventCallback callback);
