@@ -148,6 +148,98 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   server.Stop();
 }
 
+TEST(RpcClientTimeoutWatchdogTest, ClientWaitTimeoutUnblocksWaiterBeforeSlowReplyArrives) {
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
+  BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  std::atomic<bool> handlerEntered{false};
+  std::atomic<bool> handlerExited{false};
+
+  RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kTestEchoOpcode, [&](const RpcServerCall&, RpcServerReply* reply) {
+    handlerEntered.store(true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    handlerExited.store(true);
+    reply->status = StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), StatusCode::Ok);
+
+  RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), StatusCode::Ok);
+
+  RpcCall call;
+  call.opcode = kTestEchoOpcode;
+  call.queueTimeoutMs = 5000;
+  call.execTimeoutMs = 50;
+
+  const auto start = std::chrono::steady_clock::now();
+  auto future = client.InvokeAsync(call);
+
+  RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), StatusCode::ExecTimeout);
+  const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count();
+
+  EXPECT_TRUE(handlerEntered.load());
+  EXPECT_LT(elapsedMs, 200);
+  EXPECT_FALSE(handlerExited.load());
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded) {
+  auto bootstrap = std::make_shared<DevBootstrapChannel>();
+  BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  std::atomic<int> callCount{0};
+
+  RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kTestEchoOpcode, [&](const RpcServerCall&, RpcServerReply* reply) {
+    const int current = ++callCount;
+    if (current == 1) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    reply->status = StatusCode::Ok;
+    reply->errorCode = current;
+  });
+  ASSERT_EQ(server.Start(), StatusCode::Ok);
+
+  RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), StatusCode::Ok);
+
+  RpcCall first;
+  first.opcode = kTestEchoOpcode;
+  first.queueTimeoutMs = 5000;
+  first.execTimeoutMs = 50;
+  auto firstFuture = client.InvokeAsync(first);
+
+  RpcReply firstReply;
+  EXPECT_EQ(firstFuture.Wait(&firstReply), StatusCode::ExecTimeout);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+  RpcCall second;
+  second.opcode = kTestEchoOpcode;
+  second.queueTimeoutMs = 5000;
+  second.execTimeoutMs = 500;
+  auto secondFuture = client.InvokeAsync(second);
+
+  RpcReply secondReply;
+  EXPECT_EQ(secondFuture.Wait(&secondReply), StatusCode::Ok);
+  EXPECT_EQ(secondReply.errorCode, 2);
+
+  client.Shutdown();
+  server.Stop();
+}
+
 TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   // Create a server that does NOT start, so requests stay in Queued state.
   auto bootstrap = std::make_shared<DevBootstrapChannel>();

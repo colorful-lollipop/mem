@@ -183,6 +183,9 @@ struct RpcClient::Impl {
   struct PendingRequest {
     std::shared_ptr<RpcFuture::State> future;
     PendingInfo info;
+    std::chrono::steady_clock::time_point waitDeadline =
+        std::chrono::steady_clock::time_point::max();
+    uint64_t admittedMonoMs = 0;
   };
 
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap)
@@ -410,6 +413,13 @@ struct RpcClient::Impl {
     }
   }
 
+  std::chrono::steady_clock::time_point MakePendingWaitDeadline(uint32_t execTimeoutMs) const {
+    if (execTimeoutMs == 0) {
+      return std::chrono::steady_clock::time_point::max();
+    }
+    return std::chrono::steady_clock::now() + std::chrono::milliseconds(execTimeoutMs);
+  }
+
   StatusCode OpenSession() {
     std::shared_ptr<IBootstrapChannel> bootstrap;
     {
@@ -590,6 +600,8 @@ struct RpcClient::Impl {
     pending.future = submit.future;
     pending.info = MakePendingInfo(submit);
     pending.info.sessionId = CurrentSessionId();
+    pending.waitDeadline = MakePendingWaitDeadline(submit.call.execTimeoutMs);
+    pending.admittedMonoMs = MonotonicNowMs64();
     {
       std::lock_guard<std::mutex> pendingLock(pendingMutex_);
       pending_[submit.requestId] = pending;
@@ -687,6 +699,26 @@ struct RpcClient::Impl {
     }
   }
 
+  void MaybeRunPendingTimeouts() {
+    std::vector<PendingRequest> expired;
+    const auto now = std::chrono::steady_clock::now();
+    {
+      std::lock_guard<std::mutex> lock(pendingMutex_);
+      for (auto it = pending_.begin(); it != pending_.end();) {
+        const auto deadline = it->second.waitDeadline;
+        if (deadline != std::chrono::steady_clock::time_point::max() && now >= deadline) {
+          expired.push_back(std::move(it->second));
+          it = pending_.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+    for (auto& pending : expired) {
+      FailAndResolve(pending.info, StatusCode::ExecTimeout, FailureStage::Timeout, pending.future);
+    }
+  }
+
   void ResolveCompletedRequest(const ResponseRingEntry& entry) {
     PendingRequest pending;
     bool found = false;
@@ -694,6 +726,8 @@ struct RpcClient::Impl {
       std::lock_guard<std::mutex> lock(pendingMutex_);
       const auto it = pending_.find(entry.requestId);
       if (it != pending_.end()) {
+        // pending_ ownership decides terminal completion. If the watchdog has
+        // already erased this request, the real reply is late and must be ignored.
         pending = std::move(it->second);
         pending_.erase(it);
         found = true;
@@ -896,6 +930,7 @@ struct RpcClient::Impl {
 
   void WatchdogLoop() {
     while (running_.load(std::memory_order_acquire)) {
+      MaybeRunPendingTimeouts();
       MaybeRunHealthCheck();
       MaybeRunIdlePolicy();
       std::unique_lock<std::mutex> lock(watchdogMutex_);

@@ -22,7 +22,9 @@ struct RpcCall {
   uint32_t admissionTimeoutMs = 0;
   // queue_timeout_ms 作用在服务端排队阶段。0 = 无限等待。
   uint32_t queueTimeoutMs = 0;
-  // exec_timeout_ms 作用在服务端 handler 执行阶段；当前为软超时，不强杀 handler。
+  // exec_timeout_ms 从 client 侧请求成功发布到 request ring 后开始计时，
+  // 直到收到最终 reply 为止。超时后返回 ExecTimeout，但不会取消服务端执行；
+  // 如果真实 reply 晚到，client 会直接忽略。
   uint32_t execTimeoutMs = 30000;
   std::vector<uint8_t> payload;
 };
