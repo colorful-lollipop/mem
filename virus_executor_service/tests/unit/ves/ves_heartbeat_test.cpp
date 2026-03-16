@@ -140,7 +140,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     VesHeartbeatReply reply{};
     EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_GE(reply.inFlight, 1u);
-    EXPECT_STRNE(reply.currentTask, "idle");
+    EXPECT_STREQ(reply.currentTask, "active");
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
     EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
     EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_BUSY, 0u);

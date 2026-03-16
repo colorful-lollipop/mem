@@ -66,7 +66,7 @@ TEST(VesHealthTest, InFlightAndAgeDuringScan) {
     EXPECT_EQ(snapshot.flags,
               VES_HEARTBEAT_FLAG_INITIALIZED | VES_HEARTBEAT_FLAG_BUSY);
     EXPECT_GE(snapshot.inFlight, 1u);
-    EXPECT_NE(snapshot.currentTask, "idle");
+    EXPECT_EQ(snapshot.currentTask, "active");
 
     worker.join();
 }
@@ -92,7 +92,7 @@ TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
     while (true) {
         auto snapshot = service.GetHealthSnapshot();
         if (snapshot.inFlight >= 1u &&
-            snapshot.currentTask != "idle") {
+            snapshot.currentTask == "active") {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -120,7 +120,7 @@ TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    EXPECT_NE(snapshot.currentTask, "idle");
+    EXPECT_EQ(snapshot.currentTask, "active");
     EXPECT_GE(snapshot.lastTaskAgeMs, 20u);
     EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
     EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));

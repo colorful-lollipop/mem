@@ -86,7 +86,7 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
         [](const auto& lhs, const auto& rhs) {
             return lhs.second.startMonoMs < rhs.second.startMonoMs;
         });
-    snapshot.currentTask = "task-" + std::to_string(oldestTask->first);
+    snapshot.currentTask = "active";
     snapshot.lastTaskAgeMs = nowMs - oldestTask->second.startMonoMs;
     snapshot.flags |= VES_HEARTBEAT_FLAG_BUSY;
     if (snapshot.lastTaskAgeMs >= LONG_RUNNING_TASK_THRESHOLD_MS) {
