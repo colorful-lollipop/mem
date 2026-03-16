@@ -37,6 +37,36 @@ detect_jobs() {
     echo 8
 }
 
+format_duration() {
+    local total_seconds="$1"
+    local hours=$((total_seconds / 3600))
+    local minutes=$(((total_seconds % 3600) / 60))
+    local seconds=$((total_seconds % 60))
+
+    if [[ "${hours}" -gt 0 ]]; then
+        printf '%02dh:%02dm:%02ds' "${hours}" "${minutes}" "${seconds}"
+    elif [[ "${minutes}" -gt 0 ]]; then
+        printf '%02dm:%02ds' "${minutes}" "${seconds}"
+    else
+        printf '%02ds' "${seconds}"
+    fi
+}
+
+run_step() {
+    local name="$1"
+    shift
+
+    local started_at
+    started_at="$(date +%s)"
+    echo
+    echo "==> push_gate: ${name}"
+    "$@"
+    local finished_at elapsed
+    finished_at="$(date +%s)"
+    elapsed=$((finished_at - started_at))
+    echo "==> push_gate: ${name} completed in $(format_duration "${elapsed}")"
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
@@ -107,9 +137,7 @@ detect_clang_tidy() {
 
 if [[ "${skip_tidy}" -eq 0 ]]; then
     if detect_clang_tidy; then
-        echo
-        echo "==> push_gate: clang-tidy"
-        "${repo_root}/tools/build_and_test.sh" ${build_clean_flag} \
+        run_step "clang-tidy" "${repo_root}/tools/build_and_test.sh" ${build_clean_flag} \
             --build-dir "${repo_root}/build_tidy" \
             --strict \
             --werror \
@@ -122,9 +150,7 @@ if [[ "${skip_tidy}" -eq 0 ]]; then
     fi
 fi
 
-echo
-echo "==> push_gate: ci_sweep"
-"${repo_root}/tools/ci_sweep.sh" "${ci_args[@]}"
+run_step "ci_sweep" "${repo_root}/tools/ci_sweep.sh" "${ci_args[@]}"
 
 repeat_count=300
 wide_repeat_count=0
@@ -133,9 +159,7 @@ if [[ "${deep}" -eq 1 ]]; then
     wide_repeat_count=200
 fi
 
-echo
-echo "==> push_gate: focused repeat regressions (${repeat_count}x)"
-"${repo_root}/tools/build_and_test.sh" \
+run_step "focused repeat regressions (${repeat_count}x)" "${repo_root}/tools/build_and_test.sh" \
     --build-dir "${repo_root}/build_ninja" \
     --strict \
     --werror \
@@ -145,9 +169,7 @@ echo "==> push_gate: focused repeat regressions (${repeat_count}x)"
     --timeout 30
 
 if [[ "${wide_repeat_count}" -gt 0 ]]; then
-    echo
-    echo "==> push_gate: wide concurrency repeat regressions (${wide_repeat_count}x)"
-    "${repo_root}/tools/build_and_test.sh" \
+    run_step "wide concurrency repeat regressions (${wide_repeat_count}x)" "${repo_root}/tools/build_and_test.sh" \
         --build-dir "${repo_root}/build_ninja" \
         --strict \
         --werror \

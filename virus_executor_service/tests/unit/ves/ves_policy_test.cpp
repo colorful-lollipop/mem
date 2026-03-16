@@ -311,6 +311,64 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     UnloadControlService();
 }
 
+TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_restart_cooldown_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<FakeHealthControlService>();
+    service->SetServicePathForTest(socketPath);
+    service->PrepareServerHandlesForTest();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto registerScanHandler = [](MemRpc::RpcServer* server) {
+        MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
+            server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+            [](const ScanTask& request) {
+                ScanFileReply reply;
+                reply.code = 0;
+                reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
+                return reply;
+            });
+    };
+
+    MemRpc::RpcServer server(service->serverHandles());
+    registerScanHandler(&server);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClientOptions options;
+    options.engineDeathRestartDelayMs = 120;
+    VesClient client(remote, options);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    ScanTask initialTask{"/data/healthy.bin"};
+    ScanFileReply reply;
+    ASSERT_EQ(client.ScanFile(initialTask, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.threatLevel, 0);
+
+    client.RequestRecovery(120);
+
+    ScanTask recoveredTask{"/data/recovered.bin"};
+    const auto start = std::chrono::steady_clock::now();
+    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    EXPECT_EQ(reply.threatLevel, 1);
+    EXPECT_GE(elapsed.count(), 80);
+    EXPECT_LT(elapsed.count(), 1000);
+
+    client.Shutdown();
+    server.Stop();
+    service->OnStop();
+    UnloadControlService();
+}
+
 TEST(VesPolicyTest, VesClientScanFileForwardsPriority) {
     UnloadControlService();
     const std::string socketPath =

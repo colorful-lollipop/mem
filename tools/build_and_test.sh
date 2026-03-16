@@ -73,6 +73,86 @@ log_phase() {
     printf '\n==> %s\n' "$1"
 }
 
+format_duration() {
+    local total_seconds="$1"
+    local hours=$((total_seconds / 3600))
+    local minutes=$(((total_seconds % 3600) / 60))
+    local seconds=$((total_seconds % 60))
+
+    if [[ "${hours}" -gt 0 ]]; then
+        printf '%02dh:%02dm:%02ds' "${hours}" "${minutes}" "${seconds}"
+    elif [[ "${minutes}" -gt 0 ]]; then
+        printf '%02dm:%02ds' "${minutes}" "${seconds}"
+    else
+        printf '%02ds' "${seconds}"
+    fi
+}
+
+summarize_ctest_log() {
+    local log_file="$1"
+    awk '
+        /^[0-9]+% tests passed/ { summary = $0 }
+        /^Label Time Summary:/ { label = 1 }
+        /^Total Test time \(real\) =/ { total = $0 }
+        label { labels = labels $0 "\n" }
+        END {
+            if (summary != "") print summary;
+            if (labels != "") printf "%s", labels;
+            if (total != "") print total;
+        }
+    ' "${log_file}"
+}
+
+run_ctest_with_compact_repeat_output() {
+    local log_file="$1"
+    shift
+
+    local started_at
+    started_at="$(date +%s)"
+    local heartbeat_interval=15
+
+    : > "${log_file}"
+    if [[ ${#test_env[@]} -gt 0 ]]; then
+        env "${test_env[@]}" ctest "$@" >"${log_file}" 2>&1 &
+    else
+        ctest "$@" >"${log_file}" 2>&1 &
+    fi
+    local ctest_pid=$!
+
+    printf 'repeat output compacted; writing full log to %s\n' "${log_file}"
+
+    while kill -0 "${ctest_pid}" 2>/dev/null; do
+        sleep "${heartbeat_interval}"
+        if ! kill -0 "${ctest_pid}" 2>/dev/null; then
+            break
+        fi
+
+        local now elapsed completed current_test
+        now="$(date +%s)"
+        elapsed=$((now - started_at))
+        completed="$(grep -c ' Passed ' "${log_file}" 2>/dev/null || true)"
+        current_test="$(sed -n 's/^.*Start [0-9][0-9]*: //p' "${log_file}" | tail -n 1)"
+        if [[ -n "${current_test}" ]]; then
+            printf '... repeat progress: %s completions, elapsed %s, current %s\n' \
+                "${completed}" "$(format_duration "${elapsed}")" "${current_test}"
+        else
+            printf '... repeat progress: %s completions, elapsed %s\n' \
+                "${completed}" "$(format_duration "${elapsed}")"
+        fi
+    done
+
+    wait "${ctest_pid}"
+    local status=$?
+
+    if [[ "${status}" -ne 0 ]]; then
+        echo "ctest failed; recent output:"
+        tail -n 200 "${log_file}"
+        return "${status}"
+    fi
+
+    summarize_ctest_log "${log_file}"
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
@@ -309,9 +389,14 @@ if [[ "${run_tests}" -eq 1 ]]; then
     fi
 
     log_phase "Running tests from ${build_dir}"
-    if [[ ${#test_env[@]} -gt 0 ]]; then
-        env "${test_env[@]}" ctest "${ctest_args[@]}"
+    ctest_log_file="${build_dir}/ctest-last.log"
+    if [[ -n "${test_repeat}" ]]; then
+        run_ctest_with_compact_repeat_output "${ctest_log_file}" "${ctest_args[@]}"
     else
-        ctest "${ctest_args[@]}"
+        if [[ ${#test_env[@]} -gt 0 ]]; then
+            env "${test_env[@]}" ctest "${ctest_args[@]}"
+        else
+            ctest "${ctest_args[@]}"
+        fi
     fi
 fi

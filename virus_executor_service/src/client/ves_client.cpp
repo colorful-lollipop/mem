@@ -1,5 +1,9 @@
 #include "client/ves_client.h"
 
+#include <algorithm>
+#include <chrono>
+#include <thread>
+
 #include "iservice_registry.h"
 #include "iremote_broker.h"
 #include "iremote_broker_registry.h"
@@ -12,6 +16,9 @@
 namespace VirusExecutorService {
 
 namespace {
+
+constexpr std::chrono::milliseconds RECOVERY_RETRY_POLL_INTERVAL{20};
+constexpr std::chrono::milliseconds RECOVERY_RETRY_GRACE{100};
 
 template <typename Request, typename Reply>
 MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
@@ -56,6 +63,14 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
     return MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)
                ? MemRpc::StatusCode::Ok
                : MemRpc::StatusCode::ProtocolMismatch;
+}
+
+bool ShouldRetryAfterCooldown(MemRpc::StatusCode status, bool cooldownObserved)
+{
+    if (status == MemRpc::StatusCode::CooldownActive) {
+        return true;
+    }
+    return cooldownObserved && status == MemRpc::StatusCode::PeerDisconnected;
 }
 
 }  // namespace
@@ -199,14 +214,39 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
-        &client_,
-        proxy_,
-        VesOpcode::ScanFile,
-        scanTask,
-        reply,
-        priority,
-        execTimeoutMs);
+    auto invoke = [&]() {
+        return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
+            &client_,
+            proxy_,
+            VesOpcode::ScanFile,
+            scanTask,
+            reply,
+            priority,
+            execTimeoutMs);
+    };
+
+    MemRpc::StatusCode status = invoke();
+    bool cooldownObserved = status == MemRpc::StatusCode::CooldownActive;
+    if (!cooldownObserved) {
+        return status;
+    }
+
+    const uint32_t configuredDelayMs =
+        std::max(options_.execTimeoutRestartDelayMs, options_.engineDeathRestartDelayMs);
+    const auto deadline =
+        std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(configuredDelayMs) + RECOVERY_RETRY_GRACE;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(RECOVERY_RETRY_POLL_INTERVAL);
+        status = invoke();
+        cooldownObserved = cooldownObserved || status == MemRpc::StatusCode::CooldownActive;
+        if (!ShouldRetryAfterCooldown(status, cooldownObserved)) {
+            return status;
+        }
+    }
+
+    return status;
 }
 
 }  // namespace VirusExecutorService
