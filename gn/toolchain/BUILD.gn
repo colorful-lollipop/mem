@@ -1,0 +1,55 @@
+toolchain("default") {
+  lib_switch = "-l"
+  lib_dir_switch = "-L"
+
+  tool("cc") {
+    depfile = "{{output}}.d"
+    depsformat = "gcc"
+    command =
+        "$cc {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -MMD -MF {{output}}.d -c {{source}} -o {{output}}"
+    outputs = [ "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o" ]
+    description = "CC {{source}}"
+  }
+
+  tool("cxx") {
+    depfile = "{{output}}.d"
+    depsformat = "gcc"
+    command =
+        "$cxx {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -MMD -MF {{output}}.d -c {{source}} -o {{output}}"
+    outputs = [ "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o" ]
+    description = "CXX {{source}}"
+  }
+
+  tool("alink") {
+    command = "rm -f {{output}} && $ar rcs {{output}} {{inputs}}"
+    outputs = [ "{{target_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_extension = ".a"
+    output_prefix = "lib"
+    description = "AR {{output}}"
+  }
+
+  tool("solink") {
+    command =
+        "$cxx -shared {{ldflags}} -o {{output}} {{inputs}} {{solibs}} {{libs}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_extension = ".so"
+    output_prefix = "lib"
+    description = "SOLINK {{output}}"
+  }
+
+  tool("link") {
+    command = "$cxx {{ldflags}} -o {{output}} {{inputs}} {{solibs}} {{libs}}"
+    outputs = [ "{{root_out_dir}}/{{target_output_name}}{{output_extension}}" ]
+    description = "LINK {{output}}"
+  }
+
+  tool("stamp") {
+    command = "touch {{output}}"
+    description = "STAMP {{output}}"
+  }
+
+  tool("copy") {
+    command = "cp -f {{source}} {{output}}"
+    description = "COPY {{source}}"
+  }
+}

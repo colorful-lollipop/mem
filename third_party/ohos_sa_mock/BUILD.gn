@@ -1,27 +1,22 @@
 config("ohos_sa_mock_config") {
   include_dirs = [ "include" ]
-  cflags_cc = [ "-std=c++17" ]
+}
+
+config("ohos_sa_mock_threads_config") {
+  cflags = [ "-pthread" ]
+  ldflags = [ "-pthread" ]
 }
 
 source_set("ohos_sa_mock") {
   sources = [
+    "src/iremote_broker_registry.cpp",
     "src/iremote_object.cpp",
+    "src/mock_service_socket.cpp",
+    "src/scm_rights.cpp",
     "src/system_ability_manager.cpp",
   ]
-  public = [
-    "include/errors.h",
-    "include/if_system_ability_manager.h",
-    "include/iremote_broker.h",
-    "include/iremote_object.h",
-    "include/iremote_proxy.h",
-    "include/iremote_stub.h",
-    "include/iservice_registry.h",
-    "include/isystem_ability_load_callback.h",
-    "include/refbase.h",
-    "include/system_ability.h",
-    "include/system_ability_definition.h",
-  ]
   public_configs = [ ":ohos_sa_mock_config" ]
+  all_dependent_configs = [ ":ohos_sa_mock_threads_config" ]
 }
 
 executable("ohos_sa_mock_demo") {

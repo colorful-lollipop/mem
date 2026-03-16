@@ -7,21 +7,24 @@
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     std::vector<uint8_t> bytes(data, data + size);
 
-    virus_executor_service::testkit::EchoRequest echoRequest;
-    virus_executor_service::testkit::EchoReply echoReply;
-    virus_executor_service::testkit::AddRequest addRequest;
-    virus_executor_service::testkit::AddReply addReply;
-    virus_executor_service::testkit::SleepRequest sleepRequest;
-    virus_executor_service::testkit::SleepReply sleepReply;
+    VirusExecutorService::testkit::EchoRequest echoRequest;
+    VirusExecutorService::testkit::EchoReply echoReply;
+    VirusExecutorService::testkit::AddRequest addRequest;
+    VirusExecutorService::testkit::AddReply addReply;
+    VirusExecutorService::testkit::SleepRequest sleepRequest;
+    VirusExecutorService::testkit::SleepReply sleepReply;
 
-    const bool echoOk = MemRpc::DecodeMessage<virus_executor_service::testkit::EchoRequest>(bytes, &echoRequest);
-    const bool addOk = MemRpc::DecodeMessage<virus_executor_service::testkit::AddRequest>(bytes, &addRequest);
+    const bool echoOk =
+        MemRpc::DecodeMessage<VirusExecutorService::testkit::EchoRequest>(bytes, &echoRequest);
+    const bool addOk =
+        MemRpc::DecodeMessage<VirusExecutorService::testkit::AddRequest>(bytes, &addRequest);
     const bool sleepOk =
-        MemRpc::DecodeMessage<virus_executor_service::testkit::SleepRequest>(bytes, &sleepRequest);
+        MemRpc::DecodeMessage<VirusExecutorService::testkit::SleepRequest>(
+            bytes, &sleepRequest);
 
-    (void)MemRpc::DecodeMessage<virus_executor_service::testkit::EchoReply>(bytes, &echoReply);
-    (void)MemRpc::DecodeMessage<virus_executor_service::testkit::AddReply>(bytes, &addReply);
-    (void)MemRpc::DecodeMessage<virus_executor_service::testkit::SleepReply>(bytes, &sleepReply);
+    (void)MemRpc::DecodeMessage<VirusExecutorService::testkit::EchoReply>(bytes, &echoReply);
+    (void)MemRpc::DecodeMessage<VirusExecutorService::testkit::AddReply>(bytes, &addReply);
+    (void)MemRpc::DecodeMessage<VirusExecutorService::testkit::SleepReply>(bytes, &sleepReply);
 
     if (echoOk) {
         std::vector<uint8_t> out;

@@ -1,0 +1,257 @@
+import("//gn/config/test.gni")
+
+config("memrpc_public_config") {
+  include_dirs = [ "include" ]
+}
+
+config("memrpc_private_config") {
+  include_dirs = [
+    "src",
+    "//include",
+  ]
+}
+
+config("memrpc_runtime_config") {
+  libs = [ "rt" ]
+}
+
+config("memrpc_test_config") {
+  include_dirs = [ "src" ]
+  defines = [
+    "MEMRPC_SOURCE_DIR=\"" + rebase_path("//memrpc") + "\"",
+    "MEMRPC_REPO_ROOT=\"" + rebase_path("//.") + "\"",
+  ]
+}
+
+source_set("memrpc_core") {
+  sources = [
+    "src/bootstrap/dev_bootstrap.cpp",
+    "src/bootstrap/sa_bootstrap.cpp",
+    "src/client/rpc_client.cpp",
+    "src/core/byte_reader.cpp",
+    "src/core/byte_writer.cpp",
+    "src/core/log.cpp",
+    "src/core/session.cpp",
+    "src/server/rpc_server.cpp",
+  ]
+
+  public_configs = [ ":memrpc_public_config" ]
+  configs += [ ":memrpc_private_config" ]
+  all_dependent_configs = [
+    ":memrpc_runtime_config",
+    "//gn/config:librt",
+    "//gn/config:posix_threads",
+  ]
+}
+
+group("memrpc") {
+  public_deps = [ ":memrpc_core" ]
+}
+
+group("tests") {
+  testonly = true
+  deps = []
+  if (memrpc_enable_tests) {
+    deps += [
+      ":memrpc_api_headers_test",
+      ":memrpc_bootstrap_health_check_test",
+      ":memrpc_build_config_test",
+      ":memrpc_byte_codec_test",
+      ":memrpc_engine_death_handler_test",
+      ":memrpc_framework_split_headers_test",
+      ":memrpc_log_test",
+      ":memrpc_protocol_layout_test",
+      ":memrpc_replay_classifier_test",
+      ":memrpc_rpc_client_api_test",
+      ":memrpc_rpc_client_external_recovery_test",
+      ":memrpc_rpc_client_idle_callback_test",
+      ":memrpc_rpc_client_recovery_policy_test",
+      ":memrpc_rpc_client_shutdown_race_test",
+      ":memrpc_rpc_client_timeout_watchdog_test",
+      ":memrpc_rpc_eventfd_fault_injection_test",
+      ":memrpc_rpc_payload_limits_test",
+      ":memrpc_rpc_server_api_test",
+      ":memrpc_rpc_server_executor_test",
+      ":memrpc_sa_bootstrap_stub_test",
+      ":memrpc_session_test",
+      ":memrpc_smoke_test",
+      ":memrpc_typed_future_test",
+      ":memrpc_types_test",
+    ]
+    if (memrpc_enable_dt_tests) {
+      deps += [
+        ":memrpc_dt_perf_test",
+        ":memrpc_dt_stability_test",
+      ]
+    }
+  }
+}
+
+group("all") {
+  testonly = true
+  deps = [ ":memrpc" ]
+  if (memrpc_enable_tests) {
+    deps += [ ":tests" ]
+  }
+}
+
+if (memrpc_enable_tests) {
+  repo_gtest("memrpc_smoke_test") {
+    sources = [ "tests/smoke_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_types_test") {
+    sources = [ "tests/types_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_api_headers_test") {
+    sources = [ "tests/api_headers_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_framework_split_headers_test") {
+    sources = [ "tests/framework_split_headers_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_log_test") {
+    sources = [ "tests/log_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_protocol_layout_test") {
+    sources = [ "tests/protocol_layout_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_byte_codec_test") {
+    sources = [ "tests/byte_codec_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_session_test") {
+    sources = [ "tests/session_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_build_config_test") {
+    sources = [ "tests/build_config_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_api_test") {
+    sources = [ "tests/rpc_client_api_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_payload_limits_test") {
+    sources = [ "tests/rpc_payload_limits_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_shutdown_race_test") {
+    sources = [ "tests/rpc_client_shutdown_race_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_server_api_test") {
+    sources = [ "tests/rpc_server_api_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_sa_bootstrap_stub_test") {
+    sources = [ "tests/sa_bootstrap_stub_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_replay_classifier_test") {
+    sources = [ "tests/replay_classifier_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_bootstrap_health_check_test") {
+    sources = [ "tests/bootstrap_health_check_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_timeout_watchdog_test") {
+    sources = [ "tests/rpc_client_timeout_watchdog_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+    defines = [ "MEMRPC_ASYNC_WATCHDOG_INTERVAL_MS=20" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_idle_callback_test") {
+    sources = [ "tests/rpc_client_idle_callback_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_server_executor_test") {
+    sources = [ "tests/rpc_server_executor_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_typed_future_test") {
+    sources = [ "tests/typed_future_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_engine_death_handler_test") {
+    sources = [ "tests/engine_death_handler_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_external_recovery_test") {
+    sources = [ "tests/rpc_client_external_recovery_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_client_recovery_policy_test") {
+    sources = [ "tests/rpc_client_recovery_policy_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  repo_gtest("memrpc_rpc_eventfd_fault_injection_test") {
+    sources = [ "tests/rpc_eventfd_fault_injection_test.cpp" ]
+    deps = [ ":memrpc" ]
+    configs = [ ":memrpc_test_config" ]
+  }
+
+  if (memrpc_enable_dt_tests) {
+    repo_gtest("memrpc_dt_stability_test") {
+      sources = [ "tests/dt_stability_test.cpp" ]
+      deps = [ ":memrpc" ]
+      configs = [ ":memrpc_test_config" ]
+    }
+
+    repo_gtest("memrpc_dt_perf_test") {
+      sources = [ "tests/dt_perf_test.cpp" ]
+      deps = [ ":memrpc" ]
+      configs = [ ":memrpc_test_config" ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+template("repo_gtest") {
+  executable(target_name) {
+    testonly = true
+    sources = invoker.sources
+
+    deps = [ "//third_party/googletest:gtest_main" ]
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+
+    if (defined(invoker.configs)) {
+      configs += invoker.configs
+    }
+    if (defined(invoker.defines)) {
+      defines = invoker.defines
+    }
+    if (defined(invoker.include_dirs)) {
+      include_dirs = invoker.include_dirs
+    }
+    if (defined(invoker.cflags)) {
+      cflags = invoker.cflags
+    }
+    if (defined(invoker.cflags_cc)) {
+      cflags_cc = invoker.cflags_cc
+    }
+    if (defined(invoker.ldflags)) {
+      ldflags = invoker.ldflags
+    }
+    if (defined(invoker.libs)) {
+      libs = invoker.libs
+    }
+    if (defined(invoker.output_name)) {
+      output_name = invoker.output_name
+    }
+    if (defined(invoker.visibility)) {
+      visibility = invoker.visibility
+    }
+  }
+}
+

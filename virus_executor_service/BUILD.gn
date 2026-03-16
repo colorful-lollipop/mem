@@ -1,0 +1,349 @@
+import("//gn/config/test.gni")
+
+config("ves_public_config") {
+  include_dirs = [
+    "include",
+    "//include",
+    "//memrpc/include",
+  ]
+}
+
+config("ves_test_support_config") {
+  include_dirs = [ "tests/stress" ]
+}
+
+source_set("virus_executor_service_transport") {
+  sources = [
+    "src/transport/registry_backend.cpp",
+    "src/transport/registry_client.cpp",
+    "src/transport/registry_protocol.cpp",
+    "src/transport/registry_server.cpp",
+    "src/transport/ves_control_proxy.cpp",
+  ]
+
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [
+    "//memrpc:memrpc_core",
+    "//third_party/ohos_sa_mock:ohos_sa_mock",
+  ]
+}
+
+source_set("virus_executor_service_ves") {
+  sources = [ "src/ves/ves_sample_rules.cpp" ]
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [ "//memrpc:memrpc_core" ]
+}
+
+source_set("virus_executor_service_client_lib") {
+  sources = [ "src/client/ves_client.cpp" ]
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [
+    "//memrpc:memrpc_core",
+    ":virus_executor_service_transport",
+  ]
+}
+
+source_set("virus_executor_service_testkit") {
+  sources = [
+    "src/testkit/testkit_async_client.cpp",
+    "src/testkit/testkit_client.cpp",
+    "src/testkit/testkit_service.cpp",
+  ]
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [ "//memrpc:memrpc_core" ]
+}
+
+source_set("virus_executor_service_service") {
+  sources = [
+    "src/service/ves_engine_service.cpp",
+    "src/service/ves_session_service.cpp",
+    "src/service/virus_executor_service.cpp",
+  ]
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [
+    "//memrpc:memrpc_core",
+    "//third_party/ohos_sa_mock:ohos_sa_mock",
+    ":virus_executor_service_testkit",
+    ":virus_executor_service_transport",
+    ":virus_executor_service_ves",
+  ]
+}
+
+group("virus_executor_service_lib") {
+  public_configs = [ ":ves_public_config" ]
+  public_deps = [
+    ":virus_executor_service_client_lib",
+    ":virus_executor_service_service",
+    ":virus_executor_service_testkit",
+    ":virus_executor_service_transport",
+    ":virus_executor_service_ves",
+  ]
+}
+
+executable("virus_executor_service_supervisor") {
+  sources = [ "src/app/ves_supervisor_main.cpp" ]
+  deps = [ ":virus_executor_service_transport" ]
+}
+
+executable("virus_executor_service") {
+  sources = [ "src/app/virus_executor_service_main.cpp" ]
+  output_name = "VirusExecutorService"
+  deps = [
+    ":virus_executor_service_service",
+    ":virus_executor_service_transport",
+  ]
+}
+
+executable("virus_executor_service_client") {
+  sources = [ "src/app/ves_client_main.cpp" ]
+  deps = [
+    ":virus_executor_service_client_lib",
+    ":virus_executor_service_transport",
+  ]
+}
+
+executable("virus_executor_service_stress_client") {
+  sources = [ "src/app/ves_stress_client_main.cpp" ]
+  deps = [
+    ":virus_executor_service_client_lib",
+    ":virus_executor_service_transport",
+    ":virus_executor_service_ves",
+  ]
+}
+
+executable("virus_executor_service_dt_crash_recovery") {
+  sources = [ "src/app/ves_dt_crash_recovery_main.cpp" ]
+  deps = [
+    ":virus_executor_service_client_lib",
+    ":virus_executor_service_transport",
+  ]
+}
+
+group("apps") {
+  deps = [
+    ":virus_executor_service",
+    ":virus_executor_service_client",
+    ":virus_executor_service_dt_crash_recovery",
+    ":virus_executor_service_stress_client",
+    ":virus_executor_service_supervisor",
+  ]
+}
+
+group("tests") {
+  testonly = true
+  deps = []
+  if (memrpc_enable_tests) {
+    deps += [
+      ":virus_executor_service_codec_test",
+      ":virus_executor_service_health_subscription_test",
+      ":virus_executor_service_heartbeat_test",
+      ":virus_executor_service_recovery_reason_test",
+      ":virus_executor_service_session_service_test",
+      ":virus_executor_service_testkit_async_pipeline_test",
+      ":virus_executor_service_testkit_backpressure_test",
+      ":virus_executor_service_testkit_baseline_test",
+      ":virus_executor_service_testkit_client_test",
+      ":virus_executor_service_testkit_codec_test",
+      ":virus_executor_service_testkit_dfx_test",
+      ":virus_executor_service_testkit_headers_test",
+      ":virus_executor_service_testkit_latency_test",
+      ":virus_executor_service_testkit_service_test",
+      ":virus_executor_service_sample_rules_test",
+      ":virus_executor_service_health_test",
+      ":virus_executor_service_policy_test",
+    ]
+    if (memrpc_enable_stress_tests) {
+      deps += [
+        ":virus_executor_service_testkit_stress_config_test",
+        ":virus_executor_service_testkit_stress_runner",
+        ":virus_executor_service_testkit_throughput_test",
+      ]
+    }
+    if (memrpc_enable_dt_tests) {
+      deps += [
+        ":virus_executor_service_crash_recovery_test",
+        ":virus_executor_service_testkit_dt_perf_test",
+        ":virus_executor_service_testkit_dt_stability_test",
+      ]
+    }
+  }
+}
+
+group("fuzz") {
+  testonly = true
+  deps = []
+  if (memrpc_enable_fuzz) {
+    deps += [
+      ":virus_executor_service_codec_fuzz",
+      ":virus_executor_service_testkit_codec_fuzz",
+    ]
+  }
+}
+
+group("all") {
+  testonly = true
+  deps = [
+    ":apps",
+    ":virus_executor_service_lib",
+  ]
+  if (memrpc_enable_tests) {
+    deps += [ ":tests" ]
+  }
+  if (memrpc_enable_fuzz) {
+    deps += [ ":fuzz" ]
+  }
+}
+
+if (memrpc_enable_tests) {
+  source_set("virus_executor_service_testkit_stress_config") {
+    testonly = true
+    sources = [ "tests/stress/testkit_stress_config.cpp" ]
+    public_configs = [
+      ":ves_public_config",
+      ":ves_test_support_config",
+    ]
+    public_deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_session_service_test") {
+    sources = [ "tests/unit/ves/ves_session_service_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_heartbeat_test") {
+    sources = [ "tests/unit/ves/ves_heartbeat_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_recovery_reason_test") {
+    sources = [ "tests/unit/ves/ves_recovery_reason_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_health_subscription_test") {
+    sources = [ "tests/unit/ves/ves_health_subscription_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_codec_test") {
+    sources = [ "tests/unit/ves/ves_codec_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_headers_test") {
+    sources = [ "tests/unit/testkit/testkit_headers_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_codec_test") {
+    sources = [ "tests/unit/testkit/testkit_codec_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_service_test") {
+    sources = [ "tests/unit/testkit/testkit_service_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_baseline_test") {
+    sources = [ "tests/unit/testkit/testkit_baseline_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_client_test") {
+    sources = [ "tests/unit/testkit/testkit_client_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_dfx_test") {
+    sources = [
+      "tests/unit/testkit/testkit_dfx_test.cpp",
+      "tests/unit/testkit/testkit_resilient_invoker.cpp",
+    ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_backpressure_test") {
+    sources = [ "tests/unit/testkit/testkit_backpressure_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_async_pipeline_test") {
+    sources = [ "tests/unit/testkit/testkit_async_pipeline_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_testkit_latency_test") {
+    sources = [ "tests/unit/testkit/testkit_latency_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  if (memrpc_enable_stress_tests) {
+    repo_gtest("virus_executor_service_testkit_throughput_test") {
+      sources = [ "tests/stress/testkit_throughput_test.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+    }
+
+    repo_gtest("virus_executor_service_testkit_stress_config_test") {
+      sources = [ "tests/stress/testkit_stress_config_test.cpp" ]
+      deps = [ ":virus_executor_service_testkit_stress_config" ]
+    }
+
+    executable("virus_executor_service_testkit_stress_runner") {
+      testonly = true
+      sources = [ "tests/stress/testkit_stress_runner.cpp" ]
+      deps = [
+        ":virus_executor_service_lib",
+        ":virus_executor_service_testkit_stress_config",
+      ]
+    }
+  }
+
+  repo_gtest("virus_executor_service_sample_rules_test") {
+    sources = [ "tests/unit/ves/ves_sample_rules_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_health_test") {
+    sources = [ "tests/unit/ves/ves_health_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  repo_gtest("virus_executor_service_policy_test") {
+    sources = [ "tests/unit/ves/ves_policy_test.cpp" ]
+    deps = [ ":virus_executor_service_lib" ]
+  }
+
+  if (memrpc_enable_dt_tests) {
+    repo_gtest("virus_executor_service_testkit_dt_stability_test") {
+      sources = [ "tests/dt/testkit_dt_stability_test.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+    }
+
+    repo_gtest("virus_executor_service_testkit_dt_perf_test") {
+      sources = [ "tests/dt/testkit_dt_perf_test.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+    }
+
+    repo_gtest("virus_executor_service_crash_recovery_test") {
+      sources = [ "tests/dt/ves_crash_recovery_test.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+    }
+  }
+
+  if (memrpc_enable_fuzz) {
+    executable("virus_executor_service_codec_fuzz") {
+      testonly = true
+      sources = [ "tests/fuzz/ves_codec_fuzz.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+      configs += [ "//gn/config:fuzzer_sanitizers" ]
+    }
+
+    executable("virus_executor_service_testkit_codec_fuzz") {
+      testonly = true
+      sources = [ "tests/fuzz/testkit_codec_fuzz.cpp" ]
+      deps = [ ":virus_executor_service_lib" ]
+      configs += [ "//gn/config:fuzzer_sanitizers" ]
+    }
+  }
+}

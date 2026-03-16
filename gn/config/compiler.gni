@@ -1,0 +1,84 @@
+declare_args() {
+  is_debug = true
+
+  cc = "clang"
+  cxx = "clang++"
+  ar = "ar"
+
+  memrpc_enable_tests = true
+  memrpc_enable_dt_tests = true
+  memrpc_enable_stress_tests = true
+  memrpc_enable_fuzz = false
+
+  memrpc_enable_strict_warnings = true
+  memrpc_warnings_as_errors = false
+  memrpc_enable_asan = false
+  memrpc_enable_ubsan = false
+  memrpc_enable_tsan = false
+}
+
+assert(
+    !(memrpc_enable_tsan && (memrpc_enable_asan || memrpc_enable_ubsan)),
+    "memrpc_enable_tsan cannot be combined with memrpc_enable_asan or memrpc_enable_ubsan")
+
+memrpc_common_cflags = []
+memrpc_common_cflags_cc = [ "-std=c++17" ]
+memrpc_common_ldflags = []
+
+if (is_debug) {
+  memrpc_common_cflags += [
+    "-O0",
+    "-g",
+  ]
+} else {
+  memrpc_common_cflags += [ "-O2" ]
+}
+
+if (memrpc_enable_strict_warnings) {
+  memrpc_common_cflags_cc += [
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Wconversion",
+    "-Wsign-conversion",
+    "-Wshadow",
+    "-Wnon-virtual-dtor",
+    "-Wold-style-cast",
+    "-Wundef",
+    "-Wformat=2",
+    "-Wnull-dereference",
+    "-Wimplicit-fallthrough",
+  ]
+}
+
+if (memrpc_warnings_as_errors) {
+  memrpc_common_cflags_cc += [ "-Werror" ]
+}
+
+memrpc_sanitizer_flags = []
+if (memrpc_enable_asan) {
+  memrpc_sanitizer_flags += [ "-fsanitize=address" ]
+}
+if (memrpc_enable_ubsan) {
+  memrpc_sanitizer_flags += [ "-fsanitize=undefined" ]
+}
+if (memrpc_enable_tsan) {
+  memrpc_sanitizer_flags += [ "-fsanitize=thread" ]
+}
+
+if (memrpc_sanitizer_flags != []) {
+  memrpc_common_cflags += [
+    "-g3",
+    "-O1",
+    "-fno-omit-frame-pointer",
+    "-fno-sanitize-recover=all",
+  ]
+  memrpc_common_cflags += memrpc_sanitizer_flags
+  memrpc_common_ldflags += [
+    "-fno-sanitize-recover=all",
+  ]
+  memrpc_common_ldflags += memrpc_sanitizer_flags
+}
+
+memrpc_fuzzer_flags = [ "-fsanitize=fuzzer,address,undefined" ]
+

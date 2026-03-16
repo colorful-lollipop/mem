@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <cstdint>
+#include <cctype>
 #include <string>
+#include <vector>
 
 #include "ves/ves_codec.h"
 #include "ves/ves_sample_rules.h"
@@ -33,22 +35,23 @@ std::string SanitizePath(std::string path) {
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    virus_executor_service::ScanTask req;
-    if (!MemRpc::CodecTraits<virus_executor_service::ScanTask>::Decode(data, size, &req)) {
+    VirusExecutorService::ScanTask req;
+    if (!MemRpc::CodecTraits<VirusExecutorService::ScanTask>::Decode(data, size, &req)) {
         return 0;
     }
 
     req.path = SanitizePath(std::move(req.path));
-    (void)virus_executor_service::EvaluateSamplePath(req.path);
+    (void)VirusExecutorService::EvaluateSamplePath(req.path);
 
-    virus_executor_service::ScanFileReply reply;
+    VirusExecutorService::ScanFileReply reply;
     reply.code = 0;
     reply.threatLevel = 0;
 
     std::vector<uint8_t> bytes;
-    if (MemRpc::CodecTraits<virus_executor_service::ScanFileReply>::Encode(reply, &bytes)) {
-        virus_executor_service::ScanFileReply decoded;
-        (void)MemRpc::CodecTraits<virus_executor_service::ScanFileReply>::Decode(bytes.data(), bytes.size(), &decoded);
+    if (MemRpc::CodecTraits<VirusExecutorService::ScanFileReply>::Encode(reply, &bytes)) {
+        VirusExecutorService::ScanFileReply decoded;
+        (void)MemRpc::CodecTraits<VirusExecutorService::ScanFileReply>::Decode(
+            bytes.data(), bytes.size(), &decoded);
     }
 
     return 0;

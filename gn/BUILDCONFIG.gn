@@ -1,0 +1,22 @@
+import("//gn/config/compiler.gni")
+
+set_default_toolchain("//gn/toolchain:default")
+
+_default_configs = [ "//gn/config:project_defaults" ]
+
+set_defaults("executable") {
+  configs = _default_configs
+}
+
+set_defaults("source_set") {
+  configs = _default_configs
+}
+
+set_defaults("static_library") {
+  configs = _default_configs
+}
+
+set_defaults("shared_library") {
+  configs = _default_configs
+}
+

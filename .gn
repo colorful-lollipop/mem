@@ -1,0 +1,3 @@
+buildconfig = "//gn/BUILDCONFIG.gn"
+ninja_required_version = "1.7.2"
+

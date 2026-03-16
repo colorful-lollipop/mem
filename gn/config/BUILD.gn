@@ -1,0 +1,20 @@
+config("project_defaults") {
+  cflags = memrpc_common_cflags
+  cflags_cc = memrpc_common_cflags_cc
+  ldflags = memrpc_common_ldflags
+}
+
+config("posix_threads") {
+  cflags = [ "-pthread" ]
+  ldflags = [ "-pthread" ]
+}
+
+config("librt") {
+  libs = [ "rt" ]
+}
+
+config("fuzzer_sanitizers") {
+  cflags = memrpc_fuzzer_flags
+  ldflags = memrpc_fuzzer_flags
+}
+
