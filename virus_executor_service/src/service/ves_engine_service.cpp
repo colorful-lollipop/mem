@@ -27,10 +27,10 @@ bool VesEngineService::initialized() const {
     return initialized_;
 }
 
-uint64_t VesEngineService::AddActiveTask(const std::string& filePath) {
+uint64_t VesEngineService::AddActiveTask() {
     std::lock_guard<std::mutex> lock(healthMutex_);
     const uint64_t taskId = nextTaskId_++;
-    activeTasks_.emplace(taskId, ActiveTask{MemRpc::MonotonicNowMs(), filePath});
+    activeTasks_.emplace(taskId, ActiveTask{MemRpc::MonotonicNowMs()});
     return taskId;
 }
 
@@ -40,7 +40,7 @@ void VesEngineService::RemoveActiveTask(uint64_t taskId) {
 }
 
 ScanFileReply VesEngineService::ScanFile(const ScanTask& request) {
-    const uint64_t taskId = AddActiveTask(request.path);
+    const uint64_t taskId = AddActiveTask();
 
     ScanFileReply result;
     if (!initialized_) {
@@ -86,7 +86,7 @@ VesHealthSnapshot VesEngineService::GetHealthSnapshot() const {
         [](const auto& lhs, const auto& rhs) {
             return lhs.second.startMonoMs < rhs.second.startMonoMs;
         });
-    snapshot.currentTask = oldestTask->second.filePath;
+    snapshot.currentTask = "task-" + std::to_string(oldestTask->first);
     snapshot.lastTaskAgeMs = nowMs - oldestTask->second.startMonoMs;
     snapshot.flags |= VES_HEARTBEAT_FLAG_BUSY;
     if (snapshot.lastTaskAgeMs >= LONG_RUNNING_TASK_THRESHOLD_MS) {

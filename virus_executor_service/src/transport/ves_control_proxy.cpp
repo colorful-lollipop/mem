@@ -215,15 +215,17 @@ void VesControlProxy::NotifyPeerDisconnected() {
         return;
     }
     uint64_t sessionId = 0;
+    MemRpc::EngineDeathCallback callback;
     {
         std::lock_guard<std::mutex> lock(connectionMutex_);
         sessionId = sessionId_;
     }
     {
         std::lock_guard<std::mutex> lock(callbackMutex_);
-        if (deathCallback_) {
-            deathCallback_(sessionId);
-        }
+        callback = deathCallback_;
+    }
+    if (callback) {
+        callback(sessionId);
     }
     auto object = AsObject();
     if (object != nullptr) {

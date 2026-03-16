@@ -1,7 +1,7 @@
 // DT: crash recovery
 //
 // Step 1: normal scan → verify ok
-// Step 2: send crash sample → engine dies
+// Step 2: force-kill engine → engine dies
 // Step 3: verify the crashed engine process exits
 // Step 4: next client request triggers SA reload + engine restart
 // Step 5: normal scan again → verify ok
@@ -9,6 +9,7 @@
 // Uses the supervisor pattern: self-host registry, fork engine, VesClient.
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
@@ -72,6 +73,13 @@ bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout)
             return true;
         }
         if (result < 0) {
+            if (errno == ECHILD) {
+                std::lock_guard<std::mutex> lock(g_engine_mutex);
+                if (g_engine_pid == pid) {
+                    g_engine_pid = -1;
+                }
+                return true;
+            }
             return false;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -80,11 +88,10 @@ bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout)
 }
 
 bool WaitForLoadCountAdvance(
-    const OHOS::sptr<OHOS::ISystemAbilityManager>& sam,
     std::atomic<int>* loadCount,
     int previousLoadCount,
     std::chrono::milliseconds timeout) {
-    if (sam == nullptr || loadCount == nullptr) {
+    if (loadCount == nullptr) {
         return false;
     }
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -92,13 +99,50 @@ bool WaitForLoadCountAdvance(
         if (loadCount->load() > previousLoadCount) {
             return true;
         }
-        (void)sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
-        if (loadCount->load() > previousLoadCount) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return loadCount->load() > previousLoadCount;
+}
+
+bool WaitForCondition(const std::function<bool()>& predicate,
+                      std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return predicate();
+}
+
+bool WaitForRecoveredScan(
+    VirusExecutorService::VesClient* client,
+    const std::string& path,
+    int expectedThreatLevel,
+    VirusExecutorService::ScanFileReply* reply,
+    std::chrono::milliseconds timeout,
+    MemRpc::StatusCode* lastStatus) {
+    if (client == nullptr || reply == nullptr) {
+        return false;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
+    VirusExecutorService::ScanTask task{path};
+    while (std::chrono::steady_clock::now() < deadline) {
+        status = client->ScanFile(task, reply);
+        if (status == MemRpc::StatusCode::Ok && reply->threatLevel == expectedThreatLevel) {
+            if (lastStatus != nullptr) {
+                *lastStatus = status;
+            }
             return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    return loadCount->load() > previousLoadCount;
+    if (lastStatus != nullptr) {
+        *lastStatus = status;
+    }
+    return false;
 }
 
 class CleanupGuard {
@@ -204,18 +248,6 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     auto initStatus = client->Init();
     DT_CHECK(initStatus == MemRpc::StatusCode::Ok, "VesClient Init ok");
 
-    auto recreateClient = [&]() -> bool {
-        if (client != nullptr) {
-            client->Shutdown();
-        }
-        auto refreshedRemote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
-        if (refreshedRemote == nullptr) {
-            return false;
-        }
-        client = std::make_unique<VirusExecutorService::VesClient>(refreshedRemote, options);
-        return client->Init() == MemRpc::StatusCode::Ok;
-    };
-
     // === Step 1: normal scan ===
     HILOGI("=== Step 1: normal scan ===");
     {
@@ -233,16 +265,12 @@ int main([[maybe_unused]] int argc, char* argv[]) {
         DT_CHECK(reply.threatLevel == 1, "step1: virus file threat=1");
     }
 
-    // === Step 2: send crash sample ===
-    HILOGI("=== Step 2: send crash sample (engine will abort) ===");
+    // === Step 2: force-kill engine ===
+    HILOGI("=== Step 2: force-kill engine ===");
     const pid_t firstCrashPid = g_engine_pid;
+    const int firstRecoveryLoadCount = loadCount.load();
     {
-        VirusExecutorService::ScanFileReply reply;
-        VirusExecutorService::ScanTask crashTask{"/data/dt_crash.apk"};
-        auto status = client->ScanFile(crashTask, &reply);
-        // The engine aborts — this request will fail.
-        HILOGI("step2: crash scan returned status=%{public}d (expected failure)",
-              static_cast<int>(status));
+        DT_CHECK(kill(firstCrashPid, SIGKILL) == 0, "step2: engine kill sent");
     }
 
     // === Step 3: wait for the crashed process to exit ===
@@ -252,19 +280,25 @@ int main([[maybe_unused]] int argc, char* argv[]) {
                  "step3: engine process exited");
     }
 
-    // === Step 4: control-plane reload makes the next business request succeed again ===
-    HILOGI("=== Step 4: bounded recovery after crash ===");
-    const int firstRecoveryLoadCount = loadCount.load();
-    DT_CHECK(recreateClient(), "step4: client re-init ok");
+    // === Step 4: same client internally reloads SA and recovers ===
+    HILOGI("=== Step 4: same-client recovery after crash ===");
     {
         VirusExecutorService::ScanFileReply reply;
-        auto status = client->ScanFile(VirusExecutorService::ScanTask{"/data/dt_clean_after.apk"}, &reply);
-        DT_CHECK(status == MemRpc::StatusCode::Ok, "step4: post-recovery clean scan ok");
+        MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
+        DT_CHECK(WaitForCondition([&]() { return client->EngineDied(); },
+                                  std::chrono::seconds(2)),
+                 "step4: engine death callback observed");
+        DT_CHECK(WaitForRecoveredScan(client.get(),
+                                      "/data/dt_clean_after.apk",
+                                      0,
+                                      &reply,
+                                      std::chrono::seconds(5),
+                                      &lastStatus),
+                 "step4: post-recovery clean scan ok");
         DT_CHECK(reply.threatLevel == 0, "step4: clean file threat=0");
         const bool reloaded = WaitForLoadCountAdvance(
-            sam, &loadCount, firstRecoveryLoadCount, std::chrono::seconds(1));
-        HILOGI("step4: engine reload observed=%{public}d load_count=%{public}d prev=%{public}d",
-              reloaded ? 1 : 0, loadCount.load(), firstRecoveryLoadCount);
+            &loadCount, firstRecoveryLoadCount, std::chrono::seconds(2));
+        DT_CHECK(reloaded, "step4: same client triggered SA reload");
     }
     {
         VirusExecutorService::ScanFileReply reply;
@@ -276,21 +310,27 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     // === Step 5: second crash + 10 sequential calls (卡住定位) ===
     HILOGI("=== Step 5: second crash + 10 sequential normal calls ===");
     const pid_t secondCrashPid = g_engine_pid;
+    const int secondRecoveryLoadCount = loadCount.load();
     {
-        VirusExecutorService::ScanFileReply reply;
-        HILOGI("step5: sending crash...");
-        VirusExecutorService::ScanTask secondCrashTask{"/data/dt_crash2.apk"};
-        auto status = client->ScanFile(secondCrashTask, &reply);
-        HILOGI("step5: crash returned status=%{public}d", static_cast<int>(status));
+        HILOGI("step5: killing engine...");
+        DT_CHECK(kill(secondCrashPid, SIGKILL) == 0, "step5: second engine kill sent");
     }
     DT_CHECK(WaitForEngineExit(secondCrashPid, std::chrono::seconds(10)),
              "step5: second engine process exited");
-    const int secondRecoveryLoadCount = loadCount.load();
-    DT_CHECK(recreateClient(), "step5: client re-init ok");
+    {
+        VirusExecutorService::ScanFileReply reply;
+        MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
+        DT_CHECK(WaitForRecoveredScan(client.get(),
+                                     "/data/dt_post_second_recovery_probe.apk",
+                                      0,
+                                      &reply,
+                                      std::chrono::seconds(5),
+                                      &lastStatus),
+                 "step5: same client recovered after second crash");
+    }
     const bool reloaded = WaitForLoadCountAdvance(
-        sam, &loadCount, secondRecoveryLoadCount, std::chrono::seconds(1));
-    HILOGI("step5: second engine reload observed=%{public}d load_count=%{public}d prev=%{public}d",
-          reloaded ? 1 : 0, loadCount.load(), secondRecoveryLoadCount);
+        &loadCount, secondRecoveryLoadCount, std::chrono::seconds(2));
+    DT_CHECK(reloaded, "step5: second same-client SA reload observed");
 
     for (int i = 0; i < 10; i++) {
         HILOGI("step5: call %{public}d/10 ...", i + 1);

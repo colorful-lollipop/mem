@@ -36,10 +36,9 @@ class VesEngineService : public RpcHandlerRegistrar {
  private:
     struct ActiveTask {
         uint32_t startMonoMs = 0;
-        std::string filePath;
     };
 
-    uint64_t AddActiveTask(const std::string& filePath);
+    uint64_t AddActiveTask();
     void RemoveActiveTask(uint64_t taskId);
 
     bool initialized_ = false;
