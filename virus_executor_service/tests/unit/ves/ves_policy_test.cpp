@@ -480,6 +480,7 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal) {
     VesClient client(remote);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
     client.Shutdown();
+    EXPECT_EQ(client.Init(), MemRpc::StatusCode::ClientClosed);
 
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);

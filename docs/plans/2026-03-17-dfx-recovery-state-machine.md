@@ -4,7 +4,7 @@
 
 **Goal:** Replace the current ad-hoc mix of manual shutdown, crash recovery, timeout restart, health-triggered recovery, and idle close with one explicit client lifecycle state machine and a single DFX/reporting surface.
 
-**Architecture:** Keep detection, policy, execution, and observation separate. `memrpc::RpcClient` becomes the single owner of lifecycle state transitions and recovery execution; `VesClient` only configures policy and consumes structured state/DFX reports. Idle management stays framework-owned, but explicit `Shutdown()` becomes terminal and never feeds recovery again.
+**Architecture:** Keep detection, policy, execution, and observation separate. `memrpc::RpcClient` becomes the single owner of lifecycle state transitions and recovery execution; `VesClient` only configures policy and consumes structured state/DFX reports. Idle management stays framework-owned, explicit `Shutdown()` becomes terminal and never feeds recovery again, and `AnyCall` remains a pure VES-side transport downgrade path rather than part of the memrpc lifecycle model.
 
 **Tech Stack:** C++17, memrpc `RpcClient`, `VesClient`, GoogleTest, CMake/CTest
 
@@ -61,6 +61,7 @@ Update:
 Document:
 - which transitions are legal
 - that `Shutdown()` is terminal
+- that a client instance cannot be re-`Init()`ed after `Shutdown()`
 - that idle close is framework-managed and non-terminal
 - that `Cooldown` and `Recovering` are internal framework states
 
@@ -89,6 +90,7 @@ git commit -m "feat: define unified recovery lifecycle model"
 
 Add tests covering:
 - `Shutdown()` keeps client terminal and blocks any later recovery trigger
+- `Shutdown()` keeps the instance permanently terminal and `Init()` after `Shutdown()` returns `ClientClosed`
 - idle close transitions to `IdleClosed` and reopens only on demand
 - engine death / timeout / health signal enter recovery states but not after manual close
 
@@ -133,6 +135,7 @@ Do not let this path set `ClientClosed`.
 - clear cooldown
 - ignore later engine death / external recovery / health watchdog signals
 - make all future calls return `ClientClosed`
+- make later `Init()` on the same object return `ClientClosed`
 
 **Step 5: Run focused lifecycle tests**
 
@@ -159,7 +162,7 @@ git commit -m "feat: centralize rpc client lifecycle transitions"
 
 Add tests asserting:
 - VES can read a unified last-recovery reason/state
-- `EngineDied()` is derived from structured runtime state instead of a separate one-off flag
+- `EngineDied()` is only a test/DFX helper view derived from structured reports, not a sticky business semantic
 - idle close and manual shutdown produce distinct reasons
 
 Expected first failure: missing callbacks/report plumbing.
@@ -178,6 +181,8 @@ Include:
 - last session ids
 - terminal/manual-close flag
 
+`RecoveryEventReport` should represent the latest transition/reopen reason only. It does **not** need to preserve a sticky historical fault cause across later transitions such as `DemandReconnect`.
+
 **Step 3: Make VesClient consume structured reports**
 
 Refactor `virus_executor_service/src/client/ves_client.cpp` so it no longer tracks ad-hoc booleans beyond cached view state. Replace:
@@ -185,6 +190,8 @@ Refactor `virus_executor_service/src/client/ves_client.cpp` so it no longer trac
 - recovery wake heuristics
 
 with a small cached projection of `RpcClient` runtime snapshot/report.
+
+Keep `EngineDied()` only as a compatibility/testing helper derived from the cached structured view. It should not drive policy and does not need “last fault forever” semantics.
 
 **Step 4: Run VES DFX tests**
 
@@ -214,6 +221,7 @@ Cover:
 - idle close remains framework-managed
 - `Shutdown()` stays terminal
 - no public VES API has a handwritten cooldown loop
+- `AnyCall` fallback stays a VES-owned downgrade path and does not mutate or reinterpret `RpcClient` lifecycle state
 
 Expected first failure: old bespoke retry/helper assumptions.
 
@@ -239,6 +247,10 @@ Each future VES method should become:
 - encode request
 - invoke common helper
 - decode reply
+
+For large requests, keep `AnyCall` as a simple transport downgrade:
+- no memrpc lifecycle transitions are synthesized from `AnyCall` success
+- no requirement that `AnyCall` success implies memrpc lifecycle has already returned to `Active`
 
 **Step 4: Run focused VES tests**
 
@@ -301,6 +313,10 @@ Run:
 - `ctest --test-dir build_ninja --output-on-failure -R 'virus_executor_service_policy_test|virus_executor_service_health_subscription_test|virus_executor_service_recovery_reason_test|virus_executor_service_testkit_dfx_test'`
 
 Expected: PASS
+
+Compatibility note:
+- recovery validation should prefer “new client object after terminal shutdown” semantics
+- do not require same-object reuse after `Shutdown()`
 
 **Step 2: Run the push gate if the refactor is merged in one branch**
 

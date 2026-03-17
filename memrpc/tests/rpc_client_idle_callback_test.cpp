@@ -162,9 +162,15 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   RpcClient client(bootstrap);
   std::mutex sessionMutex;
   std::vector<SessionReadyReport> reports;
+  std::mutex recoveryEventMutex;
+  std::vector<RecoveryEventReport> recoveryEvents;
   client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
     std::lock_guard<std::mutex> lock(sessionMutex);
     reports.push_back(report);
+  });
+  client.SetRecoveryEventCallback([&](const RecoveryEventReport& report) {
+    std::lock_guard<std::mutex> lock(recoveryEventMutex);
+    recoveryEvents.push_back(report);
   });
   RecoveryPolicy policy;
   policy.onIdle = [](uint64_t) {
@@ -200,6 +206,10 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
       std::lock_guard<std::mutex> lock(sessionMutex);
       observed = reports.size() >= 2;
     }
+    {
+      std::lock_guard<std::mutex> lock(recoveryEventMutex);
+      observed = observed && recoveryEvents.size() >= 3;
+    }
     if (observed) {
       break;
     }
@@ -219,6 +229,23 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   EXPECT_EQ(reopenedReport.previousSessionId, initialReport.sessionId);
   EXPECT_EQ(reopenedReport.generation, 2u);
   EXPECT_EQ(reopenedReport.scheduledDelayMs, 0u);
+
+  RecoveryEventReport idleClosedEvent;
+  RecoveryEventReport recoveringEvent;
+  RecoveryEventReport reopenedEvent;
+  {
+    std::lock_guard<std::mutex> lock(recoveryEventMutex);
+    ASSERT_GE(recoveryEvents.size(), 3u);
+    idleClosedEvent = recoveryEvents[1];
+    recoveringEvent = recoveryEvents[2];
+    reopenedEvent = recoveryEvents.back();
+  }
+  EXPECT_EQ(idleClosedEvent.state, ClientLifecycleState::IdleClosed);
+  EXPECT_EQ(idleClosedEvent.trigger, RecoveryTrigger::IdlePolicy);
+  EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
+  EXPECT_EQ(recoveringEvent.trigger, RecoveryTrigger::DemandReconnect);
+  EXPECT_EQ(reopenedEvent.state, ClientLifecycleState::Active);
+  EXPECT_EQ(reopenedEvent.trigger, RecoveryTrigger::DemandReconnect);
 
   client.Shutdown();
   server.Stop();

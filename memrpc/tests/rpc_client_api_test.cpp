@@ -267,15 +267,22 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure) {
   EXPECT_EQ(captured.lastRuntimeState, MemRpc::RpcRuntimeState::Unknown);
 }
 
-TEST(RpcClientApiTest, ShutdownMakesClientTerminalUntilExplicitInit) {
+TEST(RpcClientApiTest, ShutdownMakesClientPermanentlyTerminal) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
   MemRpc::RpcClient client(bootstrap);
 
   client.Shutdown();
+
+  EXPECT_EQ(client.Init(), MemRpc::StatusCode::ClientClosed);
 
   MemRpc::RpcReply reply;
   auto future = client.InvokeAsync(MemRpc::RpcCall{});
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
   EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
+
+  const MemRpc::RecoveryRuntimeSnapshot snapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
+  EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
+  EXPECT_TRUE(snapshot.terminalManualShutdown);
 }
