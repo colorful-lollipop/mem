@@ -99,15 +99,18 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    VesControlProxy proxy(stub->AsObject(), socketPath);
-    MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
 
-    const auto result = proxy.CheckHealth(handles.sessionId);
+    VesBootstrapChannel bootstrap(control);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    const auto result = bootstrap.CheckHealth(handles.sessionId);
     EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Healthy);
     EXPECT_EQ(result.sessionId, handles.sessionId);
 
-    proxy.CloseSession();
+    bootstrap.CloseSession();
     stub->OnStop();
 }
 
@@ -120,20 +123,23 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    VesControlProxy proxy(stub->AsObject(), socketPath);
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
 
-    const auto unhealthy = proxy.CheckHealth(42);
+    VesBootstrapChannel bootstrap(control);
+
+    const auto unhealthy = bootstrap.CheckHealth(42);
     EXPECT_EQ(unhealthy.status, MemRpc::ChannelHealthStatus::Unhealthy);
     EXPECT_EQ(unhealthy.sessionId, 0u);
 
     MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
-    const auto mismatch = proxy.CheckHealth(handles.sessionId + 1);
+    const auto mismatch = bootstrap.CheckHealth(handles.sessionId + 1);
     EXPECT_EQ(mismatch.status, MemRpc::ChannelHealthStatus::SessionMismatch);
     EXPECT_EQ(mismatch.sessionId, handles.sessionId);
 
-    proxy.CloseSession();
+    bootstrap.CloseSession();
     stub->OnStop();
 }
 

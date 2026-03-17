@@ -16,8 +16,6 @@ namespace VirusExecutorService {
 
 class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
  public:
-    using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
-
     VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                       const std::string& serviceSocketPath);
     ~VesControlProxy() override;
@@ -26,9 +24,6 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
     MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override;
-    MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId);
-    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
-
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback);
 
  private:
@@ -41,7 +36,6 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     MemRpc::StatusCode ReceiveSessionHandles(int fd, MemRpc::BootstrapHandles& handles);
     bool IsPeerDisconnected(int fd) const;
     void NotifyPeerDisconnected();
-    void PublishHealthSnapshot(const VesHeartbeatReply& reply);
 
     std::string service_socket_path_;
     int sock_fd_ = -1;
@@ -49,7 +43,6 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     std::thread monitor_thread_;
     uint64_t sessionId_ = 0;
     MemRpc::EngineDeathCallback deathCallback_;
-    HealthSnapshotCallback healthSnapshotCallback_;
     std::mutex operationMutex_;
     std::mutex connectionMutex_;
     std::mutex callbackMutex_;
@@ -57,7 +50,7 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
 
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
-    using HealthSnapshotCallback = VesControlProxy::HealthSnapshotCallback;
+    using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
     using ControlLoader = std::function<OHOS::sptr<IVesControl>(bool forceReload)>;
 
     explicit VesBootstrapChannel(OHOS::sptr<IVesControl> control,

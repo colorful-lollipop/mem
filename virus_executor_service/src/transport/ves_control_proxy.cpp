@@ -17,7 +17,6 @@ namespace VirusExecutorService {
 
 namespace {
 constexpr int DEFAULT_HEARTBEAT_TIMEOUT_MS = 500;
-constexpr int HEALTH_CHECK_TIMEOUT_MS = 100;
 
 std::shared_ptr<VesControlProxy> RetainProxy(VesControlProxy* proxy)
 {
@@ -387,36 +386,6 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
     return MemRpc::StatusCode::Ok;
 }
 
-void VesControlProxy::PublishHealthSnapshot(const VesHeartbeatReply& reply) {
-    HealthSnapshotCallback callback;
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex_);
-        callback = healthSnapshotCallback_;
-    }
-    if (callback) {
-        std::thread([callback = std::move(callback), reply]() mutable {
-            try {
-                callback(reply);
-            } catch (...) {
-                HILOGW("health snapshot callback threw");
-            }
-        }).detach();
-    }
-}
-
-MemRpc::ChannelHealthResult VesControlProxy::CheckHealth(uint64_t expectedSessionId) {
-    VesHeartbeatReply reply{};
-    const MemRpc::StatusCode status = HeartbeatWithTimeout(reply, HEALTH_CHECK_TIMEOUT_MS);
-    if (status == MemRpc::StatusCode::Ok) {
-        PublishHealthSnapshot(reply);
-        return ToHealthResult(reply, expectedSessionId);
-    }
-    if (status == MemRpc::StatusCode::ProtocolMismatch) {
-        return {MemRpc::ChannelHealthStatus::Malformed, 0};
-    }
-    return {MemRpc::ChannelHealthStatus::Timeout, 0};
-}
-
 MemRpc::StatusCode VesControlProxy::CloseSession() {
     std::lock_guard<std::mutex> lock(operationMutex_);
     ResetSocketConnection();
@@ -432,11 +401,6 @@ MemRpc::StatusCode VesControlProxy::CloseSession() {
         return MemRpc::StatusCode::PeerDisconnected;
     }
     return MemRpc::StatusCode::Ok;
-}
-
-void VesControlProxy::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex_);
-    healthSnapshotCallback_ = std::move(callback);
 }
 
 void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
@@ -496,7 +460,6 @@ VesBootstrapChannel::~VesBootstrapChannel()
     }
     if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
         proxy->SetEngineDeathCallback({});
-        proxy->SetHealthSnapshotCallback({});
     }
 }
 
@@ -520,7 +483,6 @@ void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVesControl>& nex
     if (auto previousProxy = std::dynamic_pointer_cast<VesControlProxy>(previousControl);
         previousProxy != nullptr && previousControl != nextControl) {
         previousProxy->SetEngineDeathCallback({});
-        previousProxy->SetHealthSnapshotCallback({});
     }
     if (previousObject != nullptr && deathRecipient_ != nullptr && previousObject != nextObject) {
         (void)previousObject->RemoveDeathRecipient(deathRecipient_);
@@ -533,7 +495,6 @@ void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVesControl>& nex
 
     if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
         proxy->SetEngineDeathCallback([this](uint64_t sessionId) { NotifyEngineDeath(sessionId); });
-        proxy->SetHealthSnapshotCallback(healthSnapshotCallback_);
     }
 }
 
@@ -634,10 +595,6 @@ MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSe
         return {};
     }
 
-    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control); proxy != nullptr) {
-        return proxy->CheckHealth(expectedSessionId);
-    }
-
     VesHeartbeatReply reply{};
     const MemRpc::StatusCode status = control->Heartbeat(reply);
     if (status == MemRpc::StatusCode::Ok) {
@@ -660,9 +617,6 @@ void VesBootstrapChannel::SetHealthSnapshotCallback(HealthSnapshotCallback callb
 {
     std::lock_guard<std::mutex> lock(mutex_);
     healthSnapshotCallback_ = std::move(callback);
-    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
-        proxy->SetHealthSnapshotCallback(healthSnapshotCallback_);
-    }
 }
 
 void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
