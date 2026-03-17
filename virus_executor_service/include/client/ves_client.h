@@ -27,7 +27,7 @@ struct VesClientConnectOptions {
 
 class VesClient {
  public:
-    using HealthSnapshotCallback = VesControlChannelAdapter::HealthSnapshotCallback;
+    using HealthSnapshotCallback = VesBootstrapChannel::HealthSnapshotCallback;
     using EventCallback = MemRpc::RpcEventCallback;
 
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
@@ -56,8 +56,8 @@ class VesClient {
 
  private:
     OHOS::sptr<OHOS::IRemoteObject> remote_;
-    std::shared_ptr<VesControlProxy> proxy_;
-    std::shared_ptr<VesControlChannelAdapter> bootstrapChannel_;
+    OHOS::sptr<IVesControl> control_;
+    std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
     HealthSnapshotCallback healthSnapshotCallback_;

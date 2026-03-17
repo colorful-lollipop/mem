@@ -18,7 +18,6 @@ namespace VirusExecutorService {
 namespace {
 constexpr int DEFAULT_HEARTBEAT_TIMEOUT_MS = 500;
 constexpr int HEALTH_CHECK_TIMEOUT_MS = 100;
-constexpr int LOAD_SERVICE_TIMEOUT_MS = 5000;
 
 std::shared_ptr<VesControlProxy> RetainProxy(VesControlProxy* proxy)
 {
@@ -116,6 +115,36 @@ bool IsHealthyHeartbeatStatus(uint32_t status)
            status == static_cast<uint32_t>(VesHeartbeatStatus::OkBusy) ||
            status == static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning);
 }
+
+MemRpc::ChannelHealthResult ToHealthResult(const VesHeartbeatReply& reply, uint64_t expectedSessionId)
+{
+    MemRpc::ChannelHealthResult result;
+    result.sessionId = reply.sessionId;
+    if (expectedSessionId != 0 && reply.sessionId != 0 && reply.sessionId != expectedSessionId) {
+        result.status = MemRpc::ChannelHealthStatus::SessionMismatch;
+        return result;
+    }
+    result.status = IsHealthyHeartbeatStatus(reply.status)
+                        ? MemRpc::ChannelHealthStatus::Healthy
+                        : MemRpc::ChannelHealthStatus::Unhealthy;
+    return result;
+}
+
+class ControlDeathRecipient final : public OHOS::IRemoteObject::DeathRecipient {
+ public:
+    explicit ControlDeathRecipient(std::function<void()> callback)
+        : callback_(std::move(callback)) {}
+
+    void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
+    {
+        if (callback_) {
+            callback_();
+        }
+    }
+
+ private:
+    std::function<void()> callback_;
+};
 
 }  // namespace
 
@@ -380,16 +409,7 @@ MemRpc::ChannelHealthResult VesControlProxy::CheckHealth(uint64_t expectedSessio
     const MemRpc::StatusCode status = HeartbeatWithTimeout(reply, HEALTH_CHECK_TIMEOUT_MS);
     if (status == MemRpc::StatusCode::Ok) {
         PublishHealthSnapshot(reply);
-        MemRpc::ChannelHealthResult result;
-        result.sessionId = reply.sessionId;
-        if (expectedSessionId != 0 && reply.sessionId != 0 && reply.sessionId != expectedSessionId) {
-            result.status = MemRpc::ChannelHealthStatus::SessionMismatch;
-            return result;
-        }
-        result.status = IsHealthyHeartbeatStatus(reply.status)
-                            ? MemRpc::ChannelHealthStatus::Healthy
-                            : MemRpc::ChannelHealthStatus::Unhealthy;
-        return result;
+        return ToHealthResult(reply, expectedSessionId);
     }
     if (status == MemRpc::StatusCode::ProtocolMismatch) {
         return {MemRpc::ChannelHealthStatus::Malformed, 0};
@@ -451,102 +471,206 @@ void VesControlProxy::MonitorSocket() {
     }
 }
 
-VesControlChannelAdapter::VesControlChannelAdapter(
-    std::shared_ptr<VesControlProxy> proxy)
-    : proxy_(std::move(proxy)) {}
-
-std::shared_ptr<VesControlProxy> VesControlChannelAdapter::ReloadProxyLocked(bool forceReload) {
-    int32_t saId = VES_CONTROL_SA_ID;
-    if (proxy_ != nullptr && proxy_->AsObject() != nullptr && proxy_->AsObject()->GetSaId() >= 0) {
-        saId = proxy_->AsObject()->GetSaId();
-    }
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    if (sam == nullptr) {
-        return nullptr;
-    }
-    if (forceReload) {
-        (void)sam->UnloadSystemAbility(saId);
-    }
-    auto remote = sam->LoadSystemAbility(saId, LOAD_SERVICE_TIMEOUT_MS);
-    if (remote == nullptr) {
-        return nullptr;
-    }
-    auto control = OHOS::iface_cast<IVesControl>(remote);
-    auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control);
-    if (proxy != nullptr) {
-        proxy->SetEngineDeathCallback(deathCallback_);
-        proxy->SetHealthSnapshotCallback(healthSnapshotCallback_);
-        proxy_ = proxy;
-    }
-    return proxy_;
+VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
+                                         ControlLoader controlLoader)
+    : control_(std::move(control)),
+      controlLoader_(std::move(controlLoader)),
+      deathRecipient_(std::make_shared<ControlDeathRecipient>([this]() {
+          uint64_t sessionId = 0;
+          {
+              std::lock_guard<std::mutex> lock(mutex_);
+              sessionId = sessionId_;
+          }
+          NotifyEngineDeath(sessionId);
+      }))
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    RebindControlLocked(control_);
 }
 
-MemRpc::StatusCode VesControlChannelAdapter::OpenSession(
-    MemRpc::BootstrapHandles& handles) {
-    std::shared_ptr<VesControlProxy> proxy;
+VesBootstrapChannel::~VesBootstrapChannel()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (control_ != nullptr && control_->AsObject() != nullptr && deathRecipient_ != nullptr) {
+        (void)control_->AsObject()->RemoveDeathRecipient(deathRecipient_);
+    }
+    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
+        proxy->SetEngineDeathCallback({});
+        proxy->SetHealthSnapshotCallback({});
+    }
+}
+
+OHOS::sptr<IVesControl> VesBootstrapChannel::ReloadControlLocked(bool forceReload)
+{
+    if (!controlLoader_) {
+        return control_;
+    }
+    auto nextControl = controlLoader_(forceReload);
+    if (nextControl != nullptr) {
+        RebindControlLocked(nextControl);
+    }
+    return control_;
+}
+
+void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVesControl>& nextControl)
+{
+    auto previousControl = control_;
+    auto previousObject = previousControl != nullptr ? previousControl->AsObject() : nullptr;
+    auto nextObject = nextControl != nullptr ? nextControl->AsObject() : nullptr;
+    if (auto previousProxy = std::dynamic_pointer_cast<VesControlProxy>(previousControl);
+        previousProxy != nullptr && previousControl != nextControl) {
+        previousProxy->SetEngineDeathCallback({});
+        previousProxy->SetHealthSnapshotCallback({});
+    }
+    if (previousObject != nullptr && deathRecipient_ != nullptr && previousObject != nextObject) {
+        (void)previousObject->RemoveDeathRecipient(deathRecipient_);
+    }
+
+    control_ = nextControl;
+    if (nextObject != nullptr && deathRecipient_ != nullptr && nextObject != previousObject) {
+        (void)nextObject->AddDeathRecipient(deathRecipient_);
+    }
+
+    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
+        proxy->SetEngineDeathCallback([this](uint64_t sessionId) { NotifyEngineDeath(sessionId); });
+        proxy->SetHealthSnapshotCallback(healthSnapshotCallback_);
+    }
+}
+
+void VesBootstrapChannel::PublishHealthSnapshot(const VesHeartbeatReply& reply)
+{
+    HealthSnapshotCallback callback;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        proxy = proxy_;
+        callback = healthSnapshotCallback_;
     }
-    if (proxy == nullptr) {
-        handles = MemRpc::BootstrapHandles{};
+    if (callback) {
+        std::thread([callback = std::move(callback), reply]() mutable {
+            try {
+                callback(reply);
+            } catch (...) {
+                HILOGW("health snapshot callback threw");
+            }
+        }).detach();
+    }
+}
+
+void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
+{
+    MemRpc::EngineDeathCallback callback;
+    {
         std::lock_guard<std::mutex> lock(mutex_);
-        proxy = ReloadProxyLocked(false);
-        if (proxy == nullptr) {
-            return MemRpc::StatusCode::InvalidArgument;
+        callback = deathCallback_;
+        if (sessionId == 0) {
+            sessionId = sessionId_;
         }
     }
-    MemRpc::StatusCode status = proxy->OpenSession(handles);
+    if (callback) {
+        callback(sessionId);
+    }
+}
+
+MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
+{
+    OHOS::sptr<IVesControl> control;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        control = control_;
+        if (control == nullptr) {
+            handles = MemRpc::BootstrapHandles{};
+            control = ReloadControlLocked(false);
+        }
+    }
+    if (control == nullptr) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    MemRpc::StatusCode status = control->OpenSession(handles);
     if (status == MemRpc::StatusCode::Ok) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessionId_ = handles.sessionId;
         return status;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    proxy = ReloadProxyLocked(status == MemRpc::StatusCode::PeerDisconnected);
-    if (proxy == nullptr) {
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        control = ReloadControlLocked(status == MemRpc::StatusCode::PeerDisconnected);
+    }
+    if (control == nullptr) {
         handles = MemRpc::BootstrapHandles{};
         return status;
     }
-    return proxy->OpenSession(handles);
+
+    status = control->OpenSession(handles);
+    if (status == MemRpc::StatusCode::Ok) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessionId_ = handles.sessionId;
+    }
+    return status;
 }
 
-MemRpc::StatusCode VesControlChannelAdapter::CloseSession() {
-    std::shared_ptr<VesControlProxy> proxy;
+MemRpc::StatusCode VesBootstrapChannel::CloseSession()
+{
+    OHOS::sptr<IVesControl> control;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        proxy = proxy_;
+        control = control_;
+        sessionId_ = 0;
     }
-    if (proxy == nullptr) {
+    if (control == nullptr) {
         return MemRpc::StatusCode::Ok;
     }
-    return proxy->CloseSession();
+    return control->CloseSession();
 }
 
-MemRpc::ChannelHealthResult VesControlChannelAdapter::CheckHealth(uint64_t expectedSessionId) {
-    std::shared_ptr<VesControlProxy> proxy;
+MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSessionId)
+{
+    OHOS::sptr<IVesControl> control;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        proxy = proxy_;
+        control = control_;
     }
-    if (proxy == nullptr) {
+    if (control == nullptr) {
         return {};
     }
-    return proxy->CheckHealth(expectedSessionId);
+
+    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control); proxy != nullptr) {
+        return proxy->CheckHealth(expectedSessionId);
+    }
+
+    VesHeartbeatReply reply{};
+    const MemRpc::StatusCode status = control->Heartbeat(reply);
+    if (status == MemRpc::StatusCode::Ok) {
+        PublishHealthSnapshot(reply);
+        return ToHealthResult(reply, expectedSessionId);
+    }
+    if (status == MemRpc::StatusCode::ProtocolMismatch) {
+        return {MemRpc::ChannelHealthStatus::Malformed, 0};
+    }
+    return {MemRpc::ChannelHealthStatus::Timeout, 0};
 }
 
-void VesControlChannelAdapter::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
+OHOS::sptr<IVesControl> VesBootstrapChannel::CurrentControl()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return control_;
+}
+
+void VesBootstrapChannel::SetHealthSnapshotCallback(HealthSnapshotCallback callback)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     healthSnapshotCallback_ = std::move(callback);
-    if (proxy_ != nullptr) {
-        proxy_->SetHealthSnapshotCallback(healthSnapshotCallback_);
+    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
+        proxy->SetHealthSnapshotCallback(healthSnapshotCallback_);
     }
 }
 
-void VesControlChannelAdapter::SetEngineDeathCallback(
-    MemRpc::EngineDeathCallback callback) {
+void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     deathCallback_ = std::move(callback);
-    if (proxy_ != nullptr) {
-        proxy_->SetEngineDeathCallback(deathCallback_);
+    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
+        proxy->SetEngineDeathCallback([this](uint64_t sessionId) { NotifyEngineDeath(sessionId); });
     }
 }
 

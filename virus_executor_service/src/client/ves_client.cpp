@@ -19,10 +19,11 @@ namespace {
 
 constexpr std::chrono::milliseconds RECOVERY_RETRY_POLL_INTERVAL{20};
 constexpr std::chrono::milliseconds RECOVERY_RETRY_GRACE{100};
+constexpr int CONTROL_RELOAD_TIMEOUT_MS = 5000;
 
 template <typename Request, typename Reply>
 MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
-                                             const std::shared_ptr<VesControlProxy>& proxy,
+                                             const OHOS::sptr<IVesControl>& control,
                                              VesOpcode opcode,
                                              const Request& request,
                                              Reply* reply,
@@ -43,7 +44,7 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
             execTimeoutMs);
     }
 
-    if (proxy == nullptr) {
+    if (control == nullptr) {
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
@@ -53,7 +54,7 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
     anyRequest.payload = std::move(payload);
 
     VesAnyCallReply anyReply;
-    const MemRpc::StatusCode status = proxy->AnyCall(anyRequest, anyReply);
+    const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
     if (status != MemRpc::StatusCode::Ok) {
         return status;
     }
@@ -122,19 +123,31 @@ std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options,
 }
 
 MemRpc::StatusCode VesClient::Init() {
-    auto bootstrap = OHOS::iface_cast<IVesControl>(remote_);
-    if (bootstrap == nullptr) {
+    control_ = OHOS::iface_cast<IVesControl>(remote_);
+    if (control_ == nullptr) {
         HILOGE("iface_cast<IVesControl> failed");
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    proxy_ = std::dynamic_pointer_cast<VesControlProxy>(bootstrap);
-    if (proxy_ == nullptr) {
-        HILOGE("dynamic_pointer_cast to VesControlProxy failed");
-        return MemRpc::StatusCode::InvalidArgument;
-    }
-
-    bootstrapChannel_ = std::make_shared<VesControlChannelAdapter>(proxy_);
+    const int32_t saId = (remote_ != nullptr && remote_->GetSaId() >= 0)
+                             ? remote_->GetSaId()
+                             : VES_CONTROL_SA_ID;
+    bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
+        control_,
+        [saId](bool forceReload) -> OHOS::sptr<IVesControl> {
+            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+            if (sam == nullptr) {
+                return nullptr;
+            }
+            auto remote = forceReload ? nullptr : sam->CheckSystemAbility(saId);
+            if (remote == nullptr) {
+                remote = sam->LoadSystemAbility(saId, CONTROL_RELOAD_TIMEOUT_MS);
+            }
+            if (remote == nullptr) {
+                return nullptr;
+            }
+            return OHOS::iface_cast<IVesControl>(remote);
+        });
     client_.SetBootstrapChannel(bootstrapChannel_);
     if (healthSnapshotCallback_) {
         bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
@@ -199,7 +212,7 @@ void VesClient::RequestRecovery(uint32_t delayMs) {
 void VesClient::Shutdown() {
     client_.Shutdown();
     bootstrapChannel_.reset();
-    proxy_.reset();
+    control_.reset();
 }
 
 bool VesClient::EngineDied() const {
@@ -215,9 +228,10 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
     }
 
     auto invoke = [&]() {
+        auto control = bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
         return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
             &client_,
-            proxy_,
+            control,
             VesOpcode::ScanFile,
             scanTask,
             reply,

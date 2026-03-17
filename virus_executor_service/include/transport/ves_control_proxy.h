@@ -55,26 +55,35 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
     std::mutex callbackMutex_;
 };
 
-class VesControlChannelAdapter : public MemRpc::IBootstrapChannel {
+class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
     using HealthSnapshotCallback = VesControlProxy::HealthSnapshotCallback;
+    using ControlLoader = std::function<OHOS::sptr<IVesControl>(bool forceReload)>;
 
-    explicit VesControlChannelAdapter(std::shared_ptr<VesControlProxy> proxy);
-    ~VesControlChannelAdapter() override = default;
+    explicit VesBootstrapChannel(OHOS::sptr<IVesControl> control,
+                                 ControlLoader controlLoader = {});
+    ~VesBootstrapChannel() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
+    [[nodiscard]] OHOS::sptr<IVesControl> CurrentControl();
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
-    std::shared_ptr<VesControlProxy> ReloadProxyLocked(bool forceReload);
+    OHOS::sptr<IVesControl> ReloadControlLocked(bool forceReload);
+    void RebindControlLocked(const OHOS::sptr<IVesControl>& nextControl);
+    void PublishHealthSnapshot(const VesHeartbeatReply& reply);
+    void NotifyEngineDeath(uint64_t sessionId);
 
     std::mutex mutex_;
-    std::shared_ptr<VesControlProxy> proxy_;
+    OHOS::sptr<IVesControl> control_;
+    ControlLoader controlLoader_;
+    OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
     HealthSnapshotCallback healthSnapshotCallback_;
     MemRpc::EngineDeathCallback deathCallback_;
+    uint64_t sessionId_ = 0;
 };
 
 }  // namespace VirusExecutorService

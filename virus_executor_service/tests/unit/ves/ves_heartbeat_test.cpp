@@ -72,6 +72,25 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStop();
 }
 
+TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->OnStart();
+
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
+
+    VesBootstrapChannel bootstrap(control);
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    const auto result = bootstrap.CheckHealth(handles.sessionId);
+    EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Healthy);
+    EXPECT_EQ(result.sessionId, handles.sessionId);
+
+    EXPECT_EQ(bootstrap.CloseSession(), MemRpc::StatusCode::Ok);
+    stub->OnStop();
+}
+
 TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     const std::string socketPath = "/tmp/virus_executor_service_health_" + std::to_string(getpid());
 
