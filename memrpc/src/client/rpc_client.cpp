@@ -504,8 +504,10 @@ struct RpcClient::Impl {
     switch (decision.action) {
       case RecoveryAction::Ignore:
         return;
-      case RecoveryAction::CloseSession:
+      case RecoveryAction::IdleClose:
         EnterIdleClosed();
+        return;
+      case RecoveryAction::ManualShutdown:
         return;
       case RecoveryAction::Restart:
         ScheduleRecovery(trigger, SessionOpenReason::RestartRecovery, decision.delayMs, fromEngineDeath);
@@ -615,7 +617,17 @@ struct RpcClient::Impl {
     recoveryPending_.store(false, std::memory_order_release);
     CloseLiveSession();
     TransitionLifecycle(ClientLifecycleState::IdleClosed, RecoveryTrigger::IdlePolicy,
-                        RecoveryAction::CloseSession);
+                        RecoveryAction::IdleClose);
+    recoveryCv_.notify_all();
+  }
+
+  void EnterDisconnected(RecoveryTrigger trigger) {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
+    cooldownUntilMs_.store(0, std::memory_order_release);
+    recoveryPending_.store(false, std::memory_order_release);
+    TransitionLifecycle(ClientLifecycleState::Disconnected, trigger, RecoveryAction::Ignore);
     recoveryCv_.notify_all();
   }
 
@@ -630,7 +642,7 @@ struct RpcClient::Impl {
     }
     CloseLiveSession();
     TransitionLifecycle(ClientLifecycleState::Closed, RecoveryTrigger::ManualShutdown,
-                        RecoveryAction::CloseSession);
+                        RecoveryAction::ManualShutdown);
     recoveryCv_.notify_all();
   }
 
@@ -687,6 +699,11 @@ struct RpcClient::Impl {
       lastAction = lastRecoveryAction_;
     }
     if (lifecycleState == ClientLifecycleState::IdleClosed) {
+      MarkNextSessionOpen(SessionOpenReason::DemandReconnect, RecoveryTrigger::DemandReconnect, 0);
+      recoveryPending_.store(true, std::memory_order_release);
+      TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::DemandReconnect,
+                          RecoveryAction::Ignore);
+    } else if (lifecycleState == ClientLifecycleState::Disconnected) {
       MarkNextSessionOpen(SessionOpenReason::DemandReconnect, RecoveryTrigger::DemandReconnect, 0);
       recoveryPending_.store(true, std::memory_order_release);
       TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::DemandReconnect,
@@ -1247,8 +1264,6 @@ struct RpcClient::Impl {
     CloseLiveSession();
     recoveryPending_.store(false, std::memory_order_release);
     cooldownUntilMs_.store(0, std::memory_order_release);
-    TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::EngineDeath,
-                        RecoveryAction::Ignore);
     FailAllPending(StatusCode::CrashedDuringExecution);
 
     RecoveryPolicy policy;
@@ -1257,11 +1272,16 @@ struct RpcClient::Impl {
       policy = recoveryPolicy_;
     }
     if (!policy.onEngineDeath) {
+      EnterDisconnected(RecoveryTrigger::EngineDeath);
       return;
     }
     EngineDeathReport report;
     report.deadSessionId = sessionId == 0 ? current : sessionId;
     const RecoveryDecision decision = policy.onEngineDeath(report);
+    if (decision.action == RecoveryAction::Ignore) {
+      EnterDisconnected(RecoveryTrigger::EngineDeath);
+      return;
+    }
     ApplyRecoveryDecision(decision, RecoveryTrigger::EngineDeath, true);
   }
 

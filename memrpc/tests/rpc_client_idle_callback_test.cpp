@@ -174,7 +174,7 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   });
   RecoveryPolicy policy;
   policy.onIdle = [](uint64_t) {
-    return RecoveryDecision{RecoveryAction::CloseSession, 0};
+    return RecoveryDecision{RecoveryAction::IdleClose, 0};
   };
   client.SetRecoveryPolicy(std::move(policy));
   ASSERT_EQ(client.Init(), StatusCode::Ok);

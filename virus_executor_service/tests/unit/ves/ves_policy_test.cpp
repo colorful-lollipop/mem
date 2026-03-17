@@ -409,6 +409,61 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
     UnloadControlService();
 }
 
+TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfiguredBudget) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_restart_long_cooldown_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<FakeHealthControlService>();
+    service->SetServicePathForTest(socketPath);
+    service->PrepareServerHandlesForTest();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    MemRpc::RpcServer server(service->serverHandles());
+    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
+        &server, static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+        [](const ScanTask& request) {
+            ScanFileReply reply;
+            reply.code = 0;
+            reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
+            return reply;
+        });
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClientOptions options;
+    options.engineDeathRestartDelayMs = 120;
+    VesClient client(remote, options);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    client.RequestRecovery(400);
+    const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
+    EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_TRUE(cooldownSnapshot.recoveryPending);
+    EXPECT_GE(cooldownSnapshot.cooldownRemainingMs, 250u);
+
+    ScanTask recoveredTask{"/data/recovered.bin"};
+    ScanFileReply reply;
+    const auto start = std::chrono::steady_clock::now();
+    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    EXPECT_EQ(reply.threatLevel, 1);
+    EXPECT_GE(elapsed.count(), 300);
+    EXPECT_LT(elapsed.count(), 1500);
+
+    client.Shutdown();
+    server.Stop();
+    service->OnStop();
+    UnloadControlService();
+}
+
 TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFallback) {
     UnloadControlService();
     const std::string socketPath =

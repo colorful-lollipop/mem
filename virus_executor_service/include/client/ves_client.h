@@ -64,7 +64,8 @@ class VesClient {
     void CacheRecoveryEvent(const MemRpc::RecoveryEventReport& report);
     bool WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline);
     [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetCachedRecoverySnapshot() const;
-    [[nodiscard]] std::chrono::milliseconds RecoveryWaitTimeout() const;
+    [[nodiscard]] std::chrono::milliseconds RecoveryWaitTimeout(
+        const MemRpc::RecoveryRuntimeSnapshot& snapshot) const;
 
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     OHOS::sptr<IVesControl> control_;

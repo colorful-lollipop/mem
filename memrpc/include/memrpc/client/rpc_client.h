@@ -122,7 +122,9 @@ struct EngineDeathReport {
 enum class RecoveryAction {  // NOLINT(performance-enum-size)
   Ignore,
   Restart,
-  CloseSession,
+  IdleClose,
+  // internal-only terminal transition used by explicit Shutdown()
+  ManualShutdown,
 };
 
 struct RecoveryDecision {
@@ -133,10 +135,11 @@ struct RecoveryDecision {
 enum class ClientLifecycleState : uint8_t {
   Uninitialized = 0,
   Active = 1,
-  Cooldown = 2,
-  IdleClosed = 3,
-  Recovering = 4,
-  Closed = 5,
+  Disconnected = 2,
+  Cooldown = 3,
+  IdleClosed = 4,
+  Recovering = 5,
+  Closed = 6,
 };
 
 enum class RecoveryTrigger : uint8_t {

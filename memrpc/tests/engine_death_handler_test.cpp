@@ -294,3 +294,43 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
   client.Shutdown();
   restarted_server.Stop();
 }
+
+TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect) {
+  constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(203);
+
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+    reply->status = MemRpc::StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+  MemRpc::RecoveryPolicy policy;
+  policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+  };
+  client.SetRecoveryPolicy(std::move(policy));
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcCall call;
+  call.opcode = kEchoOpcode;
+  MemRpc::RpcReply reply;
+  ASSERT_EQ(client.InvokeAsync(call).Wait(&reply), MemRpc::StatusCode::Ok);
+
+  bootstrap->SimulateEngineDeathForTest();
+
+  const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Disconnected);
+  EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+  EXPECT_FALSE(disconnectedSnapshot.recoveryPending);
+  EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
+
+  client.Shutdown();
+  server.Stop();
+}

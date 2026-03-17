@@ -126,7 +126,7 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options,
             if (idleMs < timeout) {
                 return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
             }
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::CloseSession, 0};
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::IdleClose, 0};
         };
     }
     return policy;
@@ -270,6 +270,8 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
 
     return InvokeWithRecovery([&]() {
         auto control = bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
+        const auto recoveryTimeoutMs =
+            static_cast<uint32_t>(RecoveryWaitTimeout(GetCachedRecoverySnapshot()).count());
         return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
             &client_,
             control,
@@ -278,7 +280,7 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
             reply,
             priority,
             execTimeoutMs,
-            static_cast<uint32_t>(RecoveryWaitTimeout().count()));
+            recoveryTimeoutMs);
     });
 }
 
@@ -288,17 +290,22 @@ MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::Sta
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const auto deadline = std::chrono::steady_clock::now() + RecoveryWaitTimeout();
+    auto deadline =
+        std::chrono::steady_clock::now() + RecoveryWaitTimeout(GetCachedRecoverySnapshot());
     MemRpc::StatusCode status = invoke();
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (true) {
         const auto snapshot = GetCachedRecoverySnapshot();
+        deadline = std::max(deadline,
+            std::chrono::steady_clock::now() + RecoveryWaitTimeout(snapshot));
         if (!ShouldRetryRecoveryStatus(status, snapshot)) {
+            return status;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
             return status;
         }
         WaitForRecoveryRetry(deadline);
         status = invoke();
     }
-    return status;
 }
 
 void VesClient::CacheRecoverySnapshot(const MemRpc::RecoveryRuntimeSnapshot& snapshot)
@@ -358,11 +365,13 @@ MemRpc::RecoveryRuntimeSnapshot VesClient::GetCachedRecoverySnapshot() const
     return recoverySnapshot_;
 }
 
-std::chrono::milliseconds VesClient::RecoveryWaitTimeout() const
+std::chrono::milliseconds VesClient::RecoveryWaitTimeout(
+    const MemRpc::RecoveryRuntimeSnapshot& snapshot) const
 {
     const uint32_t configuredDelayMs =
         std::max(options_.execTimeoutRestartDelayMs, options_.engineDeathRestartDelayMs);
-    return std::chrono::milliseconds(configuredDelayMs) + RECOVERY_RETRY_GRACE;
+    const uint32_t effectiveDelayMs = std::max(configuredDelayMs, snapshot.cooldownRemainingMs);
+    return std::chrono::milliseconds(effectiveDelayMs) + RECOVERY_RETRY_GRACE;
 }
 
 }  // namespace VirusExecutorService

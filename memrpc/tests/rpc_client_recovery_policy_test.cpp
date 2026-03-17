@@ -28,7 +28,8 @@ TEST(RpcClientRecoveryPolicyTest, AllHandlersCanBeSet) {
 
 TEST(RpcClientRecoveryPolicyTest, RecoveryActionEnum) {
   EXPECT_NE(MemRpc::RecoveryAction::Ignore, MemRpc::RecoveryAction::Restart);
-  EXPECT_NE(MemRpc::RecoveryAction::Restart, MemRpc::RecoveryAction::CloseSession);
+  EXPECT_NE(MemRpc::RecoveryAction::Restart, MemRpc::RecoveryAction::IdleClose);
+  EXPECT_NE(MemRpc::RecoveryAction::IdleClose, MemRpc::RecoveryAction::ManualShutdown);
 }
 
 TEST(RpcClientRecoveryPolicyTest, RecoveryDecisionDefaults) {
