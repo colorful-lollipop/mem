@@ -28,20 +28,22 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
                                              const Request& request,
                                              Reply* reply,
                                              MemRpc::Priority priority,
-                                             uint32_t execTimeoutMs) {
+                                             uint32_t execTimeoutMs,
+                                             uint32_t recoveryTimeoutMs) {
     std::vector<uint8_t> payload;
     if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
         return MemRpc::StatusCode::ProtocolMismatch;
     }
 
     if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
-        return MemRpc::InvokeTypedSync<Request, Reply>(
-            client,
-            static_cast<MemRpc::Opcode>(opcode),
-            request,
-            reply,
-            priority,
-            execTimeoutMs);
+        MemRpc::RpcCall call;
+        call.opcode = static_cast<MemRpc::Opcode>(opcode);
+        call.priority = priority;
+        call.waitForRecovery = true;
+        call.recoveryTimeoutMs = recoveryTimeoutMs;
+        call.execTimeoutMs = execTimeoutMs;
+        call.payload = std::move(payload);
+        return MemRpc::WaitAndDecode<Reply>(client->InvokeAsync(std::move(call)), reply);
     }
 
     if (control == nullptr) {
@@ -66,12 +68,21 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
                : MemRpc::StatusCode::ProtocolMismatch;
 }
 
-bool ShouldRetryAfterCooldown(MemRpc::StatusCode status, bool cooldownObserved)
+bool IsRecoveryTransientStatus(MemRpc::StatusCode status)
+{
+    return status == MemRpc::StatusCode::CooldownActive ||
+           status == MemRpc::StatusCode::PeerDisconnected;
+}
+
+bool ShouldRetryRecoveryStatus(MemRpc::StatusCode status, const MemRpc::RpcClientRuntimeStats& stats)
 {
     if (status == MemRpc::StatusCode::CooldownActive) {
         return true;
     }
-    return cooldownObserved && status == MemRpc::StatusCode::PeerDisconnected;
+    if (status == MemRpc::StatusCode::PeerDisconnected) {
+        return stats.recoveryPending;
+    }
+    return false;
 }
 
 }  // namespace
@@ -149,13 +160,18 @@ MemRpc::StatusCode VesClient::Init() {
             return OHOS::iface_cast<IVesControl>(remote);
         });
     client_.SetBootstrapChannel(bootstrapChannel_);
+    client_.SetSessionReadyCallback([this](const MemRpc::SessionReadyReport&) {
+        NotifyRecoveryWaiters();
+    });
     if (healthSnapshotCallback_) {
         bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
     }
 
     MemRpc::RecoveryPolicy policy;
-    policy.onFailure = [delay = options_.execTimeoutRestartDelayMs](const MemRpc::RpcFailure& failure) {
+    policy.onFailure = [this, delay = options_.execTimeoutRestartDelayMs](
+                           const MemRpc::RpcFailure& failure) {
         if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+            NotifyRecoveryWaiters();
             return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
         }
         return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
@@ -172,6 +188,7 @@ MemRpc::StatusCode VesClient::Init() {
                   static_cast<int>(suspect.lastState));
         }
         engineDied_ = true;
+        NotifyRecoveryWaiters();
         return MemRpc::RecoveryDecision{
             MemRpc::RecoveryAction::Restart,
             options_.engineDeathRestartDelayMs,
@@ -202,6 +219,7 @@ void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
 }
 
 void VesClient::RequestRecovery(uint32_t delayMs) {
+    NotifyRecoveryWaiters();
     client_.RequestExternalRecovery({
         MemRpc::ExternalRecoverySignal::ChannelHealthTimeout,
         0,
@@ -210,6 +228,7 @@ void VesClient::RequestRecovery(uint32_t delayMs) {
 }
 
 void VesClient::Shutdown() {
+    NotifyRecoveryWaiters();
     client_.Shutdown();
     bootstrapChannel_.reset();
     control_.reset();
@@ -227,7 +246,7 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    auto invoke = [&]() {
+    return InvokeWithRecovery([&]() {
         auto control = bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
         return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
             &client_,
@@ -236,31 +255,65 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
             scanTask,
             reply,
             priority,
-            execTimeoutMs);
-    };
+            execTimeoutMs,
+            static_cast<uint32_t>(RecoveryWaitTimeout().count()));
+    });
+}
 
-    MemRpc::StatusCode status = invoke();
-    bool cooldownObserved = status == MemRpc::StatusCode::CooldownActive;
-    if (!cooldownObserved) {
-        return status;
+MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke)
+{
+    if (!invoke) {
+        return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const uint32_t configuredDelayMs =
-        std::max(options_.execTimeoutRestartDelayMs, options_.engineDeathRestartDelayMs);
-    const auto deadline =
-        std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(configuredDelayMs) + RECOVERY_RETRY_GRACE;
-
+    const auto deadline = std::chrono::steady_clock::now() + RecoveryWaitTimeout();
+    MemRpc::StatusCode status = invoke();
     while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(RECOVERY_RETRY_POLL_INTERVAL);
-        status = invoke();
-        cooldownObserved = cooldownObserved || status == MemRpc::StatusCode::CooldownActive;
-        if (!ShouldRetryAfterCooldown(status, cooldownObserved)) {
+        const auto runtimeStats = client_.GetRuntimeStats();
+        if (!ShouldRetryRecoveryStatus(status, runtimeStats)) {
             return status;
         }
+        WaitForRecoveryRetry(deadline);
+        status = invoke();
     }
-
     return status;
+}
+
+void VesClient::NotifyRecoveryWaiters()
+{
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    ++recoveryEpoch_;
+    recoveryCv_.notify_all();
+}
+
+bool VesClient::WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline)
+{
+    std::unique_lock<std::mutex> lock(recoveryMutex_);
+    const uint64_t observedEpoch = recoveryEpoch_;
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+        return false;
+    }
+    const auto runtimeStats = client_.GetRuntimeStats();
+    const auto preciseCooldownWait = std::chrono::milliseconds(runtimeStats.cooldownRemainingMs);
+    const auto waitSlice = preciseCooldownWait > std::chrono::milliseconds::zero()
+                               ? preciseCooldownWait
+                               : runtimeStats.recoveryPending ? RECOVERY_RETRY_POLL_INTERVAL
+                                                              : std::chrono::milliseconds::zero();
+    if (waitSlice <= std::chrono::milliseconds::zero()) {
+        return false;
+    }
+    const auto wakeTime = std::min(deadline, now + waitSlice);
+    return recoveryCv_.wait_until(lock, wakeTime, [&] {
+        return recoveryEpoch_ != observedEpoch;
+    });
+}
+
+std::chrono::milliseconds VesClient::RecoveryWaitTimeout() const
+{
+    const uint32_t configuredDelayMs =
+        std::max(options_.execTimeoutRestartDelayMs, options_.engineDeathRestartDelayMs);
+    return std::chrono::milliseconds(configuredDelayMs) + RECOVERY_RETRY_GRACE;
 }
 
 }  // namespace VirusExecutorService

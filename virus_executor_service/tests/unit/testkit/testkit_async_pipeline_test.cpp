@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <iomanip>
@@ -61,12 +62,13 @@ struct PipelineResult {
 }  // namespace
 
 TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
-    const int defaultDurationMs = ThreadSanitizerEnabled() ? 250 : 1000;
-    const int defaultWarmupMs = ThreadSanitizerEnabled() ? 50 : 200;
+    const int defaultDurationMs = ThreadSanitizerEnabled() ? 250 : 500;
+    const int defaultWarmupMs = ThreadSanitizerEnabled() ? 50 : 100;
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", defaultDurationMs);
     const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", defaultWarmupMs);
 
-    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+    const MemRpc::DevBootstrapConfig bootstrapConfig;
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(bootstrapConfig);
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
@@ -110,7 +112,12 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
     TestkitAsyncClient asyncClient(bootstrap);
     ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
 
-    const std::vector<int> batchSizes = {1, 8, 32, 64};
+    const int requestRingSize = static_cast<int>(bootstrapConfig.normalRingSize);
+    const std::vector<int> batchSizes = {
+        1,
+        std::max(2, requestRingSize / 2),
+        std::max(2, requestRingSize),
+    };
     std::vector<PipelineResult> results;
 
     std::cout << "\n=== Testkit Async Pipeline Throughput ===" << std::endl;

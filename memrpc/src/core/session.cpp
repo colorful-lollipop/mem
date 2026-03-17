@@ -142,9 +142,9 @@ Session::~Session() {
 
 StatusCode Session::MapAndValidateHeader(int shmFd) {
   LayoutConfig config;
-  config.highRingSize = 32;
-  config.normalRingSize = 32;
-  config.responseRingSize = 64;
+  config.highRingSize = 8;
+  config.normalRingSize = 8;
+  config.responseRingSize = 8;
   config.maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   config.maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
 

@@ -24,6 +24,7 @@ namespace {
 
 constexpr auto kHealthCheckPeriod = std::chrono::milliseconds(100);
 constexpr auto kIdlePollPeriod = std::chrono::milliseconds(100);
+constexpr auto kRecoveryRetryPollPeriod = std::chrono::milliseconds(20);
 
 ReplayHint ReplayHintForStatus(StatusCode status) {
   switch (status) {
@@ -49,6 +50,14 @@ FailureStage FailureStageForStatus(StatusCode status) {
 
 bool IsHighPriority(const RpcCall& call) {
   return call.priority == Priority::High;
+}
+
+std::chrono::milliseconds CooldownRemaining(uint64_t cooldownUntilMs) {
+  const uint64_t nowMs = MonotonicNowMs64();
+  if (cooldownUntilMs <= nowMs) {
+    return std::chrono::milliseconds::zero();
+  }
+  return std::chrono::milliseconds(cooldownUntilMs - nowMs);
 }
 
 }  // namespace
@@ -207,6 +216,7 @@ struct RpcClient::Impl {
   std::unordered_map<uint64_t, PendingRequest> pending_;
   std::condition_variable submitCv_;
   std::condition_variable watchdogCv_;
+  std::condition_variable recoveryCv_;
   std::thread submitThread_;
   std::thread responseThread_;
   std::thread watchdogThread_;
@@ -214,6 +224,7 @@ struct RpcClient::Impl {
   std::atomic<bool> shuttingDown{false};
   std::atomic<bool> clientClosed_{false};
   std::atomic<bool> submitterWaitingForCredit_{false};
+  std::atomic<bool> recoveryPending_{false};
   std::shared_ptr<const SessionSnapshot> sessionSnapshot_ = std::make_shared<SessionSnapshot>();
   std::atomic<uint64_t> nextRequestId_{1};
   std::atomic<uint64_t> cooldownUntilMs_{0};
@@ -291,10 +302,12 @@ struct RpcClient::Impl {
     report.previousSessionId = lastClosedSessionId_.load(std::memory_order_acquire);
     report.generation = sessionGeneration_.fetch_add(1, std::memory_order_acq_rel) + 1;
     report.monotonicMs = MonotonicNowMs64();
+    recoveryPending_.store(false, std::memory_order_release);
 
     if (callback) {
       callback(report);
     }
+    recoveryCv_.notify_all();
   }
 
   void InstallDeathCallbackLocked() {
@@ -372,6 +385,9 @@ struct RpcClient::Impl {
   }
 
   void ApplyRecoveryDecision(const RecoveryDecision& decision, bool fromEngineDeath) {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     switch (decision.action) {
       case RecoveryAction::Ignore:
         return;
@@ -482,6 +498,14 @@ struct RpcClient::Impl {
     return MonotonicNowMs64() < cooldownUntilMs_.load(std::memory_order_acquire);
   }
 
+  std::chrono::milliseconds CooldownRemaining() const {
+    return ::MemRpc::CooldownRemaining(cooldownUntilMs_.load(std::memory_order_acquire));
+  }
+
+  bool RecoveryPending() const {
+    return recoveryPending_.load(std::memory_order_acquire);
+  }
+
   StatusCode EnsureLiveSession() {
     if (clientClosed_.load(std::memory_order_acquire)) {
       return StatusCode::ClientClosed;
@@ -514,6 +538,7 @@ struct RpcClient::Impl {
       std::lock_guard<std::mutex> lock(watchdogMutex_);
       watchdogCv_.notify_all();
     }
+    recoveryCv_.notify_all();
     const auto snapshot = LoadSessionSnapshot();
     if (snapshot->reqCreditEventFd >= 0) {
       (void)SignalEventFd(snapshot->reqCreditEventFd);
@@ -535,6 +560,9 @@ struct RpcClient::Impl {
   void Shutdown() {
     clientClosed_.store(true, std::memory_order_release);
     shuttingDown.store(true, std::memory_order_release);
+    recoveryPending_.store(false, std::memory_order_release);
+    cooldownUntilMs_.store(0, std::memory_order_release);
+    recoveryCv_.notify_all();
     StopThreads();
     CloseLiveSession();
     FailAllPending(StatusCode::PeerDisconnected);
@@ -572,6 +600,64 @@ struct RpcClient::Impl {
       return waitResult;
     }
     return PollEventFdResult::Failed;
+  }
+
+  StatusCode WaitForRecovery(std::chrono::steady_clock::time_point deadline) {
+    std::mutex waitMutex;
+    std::unique_lock<std::mutex> lock(waitMutex);
+    while (running_.load(std::memory_order_acquire)) {
+      if (clientClosed_.load(std::memory_order_acquire)) {
+        return StatusCode::ClientClosed;
+      }
+
+      const uint64_t cooldownUntil = cooldownUntilMs_.load(std::memory_order_acquire);
+      const uint64_t nowMs = MonotonicNowMs64();
+      if (nowMs >= cooldownUntil) {
+        return StatusCode::Ok;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (deadline != std::chrono::steady_clock::time_point::max() && now >= deadline) {
+        return StatusCode::CooldownActive;
+      }
+
+      auto wakeAt = now + std::chrono::milliseconds(cooldownUntil - nowMs);
+      if (deadline != std::chrono::steady_clock::time_point::max()) {
+        wakeAt = std::min(wakeAt, deadline);
+      }
+      recoveryCv_.wait_until(lock, wakeAt);
+    }
+    return StatusCode::PeerDisconnected;
+  }
+
+  StatusCode WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline) {
+    std::mutex waitMutex;
+    std::unique_lock<std::mutex> lock(waitMutex);
+    while (running_.load(std::memory_order_acquire)) {
+      if (clientClosed_.load(std::memory_order_acquire)) {
+        return StatusCode::ClientClosed;
+      }
+      if (!RecoveryPending()) {
+        return StatusCode::PeerDisconnected;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (deadline != std::chrono::steady_clock::time_point::max() && now >= deadline) {
+        return StatusCode::PeerDisconnected;
+      }
+
+      auto waitFor = kRecoveryRetryPollPeriod;
+      if (deadline != std::chrono::steady_clock::time_point::max()) {
+        waitFor = std::min(waitFor,
+                           std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now));
+      }
+      if (waitFor <= std::chrono::milliseconds::zero()) {
+        return StatusCode::PeerDisconnected;
+      }
+      recoveryCv_.wait_for(lock, waitFor);
+      return StatusCode::Ok;
+    }
+    return StatusCode::PeerDisconnected;
   }
 
   StatusCode TryPushRequest(const PendingSubmit& submit) {
@@ -631,10 +717,33 @@ struct RpcClient::Impl {
     const auto deadline = infiniteWait ? std::chrono::steady_clock::time_point::max()
                                        : std::chrono::steady_clock::now() +
                                              std::chrono::milliseconds(submit.call.admissionTimeoutMs);
+    const bool waitForRecovery = submit.call.waitForRecovery;
+    const bool infiniteRecoveryWait = submit.call.recoveryTimeoutMs == 0;
+    const auto recoveryDeadline =
+        !waitForRecovery ? std::chrono::steady_clock::time_point::max()
+        : infiniteRecoveryWait ? std::chrono::steady_clock::time_point::max()
+                               : std::chrono::steady_clock::now() +
+                                     std::chrono::milliseconds(submit.call.recoveryTimeoutMs);
     PendingInfo info = MakePendingInfo(submit);
 
     while (running_.load(std::memory_order_acquire)) {
       const StatusCode sessionStatus = EnsureLiveSession();
+      if (sessionStatus == StatusCode::CooldownActive && waitForRecovery) {
+        const StatusCode waitStatus = WaitForRecovery(recoveryDeadline);
+        if (waitStatus == StatusCode::Ok) {
+          continue;
+        }
+        FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
+        return;
+      }
+      if (sessionStatus == StatusCode::PeerDisconnected && waitForRecovery) {
+        const StatusCode waitStatus = WaitForRecoveryRetry(recoveryDeadline);
+        if (waitStatus == StatusCode::Ok) {
+          continue;
+        }
+        FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
+        return;
+      }
       if (sessionStatus != StatusCode::Ok) {
         FailAndResolve(info, sessionStatus, FailureStage::Admission, submit.future);
         return;
@@ -863,6 +972,9 @@ struct RpcClient::Impl {
   }
 
   void MaybeRunIdlePolicy() {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     RecoveryPolicy policy;
     {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
@@ -894,6 +1006,9 @@ struct RpcClient::Impl {
   }
 
   void MaybeRunHealthCheck() {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     std::shared_ptr<IBootstrapChannel> bootstrap;
     {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
@@ -941,8 +1056,13 @@ struct RpcClient::Impl {
   }
 
   void BeginRestart(uint32_t delayMs, bool fromEngineDeath) {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     MarkNextSessionOpen(SessionOpenReason::RestartRecovery, delayMs);
+    recoveryPending_.store(true, std::memory_order_release);
     cooldownUntilMs_.store(MonotonicNowMs64() + delayMs, std::memory_order_release);
+    recoveryCv_.notify_all();
     CloseLiveSession();
     if (!fromEngineDeath) {
       FailAllPending(StatusCode::PeerDisconnected);
@@ -953,6 +1073,9 @@ struct RpcClient::Impl {
   }
 
   void HandleEngineDeath(uint64_t sessionId) {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     const uint64_t current = CurrentSessionId();
     if (sessionId != 0 && current != 0 && sessionId != current) {
       return;
@@ -976,12 +1099,17 @@ struct RpcClient::Impl {
   }
 
   void RequestExternalRecovery(ExternalRecoveryRequest request) {
+    if (clientClosed_.load(std::memory_order_acquire)) {
+      return;
+    }
     const uint64_t current = CurrentSessionId();
     if (request.sessionId != 0 && current != 0 && request.sessionId != current) {
       return;
     }
     MarkNextSessionOpen(SessionOpenReason::ExternalRecovery, request.delayMs);
+    recoveryPending_.store(true, std::memory_order_release);
     cooldownUntilMs_.store(MonotonicNowMs64() + request.delayMs, std::memory_order_release);
+    recoveryCv_.notify_all();
     CloseLiveSession();
     FailAllPending(StatusCode::PeerDisconnected);
     if (request.delayMs == 0) {
@@ -1045,6 +1173,8 @@ struct RpcClient::Impl {
       }
     }
     stats.waitingForRequestCredit = submitterWaitingForCredit_.load(std::memory_order_acquire);
+    stats.recoveryPending = RecoveryPending();
+    stats.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemaining().count());
     return stats;
   }
 };
@@ -1083,6 +1213,7 @@ StatusCode RpcClient::Init() {
     return impl_->EnsureLiveSession();
   }
   impl_->clientClosed_.store(false, std::memory_order_release);
+  impl_->recoveryPending_.store(false, std::memory_order_release);
   impl_->cooldownUntilMs_.store(0, std::memory_order_release);
   impl_->lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
   impl_->PrepareForInitOpen();

@@ -9,8 +9,8 @@ namespace MemRpc {
 
 // 共享内存头和 ring 布局版本号；双方必须严格一致。
 inline constexpr uint32_t SHARED_MEMORY_MAGIC = 0x4d454d52U;
-inline constexpr uint32_t PROTOCOL_VERSION = 4U;
-inline constexpr uint32_t RING_ENTRY_BYTES = 512U;
+inline constexpr uint32_t PROTOCOL_VERSION = 5U;
+inline constexpr uint32_t RING_ENTRY_BYTES = 8192U;
 
 // Framework-level opcode type. Applications define their own typed enums and
 // cast to Opcode when building RpcCall / registering handlers.

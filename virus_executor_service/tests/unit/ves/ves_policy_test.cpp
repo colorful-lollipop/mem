@@ -10,6 +10,7 @@
 #include "client/ves_client.h"
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
+#include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
 #include "memrpc/server/typed_handler.h"
 #include "service/virus_executor_service.h"
@@ -104,9 +105,32 @@ class FakeHealthControlService final : public OHOS::SystemAbility,
         return MemRpc::StatusCode::Ok;
     }
 
-    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override
     {
-        return MemRpc::StatusCode::InvalidArgument;
+        if (!sessionOpen_.load()) {
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+
+        reply = {};
+        if (static_cast<VesOpcode>(request.opcode) != VesOpcode::ScanFile) {
+            reply.status = MemRpc::StatusCode::InvalidArgument;
+            return MemRpc::StatusCode::Ok;
+        }
+
+        ScanTask scanTask;
+        if (!MemRpc::DecodeMessage<ScanTask>(request.payload, &scanTask)) {
+            reply.status = MemRpc::StatusCode::ProtocolMismatch;
+            return MemRpc::StatusCode::Ok;
+        }
+
+        ScanFileReply scanReply;
+        scanReply.code = 0;
+        scanReply.threatLevel = scanTask.path.find("recovered") != std::string::npos ? 1 : 0;
+        reply.status = MemRpc::StatusCode::Ok;
+        if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &reply.payload)) {
+            reply.status = MemRpc::StatusCode::EngineInternalError;
+        }
+        return MemRpc::StatusCode::Ok;
     }
 
     void OnStart() override {}
@@ -365,6 +389,55 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
 
     client.Shutdown();
     server.Stop();
+    service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFallback) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_restart_anycall_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<FakeHealthControlService>();
+    service->SetServicePathForTest(socketPath);
+    service->PrepareServerHandlesForTest();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClientOptions options;
+    options.engineDeathRestartDelayMs = 120;
+    VesClient client(remote, options);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    client.RequestRecovery(120);
+
+    std::thread reopenThread([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        MemRpc::BootstrapHandles reopened{};
+        if (service->OpenSession(reopened) == MemRpc::StatusCode::Ok) {
+            CloseHandles(reopened);
+        }
+    });
+
+    const std::string longPath =
+        "/data/recovered_" + std::string(MemRpc::DEFAULT_MAX_REQUEST_BYTES + 64, 'b');
+    ScanTask recoveredTask{longPath};
+    ScanFileReply reply;
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    EXPECT_EQ(reply.threatLevel, 1);
+    EXPECT_GE(elapsed.count(), 80);
+    EXPECT_LT(elapsed.count(), 1000);
+
+    reopenThread.join();
+    client.Shutdown();
     service->OnStop();
     UnloadControlService();
 }

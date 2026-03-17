@@ -11,9 +11,9 @@
 namespace MemRpc {
 
 struct LayoutConfig {
-  uint32_t highRingSize = 32;
-  uint32_t normalRingSize = 32;
-  uint32_t responseRingSize = 64;
+  uint32_t highRingSize = 8;
+  uint32_t normalRingSize = 8;
+  uint32_t responseRingSize = 8;
   uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
 };
@@ -64,9 +64,9 @@ struct SharedMemoryHeader {
   uint32_t sessionState = 0;
   uint32_t clientAttached = 0;
   uint32_t activeClientPid = 0;
-  uint32_t highRingSize = 32;
-  uint32_t normalRingSize = 32;
-  uint32_t responseRingSize = 64;
+  uint32_t highRingSize = 8;
+  uint32_t normalRingSize = 8;
+  uint32_t responseRingSize = 8;
   uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
   uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
   RingCursor highRing{};

@@ -2,8 +2,12 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "iremote_object.h"
@@ -55,6 +59,11 @@ class VesClient {
     [[nodiscard]] bool EngineDied() const;
 
  private:
+    MemRpc::StatusCode InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke);
+    void NotifyRecoveryWaiters();
+    bool WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline);
+    [[nodiscard]] std::chrono::milliseconds RecoveryWaitTimeout() const;
+
     OHOS::sptr<OHOS::IRemoteObject> remote_;
     OHOS::sptr<IVesControl> control_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
@@ -62,6 +71,9 @@ class VesClient {
     VesClientOptions options_;
     HealthSnapshotCallback healthSnapshotCallback_;
     std::atomic<bool> engineDied_{false};
+    mutable std::mutex recoveryMutex_;
+    std::condition_variable recoveryCv_;
+    uint64_t recoveryEpoch_ = 0;
 };
 
 }  // namespace VirusExecutorService

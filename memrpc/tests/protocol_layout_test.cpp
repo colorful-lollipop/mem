@@ -8,8 +8,8 @@
 
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable) {
   EXPECT_EQ(MemRpc::SHARED_MEMORY_MAGIC, 0x4d454d52U);
-  EXPECT_EQ(MemRpc::PROTOCOL_VERSION, 4U);
-  EXPECT_EQ(MemRpc::RING_ENTRY_BYTES, 512U);
+  EXPECT_EQ(MemRpc::PROTOCOL_VERSION, 5U);
+  EXPECT_EQ(MemRpc::RING_ENTRY_BYTES, 8192U);
   EXPECT_EQ(MemRpc::DEFAULT_MAX_REQUEST_BYTES,
             static_cast<uint32_t>(MemRpc::RequestRingEntry::INLINE_PAYLOAD_BYTES));
   EXPECT_EQ(MemRpc::DEFAULT_MAX_RESPONSE_BYTES,
@@ -29,9 +29,9 @@ TEST(ProtocolLayoutTest, InlinePayloadLimitsStayWithinEntryBudget) {
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {
   MemRpc::DevBootstrapConfig config;
-  EXPECT_EQ(config.highRingSize, 32U);
-  EXPECT_EQ(config.normalRingSize, 32U);
-  EXPECT_EQ(config.responseRingSize, 64U);
+  EXPECT_EQ(config.highRingSize, 8U);
+  EXPECT_EQ(config.normalRingSize, 8U);
+  EXPECT_EQ(config.responseRingSize, 8U);
   EXPECT_EQ(config.maxRequestBytes, MemRpc::DEFAULT_MAX_REQUEST_BYTES);
   EXPECT_EQ(config.maxResponseBytes, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
 }
