@@ -68,21 +68,68 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
                : MemRpc::StatusCode::ProtocolMismatch;
 }
 
-bool IsRecoveryTransientStatus(MemRpc::StatusCode status)
+bool ShouldRetryRecoveryStatus(MemRpc::StatusCode status,
+                               const MemRpc::RecoveryRuntimeSnapshot& snapshot)
 {
-    return status == MemRpc::StatusCode::CooldownActive ||
-           status == MemRpc::StatusCode::PeerDisconnected;
-}
-
-bool ShouldRetryRecoveryStatus(MemRpc::StatusCode status, const MemRpc::RpcClientRuntimeStats& stats)
-{
+    if (snapshot.terminalManualShutdown ||
+        snapshot.lifecycleState == MemRpc::ClientLifecycleState::Closed) {
+        return false;
+    }
     if (status == MemRpc::StatusCode::CooldownActive) {
-        return true;
+        return snapshot.lifecycleState == MemRpc::ClientLifecycleState::Cooldown ||
+               snapshot.lifecycleState == MemRpc::ClientLifecycleState::Recovering;
     }
     if (status == MemRpc::StatusCode::PeerDisconnected) {
-        return stats.recoveryPending;
+        return snapshot.recoveryPending ||
+               snapshot.lifecycleState == MemRpc::ClientLifecycleState::Recovering ||
+               snapshot.lifecycleState == MemRpc::ClientLifecycleState::Cooldown;
     }
     return false;
+}
+
+MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options,
+                                           const std::function<void()>& notifyRecoveryState)
+{
+    MemRpc::RecoveryPolicy policy;
+    policy.onFailure = [notifyRecoveryState, delay = options.execTimeoutRestartDelayMs](
+                           const MemRpc::RpcFailure& failure) {
+        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+            if (notifyRecoveryState) {
+                notifyRecoveryState();
+            }
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
+        }
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+    };
+    policy.onEngineDeath = [notifyRecoveryState, restartDelayMs = options.engineDeathRestartDelayMs](
+                               const MemRpc::EngineDeathReport& report) {
+        HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
+               static_cast<unsigned long long>(report.deadSessionId),
+               report.safeToReplayCount,
+               report.poisonPillSuspects.size());
+        for (const auto& suspect : report.poisonPillSuspects) {
+            HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
+                   static_cast<unsigned long long>(suspect.requestId),
+                   static_cast<unsigned>(suspect.opcode),
+                   static_cast<int>(suspect.lastState));
+        }
+        if (notifyRecoveryState) {
+            notifyRecoveryState();
+        }
+        return MemRpc::RecoveryDecision{
+            MemRpc::RecoveryAction::Restart,
+            restartDelayMs,
+        };
+    };
+    if (options.idleShutdownTimeoutMs > 0) {
+        policy.onIdle = [timeout = options.idleShutdownTimeoutMs](uint64_t idleMs) {
+            if (idleMs < timeout) {
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+            }
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::CloseSession, 0};
+        };
+    }
+    return policy;
 }
 
 }  // namespace
@@ -161,50 +208,20 @@ MemRpc::StatusCode VesClient::Init() {
         });
     client_.SetBootstrapChannel(bootstrapChannel_);
     client_.SetSessionReadyCallback([this](const MemRpc::SessionReadyReport&) {
-        NotifyRecoveryWaiters();
+        CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
+    });
+    client_.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report) {
+        CacheRecoveryEvent(report);
     });
     if (healthSnapshotCallback_) {
         bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
     }
-
-    MemRpc::RecoveryPolicy policy;
-    policy.onFailure = [this, delay = options_.execTimeoutRestartDelayMs](
-                           const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            NotifyRecoveryWaiters();
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    policy.onEngineDeath = [this](const MemRpc::EngineDeathReport& report) {
-        HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
-              static_cast<unsigned long long>(report.deadSessionId),
-              report.safeToReplayCount,
-              report.poisonPillSuspects.size());
-        for (const auto& suspect : report.poisonPillSuspects) {
-            HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
-                  static_cast<unsigned long long>(suspect.requestId),
-                  static_cast<unsigned>(suspect.opcode),
-                  static_cast<int>(suspect.lastState));
-        }
-        engineDied_ = true;
-        NotifyRecoveryWaiters();
-        return MemRpc::RecoveryDecision{
-            MemRpc::RecoveryAction::Restart,
-            options_.engineDeathRestartDelayMs,
-        };
-    };
-    if (options_.idleShutdownTimeoutMs > 0) {
-        policy.onIdle = [timeout = options_.idleShutdownTimeoutMs](uint64_t idleMs) {
-            if (idleMs < timeout) {
-                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-            }
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::CloseSession, 0};
-        };
-    }
-
-    client_.SetRecoveryPolicy(std::move(policy));
-    return client_.Init();
+    client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_, [this]() {
+        CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
+    }));
+    const MemRpc::StatusCode status = client_.Init();
+    CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
+    return status;
 }
 
 void VesClient::SetEventCallback(EventCallback callback) {
@@ -219,23 +236,28 @@ void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback) {
 }
 
 void VesClient::RequestRecovery(uint32_t delayMs) {
-    NotifyRecoveryWaiters();
     client_.RequestExternalRecovery({
         MemRpc::ExternalRecoverySignal::ChannelHealthTimeout,
         0,
         delayMs,
     });
+    CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
 }
 
 void VesClient::Shutdown() {
-    NotifyRecoveryWaiters();
     client_.Shutdown();
+    CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
     bootstrapChannel_.reset();
     control_.reset();
 }
 
 bool VesClient::EngineDied() const {
-    return engineDied_.load();
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    return lastObservedTrigger_ == MemRpc::RecoveryTrigger::EngineDeath;
+}
+
+MemRpc::RecoveryRuntimeSnapshot VesClient::GetRecoveryRuntimeSnapshot() const {
+    return GetCachedRecoverySnapshot();
 }
 
 MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
@@ -269,8 +291,8 @@ MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::Sta
     const auto deadline = std::chrono::steady_clock::now() + RecoveryWaitTimeout();
     MemRpc::StatusCode status = invoke();
     while (std::chrono::steady_clock::now() < deadline) {
-        const auto runtimeStats = client_.GetRuntimeStats();
-        if (!ShouldRetryRecoveryStatus(status, runtimeStats)) {
+        const auto snapshot = GetCachedRecoverySnapshot();
+        if (!ShouldRetryRecoveryStatus(status, snapshot)) {
             return status;
         }
         WaitForRecoveryRetry(deadline);
@@ -279,34 +301,61 @@ MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::Sta
     return status;
 }
 
-void VesClient::NotifyRecoveryWaiters()
+void VesClient::CacheRecoverySnapshot(const MemRpc::RecoveryRuntimeSnapshot& snapshot)
 {
     std::lock_guard<std::mutex> lock(recoveryMutex_);
-    ++recoveryEpoch_;
+    recoverySnapshot_ = snapshot;
+    if (snapshot.lastTrigger != MemRpc::RecoveryTrigger::Unknown &&
+        snapshot.lastTrigger != MemRpc::RecoveryTrigger::DemandReconnect) {
+        lastObservedTrigger_ = snapshot.lastTrigger;
+    }
+    ++recoveryStateVersion_;
+    recoveryCv_.notify_all();
+}
+
+void VesClient::CacheRecoveryEvent(const MemRpc::RecoveryEventReport& report)
+{
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    lastRecoveryEvent_ = report;
+    hasRecoveryEvent_ = true;
+    if (report.trigger != MemRpc::RecoveryTrigger::Unknown &&
+        report.trigger != MemRpc::RecoveryTrigger::DemandReconnect) {
+        lastObservedTrigger_ = report.trigger;
+    }
+    recoverySnapshot_ = client_.GetRecoveryRuntimeSnapshot();
+    ++recoveryStateVersion_;
     recoveryCv_.notify_all();
 }
 
 bool VesClient::WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline)
 {
     std::unique_lock<std::mutex> lock(recoveryMutex_);
-    const uint64_t observedEpoch = recoveryEpoch_;
+    const uint64_t observedVersion = recoveryStateVersion_;
     const auto now = std::chrono::steady_clock::now();
     if (now >= deadline) {
         return false;
     }
-    const auto runtimeStats = client_.GetRuntimeStats();
-    const auto preciseCooldownWait = std::chrono::milliseconds(runtimeStats.cooldownRemainingMs);
-    const auto waitSlice = preciseCooldownWait > std::chrono::milliseconds::zero()
-                               ? preciseCooldownWait
-                               : runtimeStats.recoveryPending ? RECOVERY_RETRY_POLL_INTERVAL
-                                                              : std::chrono::milliseconds::zero();
+    const auto preciseCooldownWait = std::chrono::milliseconds(recoverySnapshot_.cooldownRemainingMs);
+    const auto waitSlice =
+        preciseCooldownWait > std::chrono::milliseconds::zero()
+            ? preciseCooldownWait
+            : (recoverySnapshot_.lifecycleState == MemRpc::ClientLifecycleState::Cooldown ||
+                       recoverySnapshot_.lifecycleState == MemRpc::ClientLifecycleState::Recovering
+                   ? RECOVERY_RETRY_POLL_INTERVAL
+                   : std::chrono::milliseconds::zero());
     if (waitSlice <= std::chrono::milliseconds::zero()) {
         return false;
     }
     const auto wakeTime = std::min(deadline, now + waitSlice);
     return recoveryCv_.wait_until(lock, wakeTime, [&] {
-        return recoveryEpoch_ != observedEpoch;
+        return recoveryStateVersion_ != observedVersion;
     });
+}
+
+MemRpc::RecoveryRuntimeSnapshot VesClient::GetCachedRecoverySnapshot() const
+{
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    return recoverySnapshot_;
 }
 
 std::chrono::milliseconds VesClient::RecoveryWaitTimeout() const

@@ -15,25 +15,41 @@ namespace VirusExecutorService {
 
 namespace {
 
+constexpr uint32_t LONG_RUNNING_REQUEST_THRESHOLD_MS = 100;
+
 bool IsTestkitFaultInjectionEnabled() {
     const char* value = std::getenv("VES_ENABLE_TESTKIT_FAULTS");
     return value != nullptr && value[0] == '1' && value[1] == '\0';
 }
 
-void PopulateHealthyReply(const VesHealthSnapshot& snapshot, uint64_t sessionId,
+void PopulateHealthyReply(const MemRpc::RpcServerRuntimeStats& stats, uint64_t sessionId,
                           VesHeartbeatReply* reply)
 {
     if (reply == nullptr) {
         return;
     }
     reply->sessionId = sessionId;
-    reply->status = snapshot.status;
-    reply->reasonCode = snapshot.reasonCode;
-    reply->inFlight = snapshot.inFlight;
-    reply->lastTaskAgeMs = snapshot.lastTaskAgeMs;
-    std::snprintf(reply->currentTask, sizeof(reply->currentTask), "%s",
-                  snapshot.currentTask.c_str());
-    reply->flags = snapshot.flags | VES_HEARTBEAT_FLAG_HAS_SESSION;
+    reply->flags = VES_HEARTBEAT_FLAG_HAS_SESSION | VES_HEARTBEAT_FLAG_INITIALIZED;
+    reply->inFlight = stats.activeRequestExecutions;
+    reply->lastTaskAgeMs = stats.oldestExecutionAgeMs;
+    if (stats.activeRequestExecutions == 0) {
+        reply->status = static_cast<uint32_t>(VesHeartbeatStatus::OkIdle);
+        reply->reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::None);
+        std::snprintf(reply->currentTask, sizeof(reply->currentTask), "%s", "idle");
+        return;
+    }
+
+    reply->flags |= VES_HEARTBEAT_FLAG_BUSY;
+    std::snprintf(reply->currentTask, sizeof(reply->currentTask), "%s", "active");
+    if (stats.oldestExecutionAgeMs >= LONG_RUNNING_REQUEST_THRESHOLD_MS) {
+        reply->status = static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning);
+        reply->reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning);
+        reply->flags |= VES_HEARTBEAT_FLAG_LONG_RUNNING;
+        return;
+    }
+
+    reply->status = static_cast<uint32_t>(VesHeartbeatStatus::OkBusy);
+    reply->reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::Busy);
 }
 
 }  // namespace
@@ -95,7 +111,6 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat)
         std::snprintf(heartbeat.currentTask, sizeof(heartbeat.currentTask), "%s", "idle");
         return MemRpc::StatusCode::Ok;
     }
-    const auto snapshot = service_.GetHealthSnapshot();
     const uint64_t sessionId = sessionService->session_id();
     if (!service_.initialized()) {
         heartbeat.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError);
@@ -108,7 +123,7 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat)
         heartbeat.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::NoSession);
         return MemRpc::StatusCode::Ok;
     }
-    PopulateHealthyReply(snapshot, sessionId, &heartbeat);
+    PopulateHealthyReply(sessionService->GetRuntimeStats(), sessionId, &heartbeat);
     return MemRpc::StatusCode::Ok;
 }
 

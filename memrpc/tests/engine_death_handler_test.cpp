@@ -190,6 +190,10 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean) {
   client.Shutdown();
   const auto elapsed = std::chrono::steady_clock::now() - start;
   EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 2000);
+  const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
+  EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
+  EXPECT_TRUE(snapshot.terminalManualShutdown);
 }
 
 TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpires) {
@@ -234,6 +238,11 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
   bootstrap->SimulateEngineDeathForTest();
   server.Stop();
 
+  const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
+  EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+  EXPECT_TRUE(cooldownSnapshot.recoveryPending);
+
   auto blocked_future = client.InvokeAsync(call);
   MemRpc::RpcReply blocked_reply;
   EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::CooldownActive);
@@ -250,6 +259,9 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
   auto recovered_future = client.InvokeAsync(call);
   MemRpc::RpcReply recovered_reply;
   EXPECT_EQ(recovered_future.Wait(&recovered_reply), MemRpc::StatusCode::Ok);
+  const auto recoveredSnapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(recoveredSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
+  EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
 
   const auto callback_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
   while (std::chrono::steady_clock::now() < callback_deadline) {

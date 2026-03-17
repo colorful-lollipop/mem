@@ -4,10 +4,40 @@
 
 namespace VirusExecutorService::testkit {
 
+namespace {
+
+ReplayDecision DefaultReplayDecision(const FailedCallRecord& record)
+{
+    if (record.runtimeSnapshot.terminalManualShutdown ||
+        record.runtimeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Closed) {
+        return ReplayDecision::Skip;
+    }
+    if (record.hasRecoveryEvent &&
+        record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::ManualShutdown) {
+        return ReplayDecision::Skip;
+    }
+    if (record.hasRecoveryEvent &&
+        record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::IdlePolicy) {
+        return ReplayDecision::Skip;
+    }
+    if (record.replayHint == MemRpc::ReplayHint::SafeToReplay ||
+        record.replayHint == MemRpc::ReplayHint::MaybeExecuted) {
+        return ReplayDecision::Replay;
+    }
+    return ReplayDecision::Replay;
+}
+
+}  // namespace
+
 ResilientBatchInvoker::ResilientBatchInvoker(
     std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
     ReplayPolicy policy)
-    : client_(std::move(bootstrap)), policy_(std::move(policy)) {}
+    : client_(std::move(bootstrap)), policy_(std::move(policy)) {
+    client_.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report) {
+        lastRecoveryEvent_ = report;
+        hasRecoveryEvent_ = true;
+    });
+}
 
 MemRpc::StatusCode ResilientBatchInvoker::Init() {
     return client_.Init();
@@ -49,6 +79,15 @@ void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* comple
             record.opcode = activeCall.originalCall.opcode;
             record.payload = activeCall.originalCall.payload;
             record.failureStatus = status;
+            record.replayHint = status == MemRpc::StatusCode::QueueTimeout
+                                    ? MemRpc::ReplayHint::SafeToReplay
+                                    : status == MemRpc::StatusCode::ExecTimeout ||
+                                              status == MemRpc::StatusCode::CrashedDuringExecution
+                                          ? MemRpc::ReplayHint::MaybeExecuted
+                                          : MemRpc::ReplayHint::Unknown;
+            record.runtimeSnapshot = client_.GetRecoveryRuntimeSnapshot();
+            record.recoveryEvent = lastRecoveryEvent_;
+            record.hasRecoveryEvent = hasRecoveryEvent_;
             record.failedAt = std::chrono::steady_clock::now();
             failedCalls_.push_back(std::move(record));
         }
@@ -65,10 +104,7 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayF
     std::vector<FailedCallRecord> skipped;
 
     for (const auto& record : failedCalls_) {
-        ReplayDecision decision = ReplayDecision::Replay;
-        if (policy_) {
-            decision = policy_(record);
-        }
+        ReplayDecision decision = policy_ ? policy_(record) : DefaultReplayDecision(record);
         if (decision == ReplayDecision::Skip) {
             skipped.push_back(record);
             continue;

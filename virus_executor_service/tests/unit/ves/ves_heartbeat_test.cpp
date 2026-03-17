@@ -1,16 +1,48 @@
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <chrono>
+#include <functional>
+#include <string>
 #include <thread>
 #include <unistd.h>
 
+#include "memrpc/client/rpc_client.h"
 #include "service/virus_executor_service.h"
 #include "transport/ves_control_interface.h"
 #include "transport/ves_control_proxy.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
 
 namespace VirusExecutorService {
+
+namespace {
+
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return predicate();
+}
+
+MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& path)
+{
+    EXPECT_NE(client, nullptr);
+    ScanTask task;
+    task.path = path;
+
+    MemRpc::RpcCall call;
+    call.opcode = static_cast<MemRpc::Opcode>(VesOpcode::ScanFile);
+    EXPECT_TRUE(MemRpc::EncodeMessage<ScanTask>(task, &call.payload));
+    return client->InvokeAsync(std::move(call));
+}
+
+}  // namespace
 
 TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
     VirusExecutorService service;
@@ -144,67 +176,65 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
 }
 
 TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
-    VirusExecutorService service;
-    service.OnStart();
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->OnStart();
 
-    MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
 
-    std::atomic<bool> started{false};
-    std::thread worker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep50.bin";
-        started.store(true);
-        (void)service.service().ScanFile(req);
-    });
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    while (!started.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    auto future = StartAsyncScan(&client, "/data/sleep50.bin");
+    ASSERT_TRUE(WaitFor([&]() {
+        VesHeartbeatReply reply{};
+        return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+    }, std::chrono::milliseconds(200)));
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(stub->Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_GE(reply.inFlight, 1u);
     EXPECT_STREQ(reply.currentTask, "active");
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
     EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
     EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_BUSY, 0u);
 
-    worker.join();
-    service.CloseSession();
-    service.OnStop();
+    MemRpc::RpcReply rpcReply;
+    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    client.Shutdown();
+    stub->OnStop();
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
-    VirusExecutorService service;
-    service.OnStart();
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->OnStart();
 
-    MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
 
-    std::atomic<bool> started{false};
-    std::thread worker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep200_long.bin";
-        started.store(true);
-        (void)service.service().ScanFile(req);
-    });
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    while (!started.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    auto future = StartAsyncScan(&client, "/data/sleep200_long.bin");
+    ASSERT_TRUE(WaitFor([&]() {
+        VesHeartbeatReply reply{};
+        return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+    }, std::chrono::milliseconds(200)));
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     VesHeartbeatReply reply{};
-    EXPECT_EQ(service.Heartbeat(reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(stub->Heartbeat(reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.status, static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning));
     EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning));
     EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_LONG_RUNNING, 0u);
     EXPECT_GE(reply.lastTaskAgeMs, 100u);
 
-    worker.join();
-    service.CloseSession();
-    service.OnStop();
+    MemRpc::RpcReply rpcReply;
+    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    client.Shutdown();
+    stub->OnStop();
 }
 
 }  // namespace VirusExecutorService

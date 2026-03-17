@@ -16,6 +16,10 @@ struct FailedCallRecord {
     MemRpc::Opcode opcode = MemRpc::OPCODE_INVALID;
     std::vector<uint8_t> payload;
     MemRpc::StatusCode failureStatus = MemRpc::StatusCode::PeerDisconnected;
+    MemRpc::ReplayHint replayHint = MemRpc::ReplayHint::Unknown;
+    MemRpc::RecoveryRuntimeSnapshot runtimeSnapshot;
+    MemRpc::RecoveryEventReport recoveryEvent;
+    bool hasRecoveryEvent = false;
     std::chrono::steady_clock::time_point failedAt;
 };
 
@@ -59,6 +63,8 @@ class ResilientBatchInvoker {
     uint64_t nextSequenceId_ = 1;
     std::vector<ActiveCall> activeCalls_;
     std::vector<FailedCallRecord> failedCalls_;
+    MemRpc::RecoveryEventReport lastRecoveryEvent_;
+    bool hasRecoveryEvent_ = false;
 };
 
 }  // namespace VirusExecutorService::testkit

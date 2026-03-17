@@ -149,6 +149,14 @@ uint64_t EngineSessionService::session_id() const {
     return sessionId_.load(std::memory_order_acquire);
 }
 
+MemRpc::RpcServerRuntimeStats EngineSessionService::GetRuntimeStats() const {
+    std::lock_guard<std::mutex> lock(initMutex_);
+    if (rpcServer_ == nullptr) {
+        return {};
+    }
+    return rpcServer_->GetRuntimeStats();
+}
+
 void EngineSessionService::EventPublisherLoop() {
     std::random_device device;
     std::mt19937 rng(device());

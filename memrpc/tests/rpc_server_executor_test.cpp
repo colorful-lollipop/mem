@@ -130,3 +130,66 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
   client.Shutdown();
   server.Stop();
 }
+
+TEST(RpcServerExecutorTest, RuntimeStatsTrackActiveRequestExecution) {
+  auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles;
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->ServerHandles());
+
+  std::mutex mutex;
+  std::condition_variable cv;
+  bool handlerRunning = false;
+  bool allowReply = false;
+  server.RegisterHandler(kTestOpcode,
+                         [&](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                           ASSERT_NE(reply, nullptr);
+                           {
+                             std::lock_guard<std::mutex> lock(mutex);
+                             handlerRunning = true;
+                           }
+                           cv.notify_all();
+
+                           std::unique_lock<std::mutex> lock(mutex);
+                           cv.wait(lock, [&] { return allowReply; });
+                           reply->status = MemRpc::StatusCode::Ok;
+                         });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcCall call;
+  call.opcode = kTestOpcode;
+  auto future = client.InvokeAsync(call);
+
+  ASSERT_TRUE(WaitForCondition([&] {
+    std::lock_guard<std::mutex> lock(mutex);
+    return handlerRunning;
+  }, 200));
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  const MemRpc::RpcServerRuntimeStats busyStats = server.GetRuntimeStats();
+  EXPECT_EQ(busyStats.activeRequestExecutions, 1u);
+  EXPECT_GE(busyStats.oldestExecutionAgeMs, 1u);
+
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    allowReply = true;
+  }
+  cv.notify_all();
+
+  MemRpc::RpcReply reply;
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+
+  ASSERT_TRUE(WaitForCondition([&] {
+    const auto stats = server.GetRuntimeStats();
+    return stats.activeRequestExecutions == 0 &&
+           stats.oldestExecutionAgeMs == 0;
+  }, 200));
+
+  client.Shutdown();
+  server.Stop();
+}

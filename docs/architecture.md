@@ -99,8 +99,52 @@
 恢复语义保持保守：
 
 - 旧 session 上的等待请求在会话失效后立即失败
-- 下一次调用自动尝试重建 session
+- `RpcClient` 是唯一 lifecycle owner，timeout / engine death / external health / idle close / manual shutdown 都先进入统一状态机
+- 下一次调用自动尝试重建 session，但仅限非终态路径
 - 框架不会自动重放可能已经被旧服务端看到的请求
+
+### 统一 client 生命周期
+
+`RpcClient` 现在显式维护 `ClientLifecycleState`：
+
+- `Uninitialized`
+- `Active`
+- `Cooldown`
+- `IdleClosed`
+- `Recovering`
+- `Closed`
+
+其中：
+
+- `Shutdown()` 只会把 client 带到 `Closed`，这是终态；后续不会再接受 recovery signal，也不会再自动 reopen
+- idle policy 触发的 `CloseSession` 只会进入 `IdleClosed`；它关闭当前 session，但 client 仍可复用
+- `Cooldown` 和 `Recovering` 是框架内部恢复态，业务侧只消费 snapshot/report，不直接改状态
+- `DemandReconnect` 只发生在 `IdleClosed` 之后的下一次真实调用
+
+### 合法转换
+
+- `Uninitialized -> Active`
+- `Active -> Cooldown`
+  由 `ExecTimeout`、`EngineDeath`、`ExternalHealthSignal` 等恢复触发，且带 delay
+- `Active -> Recovering`
+  由立即恢复路径触发，或 cooldown 结束后开始 reopen
+- `Active -> IdleClosed`
+  仅由 idle policy 驱动的 `CloseSession`
+- `IdleClosed -> Recovering -> Active`
+  仅由 `DemandReconnect` 触发
+- `* -> Closed`
+  仅由手动 `Shutdown()`
+
+### DFX 与观测面
+
+框架统一暴露两类观测对象：
+
+- `RecoveryRuntimeSnapshot`
+  提供当前 lifecycle、最近 trigger、最近 recovery action、cooldown 剩余时间、session ids、manual-terminal 标记
+- `RecoveryEventReport`
+  提供一次状态迁移的前后状态、trigger、action、cooldown 计划和 session 关联信息
+
+`VesClient` 不再维护独立的 engine-dead 布尔状态或自定义 cooldown 状态机；它只负责配置 recovery policy，并缓存/消费 `RpcClient` 给出的统一 snapshot/report。
 
 ## 适用范围
 

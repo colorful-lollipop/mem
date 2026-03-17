@@ -30,5 +30,7 @@ TEST(RpcServerApiTest, PublicHeaderComposes) {
 
   EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcServer>);
   EXPECT_EQ(stats.completionBacklog, 0u);
+  EXPECT_EQ(stats.activeRequestExecutions, 0u);
+  EXPECT_EQ(stats.oldestExecutionAgeMs, 0u);
   EXPECT_EQ(server.PublishEvent(event), MemRpc::StatusCode::EngineInternalError);
 }

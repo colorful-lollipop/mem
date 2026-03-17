@@ -271,12 +271,18 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     EXPECT_EQ(heartbeat.sessionId, 0u);
+    const auto idleSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(idleSnapshot.lifecycleState, MemRpc::ClientLifecycleState::IdleClosed);
+    EXPECT_EQ(idleSnapshot.lastTrigger, MemRpc::RecoveryTrigger::IdlePolicy);
 
     ScanTask reopenTask{"/data/reopen.apk"};
     ASSERT_EQ(client.ScanFile(reopenTask, &reply), MemRpc::StatusCode::Ok);
 
     ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
     EXPECT_NE(heartbeat.sessionId, 0u);
+    const auto reopenedSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(reopenedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
+    EXPECT_EQ(reopenedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::DemandReconnect);
 
     client.Shutdown();
     service->OnStop();
@@ -324,6 +330,9 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
     service->SetHealthy(true);
     ASSERT_TRUE(WaitFor([&]() { return service->openCount() > initialOpenCount; },
                         std::chrono::milliseconds(500)));
+    const auto recoveredSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_FALSE(recoveredSnapshot.terminalManualShutdown);
 
     ScanTask recoveredTask{"/data/recovered.bin"};
     ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
@@ -377,6 +386,10 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
     EXPECT_EQ(reply.threatLevel, 0);
 
     client.RequestRecovery(120);
+    const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
+    EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_TRUE(cooldownSnapshot.recoveryPending);
 
     ScanTask recoveredTask{"/data/recovered.bin"};
     const auto start = std::chrono::steady_clock::now();
@@ -386,6 +399,9 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
+    const auto activeSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(activeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
+    EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
 
     client.Shutdown();
     server.Stop();
@@ -435,9 +451,45 @@ TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFall
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
+    const auto activeSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_FALSE(activeSnapshot.terminalManualShutdown);
 
     reopenThread.join();
     client.Shutdown();
+    service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal) {
+    UnloadControlService();
+    const std::string socketPath =
+        "/tmp/ves_shutdown_terminal_" + std::to_string(getpid()) + ".sock";
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    auto remote = std::make_shared<OHOS::IRemoteObject>();
+    remote->SetSaId(VES_CONTROL_SA_ID);
+    remote->SetServicePath(socketPath);
+
+    VesClient::RegisterProxyFactory();
+
+    VesClient client(remote);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    client.Shutdown();
+
+    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
+    EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
+    EXPECT_TRUE(snapshot.terminalManualShutdown);
+
+    ScanTask task{"/data/after_shutdown.apk"};
+    ScanFileReply reply;
+    EXPECT_EQ(client.ScanFile(task, &reply), MemRpc::StatusCode::ClientClosed);
+
     service->OnStop();
     UnloadControlService();
 }

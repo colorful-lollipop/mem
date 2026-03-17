@@ -178,6 +178,10 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   EXPECT_GE(bootstrap->closeCount(), 1);
+  const auto idleClosedSnapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(idleClosedSnapshot.lifecycleState, ClientLifecycleState::IdleClosed);
+  EXPECT_EQ(idleClosedSnapshot.lastTrigger, RecoveryTrigger::IdlePolicy);
+  EXPECT_FALSE(idleClosedSnapshot.terminalManualShutdown);
 
   RpcCall call;
   call.opcode = kTestEchoOpcode;
@@ -185,6 +189,9 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   RpcReply reply;
   EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
   EXPECT_GE(bootstrap->openCount(), 2);
+  const auto reopenedSnapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(reopenedSnapshot.lifecycleState, ClientLifecycleState::Active);
+  EXPECT_EQ(reopenedSnapshot.lastTrigger, RecoveryTrigger::DemandReconnect);
 
   const auto reopen_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
   while (std::chrono::steady_clock::now() < reopen_deadline) {

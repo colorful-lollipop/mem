@@ -130,6 +130,51 @@ struct RecoveryDecision {
   uint32_t delayMs = 0;
 };
 
+enum class ClientLifecycleState : uint8_t {
+  Uninitialized = 0,
+  Active = 1,
+  Cooldown = 2,
+  IdleClosed = 3,
+  Recovering = 4,
+  Closed = 5,
+};
+
+enum class RecoveryTrigger : uint8_t {
+  Unknown = 0,
+  ManualShutdown = 1,
+  ExecTimeout = 2,
+  EngineDeath = 3,
+  ExternalHealthSignal = 4,
+  IdlePolicy = 5,
+  DemandReconnect = 6,
+};
+
+struct RecoveryRuntimeSnapshot {
+  ClientLifecycleState lifecycleState = ClientLifecycleState::Uninitialized;
+  RecoveryTrigger lastTrigger = RecoveryTrigger::Unknown;
+  RecoveryAction lastRecoveryAction = RecoveryAction::Ignore;
+  bool recoveryPending = false;
+  bool terminalManualShutdown = false;
+  uint32_t cooldownRemainingMs = 0;
+  uint64_t currentSessionId = 0;
+  uint64_t lastOpenedSessionId = 0;
+  uint64_t lastClosedSessionId = 0;
+};
+
+struct RecoveryEventReport {
+  ClientLifecycleState previousState = ClientLifecycleState::Uninitialized;
+  ClientLifecycleState state = ClientLifecycleState::Uninitialized;
+  RecoveryTrigger trigger = RecoveryTrigger::Unknown;
+  RecoveryAction action = RecoveryAction::Ignore;
+  bool terminalManualShutdown = false;
+  bool recoveryPending = false;
+  uint32_t cooldownDelayMs = 0;
+  uint32_t cooldownRemainingMs = 0;
+  uint64_t sessionId = 0;
+  uint64_t previousSessionId = 0;
+  uint64_t monotonicMs = 0;
+};
+
 struct RecoveryPolicy {
   std::function<RecoveryDecision(const RpcFailure&)> onFailure;
   // onIdle 收到的是“自最后一次活动以来累计 idle 总时长”。
@@ -156,6 +201,7 @@ struct SessionReadyReport {
 };
 
 using SessionReadyCallback = std::function<void(const SessionReadyReport&)>;
+using RecoveryEventCallback = std::function<void(const RecoveryEventReport&)>;
 
 enum class ExternalRecoverySignal : uint8_t {
   ChannelHealthTimeout = 0,
@@ -183,6 +229,7 @@ class RpcClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetSessionReadyCallback(SessionReadyCallback callback);
+  void SetRecoveryEventCallback(RecoveryEventCallback callback);
   void SetRecoveryPolicy(RecoveryPolicy policy);
   void RequestExternalRecovery(ExternalRecoveryRequest request);
   // Init 负责建立 session、映射共享内存并启动响应分发线程。
@@ -191,6 +238,7 @@ class RpcClient {
   RpcFuture InvokeAsync(const RpcCall& call);
   RpcFuture InvokeAsync(RpcCall&& call);
   [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
+  [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
   void Shutdown();
 
  private:
@@ -211,10 +259,12 @@ class RpcSyncClient {
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
   void SetEventCallback(RpcEventCallback callback);
   void SetSessionReadyCallback(SessionReadyCallback callback);
+  void SetRecoveryEventCallback(RecoveryEventCallback callback);
   void SetRecoveryPolicy(RecoveryPolicy policy);
   StatusCode Init();
   StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
   [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
+  [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
   void Shutdown();
 
  private:

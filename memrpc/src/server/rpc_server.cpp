@@ -141,6 +141,7 @@ struct RpcServer::Impl {
   Session session;
   std::shared_ptr<TaskExecutor> highExecutor;
   std::shared_ptr<TaskExecutor> normalExecutor;
+  std::mutex executionMutex;
   std::mutex completionMutex;
   std::condition_variable completionCv;
   std::queue<CompletionItem> completionQueue;
@@ -152,6 +153,17 @@ struct RpcServer::Impl {
   std::thread dispatcherThread;
   std::atomic<bool> running{false};
   std::unordered_map<uint16_t, RpcHandler> handlers;
+  std::unordered_map<uint64_t, uint32_t> activeExecutions;
+
+  void MarkExecutionStarted(uint64_t requestId) {
+    std::lock_guard<std::mutex> lock(executionMutex);
+    activeExecutions[requestId] = MonotonicNowMs();
+  }
+
+  void MarkExecutionFinished(uint64_t requestId) {
+    std::lock_guard<std::mutex> lock(executionMutex);
+    activeExecutions.erase(requestId);
+  }
 
   PollEventFdResult WaitForResponseCredit(std::chrono::steady_clock::time_point deadline) {
     const int fd = session.Handles().respCreditEventFd;
@@ -413,6 +425,10 @@ struct RpcServer::Impl {
       return;
     }
 
+    MarkExecutionStarted(requestEntry.requestId);
+    const auto clearExecution = MakeScopeExit([this, requestId = requestEntry.requestId] {
+      MarkExecutionFinished(requestId);
+    });
     RpcServerReply reply = InvokeHandlerWithTimeout(requestEntry);
     (void)WriteResponse(requestEntry, std::move(reply));
   }
@@ -589,6 +605,21 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const {
     stats.highRequestRingPending = RingCount(impl_->session.Header()->highRing);
     stats.normalRequestRingPending = RingCount(impl_->session.Header()->normalRing);
     stats.responseRingPending = RingCount(impl_->session.Header()->responseRing);
+  }
+  {
+    std::lock_guard<std::mutex> lock(impl_->executionMutex);
+    stats.activeRequestExecutions = static_cast<uint32_t>(impl_->activeExecutions.size());
+    if (!impl_->activeExecutions.empty()) {
+      const uint32_t nowMs = MonotonicNowMs();
+      auto it = impl_->activeExecutions.begin();
+      uint32_t oldestStartMs = it->second;
+      for (; it != impl_->activeExecutions.end(); ++it) {
+        const auto& [requestId, startMonoMs] = *it;
+        (void)requestId;
+        oldestStartMs = std::min(oldestStartMs, startMonoMs);
+      }
+      stats.oldestExecutionAgeMs = nowMs - oldestStartMs;
+    }
   }
   stats.waitingForResponseCredit = impl_->responseWriterWaitingForCredit.load(std::memory_order_acquire);
   return stats;

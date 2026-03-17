@@ -1,210 +1,157 @@
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <thread>
 
-#include "ves/ves_engine_service.h"
-#include "ves/ves_types.h"
+#include "memrpc/client/rpc_client.h"
+#include "memrpc/server/rpc_server.h"
+#include "service/rpc_handler_registrar.h"
+#include "ves/ves_session_service.h"
 
 namespace VirusExecutorService {
 
-TEST(VesHealthTest, SnapshotBeforeInitializeIsInternalError) {
-    VesEngineService service;
-    auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.status,
-              static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyInternalError));
-    EXPECT_EQ(snapshot.reasonCode,
-              static_cast<uint32_t>(VesHeartbeatReasonCode::InternalError));
-    EXPECT_EQ(snapshot.flags, 0u);
-    EXPECT_EQ(snapshot.inFlight, 0u);
-    EXPECT_EQ(snapshot.currentTask, "idle");
-    EXPECT_EQ(snapshot.lastTaskAgeMs, 0u);
-}
+namespace {
 
-TEST(VesHealthTest, SnapshotUpdatesAfterScan) {
-    VesEngineService service;
-    service.Initialize();
+constexpr MemRpc::Opcode kBlockingOpcode = static_cast<MemRpc::Opcode>(901);
 
-    auto idleSnapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(idleSnapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
-    EXPECT_EQ(idleSnapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
-    EXPECT_EQ(idleSnapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
-
-    ScanTask req;
-    req.path = "/data/virus.apk";
-
-    auto reply = service.ScanFile(req);
-    EXPECT_EQ(reply.code, 0);
-
-    auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
-    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
-    EXPECT_EQ(snapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
-    EXPECT_EQ(snapshot.inFlight, 0u);
-    EXPECT_EQ(snapshot.currentTask, "idle");
-}
-
-TEST(VesHealthTest, InFlightAndAgeDuringScan) {
-    VesEngineService service;
-    service.Initialize();
-
-    std::atomic<bool> started{false};
-    std::thread worker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep50.bin";
-        started.store(true);
-        (void)service.ScanFile(req);
-    });
-
-    while (!started.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
-    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
-    EXPECT_EQ(snapshot.flags,
-              VES_HEARTBEAT_FLAG_INITIALIZED | VES_HEARTBEAT_FLAG_BUSY);
-    EXPECT_GE(snapshot.inFlight, 1u);
-    EXPECT_EQ(snapshot.currentTask, "active");
-
-    worker.join();
-}
-
-TEST(VesHealthTest, SnapshotTracksOldestInFlightTaskUnderConcurrency) {
-    VesEngineService service;
-    service.Initialize();
-
-    std::atomic<bool> longStarted{false};
-    std::atomic<bool> shortStarted{false};
-
-    std::thread longWorker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep200_long.bin";
-        longStarted.store(true);
-        (void)service.ScanFile(req);
-    });
-
-    while (!longStarted.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    while (true) {
-        auto snapshot = service.GetHealthSnapshot();
-        if (snapshot.inFlight >= 1u &&
-            snapshot.currentTask == "active") {
-            break;
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    return predicate();
+}
 
+class SessionServiceBootstrapChannel final : public MemRpc::IBootstrapChannel {
+ public:
+    explicit SessionServiceBootstrapChannel(std::shared_ptr<EngineSessionService> sessionService)
+        : sessionService_(std::move(sessionService)) {}
+
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
+    {
+        return sessionService_ != nullptr
+                   ? sessionService_->OpenSession(handles)
+                   : MemRpc::StatusCode::InvalidArgument;
+    }
+
+    MemRpc::StatusCode CloseSession() override
+    {
+        return sessionService_ != nullptr
+                   ? sessionService_->CloseSession()
+                   : MemRpc::StatusCode::Ok;
+    }
+
+    void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override
+    {
+        (void)callback;
+    }
+
+ private:
+    std::shared_ptr<EngineSessionService> sessionService_;
+};
+
+class BlockingRegistrar final : public RpcHandlerRegistrar {
+ public:
+    void RegisterHandlers(MemRpc::RpcServer* server) override
+    {
+        ASSERT_NE(server, nullptr);
+        server->RegisterHandler(kBlockingOpcode,
+                                [this](const MemRpc::RpcServerCall&,
+                                       MemRpc::RpcServerReply* reply) {
+                                    ASSERT_NE(reply, nullptr);
+                                    {
+                                        std::lock_guard<std::mutex> lock(mutex_);
+                                        running_ = true;
+                                    }
+                                    cv_.notify_all();
+
+                                    std::unique_lock<std::mutex> lock(mutex_);
+                                    cv_.wait(lock, [this] { return allowReply_; });
+                                    reply->status = MemRpc::StatusCode::Ok;
+                                });
+    }
+
+    bool WaitUntilRunning(std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return cv_.wait_for(lock, timeout, [this] { return running_; });
+    }
+
+    void Release()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            allowReply_ = true;
+        }
+        cv_.notify_all();
+    }
+
+ private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool running_ = false;
+    bool allowReply_ = false;
+};
+
+}  // namespace
+
+TEST(VesHealthTest, SessionServiceRuntimeStatsStayIdleWithoutRequests) {
+    BlockingRegistrar registrar;
+    auto sessionService = std::make_shared<EngineSessionService>(
+        std::vector<RpcHandlerRegistrar*>{&registrar});
+    auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
+
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    const auto stats = sessionService->GetRuntimeStats();
+    EXPECT_EQ(stats.activeRequestExecutions, 0u);
+    EXPECT_EQ(stats.oldestExecutionAgeMs, 0u);
+
+    client.Shutdown();
+}
+
+TEST(VesHealthTest, SessionServiceRuntimeStatsTrackActiveRequests) {
+    BlockingRegistrar registrar;
+    auto sessionService = std::make_shared<EngineSessionService>(
+        std::vector<RpcHandlerRegistrar*>{&registrar});
+    auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
+
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcCall call;
+    call.opcode = kBlockingOpcode;
+    auto future = client.InvokeAsync(call);
+
+    ASSERT_TRUE(registrar.WaitUntilRunning(std::chrono::milliseconds(200)));
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-    std::thread shortWorker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep50_short.bin";
-        shortStarted.store(true);
-        (void)service.ScanFile(req);
-    });
+    const auto busyStats = sessionService->GetRuntimeStats();
+    EXPECT_EQ(busyStats.activeRequestExecutions, 1u);
+    EXPECT_GE(busyStats.oldestExecutionAgeMs, 1u);
 
-    while (!shortStarted.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    registrar.Release();
 
-    VesHealthSnapshot snapshot;
-    while (true) {
-        snapshot = service.GetHealthSnapshot();
-        if (snapshot.inFlight >= 2u) {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    MemRpc::RpcReply reply;
+    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
 
-    EXPECT_EQ(snapshot.currentTask, "active");
-    EXPECT_GE(snapshot.lastTaskAgeMs, 20u);
-    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkBusy));
-    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
+    ASSERT_TRUE(WaitFor([&]() {
+        const auto stats = sessionService->GetRuntimeStats();
+        return stats.activeRequestExecutions == 0 &&
+               stats.oldestExecutionAgeMs == 0;
+    }, std::chrono::milliseconds(200)));
 
-    shortWorker.join();
-    longWorker.join();
-}
-
-TEST(VesHealthTest, SnapshotMarksLongRunningTaskAge) {
-    VesEngineService service;
-    service.Initialize();
-
-    std::atomic<bool> started{false};
-    std::thread worker([&]() {
-        ScanTask req;
-        req.path = "/data/sleep200_threshold.bin";
-        started.store(true);
-        (void)service.ScanFile(req);
-    });
-
-    while (!started.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        VesEngineService::LONG_RUNNING_TASK_THRESHOLD_MS + 20));
-
-    auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::DegradedLongRunning));
-    EXPECT_EQ(snapshot.reasonCode,
-              static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning));
-    EXPECT_EQ(snapshot.flags,
-              VES_HEARTBEAT_FLAG_INITIALIZED | VES_HEARTBEAT_FLAG_BUSY |
-                  VES_HEARTBEAT_FLAG_LONG_RUNNING);
-    EXPECT_GE(snapshot.lastTaskAgeMs, VesEngineService::LONG_RUNNING_TASK_THRESHOLD_MS);
-
-    worker.join();
-}
-
-TEST(VesHealthTest, ConcurrentInitializeAndHealthReadsAreSafe) {
-    VesEngineService service;
-
-    std::atomic<bool> startReaders{false};
-    std::atomic<bool> stopReaders{false};
-
-    std::thread reader([&]() {
-        while (!startReaders.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        while (!stopReaders.load()) {
-            (void)service.initialized();
-            (void)service.GetHealthSnapshot();
-        }
-    });
-
-    std::thread initializerA([&]() {
-        while (!startReaders.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        service.Initialize();
-    });
-
-    std::thread initializerB([&]() {
-        while (!startReaders.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        service.Initialize();
-    });
-
-    startReaders.store(true);
-
-    initializerA.join();
-    initializerB.join();
-    stopReaders.store(true);
-    reader.join();
-
-    EXPECT_TRUE(service.initialized());
-
-    const auto snapshot = service.GetHealthSnapshot();
-    EXPECT_EQ(snapshot.status, static_cast<uint32_t>(VesHeartbeatStatus::OkIdle));
-    EXPECT_EQ(snapshot.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::None));
-    EXPECT_EQ(snapshot.flags, VES_HEARTBEAT_FLAG_INITIALIZED);
-    EXPECT_EQ(snapshot.inFlight, 0u);
-    EXPECT_EQ(snapshot.currentTask, "idle");
+    client.Shutdown();
 }
 
 }  // namespace VirusExecutorService

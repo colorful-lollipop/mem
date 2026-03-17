@@ -140,6 +140,10 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
 
     for (const auto& failedCall : failed) {
         EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
+        EXPECT_EQ(failedCall.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_TRUE(failedCall.hasRecoveryEvent);
+        EXPECT_EQ(failedCall.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_EQ(failedCall.replayHint, MemRpc::ReplayHint::MaybeExecuted);
     }
 
     invoker.Shutdown();
@@ -155,6 +159,8 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     ASSERT_GT(child, 0);
 
     auto replayNonFault = [](const FailedCallRecord& record) {
+        EXPECT_TRUE(record.hasRecoveryEvent);
+        EXPECT_EQ(record.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
         return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)
                    ? ReplayDecision::Skip
                    : ReplayDecision::Replay;
@@ -234,6 +240,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
     ASSERT_GT(child, 0);
 
     auto replayNonFault = [](const FailedCallRecord& record) {
+        EXPECT_EQ(record.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
         return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)
                    ? ReplayDecision::Skip
                    : ReplayDecision::Replay;
@@ -502,6 +509,7 @@ TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
     }
     for (const auto& failedCall : failed) {
         EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
+        EXPECT_EQ(failedCall.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     }
 
     invoker.Shutdown();

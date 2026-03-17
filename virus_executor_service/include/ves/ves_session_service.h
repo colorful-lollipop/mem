@@ -40,6 +40,7 @@ class EngineSessionService final : public VesSessionProvider,
     MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) override;
 
     [[nodiscard]] uint64_t session_id() const;
+    [[nodiscard]] MemRpc::RpcServerRuntimeStats GetRuntimeStats() const;
 
  private:
     MemRpc::StatusCode EnsureInitialized();
@@ -49,7 +50,7 @@ class EngineSessionService final : public VesSessionProvider,
     std::vector<RpcHandlerRegistrar*> registrars_;
     std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
     std::shared_ptr<MemRpc::RpcServer> rpcServer_;
-    std::mutex initMutex_;
+    mutable std::mutex initMutex_;
     bool initialized_ = false;
     std::atomic<uint64_t> sessionId_{0};
     std::atomic<bool> eventPublisherRunning_{false};

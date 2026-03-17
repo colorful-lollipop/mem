@@ -40,17 +40,37 @@ SA 相关逻辑只应出现在 bootstrap 层。
 5. `RpcClient` watchdog 周期性执行 `CheckHealth()`
 6. 若健康检查超时/异常，`RpcClient::RequestExternalRecovery()` 统一导入 restart
 7. 若引擎死亡，SA 回调通知客户端
-8. 下一次业务调用在 cooldown 结束后自动重新附着新 session
+8. 下一次业务调用在 cooldown 结束后自动重新附着新 session；若是 idle close，则按 demand reconnect reopen
 
 ## 当前恢复语义
 
 当前代码实现的是单恢复 owner 模型：
 
 - 死亡回调到来后，旧 `session` 立即失效
-- heartbeat / engine death / timeout 都由 `RpcClient` 统一决定 `Restart` 或 `CloseSession`
-- `CloseSession` 只用于 intentional close，例如 idle unload
-- `Restart` 只用于 fault recovery
-- replay-safe 请求会进入统一 replay 骨架
+- heartbeat / engine death / timeout / idle close / manual shutdown 都先进入 `RpcClient` 的统一 lifecycle state machine
+- `Shutdown()` 是唯一 public terminal close，进入 `Closed` 后不会再接受 recovery
+- `CloseSession` 只用于 non-terminal intentional close，例如 idle unload；该路径进入 `IdleClosed`
+- `Restart` 只用于 fault recovery；带 delay 时进入 `Cooldown`，实际 reopen 时进入 `Recovering`
+- replay-safe 请求和 DFX/testkit replay 决策都消费统一 recovery snapshot/report
+
+## 生命周期与 trigger 语义
+
+框架内部统一使用以下 trigger：
+
+- `ManualShutdown`
+- `ExecTimeout`
+- `EngineDeath`
+- `ExternalHealthSignal`
+- `IdlePolicy`
+- `DemandReconnect`
+
+对 SA 适配层的要求是：
+
+- 只负责把 SA/heartbeat/子进程死亡翻译成 `EngineDeath` 或 `ExternalHealthSignal`
+- 不在 SA 适配层自行维护额外 cooldown 或 retry 状态机
+- 不把 manual shutdown 和 idle close 混成同一种 “session closed” 事件
+
+业务侧若需要观测恢复过程，应读取 `RecoveryRuntimeSnapshot` / `RecoveryEventReport`，而不是依赖分散的布尔状态。
 
 对于 VES：
 

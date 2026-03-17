@@ -30,6 +30,8 @@ struct RpcServerRuntimeStats {
   uint32_t highRequestRingPending = 0;
   uint32_t normalRequestRingPending = 0;
   uint32_t responseRingPending = 0;
+  uint32_t activeRequestExecutions = 0;
+  uint32_t oldestExecutionAgeMs = 0;
   bool waitingForResponseCredit = false;
 };
 
