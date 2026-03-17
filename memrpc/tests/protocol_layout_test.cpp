@@ -29,11 +29,11 @@ TEST(ProtocolLayoutTest, InlinePayloadLimitsStayWithinEntryBudget) {
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions) {
   MemRpc::DevBootstrapConfig config;
-  EXPECT_EQ(config.highRingSize, 8U);
-  EXPECT_EQ(config.normalRingSize, 8U);
-  EXPECT_EQ(config.responseRingSize, 8U);
-  EXPECT_EQ(config.maxRequestBytes, MemRpc::DEFAULT_MAX_REQUEST_BYTES);
-  EXPECT_EQ(config.maxResponseBytes, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+  EXPECT_EQ(config.highRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize);
+  EXPECT_EQ(config.normalRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize);
+  EXPECT_EQ(config.responseRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize);
+  EXPECT_EQ(config.maxRequestBytes, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.maxRequestBytes);
+  EXPECT_EQ(config.maxResponseBytes, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.maxResponseBytes);
 }
 
 TEST(ProtocolLayoutTest, OffsetsIncreaseMonotonically) {

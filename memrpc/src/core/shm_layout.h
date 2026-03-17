@@ -11,11 +11,11 @@
 namespace MemRpc {
 
 struct LayoutConfig {
-  uint32_t highRingSize = 8;
-  uint32_t normalRingSize = 8;
-  uint32_t responseRingSize = 8;
-  uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
-  uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
+  uint32_t highRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize;
+  uint32_t normalRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize;
+  uint32_t responseRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize;
+  uint32_t maxRequestBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxRequestBytes;
+  uint32_t maxResponseBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxResponseBytes;
 };
 
 struct Layout {
@@ -64,11 +64,11 @@ struct SharedMemoryHeader {
   uint32_t sessionState = 0;
   uint32_t clientAttached = 0;
   uint32_t activeClientPid = 0;
-  uint32_t highRingSize = 8;
-  uint32_t normalRingSize = 8;
-  uint32_t responseRingSize = 8;
-  uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
-  uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
+  uint32_t highRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize;
+  uint32_t normalRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize;
+  uint32_t responseRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize;
+  uint32_t maxRequestBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxRequestBytes;
+  uint32_t maxResponseBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxResponseBytes;
   RingCursor highRing{};
   RingCursor normalRing{};
   RingCursor responseRing{};

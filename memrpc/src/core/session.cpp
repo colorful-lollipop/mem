@@ -141,17 +141,9 @@ Session::~Session() {
 }
 
 StatusCode Session::MapAndValidateHeader(int shmFd) {
-  LayoutConfig config;
-  config.highRingSize = 8;
-  config.normalRingSize = 8;
-  config.responseRingSize = 8;
-  config.maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
-  config.maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
-
-  Layout default_layout = ComputeLayout(config);
-  initialMappedSize_ = default_layout.totalSize;
+  initialMappedSize_ = sizeof(SharedMemoryHeader);
   mappedRegion_ =
-      mmap(nullptr, default_layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
+      mmap(nullptr, initialMappedSize_, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
   if (mappedRegion_ == MAP_FAILED) {
     mappedRegion_ = nullptr;
     return StatusCode::EngineInternalError;
