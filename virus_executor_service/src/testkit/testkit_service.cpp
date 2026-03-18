@@ -11,23 +11,6 @@
 namespace VirusExecutorService::testkit {
 
 namespace {
-class RpcServerHandlerSink final : public AnyCallHandlerSink {
- public:
-    explicit RpcServerHandlerSink(MemRpc::RpcServer* server)
-        : server_(server) {}
-
-    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
-    {
-        if (server_ == nullptr) {
-            return;
-        }
-        server_->RegisterHandler(opcode, std::move(handler));
-    }
-
- private:
-    MemRpc::RpcServer* server_ = nullptr;
-};
-
 template <typename Registrar, typename Req, typename Rep, typename Handler>
 void RegisterTypedServiceHandler(Registrar* registrar, MemRpc::Opcode opcode, Handler handler)
 {
@@ -152,13 +135,8 @@ SleepReply TestkitService::Sleep(const SleepRequest& request) const {
     return reply;
 }
 
-void TestkitService::RegisterHandlers(AnyCallHandlerSink* sink) {
+void TestkitService::RegisterHandlers(RpcHandlerSink* sink) {
     RegisterAllHandlers(sink, this, options_.enableFaultInjection);
-}
-
-void TestkitService::RegisterHandlers(MemRpc::RpcServer* server) {
-    RpcServerHandlerSink sink(server);
-    RegisterHandlers(&sink);
 }
 
 }  // namespace VirusExecutorService::testkit

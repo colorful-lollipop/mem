@@ -61,7 +61,7 @@ class SessionServiceBootstrapChannel final : public MemRpc::IBootstrapChannel {
 
 class BlockingRegistrar final : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(AnyCallHandlerSink* sink) override
+    void RegisterHandlers(RpcHandlerSink* sink) override
     {
         ASSERT_NE(sink, nullptr);
         sink->RegisterHandler(kBlockingOpcode,

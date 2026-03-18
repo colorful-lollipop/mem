@@ -60,7 +60,7 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     TestkitServiceOptions options;
     options.enableFaultInjection = true;
     TestkitService service(options);
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     if (server.Start() != MemRpc::StatusCode::Ok) {
         _exit(2);
     }
@@ -84,7 +84,7 @@ TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitAsyncClient asyncClient(bootstrap);
@@ -120,7 +120,7 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
     options.normalWorkerThreads = 1;
     server.SetOptions(options);
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitAsyncClient asyncClient(bootstrap);
@@ -223,7 +223,7 @@ TEST(TestkitClientTest, TypedThenDecodesReply) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitAsyncClient asyncClient(bootstrap);

@@ -58,7 +58,7 @@ TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
     options.normalWorkerThreads = 4;
     server.SetOptions(options);
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
@@ -119,7 +119,7 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     options.normalWorkerThreads = 2;
     server.SetOptions(options);
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);

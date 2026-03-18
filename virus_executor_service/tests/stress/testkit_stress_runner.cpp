@@ -71,7 +71,7 @@ void RunChild(Mem::BootstrapHandles handles, uint32_t threads) {
     server.SetOptions(options);
 
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     if (server.Start() != Mem::StatusCode::Ok) {
         HILOGE("testkit stress server start failed");
         std::_Exit(1);

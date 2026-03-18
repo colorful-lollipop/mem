@@ -248,7 +248,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     options.normalWorkerThreads = static_cast<uint32_t>(threadCount);
     server.SetOptions(options);
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     if (server.Start() != MemRpc::StatusCode::Ok) {
         for (const auto kind : kinds) {
             results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "server start failed"});

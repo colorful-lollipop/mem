@@ -147,7 +147,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
     options.normalWorkerThreads = threadCount;
     server.SetOptions(options);
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);

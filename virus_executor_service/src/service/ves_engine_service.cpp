@@ -15,23 +15,6 @@
 namespace VirusExecutorService {
 
 namespace {
-class RpcServerHandlerSink final : public AnyCallHandlerSink {
- public:
-    explicit RpcServerHandlerSink(MemRpc::RpcServer* server)
-        : server_(server) {}
-
-    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
-    {
-        if (server_ == nullptr) {
-            return;
-        }
-        server_->RegisterHandler(opcode, std::move(handler));
-    }
-
- private:
-    MemRpc::RpcServer* server_ = nullptr;
-};
-
 template <typename Registrar, typename Req, typename Rep, typename Handler>
 void RegisterTypedServiceHandler(Registrar* registrar, MemRpc::Opcode opcode, Handler handler)
 {
@@ -138,13 +121,8 @@ MemRpc::StatusCode VesEngineService::PublishTextEvent(uint32_t eventType,
                         eventDomain);
 }
 
-void VesEngineService::RegisterHandlers(AnyCallHandlerSink* sink) {
+void VesEngineService::RegisterHandlers(RpcHandlerSink* sink) {
     RegisterEngineHandlers(sink, this);
-}
-
-void VesEngineService::RegisterHandlers(MemRpc::RpcServer* server) {
-    RpcServerHandlerSink sink(server);
-    RegisterHandlers(&sink);
 }
 
 }  // namespace VirusExecutorService

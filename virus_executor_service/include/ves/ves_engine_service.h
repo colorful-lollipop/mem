@@ -20,8 +20,7 @@ class VesEventPublisher;
 
 class VesEngineService : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(AnyCallHandlerSink* sink) override;
-    void RegisterHandlers(MemRpc::RpcServer* server);
+    void RegisterHandlers(RpcHandlerSink* sink) override;
     void Initialize();
     bool initialized() const;
     void SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher);

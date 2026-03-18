@@ -13,24 +13,7 @@
 namespace VirusExecutorService {
 
 namespace {
-class RpcServerHandlerSink final : public AnyCallHandlerSink {
- public:
-    explicit RpcServerHandlerSink(MemRpc::RpcServer* server)
-        : server_(server) {}
-
-    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
-    {
-        if (server_ == nullptr) {
-            return;
-        }
-        server_->RegisterHandler(opcode, std::move(handler));
-    }
-
- private:
-    MemRpc::RpcServer* server_ = nullptr;
-};
-
-class AnyCallHandlerSinkImpl final : public AnyCallHandlerSink {
+class AnyCallHandlerSinkImpl final : public RpcHandlerSink {
  public:
     explicit AnyCallHandlerSinkImpl(std::unordered_map<uint16_t, MemRpc::RpcHandler>* handlers)
         : handlers_(handlers) {}

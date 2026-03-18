@@ -97,7 +97,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     TestkitService service;
-    service.RegisterHandlers(&server);
+    RegisterHandlersToServer(&service, &server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     TestkitClient client(bootstrap);
