@@ -3,6 +3,7 @@
 
 #include <utility>
 
+#include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace VirusExecutorService {
@@ -43,6 +44,35 @@ inline void RegisterHandlersToServer(RpcHandlerRegistrar* registrar, MemRpc::Rpc
     }
     RpcServerHandlerSink sink(server);
     registrar->RegisterHandlers(&sink);
+}
+
+template <typename Request, typename Reply, typename Handler>
+inline void RegisterTypedHandler(RpcHandlerSink* sink,
+                                 MemRpc::Opcode opcode,
+                                 Handler handler)
+{
+    if (sink == nullptr) {
+        return;
+    }
+
+    sink->RegisterHandler(
+        opcode,
+        [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+            if (reply == nullptr) {
+                return;
+            }
+
+            Request request;
+            if (!MemRpc::DecodeMessage<Request>(call.payload, &request)) {
+                reply->status = MemRpc::StatusCode::ProtocolMismatch;
+                return;
+            }
+
+            if (!MemRpc::EncodeMessage<Reply>(h(request), &reply->payload)) {
+                reply->status = MemRpc::StatusCode::EngineInternalError;
+                reply->payload.clear();
+            }
+        });
 }
 
 }  // namespace VirusExecutorService

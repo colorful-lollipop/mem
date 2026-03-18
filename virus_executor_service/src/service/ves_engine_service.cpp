@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstdlib>
 #include <thread>
-#include <utility>
 
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
@@ -13,42 +12,6 @@
 #include "virus_protection_service_log.h"
 
 namespace VirusExecutorService {
-
-namespace {
-template <typename Registrar, typename Req, typename Rep, typename Handler>
-void RegisterTypedServiceHandler(Registrar* registrar, MemRpc::Opcode opcode, Handler handler)
-{
-    if (registrar == nullptr) {
-        return;
-    }
-    registrar->RegisterHandler(
-        opcode,
-        [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
-            if (reply == nullptr) {
-                return;
-            }
-            Req request;
-            if (!MemRpc::DecodeMessage<Req>(call.payload, &request)) {
-                reply->status = MemRpc::StatusCode::ProtocolMismatch;
-                return;
-            }
-            if (!MemRpc::EncodeMessage<Rep>(h(request), &reply->payload)) {
-                reply->status = MemRpc::StatusCode::EngineInternalError;
-                reply->payload.clear();
-            }
-        });
-}
-
-template <typename Registrar>
-void RegisterEngineHandlers(Registrar* registrar, VesEngineService* service)
-{
-    RegisterTypedServiceHandler<Registrar, ScanTask, ScanFileReply>(
-        registrar,
-        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [service](const ScanTask& request) { return service->ScanFile(request); });
-}
-
-}  // namespace
 
 void VesEngineService::Initialize() {
     bool expected = false;
@@ -122,7 +85,10 @@ MemRpc::StatusCode VesEngineService::PublishTextEvent(uint32_t eventType,
 }
 
 void VesEngineService::RegisterHandlers(RpcHandlerSink* sink) {
-    RegisterEngineHandlers(sink, this);
+    RegisterTypedHandler<ScanTask, ScanFileReply>(
+        sink,
+        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+        [this](const ScanTask& request) { return ScanFile(request); });
 }
 
 }  // namespace VirusExecutorService

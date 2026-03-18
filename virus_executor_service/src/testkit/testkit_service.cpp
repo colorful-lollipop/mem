@@ -3,7 +3,6 @@
 #include <chrono>
 #include <thread>
 #include <unistd.h>
-#include <utility>
 #include <vector>
 
 #include "testkit/testkit_protocol.h"
@@ -11,59 +10,33 @@
 namespace VirusExecutorService::testkit {
 
 namespace {
-template <typename Registrar, typename Req, typename Rep, typename Handler>
-void RegisterTypedServiceHandler(Registrar* registrar, MemRpc::Opcode opcode, Handler handler)
+void RegisterCoreHandlers(RpcHandlerSink* sink, TestkitService* service)
 {
-    if (registrar == nullptr) {
-        return;
-    }
-    registrar->RegisterHandler(
-        opcode,
-        [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
-            if (reply == nullptr) {
-                return;
-            }
-            Req request;
-            if (!MemRpc::DecodeMessage<Req>(call.payload, &request)) {
-                reply->status = MemRpc::StatusCode::ProtocolMismatch;
-                return;
-            }
-            if (!MemRpc::EncodeMessage<Rep>(h(request), &reply->payload)) {
-                reply->status = MemRpc::StatusCode::EngineInternalError;
-                reply->payload.clear();
-            }
-        });
-}
-
-template <typename Registrar>
-void RegisterCoreHandlers(Registrar* registrar, TestkitService* service)
-{
-    RegisterTypedServiceHandler<Registrar, EchoRequest, EchoReply>(
-        registrar,
+    RegisterTypedHandler<EchoRequest, EchoReply>(
+        sink,
         static_cast<MemRpc::Opcode>(TestkitOpcode::Echo),
         [service](const EchoRequest& request) { return service->Echo(request); });
-    RegisterTypedServiceHandler<Registrar, AddRequest, AddReply>(
-        registrar,
+    RegisterTypedHandler<AddRequest, AddReply>(
+        sink,
         static_cast<MemRpc::Opcode>(TestkitOpcode::Add),
         [service](const AddRequest& request) { return service->Add(request); });
-    RegisterTypedServiceHandler<Registrar, SleepRequest, SleepReply>(
-        registrar,
+    RegisterTypedHandler<SleepRequest, SleepReply>(
+        sink,
         static_cast<MemRpc::Opcode>(TestkitOpcode::Sleep),
         [service](const SleepRequest& request) { return service->Sleep(request); });
 }
 
-template <typename Registrar>
-void RegisterFaultInjectionHandlers(Registrar* registrar)
+void RegisterFaultInjectionHandlers(RpcHandlerSink* sink)
 {
-    if (registrar == nullptr) {
+    if (sink == nullptr) {
         return;
     }
 
-    registrar->RegisterHandler(
+    sink->RegisterHandler(
         static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest),
         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
 
-    registrar->RegisterHandler(
+    sink->RegisterHandler(
         static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest),
         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
             while (true) {
@@ -71,7 +44,7 @@ void RegisterFaultInjectionHandlers(Registrar* registrar)
             }
         });
 
-    registrar->RegisterHandler(
+    sink->RegisterHandler(
         static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest),
         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
             std::vector<std::vector<char>> leaks;
@@ -80,7 +53,7 @@ void RegisterFaultInjectionHandlers(Registrar* registrar)
             }
         });
 
-    registrar->RegisterHandler(
+    sink->RegisterHandler(
         static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
         [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
 #if defined(__clang__)
@@ -97,12 +70,11 @@ void RegisterFaultInjectionHandlers(Registrar* registrar)
         });
 }
 
-template <typename Registrar>
-void RegisterAllHandlers(Registrar* registrar, TestkitService* service, bool enableFaultInjection)
+void RegisterAllHandlers(RpcHandlerSink* sink, TestkitService* service, bool enableFaultInjection)
 {
-    RegisterCoreHandlers(registrar, service);
+    RegisterCoreHandlers(sink, service);
     if (enableFaultInjection) {
-        RegisterFaultInjectionHandlers(registrar);
+        RegisterFaultInjectionHandlers(sink);
     }
 }
 
