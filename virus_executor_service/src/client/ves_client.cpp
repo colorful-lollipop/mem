@@ -53,6 +53,7 @@ MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
     VesAnyCallRequest anyRequest;
     anyRequest.opcode = static_cast<uint16_t>(opcode);
     anyRequest.priority = static_cast<uint16_t>(priority);
+    anyRequest.timeoutMs = execTimeoutMs;
     anyRequest.payload = std::move(payload);
 
     VesAnyCallReply anyReply;

@@ -3,12 +3,127 @@
 #include <chrono>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
-#include "memrpc/server/typed_handler.h"
 #include "testkit/testkit_protocol.h"
 
 namespace VirusExecutorService::testkit {
+
+namespace {
+class RpcServerHandlerSink final : public AnyCallHandlerSink {
+ public:
+    explicit RpcServerHandlerSink(MemRpc::RpcServer* server)
+        : server_(server) {}
+
+    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
+    {
+        if (server_ == nullptr) {
+            return;
+        }
+        server_->RegisterHandler(opcode, std::move(handler));
+    }
+
+ private:
+    MemRpc::RpcServer* server_ = nullptr;
+};
+
+template <typename Registrar, typename Req, typename Rep, typename Handler>
+void RegisterTypedServiceHandler(Registrar* registrar, MemRpc::Opcode opcode, Handler handler)
+{
+    if (registrar == nullptr) {
+        return;
+    }
+    registrar->RegisterHandler(
+        opcode,
+        [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+            if (reply == nullptr) {
+                return;
+            }
+            Req request;
+            if (!MemRpc::DecodeMessage<Req>(call.payload, &request)) {
+                reply->status = MemRpc::StatusCode::ProtocolMismatch;
+                return;
+            }
+            if (!MemRpc::EncodeMessage<Rep>(h(request), &reply->payload)) {
+                reply->status = MemRpc::StatusCode::EngineInternalError;
+                reply->payload.clear();
+            }
+        });
+}
+
+template <typename Registrar>
+void RegisterCoreHandlers(Registrar* registrar, TestkitService* service)
+{
+    RegisterTypedServiceHandler<Registrar, EchoRequest, EchoReply>(
+        registrar,
+        static_cast<MemRpc::Opcode>(TestkitOpcode::Echo),
+        [service](const EchoRequest& request) { return service->Echo(request); });
+    RegisterTypedServiceHandler<Registrar, AddRequest, AddReply>(
+        registrar,
+        static_cast<MemRpc::Opcode>(TestkitOpcode::Add),
+        [service](const AddRequest& request) { return service->Add(request); });
+    RegisterTypedServiceHandler<Registrar, SleepRequest, SleepReply>(
+        registrar,
+        static_cast<MemRpc::Opcode>(TestkitOpcode::Sleep),
+        [service](const SleepRequest& request) { return service->Sleep(request); });
+}
+
+template <typename Registrar>
+void RegisterFaultInjectionHandlers(Registrar* registrar)
+{
+    if (registrar == nullptr) {
+        return;
+    }
+
+    registrar->RegisterHandler(
+        static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
+
+    registrar->RegisterHandler(
+        static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+            while (true) {
+                std::this_thread::sleep_for(std::chrono::hours(1));
+            }
+        });
+
+    registrar->RegisterHandler(
+        static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+            std::vector<std::vector<char>> leaks;
+            while (true) {
+                leaks.emplace_back(64 * 1024 * 1024, 'X');
+            }
+        });
+
+    registrar->RegisterHandler(
+        static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
+        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winfinite-recursion"
+#endif
+            struct Recurse {
+                static void Go(volatile int depth) { Go(depth + 1); }
+            };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+            Recurse::Go(0);
+        });
+}
+
+template <typename Registrar>
+void RegisterAllHandlers(Registrar* registrar, TestkitService* service, bool enableFaultInjection)
+{
+    RegisterCoreHandlers(registrar, service);
+    if (enableFaultInjection) {
+        RegisterFaultInjectionHandlers(registrar);
+    }
+}
+
+}  // namespace
 
 TestkitService::TestkitService(TestkitServiceOptions options)
     : options_(options) {}
@@ -37,63 +152,13 @@ SleepReply TestkitService::Sleep(const SleepRequest& request) const {
     return reply;
 }
 
+void TestkitService::RegisterHandlers(AnyCallHandlerSink* sink) {
+    RegisterAllHandlers(sink, this, options_.enableFaultInjection);
+}
+
 void TestkitService::RegisterHandlers(MemRpc::RpcServer* server) {
-    if (server == nullptr) {
-        return;
-    }
-
-    MemRpc::RegisterTypedHandler<EchoRequest, EchoReply>(
-        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Echo),
-        [this](const EchoRequest& request) { return Echo(request); });
-    MemRpc::RegisterTypedHandler<AddRequest, AddReply>(
-        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Add),
-        [this](const AddRequest& request) { return Add(request); });
-    MemRpc::RegisterTypedHandler<SleepRequest, SleepReply>(
-        server, static_cast<MemRpc::Opcode>(TestkitOpcode::Sleep),
-        [this](const SleepRequest& request) { return Sleep(request); });
-
-    if (!options_.enableFaultInjection) {
-        return;
-    }
-
-    // Fault injection stays opt-in so the default demo engine does not expose
-    // crash endpoints unless tests explicitly request them.
-    server->RegisterHandler(
-        static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest),
-        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
-
-    server->RegisterHandler(
-        static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest),
-        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
-            while (true) {
-                std::this_thread::sleep_for(std::chrono::hours(1));
-            }
-        });
-
-    server->RegisterHandler(
-        static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest),
-        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
-            std::vector<std::vector<char>> leaks;
-            while (true) {
-                leaks.emplace_back(64 * 1024 * 1024, 'X');
-            }
-        });
-
-    server->RegisterHandler(
-        static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
-        [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Winfinite-recursion"
-#endif
-            struct Recurse {
-                static void Go(volatile int depth) { Go(depth + 1); }
-            };
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-            Recurse::Go(0);
-        });
+    RpcServerHandlerSink sink(server);
+    RegisterHandlers(&sink);
 }
 
 }  // namespace VirusExecutorService::testkit

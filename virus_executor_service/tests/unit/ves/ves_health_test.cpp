@@ -61,23 +61,23 @@ class SessionServiceBootstrapChannel final : public MemRpc::IBootstrapChannel {
 
 class BlockingRegistrar final : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(MemRpc::RpcServer* server) override
+    void RegisterHandlers(AnyCallHandlerSink* sink) override
     {
-        ASSERT_NE(server, nullptr);
-        server->RegisterHandler(kBlockingOpcode,
-                                [this](const MemRpc::RpcServerCall&,
-                                       MemRpc::RpcServerReply* reply) {
-                                    ASSERT_NE(reply, nullptr);
-                                    {
-                                        std::lock_guard<std::mutex> lock(mutex_);
-                                        running_ = true;
-                                    }
-                                    cv_.notify_all();
+        ASSERT_NE(sink, nullptr);
+        sink->RegisterHandler(kBlockingOpcode,
+                              [this](const MemRpc::RpcServerCall&,
+                                     MemRpc::RpcServerReply* reply) {
+                                  ASSERT_NE(reply, nullptr);
+                                  {
+                                      std::lock_guard<std::mutex> lock(mutex_);
+                                      running_ = true;
+                                  }
+                                  cv_.notify_all();
 
-                                    std::unique_lock<std::mutex> lock(mutex_);
-                                    cv_.wait(lock, [this] { return allowReply_; });
-                                    reply->status = MemRpc::StatusCode::Ok;
-                                });
+                                  std::unique_lock<std::mutex> lock(mutex_);
+                                  cv_.wait(lock, [this] { return allowReply_; });
+                                  reply->status = MemRpc::StatusCode::Ok;
+                              });
     }
 
     bool WaitUntilRunning(std::chrono::milliseconds timeout)

@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -38,6 +39,8 @@ class EngineSessionService final : public VesSessionProvider,
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) override;
+    MemRpc::StatusCode InvokeAnyCall(const MemRpc::RpcServerCall& call,
+                                     MemRpc::RpcServerReply* reply);
 
     [[nodiscard]] uint64_t session_id() const;
     [[nodiscard]] MemRpc::RpcServerRuntimeStats GetRuntimeStats() const;
@@ -48,6 +51,7 @@ class EngineSessionService final : public VesSessionProvider,
     void EventPublisherLoop();
 
     std::vector<RpcHandlerRegistrar*> registrars_;
+    std::unordered_map<uint16_t, MemRpc::RpcHandler> anyCallHandlers_;
     std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
     std::shared_ptr<MemRpc::RpcServer> rpcServer_;
     mutable std::mutex initMutex_;

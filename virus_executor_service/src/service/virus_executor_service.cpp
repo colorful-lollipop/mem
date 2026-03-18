@@ -135,24 +135,25 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
         return MemRpc::StatusCode::Ok;
     }
 
-    switch (static_cast<VesOpcode>(request.opcode)) {
-        case VesOpcode::ScanFile: {
-            ScanTask scanRequest;
-            if (!MemRpc::DecodeMessage<ScanTask>(request.payload, &scanRequest)) {
-                vesReply.status = MemRpc::StatusCode::ProtocolMismatch;
-                return MemRpc::StatusCode::Ok;
-            }
-            ScanFileReply scanReply = service_.ScanFile(scanRequest);
-            vesReply.status = MemRpc::StatusCode::Ok;
-            if (!MemRpc::EncodeMessage<ScanFileReply>(scanReply, &vesReply.payload)) {
-                vesReply.status = MemRpc::StatusCode::EngineInternalError;
-                vesReply.payload.clear();
-            }
-            return MemRpc::StatusCode::Ok;
-        }
+    std::shared_ptr<EngineSessionService> sessionService;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        sessionService = session_service_;
+    }
+    if (!sessionService) {
+        vesReply.status = MemRpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::Ok;
     }
 
-    vesReply.status = MemRpc::StatusCode::InvalidArgument;
+    MemRpc::RpcServerCall call;
+    call.opcode = static_cast<MemRpc::Opcode>(request.opcode);
+    call.priority = static_cast<MemRpc::Priority>(request.priority);
+    call.payload = MemRpc::PayloadView(request.payload.data(), request.payload.size());
+
+    MemRpc::RpcServerReply reply;
+    vesReply.status = sessionService->InvokeAnyCall(call, &reply);
+    vesReply.errorCode = reply.errorCode;
+    vesReply.payload = std::move(reply.payload);
     return MemRpc::StatusCode::Ok;
 }
 

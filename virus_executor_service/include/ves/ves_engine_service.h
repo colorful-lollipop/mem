@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "memrpc/server/rpc_server.h"
@@ -19,7 +20,8 @@ class VesEventPublisher;
 
 class VesEngineService : public RpcHandlerRegistrar {
  public:
-    void RegisterHandlers(MemRpc::RpcServer* server) override;
+    void RegisterHandlers(AnyCallHandlerSink* sink) override;
+    void RegisterHandlers(MemRpc::RpcServer* server);
     void Initialize();
     bool initialized() const;
     void SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher);

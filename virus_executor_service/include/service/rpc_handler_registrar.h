@@ -5,10 +5,16 @@
 
 namespace VirusExecutorService {
 
+class AnyCallHandlerSink {
+ public:
+    virtual ~AnyCallHandlerSink() = default;
+    virtual void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) = 0;
+};
+
 class RpcHandlerRegistrar {
  public:
     virtual ~RpcHandlerRegistrar() = default;
-    virtual void RegisterHandlers(MemRpc::RpcServer* server) = 0;
+    virtual void RegisterHandlers(AnyCallHandlerSink* sink) = 0;
 };
 
 }  // namespace VirusExecutorService

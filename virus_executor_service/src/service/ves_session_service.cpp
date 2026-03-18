@@ -13,6 +13,65 @@
 namespace VirusExecutorService {
 
 namespace {
+class RpcServerHandlerSink final : public AnyCallHandlerSink {
+ public:
+    explicit RpcServerHandlerSink(MemRpc::RpcServer* server)
+        : server_(server) {}
+
+    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
+    {
+        if (server_ == nullptr) {
+            return;
+        }
+        server_->RegisterHandler(opcode, std::move(handler));
+    }
+
+ private:
+    MemRpc::RpcServer* server_ = nullptr;
+};
+
+class AnyCallHandlerSinkImpl final : public AnyCallHandlerSink {
+ public:
+    explicit AnyCallHandlerSinkImpl(std::unordered_map<uint16_t, MemRpc::RpcHandler>* handlers)
+        : handlers_(handlers) {}
+
+    void RegisterHandler(MemRpc::Opcode opcode, MemRpc::RpcHandler handler) override
+    {
+        if (handlers_ == nullptr) {
+            return;
+        }
+        const uint16_t key = static_cast<uint16_t>(opcode);
+        if (!handler) {
+            handlers_->erase(key);
+            return;
+        }
+        (*handlers_)[key] = std::move(handler);
+    }
+
+ private:
+    std::unordered_map<uint16_t, MemRpc::RpcHandler>* handlers_ = nullptr;
+};
+
+MemRpc::StatusCode InvokeAnyCallHandler(
+    const std::unordered_map<uint16_t, MemRpc::RpcHandler>& handlers,
+    const MemRpc::RpcServerCall& call,
+    MemRpc::RpcServerReply* reply)
+{
+    if (reply == nullptr) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    *reply = MemRpc::RpcServerReply{};
+    const auto it = handlers.find(static_cast<uint16_t>(call.opcode));
+    if (it == handlers.end()) {
+        reply->status = MemRpc::StatusCode::InvalidArgument;
+        return reply->status;
+    }
+
+    it->second(call, reply);
+    return reply->status;
+}
+
 void CloseHandles(MemRpc::BootstrapHandles* handles) {
     if (handles == nullptr) return;
     int* fds[] = {
@@ -63,9 +122,13 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized() {
 
     const MemRpc::BootstrapHandles serverHandles = bootstrap_->serverHandles();
     rpcServer_ = std::make_shared<MemRpc::RpcServer>(serverHandles);
+    anyCallHandlers_.clear();
+    RpcServerHandlerSink rpcServerSink(rpcServer_.get());
+    AnyCallHandlerSinkImpl anyCallSink(&anyCallHandlers_);
     for (auto* registrar : registrars_) {
         if (registrar != nullptr) {
-            registrar->RegisterHandlers(rpcServer_.get());
+            registrar->RegisterHandlers(&rpcServerSink);
+            registrar->RegisterHandlers(&anyCallSink);
         }
     }
     const MemRpc::StatusCode start_status = rpcServer_->Start();
@@ -117,6 +180,15 @@ MemRpc::StatusCode EngineSessionService::PublishEventBlocking(const MemRpc::RpcE
         rpcServer = rpcServer_;
     }
     return rpcServer->PublishEvent(event);
+}
+
+MemRpc::StatusCode EngineSessionService::InvokeAnyCall(const MemRpc::RpcServerCall& call,
+                                                       MemRpc::RpcServerReply* reply) {
+    const MemRpc::StatusCode initStatus = EnsureInitialized();
+    if (initStatus != MemRpc::StatusCode::Ok) {
+        return initStatus;
+    }
+    return InvokeAnyCallHandler(anyCallHandlers_, call, reply);
 }
 
 MemRpc::StatusCode EngineSessionService::CloseSession() {

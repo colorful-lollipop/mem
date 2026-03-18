@@ -15,7 +15,8 @@ class TestkitService : public VirusExecutorService::RpcHandlerRegistrar {
     explicit TestkitService(TestkitServiceOptions options = {});
 
     void SetFaultInjectionEnabled(bool enabled);
-    void RegisterHandlers(MemRpc::RpcServer* server) override;
+    void RegisterHandlers(AnyCallHandlerSink* sink) override;
+    void RegisterHandlers(MemRpc::RpcServer* server);
 
     [[nodiscard]] EchoReply Echo(const EchoRequest& request) const;
     [[nodiscard]] AddReply Add(const AddRequest& request) const;
