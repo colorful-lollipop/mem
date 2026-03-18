@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "memrpc/client/rpc_client.h"
 #include "service/virus_executor_service.h"
@@ -42,6 +43,27 @@ MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& p
     return client->InvokeAsync(std::move(call));
 }
 
+void CloseHandles(MemRpc::BootstrapHandles* handles)
+{
+    if (handles == nullptr) {
+        return;
+    }
+    int* fds[] = {
+        &handles->shmFd,
+        &handles->highReqEventFd,
+        &handles->normalReqEventFd,
+        &handles->respEventFd,
+        &handles->reqCreditEventFd,
+        &handles->respCreditEventFd,
+    };
+    for (int* fd : fds) {
+        if (fd != nullptr && *fd >= 0) {
+            close(*fd);
+            *fd = -1;
+        }
+    }
+}
+
 }  // namespace
 
 TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
@@ -63,7 +85,7 @@ TEST(VesHeartbeatTest, OkAfterOpenSession) {
     service.OnStart();
 
     MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(service.OpenSession(handles), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(service.OpenSession(DefaultVesOpenSessionRequest(), handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
     VesHeartbeatReply reply{};
@@ -91,9 +113,13 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     ASSERT_TRUE(stub->Publish(stub.get()));
 
     VesControlProxy proxy(stub->AsObject(), socketPath);
+    VesOpenSessionRequest request;
+    request.engineKinds = {99u, static_cast<uint32_t>(VesEngineKind::Scan), 99u};
     MemRpc::BootstrapHandles handles{};
-    ASSERT_EQ(proxy.OpenSession(handles), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(proxy.OpenSession(request, handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
+    EXPECT_EQ(stub->service().configuredEngineKinds(),
+              (std::vector<uint32_t>{static_cast<uint32_t>(VesEngineKind::Scan), 99u}));
 
     VesHeartbeatReply reply{};
     EXPECT_EQ(proxy.Heartbeat(reply), MemRpc::StatusCode::Ok);
@@ -101,7 +127,34 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     EXPECT_EQ(reply.sessionId, session_id);
 
     proxy.CloseSession();
+    CloseHandles(&handles);
     stub->OnStop();
+}
+
+TEST(VesHeartbeatTest, OpenSessionRejectsDifferentEngineListAfterConfiguration) {
+    VirusExecutorService service;
+    service.OnStart();
+
+    VesOpenSessionRequest firstRequest;
+    firstRequest.engineKinds = {99u};
+
+    MemRpc::BootstrapHandles handles{};
+    ASSERT_EQ(service.OpenSession(firstRequest, handles), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(service.service().configuredEngineKinds(), (std::vector<uint32_t>{99u}));
+
+    VesOpenSessionRequest secondRequest;
+    secondRequest.engineKinds = {static_cast<uint32_t>(VesEngineKind::Scan)};
+
+    MemRpc::BootstrapHandles rejected{};
+    EXPECT_EQ(service.OpenSession(secondRequest, rejected), MemRpc::StatusCode::InvalidArgument);
+
+    ScanTask scanTask{"/data/eicar.bin"};
+    const ScanFileReply reply = service.service().ScanFile(scanTask);
+    EXPECT_EQ(reply.code, -1);
+
+    service.CloseSession();
+    CloseHandles(&handles);
+    service.OnStop();
 }
 
 TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
@@ -111,7 +164,7 @@ TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
     auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control);
+    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
@@ -134,7 +187,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control);
+    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
     MemRpc::BootstrapHandles handles{};
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
@@ -158,7 +211,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control);
+    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
 
     const auto unhealthy = bootstrap.CheckHealth(42);
     EXPECT_EQ(unhealthy.status, MemRpc::ChannelHealthStatus::Unhealthy);
@@ -182,7 +235,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
@@ -213,7 +266,7 @@ TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
     auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 

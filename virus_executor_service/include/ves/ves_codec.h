@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "memrpc/core/codec.h"
+#include "transport/ves_control_interface.h"
 #include "ves/ves_types.h"
 
 namespace MemRpc {
@@ -52,6 +53,49 @@ struct CodecTraits<VirusExecutorService::ScanFileReply> {
         }
         ByteReader reader(bytes, size);
         return reader.ReadInt32(&reply->code) && reader.ReadInt32(&reply->threatLevel);
+    }
+};
+
+template <>
+struct CodecTraits<VirusExecutorService::VesOpenSessionRequest> {
+    static bool Encode(const VirusExecutorService::VesOpenSessionRequest& request,
+                       std::vector<uint8_t>* bytes) {
+        ByteWriter writer;
+        if (!writer.WriteUint32(request.version) ||
+            !writer.WriteUint32(static_cast<uint32_t>(request.engineKinds.size()))) {
+            return false;
+        }
+        for (uint32_t engineKind : request.engineKinds) {
+            if (!writer.WriteUint32(engineKind)) {
+                return false;
+            }
+        }
+        return detail::AssignBytes(writer, bytes);
+    }
+
+    static bool Decode(const uint8_t* bytes, std::size_t size,
+                       VirusExecutorService::VesOpenSessionRequest* request) {
+        if (request == nullptr) {
+            return false;
+        }
+        ByteReader reader(bytes, size);
+        request->engineKinds.clear();
+
+        uint32_t engineCount = 0;
+        if (!reader.ReadUint32(&request->version) || !reader.ReadUint32(&engineCount) ||
+            engineCount > VirusExecutorService::VES_OPEN_SESSION_MAX_ENGINE_KINDS) {
+            return false;
+        }
+
+        request->engineKinds.reserve(engineCount);
+        for (uint32_t index = 0; index < engineCount; ++index) {
+            uint32_t engineKind = 0;
+            if (!reader.ReadUint32(&engineKind)) {
+                return false;
+            }
+            request->engineKinds.push_back(engineKind);
+        }
+        return true;
     }
 };
 

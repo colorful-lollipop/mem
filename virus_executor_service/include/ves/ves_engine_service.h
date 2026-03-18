@@ -11,6 +11,7 @@
 
 #include "memrpc/server/rpc_server.h"
 #include "service/rpc_handler_registrar.h"
+#include "transport/ves_control_interface.h"
 #include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
 
@@ -22,7 +23,10 @@ class VesEngineService : public RpcHandlerRegistrar {
  public:
     void RegisterHandlers(RpcHandlerSink* sink) override;
     void Initialize();
+    MemRpc::StatusCode ConfigureEngines(const VesOpenSessionRequest& request);
     bool initialized() const;
+    [[nodiscard]] std::vector<uint32_t> configuredEngineKinds() const;
+    void ResetEngines();
     void SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher);
 
     ScanFileReply ScanFile(const ScanTask& request) const;
@@ -36,7 +40,12 @@ class VesEngineService : public RpcHandlerRegistrar {
                                         uint32_t eventDomain = VES_EVENT_DOMAIN_RUNTIME) const;
 
  private:
+    bool IsScanEngineEnabled() const;
+
     std::atomic<bool> initialized_{false};
+    mutable std::mutex engineConfigMutex_;
+    std::vector<uint32_t> configuredEngineKinds_;
+    bool enginesConfigured_ = false;
     mutable std::mutex eventPublisherMutex_;
     std::weak_ptr<VesEventPublisher> eventPublisher_;
 };

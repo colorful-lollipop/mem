@@ -20,7 +20,8 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
                       const std::string& serviceSocketPath);
     ~VesControlProxy() override;
 
-    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                   MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
     MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override;
@@ -54,6 +55,7 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     using ControlLoader = std::function<OHOS::sptr<IVesControl>(bool forceReload)>;
 
     explicit VesBootstrapChannel(OHOS::sptr<IVesControl> control,
+                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest(),
                                  ControlLoader controlLoader = {});
     ~VesBootstrapChannel() override;
 
@@ -77,6 +79,7 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     HealthSnapshotCallback healthSnapshotCallback_;
     MemRpc::EngineDeathCallback deathCallback_;
     uint64_t sessionId_ = 0;
+    VesOpenSessionRequest openSessionRequest_{};
 };
 
 }  // namespace VirusExecutorService

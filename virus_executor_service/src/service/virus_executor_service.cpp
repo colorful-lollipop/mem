@@ -67,7 +67,13 @@ bool VirusExecutorService::Publish(VirusExecutorService* service) {
     return true;
 }
 
-MemRpc::StatusCode VirusExecutorService::OpenSession(MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VirusExecutorService::OpenSession(const VesOpenSessionRequest& request,
+                                                     MemRpc::BootstrapHandles& handles) {
+    const MemRpc::StatusCode configStatus = service_.ConfigureEngines(request);
+    if (configStatus != MemRpc::StatusCode::Ok) {
+        return configStatus;
+    }
+
     std::shared_ptr<EngineSessionService> sessionService;
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
@@ -181,6 +187,7 @@ void VirusExecutorService::OnStop() {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
         sessionService = std::move(session_service_);
         service_.SetEventPublisher({});
+        service_.ResetEngines();
     }
     if (sessionService) {
         sessionService->CloseSession();

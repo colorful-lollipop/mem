@@ -1,6 +1,7 @@
 #ifndef INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_INTERFACE_H_
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_TRANSPORT_VES_CONTROL_INTERFACE_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -11,6 +12,12 @@
 namespace VirusExecutorService {
 
 constexpr int32_t VES_CONTROL_SA_ID = 1251;
+constexpr uint32_t VES_OPEN_SESSION_REQUEST_VERSION = 1;
+constexpr size_t VES_OPEN_SESSION_MAX_ENGINE_KINDS = 32;
+
+enum class VesEngineKind : uint32_t {
+    Scan = 1,
+};
 
 enum class VesHeartbeatStatus : uint8_t {
     OkIdle = 0,
@@ -60,10 +67,42 @@ struct VesAnyCallReply {
     std::vector<uint8_t> payload;
 };
 
+struct VesOpenSessionRequest {
+    uint32_t version = VES_OPEN_SESSION_REQUEST_VERSION;
+    std::vector<uint32_t> engineKinds;
+};
+
+inline VesOpenSessionRequest DefaultVesOpenSessionRequest()
+{
+    return {};
+}
+
+inline std::vector<uint32_t> NormalizeVesEngineKinds(std::vector<uint32_t> engineKinds)
+{
+    std::sort(engineKinds.begin(), engineKinds.end());
+    engineKinds.erase(std::unique(engineKinds.begin(), engineKinds.end()), engineKinds.end());
+    return engineKinds;
+}
+
+inline bool IsValidVesOpenSessionRequest(const VesOpenSessionRequest& request)
+{
+    if (request.version != VES_OPEN_SESSION_REQUEST_VERSION ||
+        request.engineKinds.size() > VES_OPEN_SESSION_MAX_ENGINE_KINDS) {
+        return false;
+    }
+    for (uint32_t engineKind : request.engineKinds) {
+        if (engineKind == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class IVesControl : public OHOS::IRemoteBroker {
  public:
     ~IVesControl() override = default;
-    virtual MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) = 0;
+    virtual MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                           MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;
     virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
     virtual MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request,

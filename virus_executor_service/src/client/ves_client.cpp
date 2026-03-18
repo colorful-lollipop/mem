@@ -193,6 +193,7 @@ MemRpc::StatusCode VesClient::Init() {
                              : VES_CONTROL_SA_ID;
     bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
         control_,
+        options_.openSessionRequest,
         [saId](bool forceReload) -> OHOS::sptr<IVesControl> {
             auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
             if (sam == nullptr) {

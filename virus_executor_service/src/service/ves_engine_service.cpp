@@ -1,5 +1,6 @@
 #include "ves/ves_engine_service.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
@@ -13,6 +14,19 @@
 
 namespace VirusExecutorService {
 
+namespace {
+
+std::vector<uint32_t> ResolveEngineKinds(const VesOpenSessionRequest& request)
+{
+    std::vector<uint32_t> engineKinds = NormalizeVesEngineKinds(request.engineKinds);
+    if (engineKinds.empty()) {
+        engineKinds.push_back(static_cast<uint32_t>(VesEngineKind::Scan));
+    }
+    return engineKinds;
+}
+
+}  // namespace
+
 void VesEngineService::Initialize() {
     bool expected = false;
     if (!initialized_.compare_exchange_strong(
@@ -22,8 +36,44 @@ void VesEngineService::Initialize() {
     HILOGI("VesEngineService initialized");
 }
 
+MemRpc::StatusCode VesEngineService::ConfigureEngines(const VesOpenSessionRequest& request)
+{
+    if (!IsValidVesOpenSessionRequest(request)) {
+        HILOGE("invalid open-session request version=%{public}u count=%{public}zu",
+               request.version, request.engineKinds.size());
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    const std::vector<uint32_t> resolvedEngineKinds = ResolveEngineKinds(request);
+    std::lock_guard<std::mutex> lock(engineConfigMutex_);
+    if (!enginesConfigured_) {
+        configuredEngineKinds_ = resolvedEngineKinds;
+        enginesConfigured_ = true;
+        HILOGI("configured %{public}zu engine kinds", configuredEngineKinds_.size());
+        return MemRpc::StatusCode::Ok;
+    }
+    if (configuredEngineKinds_ != resolvedEngineKinds) {
+        HILOGE("open-session engine list mismatch");
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+    return MemRpc::StatusCode::Ok;
+}
+
 bool VesEngineService::initialized() const {
     return initialized_.load(std::memory_order_acquire);
+}
+
+std::vector<uint32_t> VesEngineService::configuredEngineKinds() const
+{
+    std::lock_guard<std::mutex> lock(engineConfigMutex_);
+    return configuredEngineKinds_;
+}
+
+void VesEngineService::ResetEngines()
+{
+    std::lock_guard<std::mutex> lock(engineConfigMutex_);
+    configuredEngineKinds_.clear();
+    enginesConfigured_ = false;
 }
 
 void VesEngineService::SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher) {
@@ -33,7 +83,7 @@ void VesEngineService::SetEventPublisher(std::weak_ptr<VesEventPublisher> publis
 
 ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
     ScanFileReply result;
-    if (!initialized()) {
+    if (!initialized() || !IsScanEngineEnabled()) {
         result.code = -1;
     } else {
         const auto behavior = EvaluateSamplePath(request.path);
@@ -51,6 +101,14 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
           request.path.c_str(), result.threatLevel);
 
     return result;
+}
+
+bool VesEngineService::IsScanEngineEnabled() const
+{
+    std::lock_guard<std::mutex> lock(engineConfigMutex_);
+    return !enginesConfigured_ ||
+           std::find(configuredEngineKinds_.begin(), configuredEngineKinds_.end(),
+                     static_cast<uint32_t>(VesEngineKind::Scan)) != configuredEngineKinds_.end();
 }
 
 MemRpc::StatusCode VesEngineService::PublishEvent(uint32_t eventType,

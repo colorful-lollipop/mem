@@ -11,6 +11,7 @@
 #include "iremote_broker.h"
 #include "scm_rights.h"
 #include "iservice_registry.h"
+#include "ves/ves_codec.h"
 #include "virus_protection_service_log.h"
 
 namespace VirusExecutorService {
@@ -273,7 +274,17 @@ void VesControlProxy::NotifyPeerDisconnected() {
     }
 }
 
-MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& request,
+                                                MemRpc::BootstrapHandles& handles) {
+    if (!IsValidVesOpenSessionRequest(request)) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    std::vector<uint8_t> payload;
+    if (!MemRpc::EncodeMessage(request, &payload)) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+
     std::lock_guard<std::mutex> lock(operationMutex_);
     ResetSocketConnection();
 
@@ -283,7 +294,7 @@ MemRpc::StatusCode VesControlProxy::OpenSession(MemRpc::BootstrapHandles& handle
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
-    if (!SendCommand(fd, 1)) {
+    if (!SendCommand(fd, 1, payload)) {
         close(fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
@@ -436,8 +447,10 @@ void VesControlProxy::MonitorSocket() {
 }
 
 VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
+                                         VesOpenSessionRequest openSessionRequest,
                                          ControlLoader controlLoader)
     : control_(std::move(control)),
+      openSessionRequest_(std::move(openSessionRequest)),
       controlLoader_(std::move(controlLoader)),
       deathRecipient_(std::make_shared<ControlDeathRecipient>([this]() {
           uint64_t sessionId = 0;
@@ -448,6 +461,7 @@ VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
           NotifyEngineDeath(sessionId);
       }))
 {
+    openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
     std::lock_guard<std::mutex> lock(mutex_);
     RebindControlLocked(control_);
 }
@@ -534,9 +548,11 @@ void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
 MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
 {
     OHOS::sptr<IVesControl> control;
+    VesOpenSessionRequest request;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         control = control_;
+        request = openSessionRequest_;
         if (control == nullptr) {
             handles = MemRpc::BootstrapHandles{};
             control = ReloadControlLocked(false);
@@ -546,7 +562,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    MemRpc::StatusCode status = control->OpenSession(handles);
+    MemRpc::StatusCode status = control->OpenSession(request, handles);
     if (status == MemRpc::StatusCode::Ok) {
         std::lock_guard<std::mutex> lock(mutex_);
         sessionId_ = handles.sessionId;
@@ -562,7 +578,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
         return status;
     }
 
-    status = control->OpenSession(handles);
+    status = control->OpenSession(request, handles);
     if (status == MemRpc::StatusCode::Ok) {
         std::lock_guard<std::mutex> lock(mutex_);
         sessionId_ = handles.sessionId;

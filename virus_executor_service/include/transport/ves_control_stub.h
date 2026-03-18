@@ -7,6 +7,7 @@
 #include "mock_ipc_types.h"
 #include "memrpc/core/bootstrap.h"
 #include "transport/ves_control_interface.h"
+#include "ves/ves_codec.h"
 
 namespace VirusExecutorService {
 
@@ -48,6 +49,14 @@ inline bool DecodeAnyCallRequest(const OHOS::MockIpcRequest& request, VesAnyCall
     return true;
 }
 
+inline bool DecodeOpenSessionRequest(const OHOS::MockIpcRequest& request,
+                                     VesOpenSessionRequest* out)
+{
+    return out != nullptr &&
+           MemRpc::DecodeMessage<VesOpenSessionRequest>(request.data, out) &&
+           IsValidVesOpenSessionRequest(*out);
+}
+
 inline void EncodeAnyCallReply(const VesAnyCallReply& reply, std::vector<uint8_t>* out)
 {
     if (out == nullptr) {
@@ -72,8 +81,12 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                          OHOS::MockIpcReply* reply) override {
         switch (command) {
             case 1: {
+                VesOpenSessionRequest openRequest{};
+                if (!detail::DecodeOpenSessionRequest(request, &openRequest)) {
+                    return false;
+                }
                 MemRpc::BootstrapHandles handles{};
-                if (OpenSession(handles) != MemRpc::StatusCode::Ok) {
+                if (OpenSession(openRequest, handles) != MemRpc::StatusCode::Ok) {
                     return false;
                 }
 

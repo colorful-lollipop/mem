@@ -101,8 +101,10 @@ class FakeSubscriptionControlService final : public OHOS::SystemAbility,
         : OHOS::SystemAbility(VES_CONTROL_SA_ID, true),
           bootstrap_(std::make_shared<MemRpc::DevBootstrapChannel>()) {}
 
-    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                   MemRpc::BootstrapHandles& handles) override
     {
+        EXPECT_TRUE(request.engineKinds.empty());
         openCount_.fetch_add(1);
         sessionOpen_.store(true);
         return bootstrap_->OpenSession(handles);
