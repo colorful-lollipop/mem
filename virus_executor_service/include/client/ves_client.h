@@ -60,7 +60,16 @@ class VesClient {
     [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
 
  private:
+    template <typename Request, typename Reply>
+    MemRpc::StatusCode InvokeApi(MemRpc::Opcode opcode,
+                                 const Request& request,
+                                 Reply* reply,
+                                 MemRpc::Priority priority,
+                                 uint32_t execTimeoutMs);
+
     MemRpc::StatusCode InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke);
+    [[nodiscard]] OHOS::sptr<IVesControl> CurrentControl();
+    [[nodiscard]] uint32_t CurrentRecoveryTimeoutMs() const;
     void CacheRecoverySnapshot(const MemRpc::RecoveryRuntimeSnapshot& snapshot);
     void CacheRecoveryEvent(const MemRpc::RecoveryEventReport& report);
     bool WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline);

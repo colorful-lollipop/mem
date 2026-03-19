@@ -21,54 +21,6 @@ constexpr std::chrono::milliseconds RECOVERY_RETRY_POLL_INTERVAL{20};
 constexpr std::chrono::milliseconds RECOVERY_RETRY_GRACE{100};
 constexpr int CONTROL_RELOAD_TIMEOUT_MS = 5000;
 
-template <typename Request, typename Reply>
-MemRpc::StatusCode InvokeWithAnyCallFallback(MemRpc::RpcClient* client,
-                                             const OHOS::sptr<IVesControl>& control,
-                                             VesOpcode opcode,
-                                             const Request& request,
-                                             Reply* reply,
-                                             MemRpc::Priority priority,
-                                             uint32_t execTimeoutMs,
-                                             uint32_t recoveryTimeoutMs) {
-    std::vector<uint8_t> payload;
-    if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
-        return MemRpc::StatusCode::ProtocolMismatch;
-    }
-
-    if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
-        MemRpc::RpcCall call;
-        call.opcode = static_cast<MemRpc::Opcode>(opcode);
-        call.priority = priority;
-        call.waitForRecovery = true;
-        call.recoveryTimeoutMs = recoveryTimeoutMs;
-        call.execTimeoutMs = execTimeoutMs;
-        call.payload = std::move(payload);
-        return MemRpc::WaitAndDecode<Reply>(client->InvokeAsync(std::move(call)), reply);
-    }
-
-    if (control == nullptr) {
-        return MemRpc::StatusCode::PeerDisconnected;
-    }
-
-    VesAnyCallRequest anyRequest;
-    anyRequest.opcode = static_cast<uint16_t>(opcode);
-    anyRequest.priority = static_cast<uint16_t>(priority);
-    anyRequest.timeoutMs = execTimeoutMs;
-    anyRequest.payload = std::move(payload);
-
-    VesAnyCallReply anyReply;
-    const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
-    if (status != MemRpc::StatusCode::Ok) {
-        return status;
-    }
-    if (anyReply.status != MemRpc::StatusCode::Ok) {
-        return anyReply.status;
-    }
-    return MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)
-               ? MemRpc::StatusCode::Ok
-               : MemRpc::StatusCode::ProtocolMismatch;
-}
-
 bool ShouldRetryRecoveryStatus(MemRpc::StatusCode status,
                                const MemRpc::RecoveryRuntimeSnapshot& snapshot)
 {
@@ -262,28 +214,76 @@ MemRpc::RecoveryRuntimeSnapshot VesClient::GetRecoveryRuntimeSnapshot() const {
     return GetCachedRecoverySnapshot();
 }
 
-MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
-                                       ScanFileReply* reply,
-                                       MemRpc::Priority priority,
-                                       uint32_t execTimeoutMs) {
+OHOS::sptr<IVesControl> VesClient::CurrentControl()
+{
+    return bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
+}
+
+uint32_t VesClient::CurrentRecoveryTimeoutMs() const
+{
+    return static_cast<uint32_t>(RecoveryWaitTimeout(GetCachedRecoverySnapshot()).count());
+}
+
+template <typename Request, typename Reply>
+MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
+                                        const Request& request,
+                                        Reply* reply,
+                                        MemRpc::Priority priority,
+                                        uint32_t execTimeoutMs)
+{
     if (reply == nullptr) {
         return MemRpc::StatusCode::InvalidArgument;
     }
 
     return InvokeWithRecovery([&]() {
-        auto control = bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
-        const auto recoveryTimeoutMs =
-            static_cast<uint32_t>(RecoveryWaitTimeout(GetCachedRecoverySnapshot()).count());
-        return InvokeWithAnyCallFallback<ScanTask, ScanFileReply>(
-            &client_,
-            control,
-            VesOpcode::ScanFile,
-            scanTask,
-            reply,
-            priority,
-            execTimeoutMs,
-            recoveryTimeoutMs);
+        std::vector<uint8_t> payload;
+        if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
+            return MemRpc::StatusCode::ProtocolMismatch;
+        }
+
+        const uint32_t recoveryTimeoutMs = CurrentRecoveryTimeoutMs();
+        if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
+            MemRpc::RpcCall call;
+            call.opcode = opcode;
+            call.priority = priority;
+            call.waitForRecovery = true;
+            call.recoveryTimeoutMs = recoveryTimeoutMs;
+            call.execTimeoutMs = execTimeoutMs;
+            call.payload = std::move(payload);
+            return MemRpc::WaitAndDecode<Reply>(client_.InvokeAsync(std::move(call)), reply);
+        }
+
+        auto control = CurrentControl();
+        if (control == nullptr) {
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+
+        VesAnyCallRequest anyRequest;
+        anyRequest.opcode = static_cast<uint16_t>(opcode);
+        anyRequest.priority = static_cast<uint16_t>(priority);
+        anyRequest.timeoutMs = execTimeoutMs;
+        anyRequest.payload = std::move(payload);
+
+        VesAnyCallReply anyReply;
+        const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
+        if (status != MemRpc::StatusCode::Ok) {
+            return status;
+        }
+        if (anyReply.status != MemRpc::StatusCode::Ok) {
+            return anyReply.status;
+        }
+        return MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)
+                   ? MemRpc::StatusCode::Ok
+                   : MemRpc::StatusCode::ProtocolMismatch;
     });
+}
+
+MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
+                                       ScanFileReply* reply,
+                                       MemRpc::Priority priority,
+                                       uint32_t execTimeoutMs) {
+    return InvokeApi<ScanTask, ScanFileReply>(
+        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile), scanTask, reply, priority, execTimeoutMs);
 }
 
 MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke)
@@ -375,5 +375,12 @@ std::chrono::milliseconds VesClient::RecoveryWaitTimeout(
     const uint32_t effectiveDelayMs = std::max(configuredDelayMs, snapshot.cooldownRemainingMs);
     return std::chrono::milliseconds(effectiveDelayMs) + RECOVERY_RETRY_GRACE;
 }
+
+template MemRpc::StatusCode VesClient::InvokeApi<ScanTask, ScanFileReply>(
+    MemRpc::Opcode opcode,
+    const ScanTask& request,
+    ScanFileReply* reply,
+    MemRpc::Priority priority,
+    uint32_t execTimeoutMs);
 
 }  // namespace VirusExecutorService
