@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "virus_protection_service_log.h"
+
 namespace MemRpc {
 
 bool ByteWriter::WriteUint32(uint32_t value) {
@@ -14,6 +16,7 @@ bool ByteWriter::WriteInt32(int32_t value) {
 
 bool ByteWriter::WriteBytes(const void* data, uint32_t size) {
   if (data == nullptr && size != 0) {
+    HILOGE("ByteWriter::WriteBytes failed: data is null size=%{public}u", size);
     return false;
   }
   const std::size_t offset = bytes_.size();

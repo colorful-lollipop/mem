@@ -194,6 +194,7 @@ bool VesControlProxy::SendCommand(int fd, char cmd, const std::vector<uint8_t>& 
 MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_t>* payload,
                                                       int timeoutMs) const {
     if (payload == nullptr) {
+        HILOGE("VesControlProxy::ReceiveSizedReply failed: payload is null");
         return MemRpc::StatusCode::InvalidArgument;
     }
     if (timeoutMs > 0) {
@@ -202,16 +203,21 @@ MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_
         pfd.events = POLLIN | POLLHUP | POLLERR;
         const int pollResult = poll(&pfd, 1, timeoutMs);
         if (pollResult <= 0) {
+            HILOGE("VesControlProxy::ReceiveSizedReply poll failed fd=%{public}d timeout_ms=%{public}d result=%{public}d",
+                fd, timeoutMs, pollResult);
             return MemRpc::StatusCode::PeerDisconnected;
         }
     }
 
     uint32_t replySize = 0;
     if (!RecvAll(fd, &replySize, sizeof(replySize))) {
+        HILOGE("VesControlProxy::ReceiveSizedReply failed reading size fd=%{public}d", fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
     payload->resize(replySize);
     if (replySize > 0 && !RecvAll(fd, payload->data(), payload->size())) {
+        HILOGE("VesControlProxy::ReceiveSizedReply failed reading payload fd=%{public}d size=%{public}u",
+            fd, replySize);
         payload->clear();
         return MemRpc::StatusCode::PeerDisconnected;
     }
@@ -225,6 +231,8 @@ MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::Bootst
     size_t data_len = sizeof(meta);
     const size_t received = OHOS::RecvFds(fd, fds, FD_COUNT, &meta, &data_len);
     if (received != FD_COUNT || data_len != sizeof(meta)) {
+        HILOGE("VesControlProxy::ReceiveSessionHandles failed fd=%{public}d received=%{public}zu expected=%{public}d data_len=%{public}zu meta_size=%{public}zu",
+            fd, received, FD_COUNT, data_len, sizeof(meta));
         for (size_t i = 0; i < received; ++i) {
             close(fds[i]);
         }
@@ -266,6 +274,8 @@ void VesControlProxy::NotifyPeerDisconnected() {
         std::lock_guard<std::mutex> lock(callbackMutex_);
         callback = deathCallback_;
     }
+    HILOGW("VesControlProxy::NotifyPeerDisconnected session_id=%{public}llu",
+        static_cast<unsigned long long>(sessionId));
     if (callback) {
         callback(sessionId);
     }
@@ -277,11 +287,14 @@ void VesControlProxy::NotifyPeerDisconnected() {
 MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& request,
                                                 MemRpc::BootstrapHandles& handles) {
     if (!IsValidVesOpenSessionRequest(request)) {
+        HILOGE("VesControlProxy::OpenSession failed: invalid request version=%{public}u engines=%{public}zu",
+            request.version, request.engineKinds.size());
         return MemRpc::StatusCode::InvalidArgument;
     }
 
     std::vector<uint8_t> payload;
     if (!MemRpc::EncodeMessage(request, &payload)) {
+        HILOGE("VesControlProxy::OpenSession encode failed");
         return MemRpc::StatusCode::ProtocolMismatch;
     }
 
@@ -295,12 +308,15 @@ MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& req
     }
 
     if (!SendCommand(fd, 1, payload)) {
+        HILOGE("VesControlProxy::OpenSession send failed path=%{public}s", service_socket_path_.c_str());
         close(fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
     const MemRpc::StatusCode receive_status = ReceiveSessionHandles(fd, handles);
     if (receive_status != MemRpc::StatusCode::Ok) {
+        HILOGE("VesControlProxy::OpenSession receive handles failed status=%{public}d",
+            static_cast<int>(receive_status));
         close(fd);
         return receive_status;
     }
@@ -324,10 +340,13 @@ MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& repl
                                                          int timeoutMs) const {
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
+        HILOGE("VesControlProxy::HeartbeatWithTimeout connect failed path=%{public}s",
+            service_socket_path_.c_str());
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
     if (!SendCommand(hb_fd, 3)) {
+        HILOGE("VesControlProxy::HeartbeatWithTimeout send failed");
         close(hb_fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
@@ -336,9 +355,13 @@ MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& repl
     const MemRpc::StatusCode receiveStatus = ReceiveSizedReply(hb_fd, &payload, timeoutMs);
     close(hb_fd);
     if (receiveStatus != MemRpc::StatusCode::Ok) {
+        HILOGE("VesControlProxy::HeartbeatWithTimeout receive failed status=%{public}d",
+            static_cast<int>(receiveStatus));
         return receiveStatus;
     }
     if (payload.size() != sizeof(VesHeartbeatReply)) {
+        HILOGE("VesControlProxy::HeartbeatWithTimeout protocol mismatch payload_size=%{public}zu expected=%{public}zu",
+            payload.size(), sizeof(VesHeartbeatReply));
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     VesHeartbeatReply buf{};
@@ -367,9 +390,13 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
 
     int fd = ConnectToService(service_socket_path_);
     if (fd < 0) {
+        HILOGE("VesControlProxy::AnyCall connect failed path=%{public}s opcode=%{public}u",
+            service_socket_path_.c_str(), request.opcode);
         return MemRpc::StatusCode::PeerDisconnected;
     }
     if (!SendCommand(fd, 4, wire)) {
+        HILOGE("VesControlProxy::AnyCall send failed opcode=%{public}u payload_size=%{public}zu",
+            request.opcode, request.payload.size());
         close(fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
@@ -379,15 +406,21 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
         ReceiveSizedReply(fd, &payload, request.timeoutMs > 0 ? static_cast<int>(request.timeoutMs) : 0);
     close(fd);
     if (receiveStatus != MemRpc::StatusCode::Ok) {
+        HILOGE("VesControlProxy::AnyCall receive failed opcode=%{public}u status=%{public}d",
+            request.opcode, static_cast<int>(receiveStatus));
         return receiveStatus;
     }
     if (payload.size() < sizeof(AnyCallReplyHeader)) {
+        HILOGE("VesControlProxy::AnyCall protocol mismatch opcode=%{public}u payload_size=%{public}zu header_size=%{public}zu",
+            request.opcode, payload.size(), sizeof(AnyCallReplyHeader));
         return MemRpc::StatusCode::ProtocolMismatch;
     }
 
     AnyCallReplyHeader replyHeader{};
     std::memcpy(&replyHeader, payload.data(), sizeof(replyHeader));
     if (payload.size() != sizeof(replyHeader) + replyHeader.payloadSize) {
+        HILOGE("VesControlProxy::AnyCall payload size mismatch opcode=%{public}u payload_size=%{public}zu declared_payload=%{public}u",
+            request.opcode, payload.size(), replyHeader.payloadSize);
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     reply.status = static_cast<MemRpc::StatusCode>(replyHeader.status);
@@ -403,12 +436,15 @@ MemRpc::StatusCode VesControlProxy::CloseSession() {
 
     int close_fd = ConnectToService(service_socket_path_);
     if (close_fd < 0) {
+        HILOGE("VesControlProxy::CloseSession connect failed path=%{public}s",
+            service_socket_path_.c_str());
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
     const bool sent = SendCommand(close_fd, 2);
     close(close_fd);
     if (!sent) {
+        HILOGE("VesControlProxy::CloseSession send failed");
         return MemRpc::StatusCode::PeerDisconnected;
     }
     return MemRpc::StatusCode::Ok;
@@ -437,6 +473,10 @@ void VesControlProxy::MonitorSocket() {
         const int poll_result = poll(&pfd, 1, 500);
         if (stop_monitor_) {
             break;
+        }
+        if (poll_result < 0) {
+            HILOGE("VesControlProxy::MonitorSocket poll failed fd=%{public}d", monitoredFd);
+            continue;
         }
         if (poll_result <= 0 || !HasDisconnectSignal(pfd) || !IsPeerDisconnected(monitoredFd)) {
             continue;

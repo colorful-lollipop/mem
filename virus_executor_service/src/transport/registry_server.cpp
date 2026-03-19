@@ -1,12 +1,14 @@
 #include "transport/registry_server.h"
 
 #include <cstring>
-#include <iostream>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <cerrno>
+
 #include "transport/registry_protocol.h"
+#include "virus_protection_service_log.h"
 
 namespace VirusExecutorService {
 
@@ -14,11 +16,14 @@ namespace {
 
 bool IsReachableServiceSocket(const std::string& socketPath) {
     if (socketPath.empty()) {
+        HILOGE("IsReachableServiceSocket failed: empty socket path");
         return false;
     }
 
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
+        HILOGE("IsReachableServiceSocket socket failed: path=%{public}s errno=%{public}d",
+            socketPath.c_str(), errno);
         return false;
     }
 
@@ -45,6 +50,8 @@ bool RegistryServer::Start() {
 
     listen_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listen_fd_ < 0) {
+        HILOGE("RegistryServer::Start socket failed: path=%{public}s errno=%{public}d",
+            socket_path_.c_str(), errno);
         return false;
     }
 
@@ -53,12 +60,16 @@ bool RegistryServer::Start() {
     std::strncpy(addr.sun_path, socket_path_.c_str(), sizeof(addr.sun_path) - 1);
 
     if (bind(listen_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        HILOGE("RegistryServer::Start bind failed: path=%{public}s errno=%{public}d",
+            socket_path_.c_str(), errno);
         close(listen_fd_);
         listen_fd_ = -1;
         return false;
     }
 
     if (listen(listen_fd_, 8) < 0) {
+        HILOGE("RegistryServer::Start listen failed: path=%{public}s errno=%{public}d",
+            socket_path_.c_str(), errno);
         close(listen_fd_);
         listen_fd_ = -1;
         return false;
@@ -98,6 +109,7 @@ void RegistryServer::AcceptLoop(int listen_fd) {
         int client_fd = accept(listen_fd, nullptr, nullptr);
         if (client_fd < 0) {
             if (running_.load(std::memory_order_acquire)) {
+                HILOGE("RegistryServer::AcceptLoop accept failed: errno=%{public}d", errno);
                 continue;
             }
             break;
@@ -111,12 +123,15 @@ void RegistryServer::AcceptLoop(int listen_fd) {
 void RegistryServer::HandleClient(int client_fd) {
     std::string msg;
     if (!RecvMessage(client_fd, &msg)) {
+        HILOGE("RegistryServer::HandleClient recv failed: client_fd=%{public}d", client_fd);
         return;
     }
 
     RegistryRequest req;
     if (!DecodeRegistryRequest(reinterpret_cast<const uint8_t*>(msg.data()),
                                msg.size(), &req)) {
+        HILOGE("RegistryServer::HandleClient decode failed: client_fd=%{public}d msg_size=%{public}zu",
+            client_fd, msg.size());
         return;
     }
 
@@ -152,6 +167,8 @@ void RegistryServer::HandleClient(int client_fd) {
                 }
             }
             if (found && !IsReachableServiceSocket(servicePath)) {
+                HILOGW("RegistryServer::HandleClient removing stale service: sa_id=%{public}d path=%{public}s",
+                    req.sa_id, servicePath.c_str());
                 std::lock_guard<std::mutex> lock(mutex_);
                 auto it = services_.find(req.sa_id);
                 if (it != services_.end() && it->second == servicePath) {
@@ -162,6 +179,10 @@ void RegistryServer::HandleClient(int client_fd) {
             if (!found && load_cb_) {
                 // Ask supervisor to start the SA.
                 found = load_cb_(req.sa_id);
+                if (!found) {
+                    HILOGE("RegistryServer::HandleClient load callback failed: sa_id=%{public}d",
+                        req.sa_id);
+                }
             }
             if (found) {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -170,9 +191,12 @@ void RegistryServer::HandleClient(int client_fd) {
                     resp.err_code = 0;
                     resp.payload = it->second;
                 } else {
+                    HILOGE("RegistryServer::HandleClient load succeeded but service missing: sa_id=%{public}d",
+                        req.sa_id);
                     resp.err_code = -1;
                 }
             } else {
+                HILOGE("RegistryServer::HandleClient load failed: sa_id=%{public}d", req.sa_id);
                 resp.err_code = -1;
             }
             break;
@@ -192,7 +216,13 @@ void RegistryServer::HandleClient(int client_fd) {
 
     std::string resp_msg;
     if (EncodeRegistryResponse(resp, &resp_msg)) {
-        SendMessage(client_fd, resp_msg);
+        if (!SendMessage(client_fd, resp_msg)) {
+            HILOGE("RegistryServer::HandleClient send failed: client_fd=%{public}d op=%{public}d sa_id=%{public}d",
+                client_fd, static_cast<int>(req.op), req.sa_id);
+        }
+    } else {
+        HILOGE("RegistryServer::HandleClient encode response failed: op=%{public}d sa_id=%{public}d",
+            static_cast<int>(req.op), req.sa_id);
     }
 }
 

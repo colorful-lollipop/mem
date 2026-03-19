@@ -9,6 +9,8 @@
 #include <ctime>
 #include <cstring>
 
+#include "virus_protection_service_log.h"
+
 namespace MemRpc {
 
 namespace {
@@ -26,11 +28,13 @@ void CloseFd(int* fd) {
 
 StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
   if (mutex == nullptr) {
+    HILOGE("LockSharedMutex failed: mutex is null");
     return StatusCode::EngineInternalError;
   }
 
   timespec deadline {};
   if (clock_gettime(CLOCK_REALTIME, &deadline) != 0) {
+    HILOGE("LockSharedMutex failed: clock_gettime errno=%{public}d", errno);
     return StatusCode::EngineInternalError;
   }
   deadline.tv_nsec += LOCK_TIMEOUT_NS;
@@ -44,27 +48,36 @@ StatusCode LockSharedMutex(pthread_mutex_t* mutex) {
     return StatusCode::Ok;
   }
   if (rc == EOWNERDEAD) {
+    HILOGW("LockSharedMutex observed owner death");
     pthread_mutex_consistent(mutex);
     pthread_mutex_unlock(mutex);
     return StatusCode::PeerDisconnected;
   }
   if (rc == ETIMEDOUT) {
+    HILOGW("LockSharedMutex timed out");
     return StatusCode::PeerDisconnected;
   }
   if (rc == ENOTRECOVERABLE) {
+    HILOGE("LockSharedMutex failed: mutex not recoverable");
     return StatusCode::PeerDisconnected;
   }
+  HILOGE("LockSharedMutex failed: pthread_mutex_timedlock rc=%{public}d", rc);
   return StatusCode::EngineInternalError;
 }
 
 bool ValidateRingCursor(const RingCursor& cursor, uint32_t expected_capacity) {
   if (expected_capacity == 0 || expected_capacity > MAX_RING_ENTRIES) {
+    HILOGE("ValidateRingCursor failed: invalid expected_capacity=%{public}u", expected_capacity);
     return false;
   }
   if (cursor.capacity != expected_capacity) {
+    HILOGE("ValidateRingCursor failed: cursor_capacity=%{public}u expected=%{public}u",
+           cursor.capacity, expected_capacity);
     return false;
   }
   if (RingCount(cursor) > expected_capacity) {
+    HILOGE("ValidateRingCursor failed: ring_count=%{public}u capacity=%{public}u",
+           RingCount(cursor), expected_capacity);
     return false;
   }
   return true;
@@ -72,21 +85,33 @@ bool ValidateRingCursor(const RingCursor& cursor, uint32_t expected_capacity) {
 
 bool ValidateLayoutConfig(const LayoutConfig& config, std::size_t file_size) {
   if (config.highRingSize == 0 || config.highRingSize > MAX_RING_ENTRIES) {
+    HILOGE("ValidateLayoutConfig failed: invalid highRingSize=%{public}u", config.highRingSize);
     return false;
   }
   if (config.normalRingSize == 0 || config.normalRingSize > MAX_RING_ENTRIES) {
+    HILOGE("ValidateLayoutConfig failed: invalid normalRingSize=%{public}u",
+           config.normalRingSize);
     return false;
   }
   if (config.responseRingSize == 0 || config.responseRingSize > MAX_RING_ENTRIES) {
+    HILOGE("ValidateLayoutConfig failed: invalid responseRingSize=%{public}u",
+           config.responseRingSize);
     return false;
   }
   if (config.maxRequestBytes == 0 || config.maxResponseBytes == 0 ||
       !HasAlignedPayloadSizes(config.maxRequestBytes, config.maxResponseBytes)) {
+    HILOGE("ValidateLayoutConfig failed: request=%{public}u response=%{public}u",
+           config.maxRequestBytes, config.maxResponseBytes);
     return false;
   }
 
   const Layout layout = ComputeLayout(config);
-  return layout.totalSize >= sizeof(SharedMemoryHeader) && layout.totalSize <= file_size;
+  if (layout.totalSize < sizeof(SharedMemoryHeader) || layout.totalSize > file_size) {
+    HILOGE("ValidateLayoutConfig failed: layout_size=%{public}zu file_size=%{public}zu",
+           layout.totalSize, file_size);
+    return false;
+  }
+  return true;
 }
 
 bool ProcessIsAlive(uint32_t pid_value) {
@@ -103,11 +128,15 @@ bool ProcessIsAlive(uint32_t pid_value) {
 template <typename EntryType>
 StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry) {
   if (access.cursor == nullptr || access.entries == nullptr) {
+    HILOGE("PushRingEntry failed: cursor=%{public}p entries=%{public}p",
+           access.cursor, access.entries);
     return StatusCode::EngineInternalError;
   }
   const uint32_t head = access.cursor->head.load(std::memory_order_acquire);
   const uint32_t tail = access.cursor->tail.load(std::memory_order_relaxed);
   if (tail - head >= access.cursor->capacity) {
+    HILOGW("PushRingEntry failed: queue full head=%{public}u tail=%{public}u capacity=%{public}u",
+           head, tail, access.cursor->capacity);
     return StatusCode::QueueFull;
   }
   auto* entries = static_cast<EntryType*>(access.entries);
@@ -119,6 +148,8 @@ StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry) {
 template <typename EntryType>
 bool PopRingEntry(Session::RingAccess access, EntryType* entry) {
   if (entry == nullptr || access.cursor == nullptr || access.entries == nullptr) {
+    HILOGE("PopRingEntry failed: entry=%{public}p cursor=%{public}p entries=%{public}p",
+           entry, access.cursor, access.entries);
     return false;
   }
   const uint32_t tail = access.cursor->tail.load(std::memory_order_acquire);
@@ -145,12 +176,16 @@ StatusCode Session::MapAndValidateHeader(int shmFd) {
   mappedRegion_ =
       mmap(nullptr, initialMappedSize_, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
   if (mappedRegion_ == MAP_FAILED) {
+    HILOGE("Session::MapAndValidateHeader mmap failed: shmFd=%{public}d errno=%{public}d",
+           shmFd, errno);
     mappedRegion_ = nullptr;
     return StatusCode::EngineInternalError;
   }
 
   header_ = static_cast<SharedMemoryHeader*>(mappedRegion_);
   if (header_->magic != SHARED_MEMORY_MAGIC || header_->protocolVersion != PROTOCOL_VERSION) {
+    HILOGE("Session::MapAndValidateHeader failed: magic=%{public}u version=%{public}u expected_version=%{public}u",
+           header_->magic, header_->protocolVersion, PROTOCOL_VERSION);
     Reset();
     return StatusCode::ProtocolMismatch;
   }
@@ -160,6 +195,8 @@ StatusCode Session::MapAndValidateHeader(int shmFd) {
 StatusCode Session::RemapWithActualLayout(int shmFd) {
   struct stat file_stat {};
   if (fstat(shmFd, &file_stat) != 0) {
+    HILOGE("Session::RemapWithActualLayout fstat failed: shmFd=%{public}d errno=%{public}d",
+           shmFd, errno);
     Reset();
     return StatusCode::EngineInternalError;
   }
@@ -174,6 +211,8 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
       !ValidateRingCursor(header_->highRing, config.highRingSize) ||
       !ValidateRingCursor(header_->normalRing, config.normalRingSize) ||
       !ValidateRingCursor(header_->responseRing, config.responseRingSize)) {
+    HILOGE("Session::RemapWithActualLayout failed validation: session_id=%{public}llu",
+           static_cast<unsigned long long>(header_->sessionId));
     Reset();
     return StatusCode::ProtocolMismatch;
   }
@@ -183,6 +222,8 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
   mappedRegion_ =
       mmap(nullptr, actual_layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
   if (mappedRegion_ == MAP_FAILED) {
+    HILOGE("Session::RemapWithActualLayout mmap failed: shmFd=%{public}d size=%{public}zu errno=%{public}d",
+           shmFd, actual_layout.totalSize, errno);
     mappedRegion_ = nullptr;
     header_ = nullptr;
     return StatusCode::EngineInternalError;
@@ -196,14 +237,20 @@ StatusCode Session::RemapWithActualLayout(int shmFd) {
 StatusCode Session::TryAcquireClientAttachment() {
   const StatusCode lock_status = LockSharedMutex(&header_->clientStateMutex);
   if (lock_status != StatusCode::Ok) {
+    HILOGE("Session::TryAcquireClientAttachment lock failed: status=%{public}d",
+           static_cast<int>(lock_status));
     Reset();
     return lock_status;
   }
   if (header_->clientAttached != 0) {
     if (!ProcessIsAlive(header_->activeClientPid)) {
+      HILOGW("Session::TryAcquireClientAttachment clearing stale client pid=%{public}u",
+             header_->activeClientPid);
       header_->clientAttached = 0;
       header_->activeClientPid = 0;
     } else {
+      HILOGE("Session::TryAcquireClientAttachment failed: active client pid=%{public}u still alive",
+             header_->activeClientPid);
       pthread_mutex_unlock(&header_->clientStateMutex);
       Reset();
       return StatusCode::InvalidArgument;
@@ -219,16 +266,21 @@ StatusCode Session::TryAcquireClientAttachment() {
 StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   Reset();
   if (handles.shmFd < 0) {
+    HILOGE("Session::Attach failed: invalid shmFd=%{public}d", handles.shmFd);
     return StatusCode::InvalidArgument;
   }
 
   StatusCode status = MapAndValidateHeader(handles.shmFd);
   if (status != StatusCode::Ok) {
+    HILOGE("Session::Attach failed during MapAndValidateHeader: status=%{public}d",
+           static_cast<int>(status));
     return status;
   }
 
   status = RemapWithActualLayout(handles.shmFd);
   if (status != StatusCode::Ok) {
+    HILOGE("Session::Attach failed during RemapWithActualLayout: status=%{public}d",
+           static_cast<int>(status));
     return status;
   }
 
@@ -238,6 +290,8 @@ StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role) {
   if (role == AttachRole::Client) {
     status = TryAcquireClientAttachment();
     if (status != StatusCode::Ok) {
+      HILOGE("Session::Attach failed during TryAcquireClientAttachment: status=%{public}d",
+             static_cast<int>(status));
       return status;
     }
   }
@@ -249,6 +303,7 @@ void ReleaseClientAttachment(SharedMemoryHeader* header, bool owns_client_attach
     return;
   }
   if (LockSharedMutex(&header->clientStateMutex) != StatusCode::Ok) {
+    HILOGW("ReleaseClientAttachment failed to lock clientStateMutex");
     return;
   }
   header->clientAttached = 0;

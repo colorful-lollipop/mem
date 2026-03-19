@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "virus_protection_service_log.h"
+
 namespace VirusExecutorService::testkit {
 
 TestkitClient::TestkitClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap)
@@ -14,17 +16,37 @@ void TestkitClient::SetBootstrapChannel(std::shared_ptr<MemRpc::IBootstrapChanne
 }
 
 MemRpc::StatusCode TestkitClient::Init() {
-    return asyncClient_.Init();
+    const MemRpc::StatusCode status = asyncClient_.Init();
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("TestkitClient::Init failed status=%{public}d", static_cast<int>(status));
+    }
+    return status;
 }
 
 MemRpc::StatusCode TestkitClient::Echo(const std::string& text, EchoReply* reply) {
+    if (reply == nullptr) {
+        HILOGE("TestkitClient::Echo failed: reply is null");
+        return MemRpc::StatusCode::InvalidArgument;
+    }
     EchoRequest request{text};
-    return asyncClient_.EchoAsync(request).Wait(reply);
+    const MemRpc::StatusCode status = asyncClient_.EchoAsync(request).Wait(reply);
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("TestkitClient::Echo failed status=%{public}d", static_cast<int>(status));
+    }
+    return status;
 }
 
 MemRpc::StatusCode TestkitClient::Add(int32_t lhs, int32_t rhs, AddReply* reply) {
+    if (reply == nullptr) {
+        HILOGE("TestkitClient::Add failed: reply is null");
+        return MemRpc::StatusCode::InvalidArgument;
+    }
     AddRequest request{lhs, rhs};
-    return asyncClient_.AddAsync(request).Wait(reply);
+    const MemRpc::StatusCode status = asyncClient_.AddAsync(request).Wait(reply);
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("TestkitClient::Add failed status=%{public}d", static_cast<int>(status));
+    }
+    return status;
 }
 
 MemRpc::StatusCode TestkitClient::Sleep(
@@ -32,8 +54,18 @@ MemRpc::StatusCode TestkitClient::Sleep(
     SleepReply* reply,
     MemRpc::Priority priority,
     uint32_t execTimeoutMs) {
+    if (reply == nullptr) {
+        HILOGE("TestkitClient::Sleep failed: reply is null");
+        return MemRpc::StatusCode::InvalidArgument;
+    }
     SleepRequest request{delayMs};
-    return asyncClient_.SleepAsync(request, priority, execTimeoutMs).Wait(reply);
+    const MemRpc::StatusCode status =
+        asyncClient_.SleepAsync(request, priority, execTimeoutMs).Wait(reply);
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("TestkitClient::Sleep failed status=%{public}d delay_ms=%{public}u",
+            static_cast<int>(status), delayMs);
+    }
+    return status;
 }
 
 void TestkitClient::Shutdown() {

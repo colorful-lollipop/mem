@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "testkit/testkit_protocol.h"
+#include "virus_protection_service_log.h"
 
 namespace VirusExecutorService::testkit {
 
@@ -29,6 +30,7 @@ void RegisterCoreHandlers(RpcHandlerSink* sink, TestkitService* service)
 void RegisterFaultInjectionHandlers(RpcHandlerSink* sink)
 {
     if (sink == nullptr) {
+        HILOGE("RegisterFaultInjectionHandlers failed: sink is null");
         return;
     }
 
@@ -108,6 +110,10 @@ SleepReply TestkitService::Sleep(const SleepRequest& request) const {
 }
 
 void TestkitService::RegisterHandlers(RpcHandlerSink* sink) {
+    if (sink == nullptr) {
+        HILOGE("TestkitService::RegisterHandlers failed: sink is null");
+        return;
+    }
     RegisterAllHandlers(sink, this, options_.enableFaultInjection);
 }
 

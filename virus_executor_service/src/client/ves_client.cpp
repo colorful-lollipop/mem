@@ -232,12 +232,14 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
                                         uint32_t execTimeoutMs)
 {
     if (reply == nullptr) {
+        HILOGE("VesClient::InvokeApi failed: reply is null opcode=%{public}u", opcode);
         return MemRpc::StatusCode::InvalidArgument;
     }
 
     return InvokeWithRecovery([&]() {
         std::vector<uint8_t> payload;
         if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
+            HILOGE("VesClient::InvokeApi encode failed opcode=%{public}u", opcode);
             return MemRpc::StatusCode::ProtocolMismatch;
         }
 
@@ -255,6 +257,7 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
 
         auto control = CurrentControl();
         if (control == nullptr) {
+            HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", opcode);
             return MemRpc::StatusCode::PeerDisconnected;
         }
 
@@ -267,14 +270,21 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         VesAnyCallReply anyReply;
         const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
         if (status != MemRpc::StatusCode::Ok) {
+            HILOGE("VesClient::InvokeApi AnyCall failed opcode=%{public}u status=%{public}d",
+                opcode, static_cast<int>(status));
             return status;
         }
         if (anyReply.status != MemRpc::StatusCode::Ok) {
+            HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
+                opcode, static_cast<int>(anyReply.status), anyReply.errorCode);
             return anyReply.status;
         }
-        return MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)
-                   ? MemRpc::StatusCode::Ok
-                   : MemRpc::StatusCode::ProtocolMismatch;
+        if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {
+            HILOGE("VesClient::InvokeApi decode failed opcode=%{public}u payload_size=%{public}zu",
+                opcode, anyReply.payload.size());
+            return MemRpc::StatusCode::ProtocolMismatch;
+        }
+        return MemRpc::StatusCode::Ok;
     });
 }
 
@@ -289,6 +299,7 @@ MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,
 MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke)
 {
     if (!invoke) {
+        HILOGE("VesClient::InvokeWithRecovery failed: invoke is null");
         return MemRpc::StatusCode::InvalidArgument;
     }
 
@@ -303,6 +314,9 @@ MemRpc::StatusCode VesClient::InvokeWithRecovery(const std::function<MemRpc::Sta
             return status;
         }
         if (std::chrono::steady_clock::now() >= deadline) {
+            HILOGE("VesClient::InvokeWithRecovery timed out retrying status=%{public}d lifecycle=%{public}d cooldown_ms=%{public}u",
+                static_cast<int>(status), static_cast<int>(snapshot.lifecycleState),
+                snapshot.cooldownRemainingMs);
             return status;
         }
         WaitForRecoveryRetry(deadline);

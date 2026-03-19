@@ -47,11 +47,14 @@ class ThreadPoolExecutor final : public TaskExecutor {
 
   bool TrySubmit(std::function<void()> task) override {
     if (!task) {
+      HILOGE("ThreadPoolExecutor::TrySubmit failed: task is null");
       return false;
     }
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!running_ || queue_.size() >= queueCapacity_) {
+        HILOGW("ThreadPoolExecutor::TrySubmit rejected: running=%{public}d queue_size=%{public}zu capacity=%{public}u",
+               running_ ? 1 : 0, queue_.size(), queueCapacity_);
         return false;
       }
       queue_.push(std::move(task));
@@ -168,6 +171,7 @@ struct RpcServer::Impl {
   PollEventFdResult WaitForResponseCredit(std::chrono::steady_clock::time_point deadline) {
     const int fd = session.Handles().respCreditEventFd;
     if (fd < 0) {
+      HILOGE("RpcServer::WaitForResponseCredit failed: invalid respCreditEventFd=%{public}d", fd);
       return PollEventFdResult::Failed;
     }
     pollfd pollFd{fd, POLLIN, 0};
@@ -177,14 +181,19 @@ struct RpcServer::Impl {
     while (responseWriterRunning.load(std::memory_order_acquire)) {
       const int64_t remainingMs = RemainingTimeoutMs(deadline);
       if (remainingMs <= 0) {
+        HILOGW("RpcServer::WaitForResponseCredit timed out");
         return PollEventFdResult::Timeout;
       }
       const auto waitResult = PollEventFd(&pollFd, static_cast<int>(remainingMs));
       if (waitResult == PollEventFdResult::Retry) {
         continue;
       }
+      if (waitResult == PollEventFdResult::Failed) {
+        HILOGE("RpcServer::WaitForResponseCredit poll failed fd=%{public}d", fd);
+      }
       return waitResult;
     }
+    HILOGW("RpcServer::WaitForResponseCredit aborted because response writer stopped");
     return PollEventFdResult::Failed;
   }
 
@@ -194,15 +203,23 @@ struct RpcServer::Impl {
     while (true) {
       const StatusCode status = session.PushResponse(response);
       if (status == StatusCode::Ok || status != StatusCode::QueueFull) {
+        if (status != StatusCode::Ok) {
+          HILOGE("RpcServer::PushResponseWithRetry failed: request_id=%{public}llu status=%{public}d",
+                 static_cast<unsigned long long>(response.requestId), static_cast<int>(status));
+        }
         return status;
       }
       if (DeadlineReached(deadline)) {
+        HILOGE("RpcServer::PushResponseWithRetry timed out: request_id=%{public}llu",
+               static_cast<unsigned long long>(response.requestId));
         return StatusCode::QueueFull;
       }
       const auto waitResult = WaitForResponseCredit(deadline);
       if (waitResult == PollEventFdResult::Ready) {
         continue;
       }
+      HILOGE("RpcServer::PushResponseWithRetry failed waiting for response credit: request_id=%{public}llu wait_result=%{public}d",
+             static_cast<unsigned long long>(response.requestId), static_cast<int>(waitResult));
       return waitResult == PollEventFdResult::Timeout ? StatusCode::QueueFull
                                                       : StatusCode::PeerDisconnected;
     }
@@ -236,6 +253,10 @@ struct RpcServer::Impl {
     std::lock_guard<std::mutex> lock(completionMutex);
     if (!responseWriterRunning.load(std::memory_order_relaxed) ||
         pendingCompletionCount >= completionQueueCapacity) {
+      HILOGE("RpcServer::EnqueueCompletion failed: running=%{public}d pending=%{public}u capacity=%{public}u request_id=%{public}llu",
+             responseWriterRunning.load(std::memory_order_relaxed) ? 1 : 0,
+             pendingCompletionCount, completionQueueCapacity,
+             static_cast<unsigned long long>(item.entry.requestId));
       return false;
     }
     completionQueue.push(std::move(item));
@@ -246,6 +267,7 @@ struct RpcServer::Impl {
 
   bool WaitAndPopCompletionItem(CompletionItem* item) {
     if (item == nullptr) {
+      HILOGE("RpcServer::WaitAndPopCompletionItem failed: item is null");
       return false;
     }
     std::unique_lock<std::mutex> lock(completionMutex);
@@ -293,6 +315,11 @@ struct RpcServer::Impl {
         HILOGW("response published without wakeup signal, request_id=%{public}llu",
                static_cast<unsigned long long>(item.entry.requestId));
       }
+      if (status != StatusCode::Ok) {
+        HILOGE("RpcServer::ResponseWriterLoop completion failed: request_id=%{public}llu status=%{public}d break_session=%{public}d",
+               static_cast<unsigned long long>(item.entry.requestId), static_cast<int>(status),
+               item.breakSessionOnFailure ? 1 : 0);
+      }
       if (status != StatusCode::Ok && item.breakSessionOnFailure) {
         MarkSessionBroken();
       }
@@ -315,6 +342,8 @@ struct RpcServer::Impl {
     RpcServerReply reply;
     const auto it = handlers.find(requestEntry.opcode);
     if (it == handlers.end()) {
+      HILOGE("RpcServer::InvokeHandlerWithTimeout missing handler opcode=%{public}u request_id=%{public}llu",
+             requestEntry.opcode, static_cast<unsigned long long>(requestEntry.requestId));
       reply.status = StatusCode::InvalidArgument;
       return reply;
     }
@@ -327,6 +356,9 @@ struct RpcServer::Impl {
                                .count();
     if (requestEntry.execTimeoutMs > 0 &&
         elapsedMs > static_cast<long long>(requestEntry.execTimeoutMs)) {
+      HILOGE("RpcServer::InvokeHandlerWithTimeout exec timeout request_id=%{public}llu opcode=%{public}u elapsed_ms=%{public}lld limit_ms=%{public}u",
+             static_cast<unsigned long long>(requestEntry.requestId), requestEntry.opcode,
+             elapsedMs, requestEntry.execTimeoutMs);
       reply.status = StatusCode::ExecTimeout;
       reply.payload.clear();
     }
@@ -335,11 +367,16 @@ struct RpcServer::Impl {
 
   StatusCode WriteResponse(const RequestRingEntry& requestEntry, RpcServerReply reply) {
     if (!session.Valid() || session.Header() == nullptr) {
+      HILOGE("RpcServer::WriteResponse failed: invalid session request_id=%{public}llu",
+             static_cast<unsigned long long>(requestEntry.requestId));
       return StatusCode::PeerDisconnected;
     }
 
     if (reply.payload.size() > session.Header()->maxResponseBytes ||
         reply.payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
+      HILOGE("RpcServer::WriteResponse payload too large request_id=%{public}llu payload_size=%{public}zu max=%{public}u inline_max=%{public}u",
+             static_cast<unsigned long long>(requestEntry.requestId), reply.payload.size(),
+             session.Header()->maxResponseBytes, ResponseRingEntry::INLINE_PAYLOAD_BYTES);
       reply.status = StatusCode::PayloadTooLarge;
       reply.payload.clear();
     }
@@ -361,12 +398,19 @@ struct RpcServer::Impl {
     item.breakSessionOnFailure = true;
     item.completion = completion;
     if (!EnqueueCompletion(std::move(item))) {
+      HILOGE("RpcServer::WriteResponse failed to enqueue completion request_id=%{public}llu",
+             static_cast<unsigned long long>(requestEntry.requestId));
       MarkSessionBroken();
       return StatusCode::PeerDisconnected;
     }
 
     std::unique_lock<std::mutex> lock(completion->mutex);
     completion->cv.wait(lock, [&completion] { return completion->ready; });
+    if (completion->status != StatusCode::Ok) {
+      HILOGE("RpcServer::WriteResponse completion failed request_id=%{public}llu status=%{public}d",
+             static_cast<unsigned long long>(requestEntry.requestId),
+             static_cast<int>(completion->status));
+    }
     return completion->status;
   }
 
@@ -377,6 +421,9 @@ struct RpcServer::Impl {
     }
     if (event.payload.size() > session.Header()->maxResponseBytes ||
         event.payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
+      HILOGE("RpcServer::PublishEvent failed: payload too large size=%{public}zu max=%{public}u inline_max=%{public}u",
+             event.payload.size(), session.Header()->maxResponseBytes,
+             ResponseRingEntry::INLINE_PAYLOAD_BYTES);
       return StatusCode::PayloadTooLarge;
     }
 
@@ -396,20 +443,30 @@ struct RpcServer::Impl {
     item.retryBudget = EVENT_RETRY_BUDGET;
     item.completion = completion;
     if (!EnqueueCompletion(std::move(item))) {
+      HILOGE("RpcServer::PublishEvent failed to enqueue completion");
       return StatusCode::QueueFull;
     }
 
     std::unique_lock<std::mutex> lock(completion->mutex);
     completion->cv.wait(lock, [&completion] { return completion->ready; });
+    if (completion->status != StatusCode::Ok) {
+      HILOGE("RpcServer::PublishEvent completion failed status=%{public}d",
+             static_cast<int>(completion->status));
+    }
     return completion->status;
   }
 
   void ProcessEntry(const RequestRingEntry& requestEntry) {
     if (!session.Valid() || session.Header() == nullptr) {
+      HILOGE("RpcServer::ProcessEntry aborted: invalid session request_id=%{public}llu",
+             static_cast<unsigned long long>(requestEntry.requestId));
       return;
     }
     if (requestEntry.payloadSize > session.Header()->maxRequestBytes ||
         requestEntry.payloadSize > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
+      HILOGE("RpcServer::ProcessEntry payload too large request_id=%{public}llu payload_size=%{public}u max=%{public}u inline_max=%{public}u",
+             static_cast<unsigned long long>(requestEntry.requestId), requestEntry.payloadSize,
+             session.Header()->maxRequestBytes, RequestRingEntry::INLINE_PAYLOAD_BYTES);
       RpcServerReply reply;
       reply.status = StatusCode::PayloadTooLarge;
       (void)WriteResponse(requestEntry, std::move(reply));
@@ -419,6 +476,9 @@ struct RpcServer::Impl {
     const uint32_t nowMs = MonotonicNowMs();
     if (requestEntry.queueTimeoutMs > 0 &&
         nowMs - requestEntry.enqueueMonoMs > requestEntry.queueTimeoutMs) {
+      HILOGE("RpcServer::ProcessEntry queue timeout request_id=%{public}llu age_ms=%{public}u limit_ms=%{public}u",
+             static_cast<unsigned long long>(requestEntry.requestId),
+             nowMs - requestEntry.enqueueMonoMs, requestEntry.queueTimeoutMs);
       RpcServerReply reply;
       reply.status = StatusCode::QueueTimeout;
       (void)WriteResponse(requestEntry, std::move(reply));
@@ -430,7 +490,11 @@ struct RpcServer::Impl {
       MarkExecutionFinished(requestId);
     });
     RpcServerReply reply = InvokeHandlerWithTimeout(requestEntry);
-    (void)WriteResponse(requestEntry, std::move(reply));
+    const StatusCode status = WriteResponse(requestEntry, std::move(reply));
+    if (status != StatusCode::Ok) {
+      HILOGE("RpcServer::ProcessEntry failed to write response request_id=%{public}llu status=%{public}d",
+             static_cast<unsigned long long>(requestEntry.requestId), static_cast<int>(status));
+    }
   }
 
   bool DrainQueue(QueueKind kind, TaskExecutor* executor) {
@@ -449,10 +513,15 @@ struct RpcServer::Impl {
       }
       drained = true;
       const RequestRingEntry captured = entry;
-      (void)executor->TrySubmit([this, captured] { ProcessEntry(captured); });
+      if (!executor->TrySubmit([this, captured] { ProcessEntry(captured); })) {
+        HILOGE("RpcServer::DrainQueue failed to submit task request_id=%{public}llu opcode=%{public}u",
+               static_cast<unsigned long long>(captured.requestId), captured.opcode);
+      }
     }
     if (ringBecameNotFull) {
-      (void)SignalEventFd(session.Handles().reqCreditEventFd);
+      if (!SignalEventFd(session.Handles().reqCreditEventFd)) {
+        HILOGW("RpcServer::DrainQueue failed to signal request credit");
+      }
     }
     return drained;
   }
@@ -511,6 +580,10 @@ struct RpcServer::Impl {
       }
 
       const int pollResult = poll(fds.data(), static_cast<nfds_t>(fds.size()), 100);
+      if (pollResult < 0) {
+        HILOGE("RpcServer::DispatcherLoop poll failed");
+        continue;
+      }
       if (pollResult > 0 && (fds[0].revents & POLLIN) != 0) {
         (void)DrainEventFd(fds[0].fd);
         highWork = DrainQueue(QueueKind::HighRequest, highExecutor.get());
@@ -557,14 +630,18 @@ StatusCode RpcServer::PublishEvent(const RpcEvent& event) {
 
 StatusCode RpcServer::Start() {
   if (impl_->handlers.empty()) {
+    HILOGE("RpcServer::Start failed: no handlers registered");
     return StatusCode::InvalidArgument;
   }
   if (impl_->running.exchange(true)) {
+    HILOGW("RpcServer::Start ignored: server already running");
     return StatusCode::Ok;
   }
 
   const StatusCode attachStatus = impl_->session.Attach(impl_->handles, Session::AttachRole::Server);
   if (attachStatus != StatusCode::Ok) {
+    HILOGE("RpcServer::Start failed: session attach status=%{public}d",
+           static_cast<int>(attachStatus));
     impl_->running.store(false);
     return attachStatus;
   }
@@ -586,7 +663,9 @@ StatusCode RpcServer::Start() {
 }
 
 void RpcServer::Run() {
-  if (Start() != StatusCode::Ok) {
+  const StatusCode status = Start();
+  if (status != StatusCode::Ok) {
+    HILOGE("RpcServer::Run aborted: Start status=%{public}d", static_cast<int>(status));
     return;
   }
   while (impl_->running.load(std::memory_order_acquire)) {

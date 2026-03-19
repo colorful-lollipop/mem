@@ -17,6 +17,7 @@
 
 #include "memrpc/core/runtime_utils.h"
 #include "core/session.h"
+#include "virus_protection_service_log.h"
 
 namespace MemRpc {
 
@@ -109,6 +110,7 @@ bool RpcFuture::IsReady() const {
 
 StatusCode RpcFuture::Wait(RpcReply* reply) {
   if (!state_) {
+    HILOGE("RpcFuture::Wait failed: state is null");
     if (reply != nullptr) {
       *reply = RpcReply{};
       reply->status = StatusCode::PeerDisconnected;
@@ -126,6 +128,7 @@ StatusCode RpcFuture::Wait(RpcReply* reply) {
 
 StatusCode RpcFuture::WaitAndTake(RpcReply* reply) {
   if (!state_) {
+    HILOGE("RpcFuture::WaitAndTake failed: state is null");
     if (reply != nullptr) {
       *reply = RpcReply{};
       reply->status = StatusCode::PeerDisconnected;
@@ -143,6 +146,8 @@ StatusCode RpcFuture::WaitAndTake(RpcReply* reply) {
 
 StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout) {
   if (!state_) {
+    HILOGE("RpcFuture::WaitFor failed: state is null timeout_ms=%{public}lld",
+           static_cast<long long>(timeout.count()));
     if (reply != nullptr) {
       *reply = RpcReply{};
       reply->status = StatusCode::PeerDisconnected;
@@ -151,6 +156,8 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
   }
   std::unique_lock<std::mutex> lock(state_->mutex);
   if (!state_->cv.wait_for(lock, timeout, [this] { return state_->ready; })) {
+    HILOGW("RpcFuture::WaitFor timed out timeout_ms=%{public}lld",
+           static_cast<long long>(timeout.count()));
     if (reply != nullptr) {
       *reply = RpcReply{};
       reply->status = StatusCode::QueueTimeout;
@@ -165,7 +172,12 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
 }
 
 void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor executor) {
-  if (!state_ || !callback) {
+  if (!state_) {
+    HILOGE("RpcFuture::Then ignored: state is null");
+    return;
+  }
+  if (!callback) {
+    HILOGE("RpcFuture::Then ignored: callback is null");
     return;
   }
   std::unique_lock<std::mutex> lock(state_->mutex);
@@ -559,12 +571,15 @@ struct RpcClient::Impl {
       InstallDeathCallbackLocked();
     }
     if (bootstrap == nullptr) {
+      HILOGE("RpcClient::OpenSession failed: bootstrap channel is null");
       return StatusCode::InvalidArgument;
     }
 
     BootstrapHandles handles;
     const StatusCode openStatus = bootstrap->OpenSession(handles);
     if (openStatus != StatusCode::Ok) {
+      HILOGE("RpcClient::OpenSession failed: bootstrap OpenSession status=%{public}d",
+             static_cast<int>(openStatus));
       return openStatus;
     }
 
@@ -573,6 +588,9 @@ struct RpcClient::Impl {
       std::lock_guard<std::mutex> lock(sessionMutex_);
       const StatusCode attachStatus = session_.Attach(handles, Session::AttachRole::Client);
       if (attachStatus != StatusCode::Ok) {
+        HILOGE("RpcClient::OpenSession failed: session attach status=%{public}d session_id=%{public}llu",
+               static_cast<int>(attachStatus),
+               static_cast<unsigned long long>(sessionId));
         return attachStatus;
       }
       session_.SetState(Session::SessionState::Alive);
@@ -605,7 +623,11 @@ struct RpcClient::Impl {
       }
     }
     if (bootstrap != nullptr) {
-      (void)bootstrap->CloseSession();
+      const StatusCode status = bootstrap->CloseSession();
+      if (status != StatusCode::Ok) {
+        HILOGW("RpcClient::CloseLiveSession bootstrap CloseSession failed: status=%{public}d",
+               static_cast<int>(status));
+      }
     }
   }
 
@@ -683,9 +705,12 @@ struct RpcClient::Impl {
 
   StatusCode EnsureLiveSession() {
     if (clientClosed_.load(std::memory_order_acquire)) {
+      HILOGW("RpcClient::EnsureLiveSession rejected: client already closed");
       return StatusCode::ClientClosed;
     }
     if (CooldownActive()) {
+      HILOGW("RpcClient::EnsureLiveSession delayed by cooldown remaining_ms=%{public}lld",
+             static_cast<long long>(CooldownRemaining().count()));
       return StatusCode::CooldownActive;
     }
     const auto snapshot = LoadSessionSnapshot();
@@ -714,7 +739,12 @@ struct RpcClient::Impl {
       TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::Unknown,
                           lastAction);
     }
-    return OpenSession();
+    const StatusCode status = OpenSession();
+    if (status != StatusCode::Ok) {
+      HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
+             static_cast<int>(status), static_cast<int>(LifecycleState()));
+    }
+    return status;
   }
 
   void StartThreads() {
@@ -777,6 +807,7 @@ struct RpcClient::Impl {
   PollEventFdResult WaitForRequestCredit(std::chrono::steady_clock::time_point deadline) {
     const int fd = LoadSessionSnapshot()->reqCreditEventFd;
     if (fd < 0) {
+      HILOGE("RpcClient::WaitForRequestCredit failed: invalid reqCreditEventFd=%{public}d", fd);
       return PollEventFdResult::Failed;
     }
 
@@ -788,14 +819,19 @@ struct RpcClient::Impl {
     while (running_.load(std::memory_order_acquire)) {
       const int64_t remainingMs = RemainingTimeoutMs(deadline);
       if (remainingMs <= 0) {
+        HILOGW("RpcClient::WaitForRequestCredit timed out waiting for request credit");
         return PollEventFdResult::Timeout;
       }
       const auto waitResult = PollEventFd(&pollFd, static_cast<int>(remainingMs));
       if (waitResult == PollEventFdResult::Retry) {
         continue;
       }
+      if (waitResult == PollEventFdResult::Failed) {
+        HILOGE("RpcClient::WaitForRequestCredit poll failed fd=%{public}d", fd);
+      }
       return waitResult;
     }
+    HILOGW("RpcClient::WaitForRequestCredit aborted because client stopped");
     return PollEventFdResult::Failed;
   }
 
@@ -815,6 +851,7 @@ struct RpcClient::Impl {
 
       const auto now = std::chrono::steady_clock::now();
       if (deadline != std::chrono::steady_clock::time_point::max() && now >= deadline) {
+        HILOGW("RpcClient::WaitForRecovery timed out");
         return StatusCode::CooldownActive;
       }
 
@@ -824,6 +861,7 @@ struct RpcClient::Impl {
       }
       recoveryCv_.wait_until(lock, wakeAt);
     }
+    HILOGW("RpcClient::WaitForRecovery aborted because client stopped");
     return StatusCode::PeerDisconnected;
   }
 
@@ -840,6 +878,7 @@ struct RpcClient::Impl {
 
       const auto now = std::chrono::steady_clock::now();
       if (deadline != std::chrono::steady_clock::time_point::max() && now >= deadline) {
+        HILOGW("RpcClient::WaitForRecoveryRetry timed out");
         return StatusCode::PeerDisconnected;
       }
 
@@ -849,21 +888,28 @@ struct RpcClient::Impl {
                            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now));
       }
       if (waitFor <= std::chrono::milliseconds::zero()) {
+        HILOGW("RpcClient::WaitForRecoveryRetry reached zero wait budget");
         return StatusCode::PeerDisconnected;
       }
       recoveryCv_.wait_for(lock, waitFor);
       return StatusCode::Ok;
     }
+    HILOGW("RpcClient::WaitForRecoveryRetry aborted because client stopped");
     return StatusCode::PeerDisconnected;
   }
 
   StatusCode TryPushRequest(const PendingSubmit& submit) {
     std::lock_guard<std::mutex> lock(sessionMutex_);
     if (!session_.Valid() || session_.Header() == nullptr) {
+      HILOGE("RpcClient::TryPushRequest failed: session not valid request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
       return StatusCode::PeerDisconnected;
     }
     if (submit.call.payload.size() > session_.Header()->maxRequestBytes ||
         submit.call.payload.size() > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
+      HILOGE("RpcClient::TryPushRequest failed: payload too large request_id=%{public}llu payload_size=%{public}zu max=%{public}u inline_max=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.payload.size(),
+             session_.Header()->maxRequestBytes, RequestRingEntry::INLINE_PAYLOAD_BYTES);
       return StatusCode::PayloadTooLarge;
     }
 
@@ -896,6 +942,11 @@ struct RpcClient::Impl {
     if (status != StatusCode::Ok) {
       std::lock_guard<std::mutex> pendingLock(pendingMutex_);
       pending_.erase(submit.requestId);
+      if (status != StatusCode::QueueFull) {
+        HILOGE("RpcClient::TryPushRequest failed: status=%{public}d request_id=%{public}llu opcode=%{public}u",
+               static_cast<int>(status), static_cast<unsigned long long>(submit.requestId),
+               submit.call.opcode);
+      }
       return status;
     }
 
@@ -903,7 +954,10 @@ struct RpcClient::Impl {
         highPriority ? session_.Header()->highRing : session_.Header()->normalRing;
     if (RingCountIsOneAfterPush(cursor)) {
       const int fd = highPriority ? session_.Handles().highReqEventFd : session_.Handles().normalReqEventFd;
-      (void)SignalEventFd(fd);
+      if (!SignalEventFd(fd)) {
+        HILOGW("RpcClient::TryPushRequest failed to signal request event fd=%{public}d request_id=%{public}llu",
+               fd, static_cast<unsigned long long>(submit.requestId));
+      }
     }
     TouchActivity();
     return StatusCode::Ok;
@@ -930,6 +984,9 @@ struct RpcClient::Impl {
         if (waitStatus == StatusCode::Ok) {
           continue;
         }
+        HILOGE("RpcClient::SubmitOne recovery wait failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+               static_cast<int>(waitStatus));
         FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
         return;
       }
@@ -938,10 +995,16 @@ struct RpcClient::Impl {
         if (waitStatus == StatusCode::Ok) {
           continue;
         }
+        HILOGE("RpcClient::SubmitOne recovery retry failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+               static_cast<int>(waitStatus));
         FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
         return;
       }
       if (sessionStatus != StatusCode::Ok) {
+        HILOGE("RpcClient::SubmitOne session unavailable: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+               static_cast<int>(sessionStatus));
         FailAndResolve(info, sessionStatus, FailureStage::Admission, submit.future);
         return;
       }
@@ -951,12 +1014,16 @@ struct RpcClient::Impl {
         return;
       }
       if (pushStatus == StatusCode::PayloadTooLarge) {
+        HILOGE("RpcClient::SubmitOne payload rejected: request_id=%{public}llu opcode=%{public}u",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
         FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
         return;
       }
       if (pushStatus == StatusCode::PeerDisconnected) {
         CloseLiveSession();
         if (!infiniteWait && DeadlineReached(deadline)) {
+          HILOGE("RpcClient::SubmitOne timed out after disconnect: request_id=%{public}llu opcode=%{public}u",
+                 static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
           FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
           return;
         }
@@ -964,11 +1031,16 @@ struct RpcClient::Impl {
         continue;
       }
       if (pushStatus != StatusCode::QueueFull) {
+        HILOGE("RpcClient::SubmitOne push failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+               static_cast<int>(pushStatus));
         FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
         return;
       }
 
       if (!infiniteWait && DeadlineReached(deadline)) {
+        HILOGE("RpcClient::SubmitOne admission deadline reached: request_id=%{public}llu opcode=%{public}u",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
         FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
         return;
       }
@@ -977,13 +1049,19 @@ struct RpcClient::Impl {
         continue;
       }
       if (waitResult == PollEventFdResult::Timeout) {
+        HILOGE("RpcClient::SubmitOne request credit wait timed out: request_id=%{public}llu opcode=%{public}u",
+               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
         FailAndResolve(info, infiniteWait ? StatusCode::QueueFull : StatusCode::QueueTimeout,
                        FailureStage::Admission, submit.future);
         return;
       }
+      HILOGE("RpcClient::SubmitOne request credit wait failed: request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
       CloseLiveSession();
     }
 
+    HILOGE("RpcClient::SubmitOne aborted because client stopped: request_id=%{public}llu opcode=%{public}u",
+           static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
     FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission, submit.future);
   }
 
@@ -1040,6 +1118,8 @@ struct RpcClient::Impl {
       }
     }
     if (!found) {
+      HILOGW("RpcClient::ResolveCompletedRequest ignored late reply request_id=%{public}llu",
+             static_cast<unsigned long long>(entry.requestId));
       return;
     }
 
@@ -1097,6 +1177,8 @@ struct RpcClient::Impl {
       }
 
       if (entry.resultSize > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
+        HILOGE("RpcClient::DrainResponseRing detected oversized response request_id=%{public}llu result_size=%{public}u",
+               static_cast<unsigned long long>(entry.requestId), entry.resultSize);
         HandleEngineDeath(CurrentSessionId());
         return true;
       }
@@ -1138,6 +1220,9 @@ struct RpcClient::Impl {
             const int responseFd = session_.Handles().respEventFd;
             if (responseFd >= 0) {
               nextPollFd = dup(responseFd);
+              if (nextPollFd < 0) {
+                HILOGE("RpcClient::ResponseLoop dup failed: responseFd=%{public}d", responseFd);
+              }
             }
           }
         }
@@ -1162,6 +1247,8 @@ struct RpcClient::Impl {
       const auto waitResult = PollEventFd(&pollFd, 100);
       if (waitResult == PollEventFdResult::Failed) {
         const uint64_t failedSessionId = activePollSessionId;
+        HILOGE("RpcClient::ResponseLoop detected response poll failure session_id=%{public}llu",
+               static_cast<unsigned long long>(failedSessionId));
         resetActivePollFd();
         HandleEngineDeath(failedSessionId);
       }
@@ -1225,15 +1312,23 @@ struct RpcClient::Impl {
       case ChannelHealthStatus::Unsupported:
         return;
       case ChannelHealthStatus::Timeout:
+        HILOGE("RpcClient::MaybeRunHealthCheck timeout session_id=%{public}llu",
+               static_cast<unsigned long long>(expectedSessionId));
         RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, expectedSessionId, 0});
         return;
       case ChannelHealthStatus::Malformed:
+        HILOGE("RpcClient::MaybeRunHealthCheck malformed reply session_id=%{public}llu",
+               static_cast<unsigned long long>(expectedSessionId));
         RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthMalformed, expectedSessionId, 0});
         return;
       case ChannelHealthStatus::Unhealthy:
+        HILOGE("RpcClient::MaybeRunHealthCheck unhealthy session_id=%{public}llu",
+               static_cast<unsigned long long>(expectedSessionId));
         RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthUnhealthy, expectedSessionId, 0});
         return;
       case ChannelHealthStatus::SessionMismatch:
+        HILOGE("RpcClient::MaybeRunHealthCheck session mismatch expected_session_id=%{public}llu",
+               static_cast<unsigned long long>(expectedSessionId));
         RequestExternalRecovery(
             {ExternalRecoverySignal::ChannelHealthSessionMismatch, expectedSessionId, 0});
         return;
@@ -1258,6 +1353,9 @@ struct RpcClient::Impl {
     }
     const uint64_t current = CurrentSessionId();
     if (sessionId != 0 && current != 0 && sessionId != current) {
+      HILOGW("RpcClient::HandleEngineDeath ignored stale session_id=%{public}llu current_session_id=%{public}llu",
+             static_cast<unsigned long long>(sessionId),
+             static_cast<unsigned long long>(current));
       return;
     }
 
@@ -1272,6 +1370,8 @@ struct RpcClient::Impl {
       policy = recoveryPolicy_;
     }
     if (!policy.onEngineDeath) {
+      HILOGE("RpcClient::HandleEngineDeath has no recovery policy session_id=%{public}llu",
+             static_cast<unsigned long long>(sessionId == 0 ? current : sessionId));
       EnterDisconnected(RecoveryTrigger::EngineDeath);
       return;
     }
@@ -1279,6 +1379,8 @@ struct RpcClient::Impl {
     report.deadSessionId = sessionId == 0 ? current : sessionId;
     const RecoveryDecision decision = policy.onEngineDeath(report);
     if (decision.action == RecoveryAction::Ignore) {
+      HILOGW("RpcClient::HandleEngineDeath policy ignored recovery dead_session_id=%{public}llu",
+             static_cast<unsigned long long>(report.deadSessionId));
       EnterDisconnected(RecoveryTrigger::EngineDeath);
       return;
     }
@@ -1291,8 +1393,14 @@ struct RpcClient::Impl {
     }
     const uint64_t current = CurrentSessionId();
     if (request.sessionId != 0 && current != 0 && request.sessionId != current) {
+      HILOGW("RpcClient::RequestExternalRecovery ignored stale request session_id=%{public}llu current_session_id=%{public}llu",
+             static_cast<unsigned long long>(request.sessionId),
+             static_cast<unsigned long long>(current));
       return;
     }
+    HILOGW("RpcClient::RequestExternalRecovery requested signal=%{public}d session_id=%{public}llu delay_ms=%{public}u",
+           static_cast<int>(request.signal), static_cast<unsigned long long>(request.sessionId),
+           request.delayMs);
     ScheduleRecovery(RecoveryTrigger::ExternalHealthSignal,
                      SessionOpenReason::ExternalRecovery,
                      request.delayMs, false);
@@ -1314,6 +1422,8 @@ struct RpcClient::Impl {
       info.requestId = requestId;
       info.sessionId = CurrentSessionId();
       if (status != StatusCode::ClientClosed) {
+        HILOGE("RpcClient::InvokeAsync rejected because client not running opcode=%{public}u status=%{public}d",
+               call.opcode, static_cast<int>(status));
         NotifyFailure(info, status, FailureStage::Admission);
       }
       RpcReply reply;
@@ -1412,9 +1522,11 @@ void RpcClient::RequestExternalRecovery(ExternalRecoveryRequest request) {
 
 StatusCode RpcClient::Init() {
   if (impl_->clientClosed_.load(std::memory_order_acquire)) {
+    HILOGE("RpcClient::Init failed: client already closed");
     return StatusCode::ClientClosed;
   }
   if (impl_->running_.load(std::memory_order_acquire)) {
+    HILOGW("RpcClient::Init called while already running");
     return impl_->EnsureLiveSession();
   }
   impl_->recoveryPending_.store(false, std::memory_order_release);
@@ -1424,6 +1536,7 @@ StatusCode RpcClient::Init() {
   impl_->StartThreads();
   const StatusCode status = impl_->EnsureLiveSession();
   if (status != StatusCode::Ok) {
+    HILOGE("RpcClient::Init failed: EnsureLiveSession status=%{public}d", static_cast<int>(status));
     impl_->Shutdown();
   }
   return status;

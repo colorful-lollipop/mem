@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "memrpc/client/dev_bootstrap.h"
+#include "virus_protection_service_log.h"
 
 namespace MemRpc {
 
@@ -31,6 +32,7 @@ const std::string& SaBootstrapChannel::LastError() const {
 
 BootstrapHandles SaBootstrapChannel::ServerHandles() const {
   if (impl_->fallback == nullptr) {
+    HILOGE("SaBootstrapChannel::ServerHandles failed: fallback is null");
     return {};
   }
   return impl_->fallback->serverHandles();
@@ -46,11 +48,13 @@ StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (impl_->fallback == nullptr) {
     handles = BootstrapHandles{};
     impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
+    HILOGE("SaBootstrapChannel::OpenSession failed: fallback is null");
     return StatusCode::EngineInternalError;
   }
   const StatusCode status = impl_->fallback->OpenSession(handles);
   if (status != StatusCode::Ok) {
     impl_->lastError = "Fake SA bootstrap OpenSession failed on dev fallback.";
+    HILOGE("SaBootstrapChannel::OpenSession failed: status=%{public}d", static_cast<int>(status));
   } else {
     impl_->lastError.clear();
   }
@@ -60,14 +64,21 @@ StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
 StatusCode SaBootstrapChannel::CloseSession() {
   if (impl_->fallback == nullptr) {
     impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
+    HILOGE("SaBootstrapChannel::CloseSession failed: fallback is null");
     return StatusCode::EngineInternalError;
   }
-  return impl_->fallback->CloseSession();
+  const StatusCode status = impl_->fallback->CloseSession();
+  if (status != StatusCode::Ok) {
+    HILOGE("SaBootstrapChannel::CloseSession failed: status=%{public}d", static_cast<int>(status));
+  }
+  return status;
 }
 
 ChannelHealthResult SaBootstrapChannel::CheckHealth(uint64_t expectedSessionId) {
   if (impl_->fallback == nullptr) {
     impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
+    HILOGE("SaBootstrapChannel::CheckHealth failed: fallback is null expected_session=%{public}llu",
+           static_cast<unsigned long long>(expectedSessionId));
     return {};
   }
   return impl_->fallback->CheckHealth(expectedSessionId);

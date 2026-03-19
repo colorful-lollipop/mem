@@ -4,6 +4,7 @@
 
 #include "memrpc/client/typed_invoker.h"
 #include "testkit/testkit_protocol.h"
+#include "virus_protection_service_log.h"
 
 namespace VirusExecutorService::testkit {
 
@@ -17,7 +18,11 @@ void TestkitAsyncClient::SetBootstrapChannel(std::shared_ptr<MemRpc::IBootstrapC
 }
 
 MemRpc::StatusCode TestkitAsyncClient::Init() {
-    return client_.Init();
+    const MemRpc::StatusCode status = client_.Init();
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("TestkitAsyncClient::Init failed status=%{public}d", static_cast<int>(status));
+    }
+    return status;
 }
 
 MemRpc::TypedFuture<EchoReply> TestkitAsyncClient::EchoAsync(const EchoRequest& request) {
