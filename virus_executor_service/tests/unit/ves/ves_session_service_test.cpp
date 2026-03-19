@@ -41,7 +41,7 @@ TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles) {
     VesEngineService service;
     EngineSessionService sessionService({&service});
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     CloseHandles(&handles);
@@ -52,7 +52,7 @@ TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
     EXPECT_FALSE(service.initialized());
 
     EngineSessionService sessionService({&service});
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
 
     EXPECT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
     EXPECT_FALSE(service.initialized());

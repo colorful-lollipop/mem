@@ -12,7 +12,7 @@ namespace {
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    handles = MemRpc::BootstrapHandles{};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     handles.protocolVersion = 1;
     handles.sessionId = 1;
     return MemRpc::StatusCode::Ok;
@@ -36,7 +36,7 @@ TEST(ApiHeadersTest, PublicHeadersCompose) {
   MemRpc::RpcClient client;
   MemRpc::RpcServer server;
   FakeBootstrapChannel bootstrap;
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
 
   EXPECT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
   EXPECT_EQ(handles.protocolVersion, 1U);

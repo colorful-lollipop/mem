@@ -21,7 +21,7 @@ namespace {
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    handles = MemRpc::BootstrapHandles{};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
     return MemRpc::StatusCode::Ok;
   }
@@ -101,7 +101,7 @@ TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently) {
 }
 
 TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds) {
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
 
   EXPECT_EQ(handles.reqCreditEventFd, -1);
   EXPECT_EQ(handles.respCreditEventFd, -1);
@@ -175,7 +175,7 @@ TEST(RpcClientApiTest, ThenWithoutExecutorRunsInline) {
 
 TEST(RpcClientApiTest, SessionReadyCallbackReportsInitialInit) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unusedHandles;
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
   CloseHandles(unusedHandles);
 

@@ -70,7 +70,7 @@ namespace MemRpc {
 
 TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
@@ -105,7 +105,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle) {
 
 TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
@@ -147,7 +147,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer) {
 
 TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand) {
   auto raw_bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(raw_bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 

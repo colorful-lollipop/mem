@@ -47,7 +47,7 @@ TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 
@@ -108,7 +108,7 @@ TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES;
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 

@@ -139,7 +139,7 @@ struct RpcServer::Impl {
     std::shared_ptr<CompletionState> completion;
   };
 
-  BootstrapHandles handles{};
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   ServerOptions options{};
   Session session;
   std::shared_ptr<TaskExecutor> highExecutor;

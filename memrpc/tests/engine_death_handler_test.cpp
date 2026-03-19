@@ -19,7 +19,7 @@ constexpr MemRpc::Opcode kTestOpcode = 1u;
 class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    handles = MemRpc::BootstrapHandles{};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
     return MemRpc::StatusCode::Ok;
   }
@@ -200,7 +200,7 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
   constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(201);
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 
@@ -248,7 +248,7 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
   EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::CooldownActive);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  MemRpc::BootstrapHandles prewarm_handles;
+  MemRpc::BootstrapHandles prewarm_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(prewarm_handles), MemRpc::StatusCode::Ok);
   CloseHandles(prewarm_handles);
 
@@ -299,7 +299,7 @@ TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect)
   constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(203);
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unusedHandles;
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
   CloseHandles(unusedHandles);
 

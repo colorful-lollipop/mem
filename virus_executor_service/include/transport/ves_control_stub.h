@@ -85,7 +85,7 @@ class VesControlStub : public OHOS::IRemoteStub<IVesControl> {
                 if (!detail::DecodeOpenSessionRequest(request, &openRequest)) {
                     return false;
                 }
-                MemRpc::BootstrapHandles handles{};
+                MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
                 if (OpenSession(openRequest, handles) != MemRpc::StatusCode::Ok) {
                     return false;
                 }

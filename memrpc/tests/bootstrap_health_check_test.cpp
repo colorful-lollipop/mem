@@ -9,7 +9,7 @@ namespace {
 class FakeBootstrapChannel final : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    handles = {};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     return MemRpc::StatusCode::Ok;
   }
 

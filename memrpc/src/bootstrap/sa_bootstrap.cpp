@@ -33,7 +33,7 @@ const std::string& SaBootstrapChannel::LastError() const {
 BootstrapHandles SaBootstrapChannel::ServerHandles() const {
   if (impl_->fallback == nullptr) {
     HILOGE("SaBootstrapChannel::ServerHandles failed: fallback is null");
-    return {};
+    return MakeDefaultBootstrapHandles();
   }
   return impl_->fallback->serverHandles();
 }
@@ -46,7 +46,7 @@ void SaBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id) {
 
 StatusCode SaBootstrapChannel::OpenSession(BootstrapHandles& handles) {
   if (impl_->fallback == nullptr) {
-    handles = BootstrapHandles{};
+    handles = MakeDefaultBootstrapHandles();
     impl_->lastError = "Fake SA bootstrap has no dev fallback channel.";
     HILOGE("SaBootstrapChannel::OpenSession failed: fallback is null");
     return StatusCode::EngineInternalError;

@@ -36,7 +36,7 @@ void CloseHandles(MemRpc::BootstrapHandles& h) {
 TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles corrupt_handles;
+  MemRpc::BootstrapHandles corrupt_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), MemRpc::StatusCode::Ok);
 
   struct stat file_stat {};
@@ -49,7 +49,7 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
-  MemRpc::BootstrapHandles attach_handles;
+  MemRpc::BootstrapHandles attach_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(attach_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -59,7 +59,7 @@ TEST(SessionTest, AttachRejectsInvalidHeaderLayout) {
 TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles corrupt_handles;
+  MemRpc::BootstrapHandles corrupt_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), MemRpc::StatusCode::Ok);
 
   struct stat file_stat {};
@@ -72,7 +72,7 @@ TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
-  MemRpc::BootstrapHandles attach_handles;
+  MemRpc::BootstrapHandles attach_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(attach_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -82,7 +82,7 @@ TEST(SessionTest, AttachRejectsProtocolVersionMismatch) {
 TEST(SessionTest, DefaultsToInlinePayloadLimits) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -100,9 +100,9 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity) {
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 
-  MemRpc::BootstrapHandles client_handles;
+  MemRpc::BootstrapHandles client_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(client_handles), MemRpc::StatusCode::Ok);
-  MemRpc::BootstrapHandles server_handles;
+  MemRpc::BootstrapHandles server_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(server_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session client_session;
@@ -146,9 +146,9 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity) {
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 
-  MemRpc::BootstrapHandles client_handles;
+  MemRpc::BootstrapHandles client_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(client_handles), MemRpc::StatusCode::Ok);
-  MemRpc::BootstrapHandles server_handles;
+  MemRpc::BootstrapHandles server_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(server_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session client_session;
@@ -185,7 +185,7 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity) {
   config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES + 1;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-  MemRpc::BootstrapHandles invalid_handles;
+  MemRpc::BootstrapHandles invalid_handles = MemRpc::MakeDefaultBootstrapHandles();
   EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
 }
 
@@ -194,7 +194,7 @@ TEST(SessionTest, RequestPayloadLimitCannotExceedInlineQueueCapacity) {
   config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-  MemRpc::BootstrapHandles invalid_handles;
+  MemRpc::BootstrapHandles invalid_handles = MemRpc::MakeDefaultBootstrapHandles();
   EXPECT_EQ(bootstrap->OpenSession(invalid_handles), MemRpc::StatusCode::InvalidArgument);
 }
 
@@ -203,7 +203,7 @@ TEST(SessionTest, ResponsePayloadLimitCanBeSmallerThanDefault) {
   config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES - 1;
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
   EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
   CloseHandles(handles);
 }
@@ -211,7 +211,7 @@ TEST(SessionTest, ResponsePayloadLimitCanBeSmallerThanDefault) {
 TEST(SessionTest, AttachRejectsOversizedPayloadLimitsInHeader) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles corrupt_handles;
+  MemRpc::BootstrapHandles corrupt_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(corrupt_handles), MemRpc::StatusCode::Ok);
 
   struct stat file_stat {};
@@ -224,7 +224,7 @@ TEST(SessionTest, AttachRejectsOversizedPayloadLimitsInHeader) {
   ASSERT_EQ(munmap(region, static_cast<size_t>(file_stat.st_size)), 0);
   CloseHandles(corrupt_handles);
 
-  MemRpc::BootstrapHandles attach_handles;
+  MemRpc::BootstrapHandles attach_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(attach_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -239,7 +239,7 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
 
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -258,9 +258,9 @@ TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity) {
 TEST(SessionTest, RejectsSecondClientAttachToSameSession) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles first_handles;
+  MemRpc::BootstrapHandles first_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(first_handles), MemRpc::StatusCode::Ok);
-  MemRpc::BootstrapHandles second_handles;
+  MemRpc::BootstrapHandles second_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(second_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session first_session;
@@ -273,14 +273,14 @@ TEST(SessionTest, RejectsSecondClientAttachToSameSession) {
 TEST(SessionTest, AllowsNextClientAttachAfterReset) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles first_handles;
+  MemRpc::BootstrapHandles first_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(first_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session first_session;
   ASSERT_EQ(first_session.Attach(first_handles), MemRpc::StatusCode::Ok);
   first_session.Reset();
 
-  MemRpc::BootstrapHandles second_handles;
+  MemRpc::BootstrapHandles second_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(second_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session second_session;
@@ -290,7 +290,7 @@ TEST(SessionTest, AllowsNextClientAttachAfterReset) {
 TEST(SessionTest, RequestEntriesExposeInlinePayloadStorage) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles handles;
+  MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session session;
@@ -316,9 +316,9 @@ TEST(SessionTest, RequestEntriesExposeInlinePayloadStorage) {
 TEST(SessionTest, AttachPreservesCreditEventFds) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
 
-  MemRpc::BootstrapHandles client_handles;
+  MemRpc::BootstrapHandles client_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(client_handles), MemRpc::StatusCode::Ok);
-  MemRpc::BootstrapHandles server_handles;
+  MemRpc::BootstrapHandles server_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(server_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::Session client_session;

@@ -232,7 +232,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     if (bootstrap->OpenSession(handles) != MemRpc::StatusCode::Ok) {
         for (const auto kind : kinds) {
             results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "bootstrap start failed"});

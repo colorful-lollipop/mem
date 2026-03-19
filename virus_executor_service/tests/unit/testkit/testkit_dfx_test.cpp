@@ -99,7 +99,7 @@ MemRpc::RpcCall MakeFaultCall(MemRpc::Opcode opcode) {
 
 std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     return bootstrap;
@@ -182,7 +182,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     invoker.CollectResults(&completed);
     ASSERT_GT(invoker.GetFailedCalls().size(), 0u);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -262,7 +262,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
     invoker.CollectResults(&completed);
     ASSERT_GT(invoker.GetFailedCalls().size(), 0u);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -327,7 +327,7 @@ TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
         }
     }
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -363,7 +363,7 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
     MemRpc::RpcReply hangReply;
     EXPECT_EQ(hangFuture.Wait(&hangReply), kExpectedEngineDeathStatus);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -410,7 +410,7 @@ TEST(TestkitDfxTest, OomKilledChildRecovery) {
     MemRpc::RpcReply oomReply;
     EXPECT_EQ(oomFuture.Wait(&oomReply), kExpectedEngineDeathStatus);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -457,7 +457,7 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery) {
     MemRpc::RpcReply reply;
     EXPECT_EQ(future.Wait(&reply), kExpectedEngineDeathStatus);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
     pid_t child2 = ForkServer(bootstrap);
@@ -546,7 +546,7 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
         EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus)
             << "cycle " << cycle;
 
-        MemRpc::BootstrapHandles handles{};
+        MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
         ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok) << "cycle " << cycle;
         CloseHandles(handles);
     }

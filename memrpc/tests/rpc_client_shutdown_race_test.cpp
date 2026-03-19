@@ -16,7 +16,7 @@ constexpr auto kMaxShutdownDuration = std::chrono::milliseconds(200);
 class FailingBootstrapChannel final : public MemRpc::IBootstrapChannel {
  public:
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    handles = MemRpc::BootstrapHandles{};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
     handles.sessionId = 1;
     return MemRpc::StatusCode::Ok;

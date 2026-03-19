@@ -25,16 +25,30 @@ struct ChannelHealthResult {
 };
 
 struct BootstrapHandles {
+  // 这里后续会是生成的代码无法使用默认值
   // 这些 fd/元数据描述了一次共享内存 RPC session 的连接入口。
-  int shmFd = -1;
-  int highReqEventFd = -1;
-  int normalReqEventFd = -1;
-  int respEventFd = -1;
-  int reqCreditEventFd = -1;
-  int respCreditEventFd = -1;
-  uint32_t protocolVersion = 0;
-  uint64_t sessionId = 0;
+  int shmFd;
+  int highReqEventFd;
+  int normalReqEventFd;
+  int respEventFd;
+  int reqCreditEventFd;
+  int respCreditEventFd;
+  uint32_t protocolVersion;
+  uint64_t sessionId;
 };
+
+[[nodiscard]] inline BootstrapHandles MakeDefaultBootstrapHandles() {
+  BootstrapHandles handles;
+  handles.shmFd = -1;
+  handles.highReqEventFd = -1;
+  handles.normalReqEventFd = -1;
+  handles.respEventFd = -1;
+  handles.reqCreditEventFd = -1;
+  handles.respCreditEventFd = -1;
+  handles.protocolVersion = 0;
+  handles.sessionId = 0;
+  return handles;
+}
 
 class IBootstrapChannel {
  public:

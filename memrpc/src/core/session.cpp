@@ -329,7 +329,7 @@ void Session::Reset() {
     munmap(mappedRegion_, mappedSize_);
   }
   CloseHandles(&handles_);
-  handles_ = {};
+  handles_ = MakeDefaultBootstrapHandles();
   mappedSize_ = 0;
   mappedRegion_ = nullptr;
   header_ = nullptr;

@@ -155,7 +155,7 @@ class FakeSubscriptionControlService final : public OHOS::SystemAbility,
 
     void PrepareServerHandlesForTest()
     {
-        MemRpc::BootstrapHandles handles{};
+        MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
         ASSERT_EQ(bootstrap_->OpenSession(handles), MemRpc::StatusCode::Ok);
         CloseHandles(handles);
     }

@@ -133,7 +133,7 @@ TEST(DtPerfTest, ShortPerfBaseline) {
   const uint32_t threadCount = GetThreadCount();
 
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
   CloseHandles(unused_handles);
 

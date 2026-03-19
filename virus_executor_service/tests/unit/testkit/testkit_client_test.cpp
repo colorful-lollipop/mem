@@ -70,7 +70,7 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
 
 std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(&handles);
     return bootstrap;
@@ -187,7 +187,7 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     MemRpc::RpcReply crashReply;
     EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(&handles);
 

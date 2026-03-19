@@ -575,7 +575,7 @@ struct RpcClient::Impl {
       return StatusCode::InvalidArgument;
     }
 
-    BootstrapHandles handles;
+    BootstrapHandles handles = MakeDefaultBootstrapHandles();
     const StatusCode openStatus = bootstrap->OpenSession(handles);
     if (openStatus != StatusCode::Ok) {
       HILOGE("RpcClient::OpenSession failed: bootstrap OpenSession status=%{public}d",

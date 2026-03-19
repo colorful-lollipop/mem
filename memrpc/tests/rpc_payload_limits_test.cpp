@@ -40,7 +40,7 @@ namespace MemRpc {
 
 TEST(RpcPayloadLimitsTest, OversizedRequestFailsBeforeSubmission) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles handles;
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), StatusCode::Ok);
   CloseHandles(handles);
 
@@ -69,7 +69,7 @@ TEST(RpcPayloadLimitsTest, OversizedRequestFailsBeforeSubmission) {
 
 TEST(RpcPayloadLimitsTest, OversizedResponseReturnsPayloadTooLargeWithoutRetry) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles handles;
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), StatusCode::Ok);
   CloseHandles(handles);
 
@@ -102,7 +102,7 @@ TEST(RpcPayloadLimitsTest, OversizedResponseReturnsPayloadTooLargeWithoutRetry) 
 
 TEST(RpcPayloadLimitsTest, PublishEventRejectsOversizedPayload) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles handles;
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(handles), StatusCode::Ok);
   CloseHandles(handles);
 

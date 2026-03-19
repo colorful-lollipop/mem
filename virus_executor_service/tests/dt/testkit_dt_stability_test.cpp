@@ -56,7 +56,7 @@ TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
     const uint32_t threadCount = GetThreadCount();
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
     CloseHandles(handles);
 

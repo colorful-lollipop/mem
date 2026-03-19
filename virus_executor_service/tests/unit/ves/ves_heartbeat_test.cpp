@@ -84,7 +84,7 @@ TEST(VesHeartbeatTest, OkAfterOpenSession) {
     VirusExecutorService service;
     service.OnStart();
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(service.OpenSession(DefaultVesOpenSessionRequest(), handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
 
@@ -115,7 +115,7 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     VesControlProxy proxy(stub->AsObject(), socketPath);
     VesOpenSessionRequest request;
     request.engineKinds = {99u, static_cast<uint32_t>(VesEngineKind::Scan), 99u};
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(proxy.OpenSession(request, handles), MemRpc::StatusCode::Ok);
     const uint64_t session_id = handles.sessionId;
     EXPECT_EQ(stub->service().configuredEngineKinds(),
@@ -138,14 +138,14 @@ TEST(VesHeartbeatTest, OpenSessionRejectsDifferentEngineListAfterConfiguration) 
     VesOpenSessionRequest firstRequest;
     firstRequest.engineKinds = {99u};
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(service.OpenSession(firstRequest, handles), MemRpc::StatusCode::Ok);
     EXPECT_EQ(service.service().configuredEngineKinds(), (std::vector<uint32_t>{99u}));
 
     VesOpenSessionRequest secondRequest;
     secondRequest.engineKinds = {static_cast<uint32_t>(VesEngineKind::Scan)};
 
-    MemRpc::BootstrapHandles rejected{};
+    MemRpc::BootstrapHandles rejected = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(service.OpenSession(secondRequest, rejected), MemRpc::StatusCode::InvalidArgument);
 
     ScanTask scanTask{"/data/eicar.bin"};
@@ -165,7 +165,7 @@ TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
     ASSERT_NE(control, nullptr);
 
     VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     const auto result = bootstrap.CheckHealth(handles.sessionId);
@@ -188,7 +188,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     ASSERT_NE(control, nullptr);
 
     VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     const auto result = bootstrap.CheckHealth(handles.sessionId);
@@ -217,7 +217,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     EXPECT_EQ(unhealthy.status, MemRpc::ChannelHealthStatus::Unhealthy);
     EXPECT_EQ(unhealthy.sessionId, 0u);
 
-    MemRpc::BootstrapHandles handles{};
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
     const auto mismatch = bootstrap.CheckHealth(handles.sessionId + 1);

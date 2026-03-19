@@ -93,7 +93,7 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
 
 TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
@@ -133,7 +133,7 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain) {
 
 TEST(RpcServerExecutorTest, RuntimeStatsTrackActiveRequestExecution) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unusedHandles;
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;

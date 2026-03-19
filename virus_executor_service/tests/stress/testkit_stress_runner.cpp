@@ -138,7 +138,7 @@ bool RunStress(const StressConfig& config) {
     bootstrapConfig.maxResponseBytes = config.maxResponseBytes;
 
     auto bootstrap = std::make_shared<Mem::DevBootstrapChannel>(bootstrapConfig);
-    Mem::BootstrapHandles handles{};
+    Mem::BootstrapHandles handles = Mem::MakeDefaultBootstrapHandles();
     if (bootstrap->OpenSession(handles) != Mem::StatusCode::Ok) {
         HILOGE("stress bootstrap open session failed");
         return false;

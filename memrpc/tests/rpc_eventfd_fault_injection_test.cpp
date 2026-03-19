@@ -104,7 +104,7 @@ namespace MemRpc {
 TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling) {
   auto bootstrap = std::make_shared<FaultInjectingBootstrap>(
       DevBootstrapConfig{}, ClientFaultConfig{true, false});
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);
 
@@ -166,7 +166,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
 
 TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);
 
@@ -196,7 +196,7 @@ TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling
 
 TEST(RpcEventFdFaultInjectionTest, ServerEventSignalFailureStillDeliversCallback) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(&unused_handles);
 

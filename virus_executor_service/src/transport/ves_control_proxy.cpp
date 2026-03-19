@@ -225,7 +225,7 @@ MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_
 }
 
 MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::BootstrapHandles& handles) {
-    handles = MemRpc::BootstrapHandles{};
+    handles = MemRpc::MakeDefaultBootstrapHandles();
     int fds[FD_COUNT] = {-1, -1, -1, -1, -1, -1};
     SessionMetadata meta{};
     size_t data_len = sizeof(meta);
@@ -594,7 +594,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
         control = control_;
         request = openSessionRequest_;
         if (control == nullptr) {
-            handles = MemRpc::BootstrapHandles{};
+            handles = MemRpc::MakeDefaultBootstrapHandles();
             control = ReloadControlLocked(false);
         }
     }
@@ -614,7 +614,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
         control = ReloadControlLocked(status == MemRpc::StatusCode::PeerDisconnected);
     }
     if (control == nullptr) {
-        handles = MemRpc::BootstrapHandles{};
+        handles = MemRpc::MakeDefaultBootstrapHandles();
         return status;
     }
 

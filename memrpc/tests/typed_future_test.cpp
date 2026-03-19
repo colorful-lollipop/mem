@@ -51,7 +51,7 @@ namespace {
 
 TEST(TypedFutureTest, WaitDecodesReply) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
@@ -79,7 +79,7 @@ TEST(TypedFutureTest, WaitDecodesReply) {
 
 TEST(TypedFutureTest, ThenDecodesReply) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
@@ -124,7 +124,7 @@ TEST(TypedFutureTest, ThenDecodesReply) {
 
 TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
@@ -154,7 +154,7 @@ TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch) {
 
 TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;
@@ -194,7 +194,7 @@ TEST(TypedFutureTest, ThenSurfacesProtocolMismatch) {
 
 TEST(TypedFutureTest, IsReadyDelegates) {
   auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles;
+  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
   MemRpc::RpcServer server;

@@ -94,7 +94,7 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized() {
         bootstrap_ = std::make_shared<MemRpc::DevBootstrapChannel>();
     }
 
-    MemRpc::BootstrapHandles throwaway{};
+    MemRpc::BootstrapHandles throwaway = MemRpc::MakeDefaultBootstrapHandles();
     const MemRpc::StatusCode open_status = bootstrap_->OpenSession(throwaway);
     if (open_status != MemRpc::StatusCode::Ok) {
         HILOGE("bootstrap OpenSession failed");

@@ -100,7 +100,7 @@ namespace MemRpc {
 
 TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
@@ -150,7 +150,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler) {
 
 TEST(RpcClientTimeoutWatchdogTest, ClientWaitTimeoutUnblocksWaiterBeforeSlowReplyArrives) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -194,7 +194,7 @@ TEST(RpcClientTimeoutWatchdogTest, ClientWaitTimeoutUnblocksWaiterBeforeSlowRepl
 
 TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded) {
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -243,7 +243,7 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded) {
 TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
   // Create a server that does NOT start, so requests stay in Queued state.
   auto bootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unused_handles;
+  BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
   CloseHandles(unused_handles);
 
@@ -311,7 +311,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue) {
 
 TEST(RpcClientTimeoutWatchdogTest, UnsupportedHealthCheckDoesNotRestartSession) {
   auto rawBootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unusedHandles;
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -353,7 +353,7 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart) {
 
   for (MemRpc::ChannelHealthStatus signal : kSignals) {
     auto rawBootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles unusedHandles;
+    MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
     CloseHandles(unusedHandles);
 
@@ -391,7 +391,7 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart) {
 
 TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout) {
   auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unusedHandles;
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
   ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
   CloseHandles(unusedHandles);
 

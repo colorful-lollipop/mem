@@ -37,7 +37,7 @@ bool DuplicateHandles(const BootstrapHandles& source, BootstrapHandles* target) 
   if (target == nullptr) {
     return false;
   }
-  *target = {};
+  *target = MakeDefaultBootstrapHandles();
 
   using FdField = int BootstrapHandles::*;
   static constexpr std::array<FdField, 6> kFdFields{{
@@ -82,7 +82,7 @@ bool InitMutex(pthread_mutex_t* mutex) {
 struct DevBootstrapChannel::Impl {
   mutable std::mutex mutex;
   DevBootstrapConfig config;
-  BootstrapHandles handles{};
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   bool initialized = false;
   EngineDeathCallback death_callback;
 
@@ -93,8 +93,7 @@ struct DevBootstrapChannel::Impl {
     CloseFd(&handles.respEventFd);
     CloseFd(&handles.reqCreditEventFd);
     CloseFd(&handles.respCreditEventFd);
-    handles.protocolVersion = 0;
-    handles.sessionId = 0;
+    handles = MakeDefaultBootstrapHandles();
     initialized = false;
   }
 
@@ -267,7 +266,7 @@ void DevBootstrapChannel::SetEngineDeathCallback(EngineDeathCallback callback) {
 }
 
 BootstrapHandles DevBootstrapChannel::serverHandles() const {
-  BootstrapHandles handles;
+  BootstrapHandles handles = MakeDefaultBootstrapHandles();
   std::lock_guard<std::mutex> lock(impl_->mutex);
   if (!DuplicateHandles(impl_->handles, &handles)) {
     HILOGE("server_handles failed while duplicating bootstrap handles");

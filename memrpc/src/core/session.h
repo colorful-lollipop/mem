@@ -65,7 +65,7 @@ class Session {
   std::size_t mappedSize_ = 0;
   std::size_t initialMappedSize_ = 0;
   void* mappedRegion_ = nullptr;
-  BootstrapHandles handles_{};
+  BootstrapHandles handles_ = MakeDefaultBootstrapHandles();
   SharedMemoryHeader* header_ = nullptr;
   AttachRole attachRole_ = AttachRole::Server;
   bool ownsClientAttachment_ = false;

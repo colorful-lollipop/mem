@@ -88,7 +88,7 @@ namespace MemRpc {
 
 TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow) {
   auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -162,7 +162,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow) {
 
 TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate) {
   auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -198,7 +198,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate) {
 
 TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining) {
   auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -229,7 +229,7 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining) {
 
 TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals) {
   auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 
@@ -269,7 +269,7 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals) {
 
 TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcrossCooldown) {
   auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles;
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
   ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
   CloseHandles(unusedHandles);
 

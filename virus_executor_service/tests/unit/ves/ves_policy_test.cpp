@@ -146,7 +146,7 @@ class FakeHealthControlService final : public OHOS::SystemAbility,
 
     void PrepareServerHandlesForTest()
     {
-        MemRpc::BootstrapHandles handles{};
+        MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
         ASSERT_EQ(bootstrap_->OpenSession(handles), MemRpc::StatusCode::Ok);
         CloseHandles(handles);
     }
@@ -188,7 +188,7 @@ class FakeHealthControlService final : public OHOS::SystemAbility,
 
 TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles unused{};
+    MemRpc::BootstrapHandles unused = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server(bootstrap->serverHandles());
@@ -491,7 +491,7 @@ TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFall
 
     std::thread reopenThread([&]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        MemRpc::BootstrapHandles reopened{};
+        MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
         if (service->OpenSession(DefaultVesOpenSessionRequest(), reopened) == MemRpc::StatusCode::Ok) {
             CloseHandles(reopened);
         }
