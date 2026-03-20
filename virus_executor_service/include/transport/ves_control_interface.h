@@ -90,12 +90,9 @@ inline bool IsValidVesOpenSessionRequest(const VesOpenSessionRequest& request)
         request.engineKinds.size() > VES_OPEN_SESSION_MAX_ENGINE_KINDS) {
         return false;
     }
-    for (uint32_t engineKind : request.engineKinds) {
-        if (engineKind == 0) {
-            return false;
-        }
-    }
-    return true;
+    return std::all_of(request.engineKinds.begin(),
+                       request.engineKinds.end(),
+                       [](uint32_t engineKind) { return engineKind != 0; });
 }
 
 class IVesControl : public OHOS::IRemoteBroker {

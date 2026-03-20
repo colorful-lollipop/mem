@@ -723,12 +723,8 @@ struct RpcClient::Impl {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
       lastAction = lastRecoveryAction_;
     }
-    if (lifecycleState == ClientLifecycleState::IdleClosed) {
-      MarkNextSessionOpen(SessionOpenReason::DemandReconnect, RecoveryTrigger::DemandReconnect, 0);
-      recoveryPending_.store(true, std::memory_order_release);
-      TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::DemandReconnect,
-                          RecoveryAction::Ignore);
-    } else if (lifecycleState == ClientLifecycleState::Disconnected) {
+    if (lifecycleState == ClientLifecycleState::IdleClosed ||
+        lifecycleState == ClientLifecycleState::Disconnected) {
       MarkNextSessionOpen(SessionOpenReason::DemandReconnect, RecoveryTrigger::DemandReconnect, 0);
       recoveryPending_.store(true, std::memory_order_release);
       TransitionLifecycle(ClientLifecycleState::Recovering, RecoveryTrigger::DemandReconnect,

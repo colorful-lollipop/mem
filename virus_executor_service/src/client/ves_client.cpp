@@ -90,7 +90,7 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options,
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VesClientOptions options)
     : remote_(remote),
-      options_(options) {}
+      options_(std::move(options)) {}
 
 VesClient::~VesClient() {
     Shutdown();
@@ -125,7 +125,7 @@ std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options,
         return nullptr;
     }
 
-    auto client = std::make_unique<VesClient>(remote, options);
+    auto client = std::make_unique<VesClient>(remote, std::move(options));
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;

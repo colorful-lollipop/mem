@@ -490,7 +490,6 @@ VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
                                          VesOpenSessionRequest openSessionRequest,
                                          ControlLoader controlLoader)
     : control_(std::move(control)),
-      openSessionRequest_(std::move(openSessionRequest)),
       controlLoader_(std::move(controlLoader)),
       deathRecipient_(std::make_shared<ControlDeathRecipient>([this]() {
           uint64_t sessionId = 0;
@@ -499,7 +498,8 @@ VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
               sessionId = sessionId_;
           }
           NotifyEngineDeath(sessionId);
-      }))
+      })),
+      openSessionRequest_(std::move(openSessionRequest))
 {
     openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
     std::lock_guard<std::mutex> lock(mutex_);

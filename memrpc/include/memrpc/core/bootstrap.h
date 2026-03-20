@@ -38,7 +38,7 @@ struct BootstrapHandles {
 };
 
 [[nodiscard]] inline BootstrapHandles MakeDefaultBootstrapHandles() {
-  BootstrapHandles handles;
+  BootstrapHandles handles{};
   handles.shmFd = -1;
   handles.highReqEventFd = -1;
   handles.normalReqEventFd = -1;
