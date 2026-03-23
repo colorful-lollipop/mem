@@ -82,6 +82,43 @@ class CountingBootstrapChannel final : public MemRpc::IBootstrapChannel {
   std::atomic<int> closeCount_{0};
 };
 
+class FailAfterFirstOpenBootstrapChannel final : public MemRpc::IBootstrapChannel {
+ public:
+  explicit FailAfterFirstOpenBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
+      : delegate_(std::move(delegate)) {}
+
+  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
+    const int attempt = openCount_.fetch_add(1, std::memory_order_relaxed);
+    if (attempt == 0) {
+      return delegate_->OpenSession(handles);
+    }
+    handles = MemRpc::MakeDefaultBootstrapHandles();
+    return MemRpc::StatusCode::PeerDisconnected;
+  }
+
+  MemRpc::StatusCode CloseSession() override {
+    closeCount_.fetch_add(1, std::memory_order_relaxed);
+    return delegate_->CloseSession();
+  }
+
+  void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
+    delegate_->SetEngineDeathCallback(std::move(callback));
+  }
+
+  [[nodiscard]] int openCount() const {
+    return openCount_.load(std::memory_order_acquire);
+  }
+
+  [[nodiscard]] int closeCount() const {
+    return closeCount_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
+  std::atomic<int> openCount_{0};
+  std::atomic<int> closeCount_{0};
+};
+
 }  // namespace
 
 namespace MemRpc {
@@ -222,6 +259,50 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining) {
   EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Cooldown);
   EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
   EXPECT_TRUE(snapshot.recoveryPending);
+
+  client.Shutdown();
+  server.Stop();
+}
+
+TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected) {
+  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  RpcServer server;
+  server.SetBootstrapHandles(rawBootstrap->serverHandles());
+  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
+    reply->status = StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), StatusCode::Ok);
+
+  auto bootstrap = std::make_shared<FailAfterFirstOpenBootstrapChannel>(rawBootstrap);
+  RpcClient client(bootstrap);
+  ASSERT_EQ(client.Init(), StatusCode::Ok);
+
+  client.RequestExternalRecovery(
+      {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 0});
+
+  ASSERT_TRUE(WaitFor([&]() {
+    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    return snapshot.lifecycleState == ClientLifecycleState::Disconnected;
+  }, std::chrono::milliseconds(500)));
+
+  const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+  EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+  EXPECT_FALSE(snapshot.recoveryPending);
+  EXPECT_EQ(snapshot.currentSessionId, 0u);
+  EXPECT_EQ(bootstrap->openCount(), 2);
+  EXPECT_EQ(bootstrap->closeCount(), 1);
+
+  RpcCall call;
+  call.opcode = kEchoOpcode;
+  call.waitForRecovery = true;
+  call.recoveryTimeoutMs = 0;
+  auto future = client.InvokeAsync(call);
+  RpcReply reply;
+  EXPECT_EQ(future.WaitFor(&reply, std::chrono::milliseconds(200)), StatusCode::PeerDisconnected);
 
   client.Shutdown();
   server.Stop();

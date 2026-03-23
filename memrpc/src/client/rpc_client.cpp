@@ -703,6 +703,17 @@ struct RpcClient::Impl {
     return recoveryPending_.load(std::memory_order_acquire);
   }
 
+  RecoveryTrigger PendingSessionOpenTrigger() const {
+    std::lock_guard<std::mutex> lock(recoveryMutex_);
+    if (nextSessionOpenTrigger_ != RecoveryTrigger::Unknown) {
+      return nextSessionOpenTrigger_;
+    }
+    if (nextSessionOpenReason_ == SessionOpenReason::DemandReconnect) {
+      return RecoveryTrigger::DemandReconnect;
+    }
+    return lastRecoveryTrigger_;
+  }
+
   StatusCode EnsureLiveSession() {
     if (clientClosed_.load(std::memory_order_acquire)) {
       HILOGW("RpcClient::EnsureLiveSession rejected: client already closed");
@@ -717,7 +728,7 @@ struct RpcClient::Impl {
     if (snapshot->alive) {
       return StatusCode::Ok;
     }
-    const ClientLifecycleState lifecycleState = LifecycleState();
+    ClientLifecycleState lifecycleState = LifecycleState();
     RecoveryAction lastAction = RecoveryAction::Ignore;
     {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
@@ -737,6 +748,14 @@ struct RpcClient::Impl {
     }
     const StatusCode status = OpenSession();
     if (status != StatusCode::Ok) {
+      const RecoveryTrigger failureTrigger = PendingSessionOpenTrigger();
+      lifecycleState = LifecycleState();
+      if (RecoveryPending() || lifecycleState == ClientLifecycleState::Recovering ||
+          lifecycleState == ClientLifecycleState::Cooldown) {
+        HILOGW("RpcClient::EnsureLiveSession abandoning recovery after open failure: status=%{public}d trigger=%{public}d",
+               static_cast<int>(status), static_cast<int>(failureTrigger));
+        EnterDisconnected(failureTrigger);
+      }
       HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
              static_cast<int>(status), static_cast<int>(LifecycleState()));
     }
