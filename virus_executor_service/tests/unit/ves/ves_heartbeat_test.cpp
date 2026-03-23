@@ -303,7 +303,7 @@ TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, OpenSessionReloadsControlBeforeOpeningWhenLoaderExists) {
+TEST(VesHeartbeatTest, InitialOpenSessionUsesExistingControlBeforeReloading) {
     auto seed = std::make_shared<FakeReloadControl>(100);
     auto fresh = std::make_shared<FakeReloadControl>(200);
 
@@ -318,13 +318,19 @@ TEST(VesHeartbeatTest, OpenSessionReloadsControlBeforeOpeningWhenLoaderExists) {
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(loadCount.load(), 1);
-    EXPECT_EQ(seed->openCount(), 0);
-    EXPECT_EQ(fresh->openCount(), 1);
-    EXPECT_EQ(bootstrap.CurrentControl(), fresh);
+    EXPECT_EQ(loadCount.load(), 0);
+    EXPECT_EQ(seed->openCount(), 1);
+    EXPECT_EQ(fresh->openCount(), 0);
+    EXPECT_EQ(bootstrap.CurrentControl(), seed);
 
     EXPECT_EQ(bootstrap.CloseSession(), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(fresh->closeCount(), 1);
+    EXPECT_EQ(seed->closeCount(), 1);
+
+    MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(reopened), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(fresh->openCount(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), fresh);
 }
 
 TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
@@ -388,34 +394,34 @@ TEST(VesHeartbeatTest, EngineDeathReloadsControlAndRebindsDeathRecipient) {
     auto seed = std::make_shared<FakeReloadControl>(300);
     auto freshA = std::make_shared<FakeReloadControl>(400);
     auto freshB = std::make_shared<FakeReloadControl>(500);
-    auto freshC = std::make_shared<FakeReloadControl>(600);
 
-    std::vector<OHOS::sptr<IVesControl>> controls{freshA, freshB, freshC};
+    std::vector<OHOS::sptr<IVesControl>> controls{freshA, freshB};
     std::atomic<int> loadCount{0};
     VesBootstrapChannel bootstrap(
         seed,
         DefaultVesOpenSessionRequest(),
         [&]() -> OHOS::sptr<IVesControl> {
             const int index = loadCount.fetch_add(1);
-            return controls[static_cast<size_t>(std::min(index, 2))];
+            return controls[static_cast<size_t>(std::min(index, 1))];
         });
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(bootstrap.CurrentControl(), freshA);
+    EXPECT_EQ(loadCount.load(), 0);
+    EXPECT_EQ(bootstrap.CurrentControl(), seed);
 
     std::atomic<int> deathCount{0};
     bootstrap.SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
 
-    freshA->AsObject()->NotifyRemoteDiedForTest();
+    seed->AsObject()->NotifyRemoteDiedForTest();
     EXPECT_EQ(deathCount.load(), 1);
+    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshA);
+
+    freshA->AsObject()->NotifyRemoteDiedForTest();
+    EXPECT_EQ(deathCount.load(), 2);
     EXPECT_EQ(loadCount.load(), 2);
     EXPECT_EQ(bootstrap.CurrentControl(), freshB);
-
-    freshB->AsObject()->NotifyRemoteDiedForTest();
-    EXPECT_EQ(deathCount.load(), 2);
-    EXPECT_EQ(loadCount.load(), 3);
-    EXPECT_EQ(bootstrap.CurrentControl(), freshC);
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {

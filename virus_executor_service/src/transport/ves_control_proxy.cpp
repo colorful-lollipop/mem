@@ -557,16 +557,14 @@ void VesBootstrapChannel::PublishHealthSnapshot(const VesHeartbeatReply& reply)
 void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
 {
     MemRpc::EngineDeathCallback callback;
-    bool shouldReload = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         callback = deathCallback_;
         if (sessionId == 0) {
             sessionId = sessionId_;
         }
-        shouldReload = controlLoader_ != nullptr;
     }
-    if (shouldReload) {
+    if (controlLoader_ != nullptr) {
         std::lock_guard<std::mutex> lock(mutex_);
         (void)ReloadControlLocked();
     }
@@ -582,14 +580,10 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
     {
         std::lock_guard<std::mutex> lock(mutex_);
         request = openSessionRequest_;
-        if (controlLoader_ != nullptr) {
+        control = control_;
+        if (control == nullptr) {
             handles = MemRpc::MakeDefaultBootstrapHandles();
             control = ReloadControlLocked();
-        } else if (control_ == nullptr) {
-            handles = MemRpc::MakeDefaultBootstrapHandles();
-            control = ReloadControlLocked();
-        } else {
-            control = control_;
         }
     }
     if (control == nullptr) {
@@ -626,6 +620,9 @@ MemRpc::StatusCode VesBootstrapChannel::CloseSession()
     {
         std::lock_guard<std::mutex> lock(mutex_);
         control = control_;
+        if (controlLoader_ != nullptr) {
+            RebindControlLocked(nullptr);
+        }
         sessionId_ = 0;
     }
     if (control == nullptr) {
