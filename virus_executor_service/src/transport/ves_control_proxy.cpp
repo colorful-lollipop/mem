@@ -482,7 +482,7 @@ void VesControlProxy::MonitorSocket() {
     }
 }
 
-VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
+VesBootstrapChannel::VesBootstrapChannel(const OHOS::sptr<IVesControl>& control,
                                          VesOpenSessionRequest openSessionRequest,
                                          ControlLoader controlLoader)
     : controlLoader_(std::move(controlLoader)),
@@ -498,7 +498,7 @@ VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
 {
     openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
     std::lock_guard<std::mutex> lock(mutex_);
-    RebindControlLocked(std::move(control));
+    RebindControlLocked(control);
 }
 
 VesBootstrapChannel::~VesBootstrapChannel()

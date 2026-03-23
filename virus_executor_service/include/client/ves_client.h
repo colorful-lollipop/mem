@@ -31,10 +31,13 @@ struct VesClientConnectOptions {
 
 class VesClient {
  public:
+    using ControlLoader = VesBootstrapChannel::ControlLoader;
     using HealthSnapshotCallback = VesBootstrapChannel::HealthSnapshotCallback;
     using EventCallback = MemRpc::RpcEventCallback;
 
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+                       VesClientOptions options = {});
+    explicit VesClient(ControlLoader controlLoader,
                        VesClientOptions options = {});
     ~VesClient();
 
@@ -77,8 +80,9 @@ class VesClient {
     [[nodiscard]] std::chrono::milliseconds RecoveryWaitTimeout(
         const MemRpc::RecoveryRuntimeSnapshot& snapshot) const;
 
-    OHOS::sptr<OHOS::IRemoteObject> remote_;
-    OHOS::sptr<IVesControl> control_;
+    ControlLoader controlLoader_;
+    mutable std::mutex controlMutex_;
+    OHOS::sptr<IVesControl> fallbackControl_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;

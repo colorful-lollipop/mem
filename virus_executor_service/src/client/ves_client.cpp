@@ -85,11 +85,50 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options,
     return policy;
 }
 
+VesClient::ControlLoader BuildControlLoader(const OHOS::sptr<OHOS::IRemoteObject>& initialRemote,
+                                            VesClientConnectOptions connectOptions)
+{
+    auto firstRemote = std::make_shared<OHOS::sptr<OHOS::IRemoteObject>>(initialRemote);
+    auto firstRemoteMutex = std::make_shared<std::mutex>();
+    const int32_t saId = (initialRemote != nullptr && initialRemote->GetSaId() >= 0)
+                             ? initialRemote->GetSaId()
+                             : VES_CONTROL_SA_ID;
+    return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVesControl> {
+        OHOS::sptr<OHOS::IRemoteObject> remote;
+        {
+            std::lock_guard<std::mutex> lock(*firstRemoteMutex);
+            if (*firstRemote != nullptr) {
+                remote = *firstRemote;
+                firstRemote->reset();
+            }
+        }
+        if (remote == nullptr) {
+            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+            if (sam == nullptr) {
+                HILOGE("GetSystemAbilityManager failed");
+                return nullptr;
+            }
+            if (connectOptions.loadIfMissing) {
+                remote = sam->LoadSystemAbility(saId, connectOptions.loadTimeoutMs);
+            } else if (connectOptions.checkExisting) {
+                remote = sam->CheckSystemAbility(saId);
+            }
+        }
+        return remote != nullptr ? OHOS::iface_cast<IVesControl>(remote) : nullptr;
+    };
+}
+
 }  // namespace
 
 VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                      VesClientOptions options)
-    : remote_(remote),
+    : VesClient(BuildControlLoader(remote,
+                                   VesClientConnectOptions{false, true, CONTROL_RELOAD_TIMEOUT_MS}),
+      std::move(options)) {}
+
+VesClient::VesClient(ControlLoader controlLoader,
+                     VesClientOptions options)
+    : controlLoader_(std::move(controlLoader)),
       options_(std::move(options)) {}
 
 VesClient::~VesClient() {
@@ -107,25 +146,8 @@ void VesClient::RegisterProxyFactory() {
 
 std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options,
                                               VesClientConnectOptions connectOptions) {
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    if (sam == nullptr) {
-        HILOGE("GetSystemAbilityManager failed");
-        return nullptr;
-    }
-
-    OHOS::sptr<OHOS::IRemoteObject> remote;
-    if (connectOptions.checkExisting) {
-        remote = sam->CheckSystemAbility(VES_CONTROL_SA_ID);
-    }
-    if (remote == nullptr && connectOptions.loadIfMissing) {
-        remote = sam->LoadSystemAbility(VES_CONTROL_SA_ID, connectOptions.loadTimeoutMs);
-    }
-    if (remote == nullptr) {
-        HILOGE("VesClient::Connect failed for saId=%{public}d", VES_CONTROL_SA_ID);
-        return nullptr;
-    }
-
-    auto client = std::make_unique<VesClient>(remote, std::move(options));
+    auto client = std::make_unique<VesClient>(BuildControlLoader(nullptr, connectOptions),
+                                              std::move(options));
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
@@ -134,29 +156,25 @@ std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options,
 }
 
 MemRpc::StatusCode VesClient::Init() {
-    control_ = OHOS::iface_cast<IVesControl>(remote_);
-    if (control_ == nullptr) {
-        HILOGE("iface_cast<IVesControl> failed");
+    if (!controlLoader_) {
+        HILOGE("VesClient::Init failed: control loader is null");
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const int32_t saId = (remote_ != nullptr && remote_->GetSaId() >= 0)
-                             ? remote_->GetSaId()
-                             : VES_CONTROL_SA_ID;
+    auto control = controlLoader_();
+    if (control == nullptr) {
+        HILOGE("VesClient::Init failed for saId=%{public}d", VES_CONTROL_SA_ID);
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+    {
+        std::lock_guard<std::mutex> lock(controlMutex_);
+        fallbackControl_ = control;
+    }
+
     bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
-        control_,
+        control,
         options_.openSessionRequest,
-        [saId]() -> OHOS::sptr<IVesControl> {
-            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-            if (sam == nullptr) {
-                return nullptr;
-            }
-            auto remote = sam->LoadSystemAbility(saId, CONTROL_RELOAD_TIMEOUT_MS);
-            if (remote == nullptr) {
-                return nullptr;
-            }
-            return OHOS::iface_cast<IVesControl>(remote);
-        });
+        controlLoader_);
     client_.SetBootstrapChannel(bootstrapChannel_);
     client_.SetSessionReadyCallback([this](const MemRpc::SessionReadyReport&) {
         CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
@@ -199,7 +217,6 @@ void VesClient::Shutdown() {
     client_.Shutdown();
     CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
     bootstrapChannel_.reset();
-    control_.reset();
 }
 
 bool VesClient::EngineDied() const {
@@ -213,7 +230,21 @@ MemRpc::RecoveryRuntimeSnapshot VesClient::GetRecoveryRuntimeSnapshot() const {
 
 OHOS::sptr<IVesControl> VesClient::CurrentControl()
 {
-    return bootstrapChannel_ != nullptr ? bootstrapChannel_->CurrentControl() : control_;
+    if (bootstrapChannel_ != nullptr) {
+        auto control = bootstrapChannel_->CurrentControl();
+        if (control != nullptr) {
+            std::lock_guard<std::mutex> lock(controlMutex_);
+            fallbackControl_ = control;
+            return control;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(controlMutex_);
+        if (fallbackControl_ != nullptr) {
+            return fallbackControl_;
+        }
+    }
+    return controlLoader_ != nullptr ? controlLoader_() : nullptr;
 }
 
 uint32_t VesClient::CurrentRecoveryTimeoutMs() const
