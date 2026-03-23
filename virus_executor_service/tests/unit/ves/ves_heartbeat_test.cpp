@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -11,6 +12,7 @@
 #include "service/virus_executor_service.h"
 #include "transport/ves_control_interface.h"
 #include "transport/ves_control_proxy.h"
+#include "transport/ves_control_stub.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
@@ -63,6 +65,59 @@ void CloseHandles(MemRpc::BootstrapHandles* handles)
         }
     }
 }
+
+class FakeReloadControl final : public VesControlStub {
+ public:
+    explicit FakeReloadControl(uint64_t sessionBase)
+        : sessionBase_(sessionBase) {}
+
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                   MemRpc::BootstrapHandles& handles) override
+    {
+        EXPECT_TRUE(request.engineKinds.empty());
+        handles = MemRpc::MakeDefaultBootstrapHandles();
+        handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
+        handles.sessionId = ++sessionBase_;
+        openCount_.fetch_add(1);
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode CloseSession() override
+    {
+        closeCount_.fetch_add(1);
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override
+    {
+        reply = {};
+        reply.version = 2;
+        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::OkIdle);
+        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::None);
+        reply.flags = VES_HEARTBEAT_FLAG_INITIALIZED;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    [[nodiscard]] int openCount() const
+    {
+        return openCount_.load();
+    }
+
+    [[nodiscard]] int closeCount() const
+    {
+        return closeCount_.load();
+    }
+
+ private:
+    std::atomic<uint64_t> sessionBase_;
+    std::atomic<int> openCount_{0};
+    std::atomic<int> closeCount_{0};
+};
 
 }  // namespace
 
@@ -228,6 +283,50 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     stub->OnStop();
 }
 
+TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->OnStart();
+
+    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    ASSERT_NE(control, nullptr);
+
+    std::atomic<int> deathCount{0};
+    {
+        VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
+        bootstrap.SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
+
+        stub->AsObject()->NotifyRemoteDiedForTest();
+        ASSERT_TRUE(WaitFor([&]() { return deathCount.load() >= 1; }, std::chrono::milliseconds(50)));
+        EXPECT_EQ(deathCount.load(), 1);
+    }
+
+    stub->OnStop();
+}
+
+TEST(VesHeartbeatTest, OpenSessionReloadsControlBeforeOpeningWhenLoaderExists) {
+    auto seed = std::make_shared<FakeReloadControl>(100);
+    auto fresh = std::make_shared<FakeReloadControl>(200);
+
+    std::atomic<int> loadCount{0};
+    VesBootstrapChannel bootstrap(
+        seed,
+        DefaultVesOpenSessionRequest(),
+        [&]() -> OHOS::sptr<IVesControl> {
+            loadCount.fetch_add(1);
+            return fresh;
+        });
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(seed->openCount(), 0);
+    EXPECT_EQ(fresh->openCount(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), fresh);
+
+    EXPECT_EQ(bootstrap.CloseSession(), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(fresh->closeCount(), 1);
+}
+
 TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
@@ -257,6 +356,66 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
     client.Shutdown();
     stub->OnStop();
+}
+
+TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
+    const std::string socketPath = "/tmp/virus_executor_service_death_" + std::to_string(getpid());
+
+    auto stub = std::make_shared<VirusExecutorService>();
+    stub->AsObject()->SetServicePath(socketPath);
+    stub->OnStart();
+    ASSERT_TRUE(stub->Publish(stub.get()));
+
+    auto control = OHOS::sptr<IVesControl>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
+    ASSERT_NE(control, nullptr);
+
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
+    std::atomic<int> deathCount{0};
+    bootstrap->SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    stub->AsObject()->NotifyRemoteDiedForTest();
+    ASSERT_TRUE(WaitFor([&]() { return deathCount.load() >= 1; }, std::chrono::milliseconds(50)));
+    EXPECT_EQ(deathCount.load(), 1);
+
+    CloseHandles(&handles);
+    stub->OnStop();
+}
+
+TEST(VesHeartbeatTest, EngineDeathReloadsControlAndRebindsDeathRecipient) {
+    auto seed = std::make_shared<FakeReloadControl>(300);
+    auto freshA = std::make_shared<FakeReloadControl>(400);
+    auto freshB = std::make_shared<FakeReloadControl>(500);
+    auto freshC = std::make_shared<FakeReloadControl>(600);
+
+    std::vector<OHOS::sptr<IVesControl>> controls{freshA, freshB, freshC};
+    std::atomic<int> loadCount{0};
+    VesBootstrapChannel bootstrap(
+        seed,
+        DefaultVesOpenSessionRequest(),
+        [&]() -> OHOS::sptr<IVesControl> {
+            const int index = loadCount.fetch_add(1);
+            return controls[static_cast<size_t>(std::min(index, 2))];
+        });
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshA);
+
+    std::atomic<int> deathCount{0};
+    bootstrap.SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
+
+    freshA->AsObject()->NotifyRemoteDiedForTest();
+    EXPECT_EQ(deathCount.load(), 1);
+    EXPECT_EQ(loadCount.load(), 2);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshB);
+
+    freshB->AsObject()->NotifyRemoteDiedForTest();
+    EXPECT_EQ(deathCount.load(), 2);
+    EXPECT_EQ(loadCount.load(), 3);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshC);
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {

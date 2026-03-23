@@ -265,7 +265,6 @@ void VesControlProxy::NotifyPeerDisconnected() {
     }
     uint64_t sessionId = 0;
     MemRpc::EngineDeathCallback callback;
-    auto object = AsObject();
     {
         std::lock_guard<std::mutex> lock(connectionMutex_);
         sessionId = sessionId_;
@@ -278,9 +277,6 @@ void VesControlProxy::NotifyPeerDisconnected() {
         static_cast<unsigned long long>(sessionId));
     if (callback) {
         callback(sessionId);
-    }
-    if (object != nullptr) {
-        object->NotifyRemoteDiedForTest();
     }
 }
 
@@ -489,8 +485,7 @@ void VesControlProxy::MonitorSocket() {
 VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
                                          VesOpenSessionRequest openSessionRequest,
                                          ControlLoader controlLoader)
-    : control_(std::move(control)),
-      controlLoader_(std::move(controlLoader)),
+    : controlLoader_(std::move(controlLoader)),
       deathRecipient_(std::make_shared<ControlDeathRecipient>([this]() {
           uint64_t sessionId = 0;
           {
@@ -503,7 +498,7 @@ VesBootstrapChannel::VesBootstrapChannel(OHOS::sptr<IVesControl> control,
 {
     openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
     std::lock_guard<std::mutex> lock(mutex_);
-    RebindControlLocked(control_);
+    RebindControlLocked(std::move(control));
 }
 
 VesBootstrapChannel::~VesBootstrapChannel()
@@ -512,32 +507,25 @@ VesBootstrapChannel::~VesBootstrapChannel()
     if (control_ != nullptr && control_->AsObject() != nullptr && deathRecipient_ != nullptr) {
         (void)control_->AsObject()->RemoveDeathRecipient(deathRecipient_);
     }
-    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
-        proxy->SetEngineDeathCallback({});
-    }
 }
 
-OHOS::sptr<IVesControl> VesBootstrapChannel::ReloadControlLocked(bool forceReload)
+OHOS::sptr<IVesControl> VesBootstrapChannel::ReloadControlLocked()
 {
     if (!controlLoader_) {
         return control_;
     }
-    auto nextControl = controlLoader_(forceReload);
+    auto nextControl = controlLoader_();
     if (nextControl != nullptr) {
         RebindControlLocked(nextControl);
+        return control_;
     }
-    return control_;
+    return nullptr;
 }
 
 void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVesControl>& nextControl)
 {
-    auto previousControl = control_;
-    auto previousObject = previousControl != nullptr ? previousControl->AsObject() : nullptr;
+    auto previousObject = control_ != nullptr ? control_->AsObject() : nullptr;
     auto nextObject = nextControl != nullptr ? nextControl->AsObject() : nullptr;
-    if (auto previousProxy = std::dynamic_pointer_cast<VesControlProxy>(previousControl);
-        previousProxy != nullptr && previousControl != nextControl) {
-        previousProxy->SetEngineDeathCallback({});
-    }
     if (previousObject != nullptr && deathRecipient_ != nullptr && previousObject != nextObject) {
         (void)previousObject->RemoveDeathRecipient(deathRecipient_);
     }
@@ -545,10 +533,6 @@ void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVesControl>& nex
     control_ = nextControl;
     if (nextObject != nullptr && deathRecipient_ != nullptr && nextObject != previousObject) {
         (void)nextObject->AddDeathRecipient(deathRecipient_);
-    }
-
-    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
-        proxy->SetEngineDeathCallback([this](uint64_t sessionId) { NotifyEngineDeath(sessionId); });
     }
 }
 
@@ -573,12 +557,18 @@ void VesBootstrapChannel::PublishHealthSnapshot(const VesHeartbeatReply& reply)
 void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
 {
     MemRpc::EngineDeathCallback callback;
+    bool shouldReload = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         callback = deathCallback_;
         if (sessionId == 0) {
             sessionId = sessionId_;
         }
+        shouldReload = controlLoader_ != nullptr;
+    }
+    if (shouldReload) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        (void)ReloadControlLocked();
     }
     if (callback) {
         callback(sessionId);
@@ -591,11 +581,15 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
     VesOpenSessionRequest request;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        control = control_;
         request = openSessionRequest_;
-        if (control == nullptr) {
+        if (controlLoader_ != nullptr) {
             handles = MemRpc::MakeDefaultBootstrapHandles();
-            control = ReloadControlLocked(false);
+            control = ReloadControlLocked();
+        } else if (control_ == nullptr) {
+            handles = MemRpc::MakeDefaultBootstrapHandles();
+            control = ReloadControlLocked();
+        } else {
+            control = control_;
         }
     }
     if (control == nullptr) {
@@ -611,7 +605,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        control = ReloadControlLocked(status == MemRpc::StatusCode::PeerDisconnected);
+        control = ReloadControlLocked();
     }
     if (control == nullptr) {
         handles = MemRpc::MakeDefaultBootstrapHandles();
@@ -679,9 +673,6 @@ void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback cal
 {
     std::lock_guard<std::mutex> lock(mutex_);
     deathCallback_ = std::move(callback);
-    if (auto proxy = std::dynamic_pointer_cast<VesControlProxy>(control_); proxy != nullptr) {
-        proxy->SetEngineDeathCallback([this](uint64_t sessionId) { NotifyEngineDeath(sessionId); });
-    }
 }
 
 }  // namespace VirusExecutorService

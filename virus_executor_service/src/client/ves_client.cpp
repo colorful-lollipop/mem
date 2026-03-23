@@ -146,15 +146,12 @@ MemRpc::StatusCode VesClient::Init() {
     bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
         control_,
         options_.openSessionRequest,
-        [saId](bool forceReload) -> OHOS::sptr<IVesControl> {
+        [saId]() -> OHOS::sptr<IVesControl> {
             auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
             if (sam == nullptr) {
                 return nullptr;
             }
-            auto remote = forceReload ? nullptr : sam->CheckSystemAbility(saId);
-            if (remote == nullptr) {
-                remote = sam->LoadSystemAbility(saId, CONTROL_RELOAD_TIMEOUT_MS);
-            }
+            auto remote = sam->LoadSystemAbility(saId, CONTROL_RELOAD_TIMEOUT_MS);
             if (remote == nullptr) {
                 return nullptr;
             }

@@ -52,7 +52,7 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVesControl> {
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
     using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
-    using ControlLoader = std::function<OHOS::sptr<IVesControl>(bool forceReload)>;
+    using ControlLoader = std::function<OHOS::sptr<IVesControl>()>;
 
     explicit VesBootstrapChannel(OHOS::sptr<IVesControl> control,
                                  VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest(),
@@ -67,7 +67,7 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
-    OHOS::sptr<IVesControl> ReloadControlLocked(bool forceReload);
+    OHOS::sptr<IVesControl> ReloadControlLocked();
     void RebindControlLocked(const OHOS::sptr<IVesControl>& nextControl);
     void PublishHealthSnapshot(const VesHeartbeatReply& reply);
     void NotifyEngineDeath(uint64_t sessionId);
