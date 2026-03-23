@@ -230,6 +230,20 @@ struct RpcClient::Impl {
     uint64_t admittedMonoMs = 0;
   };
 
+  struct SubmitConfig {
+    bool infiniteWait = false;
+    bool waitForRecovery = false;
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
+    std::chrono::steady_clock::time_point recoveryDeadline =
+        std::chrono::steady_clock::time_point::max();
+  };
+
+  enum class SubmitAction {
+    Proceed,
+    Retry,
+    Finish,
+  };
+
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap)
       : bootstrap_(std::move(bootstrap)) {}
 
@@ -978,101 +992,144 @@ struct RpcClient::Impl {
     return StatusCode::Ok;
   }
 
+  SubmitConfig MakeSubmitConfig(const PendingSubmit& submit) const {
+    SubmitConfig config;
+    config.infiniteWait = submit.call.admissionTimeoutMs == 0;
+    config.waitForRecovery = submit.call.waitForRecovery;
+    if (!config.infiniteWait) {
+      config.deadline =
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(submit.call.admissionTimeoutMs);
+    }
+    if (config.waitForRecovery && submit.call.recoveryTimeoutMs != 0) {
+      config.recoveryDeadline =
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(submit.call.recoveryTimeoutMs);
+    }
+    return config;
+  }
+
+  SubmitAction HandleSessionStatus(const PendingSubmit& submit,
+                                   const PendingInfo& info,
+                                   const SubmitConfig& config,
+                                   StatusCode sessionStatus) {
+    if (sessionStatus == StatusCode::Ok) {
+      return SubmitAction::Proceed;
+    }
+    if (sessionStatus == StatusCode::CooldownActive && config.waitForRecovery) {
+      const StatusCode waitStatus = WaitForRecovery(config.recoveryDeadline);
+      if (waitStatus == StatusCode::Ok) {
+        return SubmitAction::Retry;
+      }
+      HILOGE("RpcClient::SubmitOne recovery wait failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+             static_cast<int>(waitStatus));
+      FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+    if (sessionStatus == StatusCode::PeerDisconnected && config.waitForRecovery) {
+      const StatusCode waitStatus = WaitForRecoveryRetry(config.recoveryDeadline);
+      if (waitStatus == StatusCode::Ok) {
+        return SubmitAction::Retry;
+      }
+      HILOGE("RpcClient::SubmitOne recovery retry failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+             static_cast<int>(waitStatus));
+      FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+    HILOGE("RpcClient::SubmitOne session unavailable: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+           static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+           static_cast<int>(sessionStatus));
+    FailAndResolve(info, sessionStatus, FailureStage::Admission, submit.future);
+    return SubmitAction::Finish;
+  }
+
+  SubmitAction HandleDisconnectedPush(const PendingSubmit& submit,
+                                      const PendingInfo& info,
+                                      const SubmitConfig& config) {
+    CloseLiveSession();
+    if (!config.infiniteWait && DeadlineReached(config.deadline)) {
+      HILOGE("RpcClient::SubmitOne timed out after disconnect: request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
+      FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return SubmitAction::Retry;
+  }
+
+  SubmitAction HandleQueueFullPush(const PendingSubmit& submit,
+                                   const PendingInfo& info,
+                                   const SubmitConfig& config) {
+    if (!config.infiniteWait && DeadlineReached(config.deadline)) {
+      HILOGE("RpcClient::SubmitOne admission deadline reached: request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
+      FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+
+    const auto waitResult = WaitForRequestCredit(config.deadline);
+    if (waitResult == PollEventFdResult::Ready || waitResult == PollEventFdResult::Retry) {
+      return SubmitAction::Retry;
+    }
+    if (waitResult == PollEventFdResult::Timeout) {
+      HILOGE("RpcClient::SubmitOne request credit wait timed out: request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
+      FailAndResolve(info, config.infiniteWait ? StatusCode::QueueFull : StatusCode::QueueTimeout,
+                     FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+
+    HILOGE("RpcClient::SubmitOne request credit wait failed: request_id=%{public}llu opcode=%{public}u",
+           static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
+    CloseLiveSession();
+    return SubmitAction::Retry;
+  }
+
+  SubmitAction HandlePushStatus(const PendingSubmit& submit,
+                                const PendingInfo& info,
+                                const SubmitConfig& config,
+                                StatusCode pushStatus) {
+    if (pushStatus == StatusCode::Ok) {
+      return SubmitAction::Finish;
+    }
+    if (pushStatus == StatusCode::PayloadTooLarge) {
+      HILOGE("RpcClient::SubmitOne payload rejected: request_id=%{public}llu opcode=%{public}u",
+             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
+      FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
+      return SubmitAction::Finish;
+    }
+    if (pushStatus == StatusCode::PeerDisconnected) {
+      return HandleDisconnectedPush(submit, info, config);
+    }
+    if (pushStatus == StatusCode::QueueFull) {
+      return HandleQueueFullPush(submit, info, config);
+    }
+    HILOGE("RpcClient::SubmitOne push failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
+           static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
+           static_cast<int>(pushStatus));
+    FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
+    return SubmitAction::Finish;
+  }
+
   void SubmitOne(const PendingSubmit& submit) {
-    const bool infiniteWait = submit.call.admissionTimeoutMs == 0;
-    const auto deadline = infiniteWait ? std::chrono::steady_clock::time_point::max()
-                                       : std::chrono::steady_clock::now() +
-                                             std::chrono::milliseconds(submit.call.admissionTimeoutMs);
-    const bool waitForRecovery = submit.call.waitForRecovery;
-    const bool infiniteRecoveryWait = submit.call.recoveryTimeoutMs == 0;
-    const auto recoveryDeadline =
-        !waitForRecovery ? std::chrono::steady_clock::time_point::max()
-        : infiniteRecoveryWait ? std::chrono::steady_clock::time_point::max()
-                               : std::chrono::steady_clock::now() +
-                                     std::chrono::milliseconds(submit.call.recoveryTimeoutMs);
+    const SubmitConfig config = MakeSubmitConfig(submit);
     PendingInfo info = MakePendingInfo(submit);
 
     while (running_.load(std::memory_order_acquire)) {
-      const StatusCode sessionStatus = EnsureLiveSession();
-      if (sessionStatus == StatusCode::CooldownActive && waitForRecovery) {
-        const StatusCode waitStatus = WaitForRecovery(recoveryDeadline);
-        if (waitStatus == StatusCode::Ok) {
-          continue;
-        }
-        HILOGE("RpcClient::SubmitOne recovery wait failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
-               static_cast<int>(waitStatus));
-        FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
-        return;
+      const SubmitAction sessionAction =
+          HandleSessionStatus(submit, info, config, EnsureLiveSession());
+      if (sessionAction == SubmitAction::Retry) {
+        continue;
       }
-      if (sessionStatus == StatusCode::PeerDisconnected && waitForRecovery) {
-        const StatusCode waitStatus = WaitForRecoveryRetry(recoveryDeadline);
-        if (waitStatus == StatusCode::Ok) {
-          continue;
-        }
-        HILOGE("RpcClient::SubmitOne recovery retry failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
-               static_cast<int>(waitStatus));
-        FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
-        return;
-      }
-      if (sessionStatus != StatusCode::Ok) {
-        HILOGE("RpcClient::SubmitOne session unavailable: request_id=%{public}llu opcode=%{public}u status=%{public}d",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
-               static_cast<int>(sessionStatus));
-        FailAndResolve(info, sessionStatus, FailureStage::Admission, submit.future);
+      if (sessionAction == SubmitAction::Finish) {
         return;
       }
 
-      const StatusCode pushStatus = TryPushRequest(submit);
-      if (pushStatus == StatusCode::Ok) {
-        return;
-      }
-      if (pushStatus == StatusCode::PayloadTooLarge) {
-        HILOGE("RpcClient::SubmitOne payload rejected: request_id=%{public}llu opcode=%{public}u",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-        FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
-        return;
-      }
-      if (pushStatus == StatusCode::PeerDisconnected) {
-        CloseLiveSession();
-        if (!infiniteWait && DeadlineReached(deadline)) {
-          HILOGE("RpcClient::SubmitOne timed out after disconnect: request_id=%{public}llu opcode=%{public}u",
-                 static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-          FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
-          return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      const SubmitAction pushAction = HandlePushStatus(submit, info, config, TryPushRequest(submit));
+      if (pushAction == SubmitAction::Retry) {
         continue;
       }
-      if (pushStatus != StatusCode::QueueFull) {
-        HILOGE("RpcClient::SubmitOne push failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode,
-               static_cast<int>(pushStatus));
-        FailAndResolve(info, pushStatus, FailureStage::Admission, submit.future);
-        return;
-      }
-
-      if (!infiniteWait && DeadlineReached(deadline)) {
-        HILOGE("RpcClient::SubmitOne admission deadline reached: request_id=%{public}llu opcode=%{public}u",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-        FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
-        return;
-      }
-      const auto waitResult = WaitForRequestCredit(deadline);
-      if (waitResult == PollEventFdResult::Ready || waitResult == PollEventFdResult::Retry) {
-        continue;
-      }
-      if (waitResult == PollEventFdResult::Timeout) {
-        HILOGE("RpcClient::SubmitOne request credit wait timed out: request_id=%{public}llu opcode=%{public}u",
-               static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-        FailAndResolve(info, infiniteWait ? StatusCode::QueueFull : StatusCode::QueueTimeout,
-                       FailureStage::Admission, submit.future);
-        return;
-      }
-      HILOGE("RpcClient::SubmitOne request credit wait failed: request_id=%{public}llu opcode=%{public}u",
-             static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-      CloseLiveSession();
+      return;
     }
 
     HILOGE("RpcClient::SubmitOne aborted because client stopped: request_id=%{public}llu opcode=%{public}u",
