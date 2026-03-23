@@ -71,7 +71,7 @@ class VesClient {
                                  uint32_t execTimeoutMs);
 
     MemRpc::StatusCode InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke);
-    [[nodiscard]] OHOS::sptr<IVesControl> CurrentControl();
+    [[nodiscard]] OHOS::sptr<IVirusProtectionExecutorS> CurrentControl();
     [[nodiscard]] uint32_t CurrentRecoveryTimeoutMs() const;
     void CacheRecoverySnapshot(const MemRpc::RecoveryRuntimeSnapshot& snapshot);
     void CacheRecoveryEvent(const MemRpc::RecoveryEventReport& report);
@@ -82,7 +82,7 @@ class VesClient {
 
     ControlLoader controlLoader_;
     mutable std::mutex controlMutex_;
-    OHOS::sptr<IVesControl> fallbackControl_;
+    OHOS::sptr<IVirusProtectionExecutorS> fallbackControl_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;

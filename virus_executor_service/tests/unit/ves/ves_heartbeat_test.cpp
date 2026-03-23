@@ -216,7 +216,7 @@ TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
@@ -239,7 +239,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
@@ -263,7 +263,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
@@ -287,7 +287,7 @@ TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     std::atomic<int> deathCount{0};
@@ -311,7 +311,7 @@ TEST(VesHeartbeatTest, InitialOpenSessionUsesExistingControlBeforeReloading) {
     VesBootstrapChannel bootstrap(
         seed,
         DefaultVesOpenSessionRequest(),
-        [&]() -> OHOS::sptr<IVesControl> {
+        [&]() -> OHOS::sptr<IVirusProtectionExecutorS> {
             loadCount.fetch_add(1);
             return fresh;
         });
@@ -337,7 +337,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
@@ -372,7 +372,7 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    auto control = OHOS::sptr<IVesControl>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
+    auto control = OHOS::sptr<IVirusProtectionExecutorS>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
     ASSERT_NE(control, nullptr);
 
     auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
@@ -395,12 +395,12 @@ TEST(VesHeartbeatTest, EngineDeathReloadsControlAndRebindsDeathRecipient) {
     auto freshA = std::make_shared<FakeReloadControl>(400);
     auto freshB = std::make_shared<FakeReloadControl>(500);
 
-    std::vector<OHOS::sptr<IVesControl>> controls{freshA, freshB};
+    std::vector<OHOS::sptr<IVirusProtectionExecutorS>> controls{freshA, freshB};
     std::atomic<int> loadCount{0};
     VesBootstrapChannel bootstrap(
         seed,
         DefaultVesOpenSessionRequest(),
-        [&]() -> OHOS::sptr<IVesControl> {
+        [&]() -> OHOS::sptr<IVirusProtectionExecutorS> {
             const int index = loadCount.fetch_add(1);
             return controls[static_cast<size_t>(std::min(index, 1))];
         });
@@ -428,7 +428,7 @@ TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
-    auto control = OHOS::iface_cast<IVesControl>(stub->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
     auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());

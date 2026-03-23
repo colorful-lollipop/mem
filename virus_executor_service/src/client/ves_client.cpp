@@ -93,7 +93,7 @@ VesClient::ControlLoader BuildControlLoader(const OHOS::sptr<OHOS::IRemoteObject
     const int32_t saId = (initialRemote != nullptr && initialRemote->GetSaId() >= 0)
                              ? initialRemote->GetSaId()
                              : VES_CONTROL_SA_ID;
-    return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVesControl> {
+    return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVirusProtectionExecutorS> {
         OHOS::sptr<OHOS::IRemoteObject> remote;
         {
             std::lock_guard<std::mutex> lock(*firstRemoteMutex);
@@ -114,7 +114,7 @@ VesClient::ControlLoader BuildControlLoader(const OHOS::sptr<OHOS::IRemoteObject
                 remote = sam->CheckSystemAbility(saId);
             }
         }
-        return remote != nullptr ? OHOS::iface_cast<IVesControl>(remote) : nullptr;
+        return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutorS>(remote) : nullptr;
     };
 }
 
@@ -228,7 +228,7 @@ MemRpc::RecoveryRuntimeSnapshot VesClient::GetRecoveryRuntimeSnapshot() const {
     return GetCachedRecoverySnapshot();
 }
 
-OHOS::sptr<IVesControl> VesClient::CurrentControl()
+OHOS::sptr<IVirusProtectionExecutorS> VesClient::CurrentControl()
 {
     if (bootstrapChannel_ != nullptr) {
         auto control = bootstrapChannel_->CurrentControl();
