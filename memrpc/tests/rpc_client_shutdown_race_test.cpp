@@ -30,6 +30,16 @@ class FailingBootstrapChannel final : public MemRpc::IBootstrapChannel {
     callback_ = std::move(callback);
   }
 
+  [[nodiscard]] bool HasDeathCallback() const {
+    return static_cast<bool>(callback_);
+  }
+
+  void SimulateDeath(uint64_t sessionId = 0) {
+    if (callback_) {
+      callback_(sessionId);
+    }
+  }
+
  private:
   MemRpc::EngineDeathCallback callback_;
 };
@@ -69,6 +79,34 @@ TEST(RpcClientShutdownRaceTest, InitFailureThenShutdownRemainsFast) {
     const auto elapsed = std::chrono::steady_clock::now() - start;
     EXPECT_LT(elapsed, kMaxShutdownDuration);
   }
+}
+
+TEST(RpcClientShutdownRaceTest, ShutdownClearsBootstrapDeathCallback) {
+  auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+  MemRpc::RpcClient client(bootstrap);
+
+  EXPECT_TRUE(bootstrap->HasDeathCallback());
+
+  client.Shutdown();
+
+  EXPECT_FALSE(bootstrap->HasDeathCallback());
+  bootstrap->SimulateDeath();
+}
+
+TEST(RpcClientShutdownRaceTest, ReplacingBootstrapClearsPreviousDeathCallback) {
+  auto firstBootstrap = std::make_shared<FailingBootstrapChannel>();
+  auto secondBootstrap = std::make_shared<FailingBootstrapChannel>();
+  MemRpc::RpcClient client(firstBootstrap);
+
+  EXPECT_TRUE(firstBootstrap->HasDeathCallback());
+
+  client.SetBootstrapChannel(secondBootstrap);
+
+  EXPECT_FALSE(firstBootstrap->HasDeathCallback());
+  EXPECT_TRUE(secondBootstrap->HasDeathCallback());
+
+  client.Shutdown();
+  EXPECT_FALSE(secondBootstrap->HasDeathCallback());
 }
 
 TEST(RpcClientShutdownRaceTest, SyncInvokeFailureThenShutdownRemainsFast) {

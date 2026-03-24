@@ -214,6 +214,9 @@ void VesClient::RequestRecovery(uint32_t delayMs) {
 }
 
 void VesClient::Shutdown() {
+    client_.SetSessionReadyCallback({});
+    client_.SetRecoveryEventCallback({});
+    client_.SetRecoveryPolicy({});
     client_.Shutdown();
     CacheRecoverySnapshot(client_.GetRecoveryRuntimeSnapshot());
     bootstrapChannel_.reset();

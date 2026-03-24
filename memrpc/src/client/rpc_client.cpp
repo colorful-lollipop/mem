@@ -245,7 +245,9 @@ struct RpcClient::Impl {
   };
 
   explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap)
-      : bootstrap_(std::move(bootstrap)) {}
+      : bootstrap_(std::move(bootstrap)) {
+    InstallDeathCallbackLocked();
+  }
 
   std::shared_ptr<IBootstrapChannel> bootstrap_;
   Session session_;
@@ -314,6 +316,9 @@ struct RpcClient::Impl {
 
   void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap) {
     std::lock_guard<std::mutex> lock(recoveryMutex_);
+    if (bootstrap_ != nullptr && bootstrap_ != bootstrap) {
+      bootstrap_->SetEngineDeathCallback({});
+    }
     bootstrap_ = std::move(bootstrap);
     InstallDeathCallbackLocked();
   }
@@ -582,7 +587,6 @@ struct RpcClient::Impl {
     {
       std::lock_guard<std::mutex> lock(recoveryMutex_);
       bootstrap = bootstrap_;
-      InstallDeathCallbackLocked();
     }
     if (bootstrap == nullptr) {
       HILOGE("RpcClient::OpenSession failed: bootstrap channel is null");
@@ -819,6 +823,18 @@ struct RpcClient::Impl {
       return;
     }
     EnterTerminalClosed();
+    {
+      std::lock_guard<std::mutex> lock(recoveryMutex_);
+      if (bootstrap_ != nullptr) {
+        bootstrap_->SetEngineDeathCallback({});
+      }
+      recoveryPolicy_ = {};
+      recoveryEventCallback_ = {};
+    }
+    {
+      std::lock_guard<std::mutex> lock(sessionReadyMutex_);
+      sessionReadyCallback_ = {};
+    }
     StopThreads();
     FailAllPending(StatusCode::ClientClosed);
     std::deque<PendingSubmit> queued;
