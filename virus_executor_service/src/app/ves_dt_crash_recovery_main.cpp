@@ -30,6 +30,13 @@
 
 namespace {
 
+bool ObservedEngineDeath(const VirusExecutorService::VesClient& client)
+{
+    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    return snapshot.lastTrigger == MemRpc::RecoveryTrigger::EngineDeath &&
+           !snapshot.terminalManualShutdown;
+}
+
 const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_dt_crash_registry.sock";
 const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_dt_crash_service.sock";
 
@@ -297,7 +304,7 @@ int main([[maybe_unused]] int argc, char* argv[]) {
     {
         VirusExecutorService::ScanFileReply reply;
         MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
-        DT_CHECK(WaitForCondition([&]() { return client->EngineDied(); },
+        DT_CHECK(WaitForCondition([&]() { return ObservedEngineDeath(*client); },
                                   std::chrono::seconds(2)),
                  "step4: engine death callback observed");
         DT_CHECK(WaitForRecoveredScan(client.get(),

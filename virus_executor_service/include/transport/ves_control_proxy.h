@@ -67,14 +67,23 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
-    OHOS::sptr<IVirusProtectionExecutorS> ReloadControlLocked();
+    struct DeathRecipientContext;
+    struct HealthSnapshotContext;
+
+    OHOS::sptr<IVirusProtectionExecutorS> EnsureControlBoundLocked();
+    OHOS::sptr<IVirusProtectionExecutorS> RefreshControlLocked();
     void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutorS>& nextControl);
     void PublishHealthSnapshot(const VesHeartbeatReply& reply);
     void NotifyEngineDeath(uint64_t sessionId);
+    void HandleRemoteDied();
+    void ShutdownDeathRecipient();
+    void InvalidateHealthSnapshotCallbacks(bool shuttingDown);
 
     std::mutex mutex_;
     OHOS::sptr<IVirusProtectionExecutorS> control_;
     ControlLoader controlLoader_;
+    std::shared_ptr<DeathRecipientContext> deathRecipientContext_;
+    std::shared_ptr<HealthSnapshotContext> healthSnapshotContext_;
     OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
     HealthSnapshotCallback healthSnapshotCallback_;
     MemRpc::EngineDeathCallback deathCallback_;

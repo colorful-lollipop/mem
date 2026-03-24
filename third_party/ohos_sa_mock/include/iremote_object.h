@@ -24,6 +24,7 @@ class IRemoteObject : public RefBase {
 
   ~IRemoteObject() override = default;
 
+  virtual bool IsObjectDead() const;
   virtual bool AddDeathRecipient(const sptr<DeathRecipient>& recipient);
   virtual bool RemoveDeathRecipient(const sptr<DeathRecipient>& recipient);
   virtual void NotifyRemoteDiedForTest();

@@ -11,12 +11,22 @@ namespace OHOS {
 class IRemoteObject::Impl {
  public:
   std::mutex mutex;
+  bool is_dead = false;
   std::vector<wptr<DeathRecipient>> recipients;
   wptr<IRemoteBroker> broker;
   int32_t sa_id = -1;
   std::string service_path;
   RemoteRequestHandler request_handler;
 };
+
+bool IRemoteObject::IsObjectDead() const
+{
+  if (impl_ == nullptr) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  return impl_->is_dead;
+}
 
 bool IRemoteObject::AddDeathRecipient(const sptr<DeathRecipient>& recipient)
 {
@@ -59,6 +69,7 @@ void IRemoteObject::NotifyRemoteDiedForTest()
   std::vector<sptr<DeathRecipient>> recipients;
   {
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->is_dead = true;
     for (const auto& weak_recipient : impl_->recipients) {
       auto recipient = weak_recipient.lock();
       if (recipient != nullptr) {

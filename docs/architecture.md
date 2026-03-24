@@ -6,8 +6,8 @@
 
 - 一块共享内存
 - 两条请求 ring
-  - high priority
-  - normal priority
+  - 高优先级
+  - 普通优先级
 - 一条 response ring
 - 五个 `eventfd`
   - `high_req_eventfd`
@@ -84,31 +84,37 @@
 
 - `RpcClient` 仍保留 async 基础能力
 - 同步调用仍是框架内建能力
-- `VesClient` 这类业务 facade 对外只暴露同步接口
+- `VesClient` 这类业务封装层对外只暴露同步接口
 - pending 以 `requestId` 跟踪，不再和 slot 绑定
 
 ## 恢复与健康检查
+
+维护者若只想先看恢复职责、兼容视图和唯一旁路边界，可先读
+[recovery_ownership.md](/root/mem/docs/recovery_ownership.md)。
 
 恢复边界保持收口：
 
 - `IBootstrapChannel::CheckHealth()` 只负责通用健康结果
 - `VesControlProxy` 保留业务 heartbeat 协议和健康快照
-- `RpcClient` watchdog 统一处理 timeout、health failure、engine death、idle close
-- `VesClient` 只做策略装配和业务侧日志/订阅
+- `VesBootstrapChannel` 只负责 bootstrap control 的持有、失效和按需刷新；死亡通知本身不承担恢复预热职责
+- `RpcClient` watchdog 和 recovery-aware invoke 统一处理 timeout、health failure、engine death、idle close
+- `VesClient` 只做策略装配、typed codec、主路径/旁路选择和业务侧日志/订阅
 
 恢复语义保持保守：
 
 - 旧 session 上的等待请求在会话失效后立即失败
-- `RpcClient` 是唯一 lifecycle owner，timeout / engine death / external health / idle close / manual shutdown 都先进入统一状态机
-- 下一次调用自动尝试重建 session，但仅限非终态路径
+- `EngineDeath` 到来时，bootstrap control 只会被标记失效并上报事件；真正的 control 刷新发生在下一次 `OpenSession()` 或显式 `CurrentControl()` 取用时
+- `RpcClient` 是唯一生命周期所有者，timeout / engine death / external health / idle close / manual shutdown 都先进入统一状态机
+- 下一次调用自动尝试重建 session，但仅限非终态路径；若业务封装层需要等待恢复窗口，也应复用 `RpcClient` 的通用 recovery-aware invoke，而不是在业务层再维护一套 retry 状态机
 - 框架不会自动重放可能已经被旧服务端看到的请求
 
-### 统一 client 生命周期
+### 统一客户端生命周期
 
 `RpcClient` 现在显式维护 `ClientLifecycleState`：
 
 - `Uninitialized`
 - `Active`
+- `Disconnected`
 - `Cooldown`
 - `IdleClosed`
 - `Recovering`
@@ -118,6 +124,7 @@
 
 - `Shutdown()` 只会把 client 带到 `Closed`，这是终态；后续不会再接受 recovery signal，也不会再自动 reopen
 - idle policy 触发的 `CloseSession` 只会进入 `IdleClosed`；它关闭当前 session，但 client 仍可复用
+- `Disconnected` 表示当前无 live session，且上一轮恢复或 reopen 没有成功完成；它不是终态，但后续只能依赖下一次真实调用按需重连
 - `Cooldown` 和 `Recovering` 是框架内部恢复态，业务侧只消费 snapshot/report，不直接改状态
 - `DemandReconnect` 只发生在 `IdleClosed` 之后的下一次真实调用
 
@@ -130,8 +137,12 @@
   由立即恢复路径触发，或 cooldown 结束后开始 reopen
 - `Active -> IdleClosed`
   仅由 idle policy 驱动的 `CloseSession`
+- `Recovering/Cooldown -> Disconnected`
+  当前恢复尝试失败，退出内部恢复态，等待下一次真实调用触发 reopen
 - `IdleClosed -> Recovering -> Active`
   仅由 `DemandReconnect` 触发
+- `Disconnected -> Recovering -> Active`
+  仅由后续真实调用触发 reopen
 - `* -> Closed`
   仅由手动 `Shutdown()`
 
@@ -144,14 +155,14 @@
 - `RecoveryEventReport`
   提供一次状态迁移的前后状态、trigger、action、cooldown 计划和 session 关联信息
 
-`VesClient` 不再维护独立的 engine-dead 布尔状态或自定义 cooldown 状态机；它只负责配置 recovery policy，并缓存/消费 `RpcClient` 给出的统一 snapshot/report。
+`VesClient` 不再维护独立的 engine-dead 布尔状态或自定义 cooldown 状态机；它只负责配置 recovery policy，并消费 `RpcClient` 给出的统一 snapshot/report。测试若需要更细粒度观测，应在测试侧直接挂统一回调或访问内部对象，而不是继续给 facade 增加派生状态口。
 
 ## 适用范围
 
 当前主线方案的目标很明确：
 
 - 用 `memrpc` 覆盖绝大多数正常小包场景
-- 用 `AnyCall` 或其他 IPC 兜底少量超大请求
+- 用 `AnyCall` 作为 VES 层唯一业务旁路来兜底少量超大请求
 - 用显式失败替代“大包自动回拉”这类复杂补救链路
 
 如果某个业务天然以大 payload 为主，它就不应该强行挤进当前 `memrpc` 主路径。

@@ -16,7 +16,9 @@
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
+#define private public
 #include "client/ves_client.h"
+#undef private
 #include "ves/ves_types.h"
 
 namespace {
@@ -28,6 +30,29 @@ const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_it_service.sock"
 
 std::mutex g_engine_mutex;
 std::atomic<pid_t> g_engine_pid{-1};
+
+class RecoveryEventObserver {
+public:
+    void Attach(VirusExecutorService::VesClient& client)
+    {
+        client.client_.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report)
+        {
+            if (!report.terminalManualShutdown &&
+                (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
+                 report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal)) {
+                sawFaultRecovery_.store(true, std::memory_order_release);
+            }
+        });
+    }
+
+    [[nodiscard]] bool SawFaultRecovery() const
+    {
+        return sawFaultRecovery_.load(std::memory_order_acquire);
+    }
+
+private:
+    std::atomic<bool> sawFaultRecovery_{false};
+};
 
 pid_t LoadEnginePid()
 {
@@ -309,6 +334,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
     options.execTimeoutRestartDelayMs = 0;
     options.engineDeathRestartDelayMs = 0;
     VirusExecutorService::VesClient client(remote, options);
+    RecoveryEventObserver observer;
     CleanupGuard cleanup([&]() {
         client.Shutdown();
         registry.Stop();
@@ -318,6 +344,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
     });
 
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    observer.Attach(client);
 
     VirusExecutorService::ScanTask cleanTask{"/data/clean_same_client.apk"};
     VirusExecutorService::ScanFileReply reply;
@@ -330,7 +357,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
 
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
-    ASSERT_TRUE(WaitForCondition([&]() { return client.EngineDied(); },
+    ASSERT_TRUE(WaitForCondition([&]() { return observer.SawFaultRecovery(); },
                                  std::chrono::seconds(2)));
 
     MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
@@ -342,7 +369,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
                                      &lastStatus))
         << "last status=" << static_cast<int>(lastStatus);
     EXPECT_EQ(&client, originalClient);
-    EXPECT_TRUE(client.EngineDied());
+    EXPECT_TRUE(observer.SawFaultRecovery());
     EXPECT_TRUE(WaitForLoadCountAdvance(&loadCount,
                                         previousLoadCount,
                                         std::chrono::seconds(2)));

@@ -2,7 +2,6 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_
 
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -24,8 +23,6 @@ struct VesClientOptions {
 };
 
 struct VesClientConnectOptions {
-    bool checkExisting = true;
-    bool loadIfMissing = true;
     int32_t loadTimeoutMs = 5000;
 };
 
@@ -51,7 +48,6 @@ class VesClient {
     MemRpc::StatusCode Init();
     void SetEventCallback(EventCallback callback);
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
-    void RequestRecovery(uint32_t delayMs = 0);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const ScanTask& scanTask,
@@ -59,7 +55,6 @@ class VesClient {
                                 MemRpc::Priority priority = MemRpc::Priority::Normal,
                                 uint32_t execTimeoutMs = 30000);
 
-    [[nodiscard]] bool EngineDied() const;
     [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
 
  private:
@@ -70,16 +65,7 @@ class VesClient {
                                  MemRpc::Priority priority,
                                  uint32_t execTimeoutMs);
 
-    MemRpc::StatusCode InvokeWithRecovery(const std::function<MemRpc::StatusCode()>& invoke);
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutorS> CurrentControl();
-    [[nodiscard]] uint32_t CurrentRecoveryTimeoutMs() const;
-    void CacheRecoverySnapshot(const MemRpc::RecoveryRuntimeSnapshot& snapshot);
-    void CacheRecoveryEvent(const MemRpc::RecoveryEventReport& report);
-    bool WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline);
-    [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetCachedRecoverySnapshot() const;
-    [[nodiscard]] std::chrono::milliseconds RecoveryWaitTimeout(
-        const MemRpc::RecoveryRuntimeSnapshot& snapshot) const;
-
     ControlLoader controlLoader_;
     mutable std::mutex controlMutex_;
     OHOS::sptr<IVirusProtectionExecutorS> fallbackControl_;
@@ -87,13 +73,6 @@ class VesClient {
     MemRpc::RpcClient client_;
     VesClientOptions options_;
     HealthSnapshotCallback healthSnapshotCallback_;
-    mutable std::mutex recoveryMutex_;
-    std::condition_variable recoveryCv_;
-    MemRpc::RecoveryRuntimeSnapshot recoverySnapshot_;
-    MemRpc::RecoveryEventReport lastRecoveryEvent_;
-    bool hasRecoveryEvent_ = false;
-    MemRpc::RecoveryTrigger lastObservedTrigger_ = MemRpc::RecoveryTrigger::Unknown;
-    uint64_t recoveryStateVersion_ = 0;
 };
 
 }  // namespace VirusExecutorService

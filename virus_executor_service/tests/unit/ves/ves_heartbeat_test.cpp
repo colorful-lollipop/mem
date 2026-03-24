@@ -390,7 +390,7 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, EngineDeathReloadsControlAndRebindsDeathRecipient) {
+TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
     auto seed = std::make_shared<FakeReloadControl>(300);
     auto freshA = std::make_shared<FakeReloadControl>(400);
     auto freshB = std::make_shared<FakeReloadControl>(500);
@@ -415,13 +415,15 @@ TEST(VesHeartbeatTest, EngineDeathReloadsControlAndRebindsDeathRecipient) {
 
     seed->AsObject()->NotifyRemoteDiedForTest();
     EXPECT_EQ(deathCount.load(), 1);
-    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(loadCount.load(), 0);
     EXPECT_EQ(bootstrap.CurrentControl(), freshA);
+    EXPECT_EQ(loadCount.load(), 1);
 
     freshA->AsObject()->NotifyRemoteDiedForTest();
     EXPECT_EQ(deathCount.load(), 2);
-    EXPECT_EQ(loadCount.load(), 2);
+    EXPECT_EQ(loadCount.load(), 1);
     EXPECT_EQ(bootstrap.CurrentControl(), freshB);
+    EXPECT_EQ(loadCount.load(), 2);
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {

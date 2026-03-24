@@ -1,4 +1,4 @@
-# Stress & Fuzz Guide
+# 压测与模糊测试指南
 
 ## 推荐入口
 
@@ -27,11 +27,11 @@ tools/push_gate.sh --deep
 
 - 固定 entry 小包主路径稳定性
 - request/response ring 满载时的背压行为
-- session 重建、heartbeat failure、engine death
+- session 重建、heartbeat 失败、engine death
 - 大请求切到同步 `AnyCall`
 - 大响应 / 大事件返回 `PayloadTooLarge`
 
-## 手动 stress
+## 手动压测
 
 ```bash
 ctest --test-dir build_ninja --output-on-failure -L stress
@@ -43,14 +43,14 @@ ctest --test-dir build_ninja --output-on-failure -L stress
 - 小请求的 `memrpc` 主路径
 - 大请求的 `AnyCall` 兜底路径
 
-## 手动 fuzz
+## 手动运行模糊测试
 
 ```bash
 tools/build_and_test.sh --fuzz
 ctest --test-dir build_ninja --output-on-failure -L fuzz
 ```
 
-## 手动 sanitizer
+## 手动运行 Sanitizer
 
 ```bash
 tools/build_and_test.sh --asan
