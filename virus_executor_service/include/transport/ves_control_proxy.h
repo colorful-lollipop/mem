@@ -55,9 +55,8 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
     using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutor>()>;
 
-    explicit VesBootstrapChannel(const OHOS::sptr<IVirusProtectionExecutor>& control,
-                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest(),
-                                 ControlLoader controlLoader = {});
+    explicit VesBootstrapChannel(ControlLoader controlLoader,
+                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest());
     ~VesBootstrapChannel() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;

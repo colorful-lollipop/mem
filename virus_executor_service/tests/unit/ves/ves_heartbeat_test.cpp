@@ -45,6 +45,13 @@ MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& p
     return client->InvokeAsync(std::move(call));
 }
 
+VesBootstrapChannel::ControlLoader MakeStaticControlLoader(const OHOS::sptr<IVirusProtectionExecutor>& control)
+{
+    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> {
+        return control;
+    };
+}
+
 void CloseHandles(MemRpc::BootstrapHandles* handles)
 {
     if (handles == nullptr) {
@@ -219,7 +226,7 @@ TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
+    VesBootstrapChannel bootstrap(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
@@ -242,7 +249,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
+    VesBootstrapChannel bootstrap(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
 
@@ -266,7 +273,8 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
+    VesBootstrapChannel bootstrap(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
+    ASSERT_NE(bootstrap.CurrentControl(), nullptr);
 
     const auto unhealthy = bootstrap.CheckHealth(42);
     EXPECT_EQ(unhealthy.status, MemRpc::ChannelHealthStatus::Unhealthy);
@@ -283,7 +291,7 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
+TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientAfterInitialBind) {
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
@@ -292,8 +300,9 @@ TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
 
     std::atomic<int> deathCount{0};
     {
-        VesBootstrapChannel bootstrap(control, DefaultVesOpenSessionRequest());
+        VesBootstrapChannel bootstrap(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
         bootstrap.SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
+        ASSERT_NE(bootstrap.CurrentControl(), nullptr);
 
         stub->AsObject()->NotifyRemoteDiedForTest();
         ASSERT_TRUE(WaitFor([&]() { return deathCount.load() >= 1; }, std::chrono::milliseconds(50)));
@@ -303,22 +312,21 @@ TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientOnInitialControl) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, InitialOpenSessionUsesExistingControlBeforeReloading) {
+TEST(VesHeartbeatTest, OpenSessionUsesLoaderSequenceAcrossReloads) {
     auto seed = std::make_shared<FakeReloadControl>(100);
     auto fresh = std::make_shared<FakeReloadControl>(200);
 
     std::atomic<int> loadCount{0};
     VesBootstrapChannel bootstrap(
-        seed,
-        DefaultVesOpenSessionRequest(),
         [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
-            loadCount.fetch_add(1);
-            return fresh;
-        });
+            const int index = loadCount.fetch_add(1);
+            return index == 0 ? OHOS::sptr<IVirusProtectionExecutor>(seed) : fresh;
+        },
+        DefaultVesOpenSessionRequest());
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(loadCount.load(), 0);
+    EXPECT_EQ(loadCount.load(), 1);
     EXPECT_EQ(seed->openCount(), 1);
     EXPECT_EQ(fresh->openCount(), 0);
     EXPECT_EQ(bootstrap.CurrentControl(), seed);
@@ -328,7 +336,28 @@ TEST(VesHeartbeatTest, InitialOpenSessionUsesExistingControlBeforeReloading) {
 
     MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(reopened), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(loadCount.load(), 2);
+    EXPECT_EQ(fresh->openCount(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), fresh);
+}
+
+TEST(VesHeartbeatTest, OpenSessionRefreshesDeadControlBeforeCallingOpenSession) {
+    auto seed = std::make_shared<FakeReloadControl>(100);
+    auto fresh = std::make_shared<FakeReloadControl>(200);
+    seed->AsObject()->NotifyRemoteDiedForTest();
+
+    std::atomic<int> loadCount{0};
+    VesBootstrapChannel bootstrap(
+        [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
+            const int index = loadCount.fetch_add(1);
+            return index == 0 ? OHOS::sptr<IVirusProtectionExecutor>(seed) : fresh;
+        },
+        DefaultVesOpenSessionRequest());
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(loadCount.load(), 2);
+    EXPECT_EQ(seed->openCount(), 0);
     EXPECT_EQ(fresh->openCount(), 1);
     EXPECT_EQ(bootstrap.CurrentControl(), fresh);
 }
@@ -340,7 +369,8 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
+                                                           DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
@@ -375,7 +405,8 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     auto control = OHOS::sptr<IVirusProtectionExecutor>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
+                                                           DefaultVesOpenSessionRequest());
     std::atomic<int> deathCount{0};
     bootstrap->SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
 
@@ -390,24 +421,37 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     stub->OnStop();
 }
 
+TEST(VesHeartbeatTest, CheckHealthReturnsUnhealthyAfterControlDeathWithoutHeartbeat) {
+    auto seed = std::make_shared<FakeReloadControl>(300);
+    VesBootstrapChannel bootstrap(MakeStaticControlLoader(seed), DefaultVesOpenSessionRequest());
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    seed->AsObject()->NotifyRemoteDiedForTest();
+
+    const auto result = bootstrap.CheckHealth(handles.sessionId);
+    EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Unhealthy);
+    EXPECT_EQ(result.sessionId, handles.sessionId);
+}
+
 TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
     auto seed = std::make_shared<FakeReloadControl>(300);
     auto freshA = std::make_shared<FakeReloadControl>(400);
     auto freshB = std::make_shared<FakeReloadControl>(500);
 
-    std::vector<OHOS::sptr<IVirusProtectionExecutor>> controls{freshA, freshB};
+    std::vector<OHOS::sptr<IVirusProtectionExecutor>> controls{seed, freshA, freshB};
     std::atomic<int> loadCount{0};
     VesBootstrapChannel bootstrap(
-        seed,
-        DefaultVesOpenSessionRequest(),
         [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
             const int index = loadCount.fetch_add(1);
-            return controls[static_cast<size_t>(std::min(index, 1))];
-        });
+            return controls[static_cast<size_t>(std::min(index, 2))];
+        },
+        DefaultVesOpenSessionRequest());
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(loadCount.load(), 0);
+    EXPECT_EQ(loadCount.load(), 1);
     EXPECT_EQ(bootstrap.CurrentControl(), seed);
 
     std::atomic<int> deathCount{0};
@@ -415,15 +459,15 @@ TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
 
     seed->AsObject()->NotifyRemoteDiedForTest();
     EXPECT_EQ(deathCount.load(), 1);
-    EXPECT_EQ(loadCount.load(), 0);
-    EXPECT_EQ(bootstrap.CurrentControl(), freshA);
     EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshA);
+    EXPECT_EQ(loadCount.load(), 2);
 
     freshA->AsObject()->NotifyRemoteDiedForTest();
     EXPECT_EQ(deathCount.load(), 2);
-    EXPECT_EQ(loadCount.load(), 1);
-    EXPECT_EQ(bootstrap.CurrentControl(), freshB);
     EXPECT_EQ(loadCount.load(), 2);
+    EXPECT_EQ(bootstrap.CurrentControl(), freshB);
+    EXPECT_EQ(loadCount.load(), 3);
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
@@ -433,7 +477,8 @@ TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control, DefaultVesOpenSessionRequest());
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
+                                                           DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 

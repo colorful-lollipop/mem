@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 #include "iservice_registry.h"
@@ -102,6 +103,12 @@ namespace VirusExecutorService
                 return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutor>(remote) : nullptr;
             };
         }
+
+        [[noreturn]] void AbortForMissingControlLoader()
+        {
+            HILOGE("VesClient requires a non-null control loader");
+            std::abort();
+        }
     } // namespace
 
     VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
@@ -117,6 +124,10 @@ namespace VirusExecutorService
         : controlLoader_(std::move(controlLoader)),
           options_(std::move(options))
     {
+        if (!controlLoader_)
+        {
+            AbortForMissingControlLoader();
+        }
     }
 
     VesClient::~VesClient()
@@ -150,27 +161,9 @@ namespace VirusExecutorService
 
     MemRpc::StatusCode VesClient::Init()
     {
-        if (!controlLoader_)
-        {
-            HILOGE("VesClient::Init failed: control loader is null");
-            return MemRpc::StatusCode::InvalidArgument;
-        }
-
-        auto control = controlLoader_();
-        if (control == nullptr)
-        {
-            HILOGE("VesClient::Init failed for saId=%{public}d", VES_CONTROL_SA_ID);
-            return MemRpc::StatusCode::InvalidArgument;
-        }
-        {
-            std::lock_guard<std::mutex> lock(controlMutex_);
-            fallbackControl_ = control;
-        }
-
         bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
-            control,
-            options_.openSessionRequest,
-            controlLoader_);
+            controlLoader_,
+            options_.openSessionRequest);
         client_.SetBootstrapChannel(bootstrapChannel_);
         if (healthSnapshotCallback_)
         {
@@ -178,7 +171,23 @@ namespace VirusExecutorService
         }
         client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_));
         const MemRpc::StatusCode status = client_.Init();
-        return status;
+        if (status != MemRpc::StatusCode::Ok)
+        {
+            HILOGE("VesClient::Init failed for saId=%{public}d status=%{public}d",
+                   VES_CONTROL_SA_ID,
+                   static_cast<int>(status));
+            return status;
+        }
+        if (bootstrapChannel_ != nullptr)
+        {
+            auto control = bootstrapChannel_->CurrentControl();
+            if (control != nullptr)
+            {
+                std::lock_guard<std::mutex> lock(controlMutex_);
+                fallbackControl_ = control;
+            }
+        }
+        return MemRpc::StatusCode::Ok;
     }
 
     void VesClient::SetEventCallback(EventCallback callback)
@@ -226,7 +235,7 @@ namespace VirusExecutorService
                 return fallbackControl_;
             }
         }
-        return controlLoader_ != nullptr ? controlLoader_() : nullptr;
+        return controlLoader_();
     }
 
     template <typename Request, typename Reply>

@@ -40,6 +40,13 @@ MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& p
     return client->InvokeAsync(std::move(call));
 }
 
+VesBootstrapChannel::ControlLoader MakeStaticControlLoader(const OHOS::sptr<IVirusProtectionExecutor>& control)
+{
+    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> {
+        return control;
+    };
+}
+
 }  // namespace
 
 TEST(VesRecoveryReasonTest, NoSessionMapsToUnhealthyNoSession) {
@@ -61,7 +68,7 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(service->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control));
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
@@ -89,7 +96,7 @@ TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason) {
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(service->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
+    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control));
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
