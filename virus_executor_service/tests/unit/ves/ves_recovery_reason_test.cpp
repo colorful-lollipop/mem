@@ -58,7 +58,7 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
     auto service = std::make_shared<VirusExecutorService>();
     service->OnStart();
 
-    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(service->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutor>(service->AsObject());
     ASSERT_NE(control, nullptr);
 
     auto bootstrap = std::make_shared<VesBootstrapChannel>(control);
@@ -86,7 +86,7 @@ TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason) {
     auto service = std::make_shared<VirusExecutorService>();
     service->OnStart();
 
-    auto control = OHOS::iface_cast<IVirusProtectionExecutorS>(service->AsObject());
+    auto control = OHOS::iface_cast<IVirusProtectionExecutor>(service->AsObject());
     ASSERT_NE(control, nullptr);
 
     auto bootstrap = std::make_shared<VesBootstrapChannel>(control);

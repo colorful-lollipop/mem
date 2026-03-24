@@ -72,7 +72,7 @@ namespace VirusExecutorService
             const int32_t saId = (initialRemote != nullptr && initialRemote->GetSaId() >= 0)
                                      ? initialRemote->GetSaId()
                                      : VES_CONTROL_SA_ID;
-            return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVirusProtectionExecutorS>
+            return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVirusProtectionExecutor>
             {
                 OHOS::sptr<OHOS::IRemoteObject> remote;
                 {
@@ -94,12 +94,12 @@ namespace VirusExecutorService
                     remote = sam->CheckSystemAbility(saId);
                     if (remote != nullptr)
                     {
-                        OHOS::iface_cast<IVirusProtectionExecutorS>(remote)->CloseSession();
+                        OHOS::iface_cast<IVirusProtectionExecutor>(remote)->CloseSession();
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     }
                     remote = sam->LoadSystemAbility(saId, connectOptions.loadTimeoutMs);
                 }
-                return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutorS>(remote) : nullptr;
+                return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutor>(remote) : nullptr;
             };
         }
     } // namespace
@@ -207,7 +207,7 @@ namespace VirusExecutorService
         return client_.GetRecoveryRuntimeSnapshot();
     }
 
-    OHOS::sptr<IVirusProtectionExecutorS> VesClient::CurrentControl()
+    OHOS::sptr<IVirusProtectionExecutor> VesClient::CurrentControl()
     {
         if (bootstrapChannel_ != nullptr)
         {

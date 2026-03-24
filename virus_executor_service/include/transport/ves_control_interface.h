@@ -95,9 +95,9 @@ inline bool IsValidVesOpenSessionRequest(const VesOpenSessionRequest& request)
                        [](uint32_t engineKind) { return engineKind != 0; });
 }
 
-class IVirusProtectionExecutorS : public OHOS::IRemoteBroker {
+class IVirusProtectionExecutor : public OHOS::IRemoteBroker {
  public:
-    ~IVirusProtectionExecutorS() override = default;
+    ~IVirusProtectionExecutor() override = default;
     virtual MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
                                            MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;

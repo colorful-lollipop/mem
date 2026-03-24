@@ -65,10 +65,10 @@ class VesClient {
                                  MemRpc::Priority priority,
                                  uint32_t execTimeoutMs);
 
-    [[nodiscard]] OHOS::sptr<IVirusProtectionExecutorS> CurrentControl();
+    [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
     ControlLoader controlLoader_;
     mutable std::mutex controlMutex_;
-    OHOS::sptr<IVirusProtectionExecutorS> fallbackControl_;
+    OHOS::sptr<IVirusProtectionExecutor> fallbackControl_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;

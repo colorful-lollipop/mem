@@ -177,7 +177,7 @@ struct VesBootstrapChannel::HealthSnapshotContext {
 VesControlProxy::VesControlProxy(
     const OHOS::sptr<OHOS::IRemoteObject>& remote,
     const std::string& serviceSocketPath)
-    : OHOS::IRemoteProxy<IVirusProtectionExecutorS>(remote),
+    : OHOS::IRemoteProxy<IVirusProtectionExecutor>(remote),
       service_socket_path_(serviceSocketPath) {}
 
 VesControlProxy::~VesControlProxy() {
@@ -508,7 +508,7 @@ void VesControlProxy::MonitorSocket() {
     }
 }
 
-VesBootstrapChannel::VesBootstrapChannel(const OHOS::sptr<IVirusProtectionExecutorS>& control,
+VesBootstrapChannel::VesBootstrapChannel(const OHOS::sptr<IVirusProtectionExecutor>& control,
                                          VesOpenSessionRequest openSessionRequest,
                                          ControlLoader controlLoader)
     : controlLoader_(std::move(controlLoader)),
@@ -588,7 +588,7 @@ void VesBootstrapChannel::ShutdownDeathRecipient()
     });
 }
 
-OHOS::sptr<IVirusProtectionExecutorS> VesBootstrapChannel::EnsureControlBoundLocked()
+OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::EnsureControlBoundLocked()
 {
     if (control_ != nullptr) {
         return control_;
@@ -596,7 +596,7 @@ OHOS::sptr<IVirusProtectionExecutorS> VesBootstrapChannel::EnsureControlBoundLoc
     return RefreshControlLocked();
 }
 
-OHOS::sptr<IVirusProtectionExecutorS> VesBootstrapChannel::RefreshControlLocked()
+OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::RefreshControlLocked()
 {
     if (!controlLoader_) {
         return control_;
@@ -609,7 +609,7 @@ OHOS::sptr<IVirusProtectionExecutorS> VesBootstrapChannel::RefreshControlLocked(
     return nullptr;
 }
 
-void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutorS>& nextControl)
+void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl)
 {
     auto previousObject = control_ != nullptr ? control_->AsObject() : nullptr;
     auto nextObject = nextControl != nullptr ? nextControl->AsObject() : nullptr;
@@ -674,7 +674,7 @@ void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
 
 MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
 {
-    OHOS::sptr<IVirusProtectionExecutorS> control;
+    OHOS::sptr<IVirusProtectionExecutor> control;
     VesOpenSessionRequest request;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -725,7 +725,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
 
 MemRpc::StatusCode VesBootstrapChannel::CloseSession()
 {
-    OHOS::sptr<IVirusProtectionExecutorS> control;
+    OHOS::sptr<IVirusProtectionExecutor> control;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         control = control_;
@@ -742,7 +742,7 @@ MemRpc::StatusCode VesBootstrapChannel::CloseSession()
 
 MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSessionId)
 {
-    OHOS::sptr<IVirusProtectionExecutorS> control;
+    OHOS::sptr<IVirusProtectionExecutor> control;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         control = control_;
@@ -763,7 +763,7 @@ MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSe
     return {MemRpc::ChannelHealthStatus::Timeout, 0};
 }
 
-OHOS::sptr<IVirusProtectionExecutorS> VesBootstrapChannel::CurrentControl()
+OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::CurrentControl()
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return EnsureControlBoundLocked();
