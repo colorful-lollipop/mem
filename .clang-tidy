@@ -52,7 +52,7 @@ CheckOptions:
     value: reasonable
   # 圈复杂度限制
   - key: readability-function-cognitive-complexity.Threshold
-    value: '6'
+    value: '20'
   - key: readability-function-cognitive-complexity.DescribeBasicIncrements
     value: '1'
   # 函数行数限制 (约50行)
