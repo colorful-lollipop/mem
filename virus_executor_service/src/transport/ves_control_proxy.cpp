@@ -190,6 +190,27 @@ struct VesBootstrapChannel::HealthSnapshotContext {
     bool shuttingDown = false;
 };
 
+VesBootstrapChannel* VesBootstrapChannel::TryEnterDeathRecipientCallback(DeathRecipientContext& context)
+{
+    std::lock_guard<std::mutex> lock(context.mutex);
+    if (context.owner == nullptr || context.shuttingDown) {
+        return nullptr;
+    }
+    ++context.inFlightCallbacks;
+    return context.owner;
+}
+
+void VesBootstrapChannel::LeaveDeathRecipientCallback(DeathRecipientContext& context)
+{
+    std::lock_guard<std::mutex> lock(context.mutex);
+    if (context.inFlightCallbacks > 0) {
+        --context.inFlightCallbacks;
+    }
+    if (context.inFlightCallbacks == 0) {
+        context.cv.notify_all();
+    }
+}
+
 VesControlProxy::VesControlProxy(
     const OHOS::sptr<OHOS::IRemoteObject>& remote,
     const std::string& serviceSocketPath)
@@ -531,14 +552,9 @@ VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
       healthSnapshotContext_(std::make_shared<HealthSnapshotContext>()),
       deathRecipient_(std::make_shared<ControlDeathRecipient>(
           [context = deathRecipientContext_]() {
-              VesBootstrapChannel* owner = nullptr;
-              {
-                  std::lock_guard<std::mutex> lock(context->mutex);
-                  if (context->owner == nullptr || context->shuttingDown) {
-                      return;
-                  }
-                  owner = context->owner;
-                  ++context->inFlightCallbacks;
+              auto* owner = TryEnterDeathRecipientCallback(*context);
+              if (owner == nullptr) {
+                  return;
               }
 
               try {
@@ -546,16 +562,7 @@ VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
               } catch (...) {
                   HILOGW("VesBootstrapChannel death recipient callback threw");
               }
-
-              {
-                  std::lock_guard<std::mutex> lock(context->mutex);
-                  if (context->inFlightCallbacks > 0) {
-                      --context->inFlightCallbacks;
-                  }
-                  if (context->inFlightCallbacks == 0) {
-                      context->cv.notify_all();
-                  }
-              }
+              LeaveDeathRecipientCallback(*context);
           })),
       openSessionRequest_(std::move(openSessionRequest))
 {
@@ -592,15 +599,16 @@ void VesBootstrapChannel::HandleRemoteDied()
 
 void VesBootstrapChannel::ShutdownDeathRecipient()
 {
-    if (deathRecipientContext_ == nullptr) {
+    const auto context = deathRecipientContext_;
+    if (context == nullptr) {
         return;
     }
 
-    std::unique_lock<std::mutex> lock(deathRecipientContext_->mutex);
-    deathRecipientContext_->owner = nullptr;
-    deathRecipientContext_->shuttingDown = true;
-    deathRecipientContext_->cv.wait(lock, [this]() {
-        return deathRecipientContext_->inFlightCallbacks == 0;
+    std::unique_lock<std::mutex> lock(context->mutex);
+    context->owner = nullptr;
+    context->shuttingDown = true;
+    context->cv.wait(lock, [&context]() {
+        return context->inFlightCallbacks == 0;
     });
 }
 

@@ -70,6 +70,9 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     struct DeathRecipientContext;
     struct HealthSnapshotContext;
 
+    static VesBootstrapChannel* TryEnterDeathRecipientCallback(DeathRecipientContext& context);
+    static void LeaveDeathRecipientCallback(DeathRecipientContext& context);
+
     OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked();
     OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked();
     void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl);
