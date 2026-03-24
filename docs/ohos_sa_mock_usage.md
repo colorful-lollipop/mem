@@ -1,4 +1,4 @@
-# Linux HarmonyOS SA Mock 用法
+# Linux HarmonyOS SA 模拟层用法
 
 `ohos_sa_mock` 已经整理成独立子仓库，位于：
 

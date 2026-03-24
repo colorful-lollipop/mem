@@ -1,4 +1,4 @@
-# Demo 使用说明
+# 示例使用说明
 
 ## 构建
 
@@ -29,9 +29,9 @@ cmake --build build_ninja --parallel
 ctest --test-dir build_ninja --output-on-failure -R virus_executor_service_supervisor_integration_test
 ```
 
-## 当前 demo 验证什么
+## 当前示例验证什么
 
-当前主线 demo 是 `virus_executor_service`。它验证的是“固定 entry 的小包共享内存 RPC + 同步控制面兜底”，不是旧的 `ring + slot` 方案。
+当前主线示例是 `virus_executor_service`。它验证的是“固定 entry 的小包共享内存 RPC + 同步控制面兜底”，不是旧的 `ring + slot` 方案。
 
 主要验证点：
 
@@ -41,15 +41,18 @@ ctest --test-dir build_ninja --output-on-failure -R virus_executor_service_super
 - `Reply/Event` 共用响应队列
 - `RpcClient` / `RpcServer` 公共接口
 - `VesClient` 对外同步 typed API
-- 大请求通过 `AnyCall` 控制面兜底
+- 大请求通过唯一的 `AnyCall` 业务旁路兜底
 - 大响应或大事件返回 `PayloadTooLarge`
-- `VesControlProxy` 保留 heartbeat 与健康快照协议，`RpcClient` watchdog 统一调度恢复
+- `RpcClient` watchdog 统一处理 heartbeat / idle / crash 等检测与恢复
+- `VesControlProxy` 只需要满足 `IVirusProtectionExecutorS` 抽象和控制面协议
+- 引擎死亡事件只负责让旧 session / control 失效；control 是否刷新由后续显式取用点决定
 
 当前不是主线验证点的内容：
 
 - request / response slot 生命周期
 - 大响应 heartbeat 回拉
 - `memrpc` 执行后自动 fallback 到 `AnyCall`
+- `VesClient` 自己维护一套独立恢复循环
 
 ## 手动运行
 
@@ -61,7 +64,7 @@ ctest --test-dir build_ninja --output-on-failure -R virus_executor_service_super
 
 ## HarmonyOS 迁移说明
 
-这个 demo 不是 HarmonyOS 正式部署方式。迁移到正式环境时，原则仍然是：
+这个示例不是 HarmonyOS 正式部署方式。迁移到正式环境时，原则仍然是：
 
 - 保留 `memrpc` 通信核心
 - 保留 VES 控制面协议

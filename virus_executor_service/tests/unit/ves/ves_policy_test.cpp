@@ -7,7 +7,9 @@
 #include <thread>
 #include <unistd.h>
 
+#define private public
 #include "client/ves_client.h"
+#undef private
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/codec.h"
@@ -65,6 +67,15 @@ void UnloadControlService()
     if (sam != nullptr) {
         (void)sam->UnloadSystemAbility(VES_CONTROL_SA_ID);
     }
+}
+
+void RequestRecoveryForTest(VesClient& client, uint32_t delayMs)
+{
+    client.client_.RequestExternalRecovery({
+        MemRpc::ExternalRecoverySignal::ChannelHealthTimeout,
+        0,
+        delayMs,
+    });
 }
 
 class FakeHealthControlService final : public OHOS::SystemAbility,
@@ -338,7 +349,8 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop) {
 
     ScanTask recoveredTask{"/data/recovered.bin"};
     ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
-    EXPECT_FALSE(client.EngineDied());
+    const auto postRecoverySnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
 
     client.Shutdown();
     server.Stop();
@@ -387,7 +399,7 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown) {
     ASSERT_EQ(client.ScanFile(initialTask, &reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 0);
 
-    client.RequestRecovery(120);
+    RequestRecoveryForTest(client, 120);
     const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
@@ -443,7 +455,7 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     VesClient client(remote, options);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    client.RequestRecovery(400);
+    RequestRecoveryForTest(client, 400);
     const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
@@ -466,7 +478,7 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     UnloadControlService();
 }
 
-TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFallback) {
+TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback) {
     UnloadControlService();
     const std::string socketPath =
         "/tmp/ves_restart_anycall_" + std::to_string(getpid()) + ".sock";
@@ -487,7 +499,7 @@ TEST(VesPolicyTest, VesClientScanFileWaitsInternallyAcrossCooldownForAnyCallFall
     VesClient client(remote, options);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    client.RequestRecovery(120);
+    RequestRecoveryForTest(client, 120);
 
     std::thread reopenThread([&]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));

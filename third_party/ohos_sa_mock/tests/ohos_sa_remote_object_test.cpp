@@ -24,9 +24,11 @@ TEST(OhosSaRemoteObjectTest, NotifiesDeathRecipients) {
   auto object = std::make_shared<OHOS::IRemoteObject>();
   auto recipient = std::make_shared<TestDeathRecipient>();
 
+  EXPECT_FALSE(object->IsObjectDead());
   ASSERT_TRUE(object->AddDeathRecipient(recipient));
   object->NotifyRemoteDiedForTest();
 
+  EXPECT_TRUE(object->IsObjectDead());
   EXPECT_TRUE(recipient->called.load());
   EXPECT_FALSE(recipient->last_remote.expired());
 }

@@ -51,15 +51,16 @@ int main() {
     sam->UnloadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    HILOGI("engine_died: %{public}s", client->EngineDied() ? "true" : "false");
+    const auto firstSnapshot = client->GetRecoveryRuntimeSnapshot();
+    HILOGI("last_trigger=%{public}d lifecycle=%{public}d",
+           static_cast<int>(firstSnapshot.lastTrigger),
+           static_cast<int>(firstSnapshot.lifecycleState));
 
     client->Shutdown();
 
     // --- Restart: load again ---
     HILOGI("=== Second session (after restart) ===");
     VirusExecutorService::VesClientConnectOptions connectOptions;
-    connectOptions.checkExisting = false;
-    connectOptions.loadIfMissing = true;
     connectOptions.loadTimeoutMs = LOAD_TIMEOUT_MS;
 
     auto client2 = VirusExecutorService::VesClient::Connect({}, connectOptions);
@@ -82,8 +83,10 @@ int main() {
     }
 
     HILOGI("=== Done ===");
-    HILOGI("engine_died=%{public}s second_session_succeeded=%{public}s",
-           client->EngineDied() ? "true" : "false",
+    const auto finalSnapshot = client->GetRecoveryRuntimeSnapshot();
+    HILOGI("last_trigger=%{public}d lifecycle=%{public}d second_session_succeeded=%{public}s",
+           static_cast<int>(finalSnapshot.lastTrigger),
+           static_cast<int>(finalSnapshot.lifecycleState),
            secondSessionSucceeded ? "true" : "false");
     return secondSessionSucceeded ? 0 : 1;
 }

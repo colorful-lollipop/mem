@@ -75,7 +75,7 @@ inline void EncodeAnyCallReply(const VesAnyCallReply& reply, std::vector<uint8_t
 
 }  // namespace detail
 
-class VesControlStub : public OHOS::IRemoteStub<IVirusProtectionExecutorS> {
+class VesControlStub : public OHOS::IRemoteStub<IVirusProtectionExecutor> {
  public:
     bool OnRemoteRequest(int command, const OHOS::MockIpcRequest& request,
                          OHOS::MockIpcReply* reply) override {

@@ -36,9 +36,9 @@
 
 这说明正式鸿蒙接入时，不需要把 SA 逻辑扩散到扫描主流程。
 
-### 2.2 `sa_bootstrap` 现在还是 fake，但接口形状是对的
+### 2.2 `sa_bootstrap` 现在还是模拟实现，但接口形状是对的
 
-`src/bootstrap/sa_bootstrap.cpp` 当前只是把调用透传给 `PosixDemoBootstrapChannel`，本质是 Linux 开发态 fake SA。
+`src/bootstrap/sa_bootstrap.cpp` 当前只是把调用透传给 `PosixDemoBootstrapChannel`，本质是 Linux 开发态的模拟 SA。
 
 但这层已经提前固定了正式实现最重要的契约：
 
@@ -349,14 +349,14 @@ SystemAbility 调另一个 SystemAbility，仍然是：
 
 ## 9. 分阶段实施计划
 
-### Phase 1: 固化 bootstrap 抽象，不改扫描核心
+### 阶段 1：固化 bootstrap 抽象，不改扫描核心
 
 - 保持 `EngineClient` / `EngineServer` 不动
 - 明确 `BootstrapHandles` 是否需要补充元信息
 - 在 `SaBootstrapChannel` 内预留正式鸿蒙分支
 - 增加文档和设计约束，避免 SA 细节渗透进扫描逻辑
 
-### Phase 2: 定义新 SA 接口和 profile
+### 阶段 2：定义新 SA 接口和 profile
 
 - 新增新扫描引擎 SA 的 interface/stub/proxy
 - 新增 service 实现
@@ -364,23 +364,23 @@ SystemAbility 调另一个 SystemAbility，仍然是：
 - 明确 `run-on-create` 策略
 - 明确权限和进程归属
 
-### Phase 3: 完成 `SaBootstrapChannel` 的 Harmony 实现
+### 阶段 3：完成 `SaBootstrapChannel` 的 Harmony 实现
 
 - 接 `GetSystemAbility` / `LoadSystemAbility`
 - 完成 fd + `session_id` 交换
 - 完成 death recipient / callback
-- 保留 Linux fake fallback
+- 保留 Linux 模拟 fallback
 
-### Phase 4: 旧 SA 接入新 SA
+### 阶段 4：旧 SA 接入新 SA
 
 - 旧 SA 引入 `SaBootstrapChannel`
 - 旧接口继续调用 `EngineClient::Scan()`
 - 旧 SA 不直接感知共享内存创建细节
 - 验证首次拉起、引擎重启、会话恢复、超时失败语义
 
-### Phase 5: 补完验证
+### 阶段 5：补完验证
 
-- 单元测试继续覆盖 fake SA 语义
+- 单元测试继续覆盖模拟 SA 语义
 - 鸿蒙侧补系统集成测试
 - 重点验证：
   - 首次 `Get/LoadSystemAbility`

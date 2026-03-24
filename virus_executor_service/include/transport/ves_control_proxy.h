@@ -14,7 +14,8 @@
 
 namespace VirusExecutorService {
 
-class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutorS> {
+   // 这个类后续会被生产的代码替换，逻辑保持最薄，只是简单的proxy抽象
+class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutor> {
  public:
     VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                       const std::string& serviceSocketPath);
@@ -52,29 +53,37 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutorS> {
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
     using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
-    using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutorS>()>;
+    using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutor>()>;
 
-    explicit VesBootstrapChannel(const OHOS::sptr<IVirusProtectionExecutorS>& control,
-                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest(),
-                                 ControlLoader controlLoader = {});
+    explicit VesBootstrapChannel(ControlLoader controlLoader,
+                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest());
     ~VesBootstrapChannel() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
-    [[nodiscard]] OHOS::sptr<IVirusProtectionExecutorS> CurrentControl();
+    [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
     void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
-    OHOS::sptr<IVirusProtectionExecutorS> ReloadControlLocked();
-    void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutorS>& nextControl);
+    struct DeathRecipientContext;
+    struct HealthSnapshotContext;
+
+    OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked();
+    OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked();
+    void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl);
     void PublishHealthSnapshot(const VesHeartbeatReply& reply);
     void NotifyEngineDeath(uint64_t sessionId);
+    void HandleRemoteDied();
+    void ShutdownDeathRecipient();
+    void InvalidateHealthSnapshotCallbacks(bool shuttingDown);
 
     std::mutex mutex_;
-    OHOS::sptr<IVirusProtectionExecutorS> control_;
+    OHOS::sptr<IVirusProtectionExecutor> control_;
     ControlLoader controlLoader_;
+    std::shared_ptr<DeathRecipientContext> deathRecipientContext_;
+    std::shared_ptr<HealthSnapshotContext> healthSnapshotContext_;
     OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
     HealthSnapshotCallback healthSnapshotCallback_;
     MemRpc::EngineDeathCallback deathCallback_;
