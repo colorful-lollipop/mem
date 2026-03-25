@@ -24,10 +24,9 @@ int main()
         return 1;
     }
 
-    // Inject backend and proxy factory.
+    // Inject backend for client-side SAM access.
     auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    VirusExecutorService::VesClient::RegisterProxyFactory();
     bool secondSessionSucceeded = false;
 
     // --- First session ---

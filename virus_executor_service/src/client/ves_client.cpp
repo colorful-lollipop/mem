@@ -6,7 +6,6 @@
 #include <thread>
 
 #include "iremote_broker.h"
-#include "iremote_broker_registry.h"
 #include "iservice_registry.h"
 #include "memrpc/client/typed_invoker.h"
 #include "transport/ves_control_interface.h"
@@ -106,16 +105,6 @@ VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
 VesClient::~VesClient()
 {
     Shutdown();
-}
-
-void VesClient::RegisterProxyFactory()
-{
-    OHOS::BrokerRegistration::GetInstance().Register(
-        VIRUS_PROTECTION_EXECUTOR_SA_ID,
-        [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
-            std::string servicePath = remote->GetServicePath();
-            return std::make_shared<VesControlProxy>(remote, servicePath);
-        });
 }
 
 std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options, VesClientConnectOptions connectOptions)

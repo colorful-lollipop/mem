@@ -38,7 +38,6 @@ public:
     VesClient(const VesClient&) = delete;
     VesClient& operator=(const VesClient&) = delete;
 
-    static void RegisterProxyFactory();
     static std::unique_ptr<VesClient> Connect(VesClientOptions options = {},
                                               VesClientConnectOptions connectOptions = {});
 

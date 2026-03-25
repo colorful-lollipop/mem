@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "iremote_broker.h"
+#include "iremote_broker_registry.h"
 #include "iservice_registry.h"
 #include "scm_rights.h"
 #include "ves/ves_codec.h"
@@ -20,6 +21,18 @@ namespace VirusExecutorService {
 
 namespace {
 constexpr int DEFAULT_HEARTBEAT_TIMEOUT_MS = 500;
+
+bool RegisterVesControlProxyFactory()
+{
+    OHOS::BrokerRegistration::GetInstance().Register(
+        VIRUS_PROTECTION_EXECUTOR_SA_ID,
+        [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
+            return std::make_shared<VesControlProxy>(remote, remote->GetServicePath());
+        });
+    return true;
+}
+
+[[maybe_unused]] const bool kVesControlProxyFactoryRegistered = RegisterVesControlProxyFactory();
 
 std::shared_ptr<VesControlProxy> RetainProxy(VesControlProxy* proxy)
 {

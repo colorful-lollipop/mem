@@ -243,7 +243,6 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
 
     auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -329,7 +328,6 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
 
     auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);

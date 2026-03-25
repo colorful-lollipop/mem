@@ -377,8 +377,6 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
     service->OnStart();
     ASSERT_TRUE(service->Publish(service.get()));
 
-    VesClient::RegisterProxyFactory();
-
     VesClientOptions options;
     options.idleShutdownTimeoutMs = 80;
     auto client = VesClient::Connect(options);
@@ -438,8 +436,6 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
                                                           });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    VesClient::RegisterProxyFactory();
-
     auto client = VesClient::Connect();
     ASSERT_NE(client, nullptr);
 
@@ -489,8 +485,6 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     MemRpc::RpcServer server(service->serverHandles());
     registerScanHandler(&server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
-
-    VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
@@ -551,8 +545,6 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
         });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    VesClient::RegisterProxyFactory();
-
     VesClientOptions options;
     options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
         return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 120};
@@ -593,8 +585,6 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     service->SetServicePathForTest(socketPath);
     service->PrepareServerHandlesForTest();
     ASSERT_TRUE(service->Publish(service.get()));
-
-    VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
@@ -643,8 +633,6 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
     service->AsObject()->SetServicePath(socketPath);
     service->OnStart();
     ASSERT_TRUE(service->Publish(service.get()));
-
-    VesClient::RegisterProxyFactory();
 
     auto client = VesClient::Connect();
     ASSERT_NE(client, nullptr);
@@ -699,8 +687,6 @@ TEST(VesPolicyTest, VesClientScanFileForwardsPriority)
                                lastPriority.store(static_cast<int>(call.priority));
                            });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
-
-    VesClient::RegisterProxyFactory();
 
     auto client = VesClient::Connect();
     ASSERT_NE(client, nullptr);

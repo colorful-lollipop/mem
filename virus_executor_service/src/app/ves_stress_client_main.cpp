@@ -292,7 +292,6 @@ int main(int argc, char* argv[])
     // Inject backend for client-side SAM access.
     auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
     OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    VirusExecutorService::VesClient::RegisterProxyFactory();
 
     // Spawn engine.
     {
