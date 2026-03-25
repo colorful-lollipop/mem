@@ -238,11 +238,11 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
     start_server(&server);
 
     MemRpc::RpcClient client(bootstrap);
-    std::mutex sessionMutex;
-    std::vector<MemRpc::SessionReadyReport> reports;
-    client.SetSessionReadyCallback([&](const MemRpc::SessionReadyReport& report) {
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        reports.push_back(report);
+    std::mutex recoveryEventMutex;
+    std::vector<MemRpc::RecoveryEventReport> recoveryEvents;
+    client.SetRecoveryEventCallback([&](const MemRpc::RecoveryEventReport& report) {
+        std::lock_guard<std::mutex> lock(recoveryEventMutex);
+        recoveryEvents.push_back(report);
     });
     MemRpc::RecoveryPolicy policy;
     policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
@@ -288,12 +288,12 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
     EXPECT_EQ(recoveredSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
 
-    const auto callback_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-    while (std::chrono::steady_clock::now() < callback_deadline) {
+    const auto eventDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (std::chrono::steady_clock::now() < eventDeadline) {
         bool observed = false;
         {
-            std::lock_guard<std::mutex> lock(sessionMutex);
-            observed = reports.size() >= 2;
+            std::lock_guard<std::mutex> lock(recoveryEventMutex);
+            observed = recoveryEvents.size() >= 3;
         }
         if (observed) {
             break;
@@ -301,20 +301,25 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    MemRpc::SessionReadyReport initialReport;
-    MemRpc::SessionReadyReport recoveredReport;
+    MemRpc::RecoveryEventReport initialActiveEvent;
+    MemRpc::RecoveryEventReport cooldownEvent;
+    MemRpc::RecoveryEventReport recoveredActiveEvent;
     {
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        ASSERT_GE(reports.size(), 2u);
-        initialReport = reports[0];
-        recoveredReport = reports[1];
+        std::lock_guard<std::mutex> lock(recoveryEventMutex);
+        ASSERT_GE(recoveryEvents.size(), 3u);
+        initialActiveEvent = recoveryEvents[0];
+        cooldownEvent = recoveryEvents[1];
+        recoveredActiveEvent = recoveryEvents.back();
     }
-    EXPECT_EQ(initialReport.reason, MemRpc::SessionOpenReason::InitialInit);
-    EXPECT_EQ(initialReport.previousSessionId, 0u);
-    EXPECT_EQ(recoveredReport.reason, MemRpc::SessionOpenReason::RestartRecovery);
-    EXPECT_EQ(recoveredReport.previousSessionId, initialReport.sessionId);
-    EXPECT_EQ(recoveredReport.generation, 2u);
-    EXPECT_EQ(recoveredReport.scheduledDelayMs, 200u);
+    EXPECT_EQ(initialActiveEvent.state, MemRpc::ClientLifecycleState::Active);
+    EXPECT_EQ(initialActiveEvent.trigger, MemRpc::RecoveryTrigger::Unknown);
+    EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
+    EXPECT_EQ(cooldownEvent.state, MemRpc::ClientLifecycleState::Cooldown);
+    EXPECT_EQ(cooldownEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
+    EXPECT_EQ(cooldownEvent.cooldownDelayMs, 200u);
+    EXPECT_EQ(recoveredActiveEvent.state, MemRpc::ClientLifecycleState::Active);
+    EXPECT_EQ(recoveredActiveEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
+    EXPECT_EQ(recoveredActiveEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
     restarted_server.Stop();

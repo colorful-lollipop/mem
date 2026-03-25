@@ -17,11 +17,6 @@ namespace VirusExecutorService {
 namespace {
 constexpr uint32_t DEFAULT_RESTART_DELAY_MS = 200;
 
-enum class VesTransportRoute : uint8_t {
-    MemRpcOnly = 0,
-    MemRpcOrLargePayloadFallback = 1,
-};
-
 MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
 {
     MemRpc::RecoveryPolicy policy = options.recoveryPolicy;
@@ -151,14 +146,6 @@ public:
     }
 };
 
-VesTransportRoute RouteForOpcode(MemRpc::Opcode opcode)
-{
-    switch (static_cast<VesOpcode>(opcode)) {
-        case VesOpcode::ScanFile:
-            return VesTransportRoute::MemRpcOrLargePayloadFallback;
-    }
-    return VesTransportRoute::MemRpcOnly;
-}
 }  // namespace
 
 VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
@@ -232,7 +219,6 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const VesTransportRoute route = RouteForOpcode(opcode);
     const VesFallbackInvoker fallbackInvoker;
 
     return client_.RetryUntilRecoverySettles(
@@ -245,12 +231,6 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
 
             if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
                 return InvokeInlineApi(&client_, opcode, priority, execTimeoutMs, std::move(payload), reply);
-            }
-            if (route != VesTransportRoute::MemRpcOrLargePayloadFallback) {
-                HILOGE("VesClient::InvokeApi oversized payload on memrpc-only route opcode=%{public}u size=%{public}zu",
-                       opcode,
-                       payload.size());
-                return MemRpc::StatusCode::PayloadTooLarge;
             }
             return fallbackInvoker.Invoke(CurrentControl(), opcode, priority, execTimeoutMs, std::move(payload), reply);
         },

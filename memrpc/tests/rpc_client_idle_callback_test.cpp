@@ -173,14 +173,8 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
 
     auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
     RpcClient client(bootstrap);
-    std::mutex sessionMutex;
-    std::vector<SessionReadyReport> reports;
     std::mutex recoveryEventMutex;
     std::vector<RecoveryEventReport> recoveryEvents;
-    client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        reports.push_back(report);
-    });
     client.SetRecoveryEventCallback([&](const RecoveryEventReport& report) {
         std::lock_guard<std::mutex> lock(recoveryEventMutex);
         recoveryEvents.push_back(report);
@@ -214,12 +208,8 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     while (std::chrono::steady_clock::now() < reopen_deadline) {
         bool observed = false;
         {
-            std::lock_guard<std::mutex> lock(sessionMutex);
-            observed = reports.size() >= 2;
-        }
-        {
             std::lock_guard<std::mutex> lock(recoveryEventMutex);
-            observed = observed && recoveryEvents.size() >= 3;
+            observed = recoveryEvents.size() >= 4;
         }
         if (observed) {
             break;
@@ -227,36 +217,28 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    SessionReadyReport initialReport;
-    SessionReadyReport reopenedReport;
-    {
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        ASSERT_GE(reports.size(), 2u);
-        initialReport = reports[0];
-        reopenedReport = reports[1];
-    }
-    EXPECT_EQ(initialReport.reason, SessionOpenReason::InitialInit);
-    EXPECT_EQ(reopenedReport.reason, SessionOpenReason::DemandReconnect);
-    EXPECT_EQ(reopenedReport.previousSessionId, initialReport.sessionId);
-    EXPECT_EQ(reopenedReport.generation, 2u);
-    EXPECT_EQ(reopenedReport.scheduledDelayMs, 0u);
-
+    RecoveryEventReport initialActiveEvent;
     RecoveryEventReport idleClosedEvent;
     RecoveryEventReport recoveringEvent;
     RecoveryEventReport reopenedEvent;
     {
         std::lock_guard<std::mutex> lock(recoveryEventMutex);
-        ASSERT_GE(recoveryEvents.size(), 3u);
+        ASSERT_GE(recoveryEvents.size(), 4u);
+        initialActiveEvent = recoveryEvents[0];
         idleClosedEvent = recoveryEvents[1];
         recoveringEvent = recoveryEvents[2];
         reopenedEvent = recoveryEvents.back();
     }
+    EXPECT_EQ(initialActiveEvent.state, ClientLifecycleState::Active);
+    EXPECT_EQ(initialActiveEvent.trigger, RecoveryTrigger::Unknown);
+    EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(idleClosedEvent.state, ClientLifecycleState::IdleClosed);
     EXPECT_EQ(idleClosedEvent.trigger, RecoveryTrigger::IdlePolicy);
     EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
     EXPECT_EQ(recoveringEvent.trigger, RecoveryTrigger::DemandReconnect);
     EXPECT_EQ(reopenedEvent.state, ClientLifecycleState::Active);
     EXPECT_EQ(reopenedEvent.trigger, RecoveryTrigger::DemandReconnect);
+    EXPECT_EQ(reopenedEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
     server.Stop();

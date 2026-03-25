@@ -78,23 +78,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)
     EXPECT_EQ(report.monotonicMs, 0u);
 }
 
-TEST(RpcClientRecoveryPolicyTest, SessionReadyReportDefaults)
-{
-    MemRpc::SessionReadyReport report;
-    EXPECT_EQ(report.sessionId, 0u);
-    EXPECT_EQ(report.previousSessionId, 0u);
-    EXPECT_EQ(report.generation, 0u);
-    EXPECT_EQ(report.scheduledDelayMs, 0u);
-    EXPECT_EQ(report.monotonicMs, 0u);
-    EXPECT_EQ(report.reason, MemRpc::SessionOpenReason::InitialInit);
-}
-
-TEST(RpcClientRecoveryPolicyTest, SessionReadyCallbackCanBeSet)
-{
-    MemRpc::RpcClient client;
-    client.SetSessionReadyCallback([](const MemRpc::SessionReadyReport&) {});
-}
-
 TEST(RpcClientRecoveryPolicyTest, RecoveryEventCallbackCanBeSet)
 {
     MemRpc::RpcClient client;

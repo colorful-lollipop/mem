@@ -62,6 +62,13 @@ RecoveryTrigger RecoveryTriggerForStatus(StatusCode status)
     }
 }
 
+enum class SessionOpenReason : uint8_t {
+    InitialInit = 0,
+    RestartRecovery = 1,
+    ExternalRecovery = 2,
+    DemandReconnect = 3,
+};
+
 RecoveryTrigger RecoveryTriggerForSessionOpenReason(SessionOpenReason reason, RecoveryTrigger fallback)
 {
     switch (reason) {
@@ -491,9 +498,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     class ClientRecoveryState {
     public:
-        struct SessionReadyState {
+        struct SessionOpenState {
             RecoveryTrigger trigger = RecoveryTrigger::Unknown;
-            SessionOpenReason reason = SessionOpenReason::InitialInit;
             uint32_t scheduledDelayMs = 0;
             RecoveryAction lastAction = RecoveryAction::Ignore;
         };
@@ -546,11 +552,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             nextSessionOpenDelayMs_ = delayMs;
         }
 
-        SessionReadyState ConsumeSessionReady(uint64_t sessionId)
+        SessionOpenState ConsumeSessionOpen(uint64_t sessionId)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            SessionReadyState state;
-            state.reason = nextSessionOpenReason_;
+            SessionOpenState state;
             state.trigger = RecoveryTriggerForSessionOpenReason(nextSessionOpenReason_, nextSessionOpenTrigger_);
             state.scheduledDelayMs = nextSessionOpenDelayMs_;
             state.lastAction = lastRecoveryAction_;
@@ -1234,10 +1239,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     ClientSessionTransport sessionTransport_;
     mutable std::mutex submitMutex_;
     mutable std::mutex eventMutex_;
-    mutable std::mutex sessionReadyMutex_;
     mutable std::mutex watchdogMutex_;
     RpcEventCallback eventCallback_;
-    SessionReadyCallback sessionReadyCallback_;
 
     // Recovery lifecycle and policy.
     // Recovery boundary: lifecycle state, cooldown windows, callbacks, waiter wakeups.
@@ -1266,7 +1269,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     std::atomic<uint64_t> nextRequestId_{1};
     std::atomic<uint64_t> lastActivityMs_{0};
     std::atomic<uint64_t> lastClosedSessionId_{0};
-    std::atomic<uint32_t> sessionGeneration_{0};
+    std::atomic<bool> hasOpenedSession_{false};
 
     // Shared state snapshots and callback plumbing.
     ApiLifecycleState LoadApiState() const
@@ -1397,10 +1400,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
         recoveryState_.ClearRecoveryEventCallback();
         sessionTransport_.ClearDeathCallback();
-        {
-            std::lock_guard<std::mutex> lock(sessionReadyMutex_);
-            sessionReadyCallback_ = {};
-        }
     }
 
     void FailQueuedSubmissions(StatusCode status)
@@ -1443,12 +1442,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         sessionTransport_.SetBootstrapChannel(std::move(bootstrap), MakeBootstrapDeathCallback());
     }
 
-    void SetSessionReadyCallback(SessionReadyCallback callback)
-    {
-        std::lock_guard<std::mutex> lock(sessionReadyMutex_);
-        sessionReadyCallback_ = std::move(callback);
-    }
-
     void SetRecoveryEventCallback(RecoveryEventCallback callback)
     {
         recoveryState_.SetRecoveryEventCallback(std::move(callback));
@@ -1480,33 +1473,17 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void PrepareForInitOpen()
     {
-        recoveryState_.PrepareForInitOpen(sessionGeneration_.load(std::memory_order_acquire) == 0);
+        recoveryState_.PrepareForInitOpen(!hasOpenedSession_.load(std::memory_order_acquire));
     }
 
-    void NotifySessionReady(uint64_t sessionId)
+    void FinalizeSessionOpen(uint64_t sessionId)
     {
-        SessionReadyCallback callback;
-        {
-            std::lock_guard<std::mutex> lock(sessionReadyMutex_);
-            callback = sessionReadyCallback_;
-        }
-
-        SessionReadyReport report;
-        const auto readyState = recoveryState_.ConsumeSessionReady(sessionId);
-        report.reason = readyState.reason;
-        report.scheduledDelayMs = readyState.scheduledDelayMs;
-        report.sessionId = sessionId;
-        report.previousSessionId = lastClosedSessionId_.load(std::memory_order_acquire);
-        report.generation = sessionGeneration_.fetch_add(1, std::memory_order_acq_rel) + 1;
-        report.monotonicMs = MonotonicNowMs64();
+        const auto openState = recoveryState_.ConsumeSessionOpen(sessionId);
+        hasOpenedSession_.store(true, std::memory_order_release);
         TransitionLifecycle(ClientLifecycleState::Active,
-                            readyState.trigger,
-                            readyState.lastAction,
-                            readyState.scheduledDelayMs);
-
-        if (callback) {
-            callback(report);
-        }
+                            openState.trigger,
+                            openState.lastAction,
+                            openState.scheduledDelayMs);
         NotifyRecoveryWaiters();
     }
 
@@ -1717,7 +1694,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
         TouchActivity();
         const uint64_t sessionId = CurrentSessionId();
-        NotifySessionReady(sessionId);
+        FinalizeSessionOpen(sessionId);
         return StatusCode::Ok;
     }
 
@@ -2287,11 +2264,6 @@ void RpcClient::SetEventCallback(RpcEventCallback callback)
 {
     std::lock_guard<std::mutex> lock(impl_->eventMutex_);
     impl_->eventCallback_ = std::move(callback);
-}
-
-void RpcClient::SetSessionReadyCallback(SessionReadyCallback callback)
-{
-    impl_->SetSessionReadyCallback(std::move(callback));
 }
 
 void RpcClient::SetRecoveryEventCallback(RecoveryEventCallback callback)
