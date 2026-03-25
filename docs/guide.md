@@ -1,43 +1,38 @@
 # 当前文档入口
 
-如果只看一页，先看这里；再按需要展开到下面几份：
+如果你现在要理解本项目，优先看这三份：
 
-- [plan.md](/root/mem/plan.md)：当前设计结论、边界和非目标
-- [architecture.md](/root/mem/docs/architecture.md)：协议、并发、恢复模型
-- [porting_guide.md](/root/mem/docs/porting_guide.md)：新业务如何接入
-- [demo_guide.md](/root/mem/docs/demo_guide.md)：如何构建、运行和验证主线示例
-- [stress_fuzz_guide.md](/root/mem/docs/stress_fuzz_guide.md)：压力、模糊测试、Sanitizer 入口
+- [architecture.md](/root/code/demo/mem/docs/architecture.md)：以 C++ 实现为主线，系统讲清 `memrpc`、VPS、testkit、调用链和关键类职责
+- [testing_guide.md](/root/code/demo/mem/docs/testing_guide.md)：测试体系、代表性测试、常用命令和“改哪里该跑什么”
+- [memrpc_vesclient_code_walkthrough.md](/root/code/demo/mem/docs/memrpc_vesclient_code_walkthrough.md)：按函数和源码入口导读 `RpcClient`、`VesClient` 与 typed 调用链
+- [recovery_ownership.md](/root/code/demo/mem/docs/recovery_ownership.md)：恢复职责边界、`RpcClient` / `VesClient` 分工
+
+按需继续看：
+
+- [porting_guide.md](/root/code/demo/mem/docs/porting_guide.md)：新业务如何接入
+- [demo_guide.md](/root/code/demo/mem/docs/demo_guide.md)：如何构建、运行和验证示例
+- [stress_fuzz_guide.md](/root/code/demo/mem/docs/stress_fuzz_guide.md)：压力、模糊测试、Sanitizer 入口
+- [sa_integration.md](/root/code/demo/mem/docs/sa_integration.md)：系统能力接入相关说明
 
 ## 一句话版本
 
 当前主线已经收敛为：
 
-- `memrpc` 只做固定 entry 的小包共享内存 RPC
-- 对外业务接口默认同步
-- 生命周期与恢复只由 `RpcClient` 统一管理
-- VES 侧最多只保留一条业务降级旁路：超大请求直接走同步 `AnyCall`
-- 超大响应和超大事件直接失败
-- `docs/plans/` 已不再保留历史设计归档
+- `memrpc` 负责固定 entry 的小包共享内存 RPC
+- `RpcClient` 统一持有 session 生命周期、超时和恢复状态机
+- `RpcServer` 负责 request ring 消费、worker 调度和 response ring 回写
+- VPS 通过 `EngineSessionService` 把业务 handler 同时接到 MemRPC 主路径和 `AnyCall` 旁路
+- `VesClient` 是 typed 薄封装，主要负责 codec、恢复策略装配和主路径/旁路选择
+- testkit 是理解框架与验证并发/恢复路径的核心辅助层
 
-## 当前关键事实
+## 推荐阅读顺序
 
-- request / response ring entry 固定 `512B`
-- request inline 上限 `480B`
-- response inline 上限 `472B`
-- 不再有 slot、slot pool、slot state
-- VES 控制面已经提供 `AnyCall`
-- `VesClient` 只是类型化薄封装，不再自带本地恢复循环
-- `EngineDeath` 只负责让旧 session / control 失效并上报事件；control 刷新发生在显式取用点
-- 恢复观测以统一恢复快照和事件报告为准，不再给 facade 额外扩测试语义口
-
-## 建议阅读顺序
-
-- 先看 [architecture.md](/root/mem/docs/architecture.md)，理解状态机、恢复窗口和 `Disconnected`
-- 再看 [recovery_ownership.md](/root/mem/docs/recovery_ownership.md)，理解 `RpcClient` / `VesClient` / 业务降级的职责边界
-- 最后按需要看 [porting_guide.md](/root/mem/docs/porting_guide.md) 和 [demo_guide.md](/root/mem/docs/demo_guide.md)
+1. [architecture.md](/root/code/demo/mem/docs/architecture.md)
+2. [testing_guide.md](/root/code/demo/mem/docs/testing_guide.md)
+3. [recovery_ownership.md](/root/code/demo/mem/docs/recovery_ownership.md)
+4. [porting_guide.md](/root/code/demo/mem/docs/porting_guide.md)
 
 ## 关于 `docs/plans/`
 
-`docs/plans/` 现在只保留一个入口说明：[docs/plans/guide.md](/root/mem/docs/plans/guide.md)。
-
-历史方案如果需要追溯，直接看 `git log` / `git show`，不要再把它们当成当前规范来源。
+`docs/plans/` 主要用于过程性实现计划，不应替代当前架构规范。  
+如果要追溯历史方案，请直接查 `git log` / `git show`。
