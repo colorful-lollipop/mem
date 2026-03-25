@@ -63,32 +63,9 @@ public:
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
 private:
-    struct DeathRecipientContext;
+    struct State;
 
-    static VesBootstrapChannel* TryEnterDeathRecipientCallback(DeathRecipientContext& context);
-    static void LeaveDeathRecipientCallback(DeathRecipientContext& context);
-
-    OHOS::sptr<IVirusProtectionExecutor> LoadOpenSessionControl(VesOpenSessionRequest* request,
-                                                                MemRpc::BootstrapHandles* handles,
-                                                                bool* deadBeforeOpen);
-    MemRpc::StatusCode RetryOpenSessionAfterRefresh(const VesOpenSessionRequest& request,
-                                                    MemRpc::BootstrapHandles* handles,
-                                                    MemRpc::StatusCode initialStatus);
-    OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked();
-    OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked();
-    void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl);
-    void NotifyEngineDeath(uint64_t sessionId);
-    void HandleRemoteDied();
-    void ShutdownDeathRecipient();
-
-    std::mutex mutex_;
-    OHOS::sptr<IVirusProtectionExecutor> control_;
-    ControlLoader controlLoader_;
-    std::shared_ptr<DeathRecipientContext> deathRecipientContext_;
-    OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
-    MemRpc::EngineDeathCallback deathCallback_;
-    uint64_t sessionId_ = 0;
-    VesOpenSessionRequest openSessionRequest_{};
+    std::shared_ptr<State> state_;
 };
 
 }  // namespace VirusExecutorService

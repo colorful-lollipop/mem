@@ -234,36 +234,292 @@ private:
     std::function<void()> callback_;
 };
 
-}  // namespace
+class VesBootstrapChannelState : public std::enable_shared_from_this<VesBootstrapChannelState> {
+public:
+    using ControlLoader = VesBootstrapChannel::ControlLoader;
 
-struct VesBootstrapChannel::DeathRecipientContext {
-    std::mutex mutex;
-    std::condition_variable cv;
-    VesBootstrapChannel* owner = nullptr;
-    size_t inFlightCallbacks = 0;
-    bool shuttingDown = false;
-};
+    VesBootstrapChannelState(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
+        : controlLoader_(std::move(controlLoader)),
+          openSessionRequest_(std::move(openSessionRequest))
+    {
+        if (!controlLoader_) {
+            AbortForMissingControlLoader();
+        }
+        openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
+    }
 
-VesBootstrapChannel* VesBootstrapChannel::TryEnterDeathRecipientCallback(DeathRecipientContext& context)
-{
-    std::lock_guard<std::mutex> lock(context.mutex);
-    if (context.owner == nullptr || context.shuttingDown) {
+    void InitializeDeathRecipient()
+    {
+        std::weak_ptr<VesBootstrapChannelState> weakSelf = weak_from_this();
+        deathRecipient_ = std::make_shared<ControlDeathRecipient>([weakSelf]() {
+            const auto self = weakSelf.lock();
+            if (self == nullptr || !self->TryEnterDeathRecipientCallback()) {
+                return;
+            }
+
+            struct ScopedExit {
+                explicit ScopedExit(VesBootstrapChannelState* state) : state_(state) {}
+                ~ScopedExit()
+                {
+                    if (state_ != nullptr) {
+                        state_->LeaveDeathRecipientCallback();
+                    }
+                }
+
+                VesBootstrapChannelState* state_ = nullptr;
+            } scopedExit(self.get());
+
+            try {
+                self->HandleRemoteDied();
+            } catch (...) {
+                HILOGW("VesBootstrapChannel death recipient callback threw");
+            }
+        });
+    }
+
+    void Shutdown()
+    {
+        OHOS::sptr<OHOS::IRemoteObject> remoteObject;
+        {
+            std::unique_lock<std::mutex> callbackLock(callbackMutex_);
+            shuttingDown_ = true;
+            callbackCv_.wait(callbackLock, [this]() { return inFlightCallbacks_ == 0; });
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            remoteObject = control_ != nullptr ? control_->AsObject() : nullptr;
+        }
+        if (remoteObject != nullptr && deathRecipient_ != nullptr) {
+            (void)remoteObject->RemoveDeathRecipient(deathRecipient_);
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            deathCallback_ = {};
+            RebindControlLocked(nullptr);
+            sessionId_ = 0;
+        }
+    }
+
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles)
+    {
+        VesOpenSessionRequest request;
+        bool deadBeforeOpen = false;
+        OHOS::sptr<IVirusProtectionExecutor> control = LoadOpenSessionControl(&request, &handles, &deadBeforeOpen);
+        if (control == nullptr) {
+            if (deadBeforeOpen) {
+                HILOGE("VesBootstrapChannel::OpenSession failed: control remote is dead before OpenSession");
+                return MemRpc::StatusCode::PeerDisconnected;
+            }
+            HILOGE("VesBootstrapChannel::OpenSession failed: control is null before OpenSession");
+            return MemRpc::StatusCode::InvalidArgument;
+        }
+        if (deadBeforeOpen && IsDeadRemoteObject(control)) {
+            HILOGE("VesBootstrapChannel::OpenSession failed: refreshed control remote is still dead");
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
+
+        MemRpc::StatusCode status = control->OpenSession(request, handles);
+        if (status == MemRpc::StatusCode::Ok) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessionId_ = handles.sessionId;
+            return status;
+        }
+        if (!ShouldRetryOpenSessionAfterRefresh(status)) {
+            return status;
+        }
+        return RetryOpenSessionAfterRefresh(request, &handles, status);
+    }
+
+    MemRpc::StatusCode CloseSession()
+    {
+        OHOS::sptr<IVirusProtectionExecutor> control;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            control = control_;
+            RebindControlLocked(nullptr);
+            sessionId_ = 0;
+        }
+        if (control == nullptr) {
+            return MemRpc::StatusCode::Ok;
+        }
+        return control->CloseSession();
+    }
+
+    MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId)
+    {
+        OHOS::sptr<IVirusProtectionExecutor> control;
+        uint64_t sessionId = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            control = control_;
+            sessionId = sessionId_;
+        }
+        if (control == nullptr) {
+            if (sessionId != 0) {
+                return {MemRpc::ChannelHealthStatus::Unhealthy, sessionId};
+            }
+            return {};
+        }
+        if (IsDeadRemoteObject(control)) {
+            return {MemRpc::ChannelHealthStatus::Unhealthy, sessionId};
+        }
+
+        VesHeartbeatReply reply{};
+        const MemRpc::StatusCode status = control->Heartbeat(reply);
+        if (status == MemRpc::StatusCode::Ok) {
+            return ToHealthResult(reply, expectedSessionId);
+        }
+        if (status == MemRpc::StatusCode::ProtocolMismatch) {
+            return {MemRpc::ChannelHealthStatus::Malformed, 0};
+        }
+        return {MemRpc::ChannelHealthStatus::Timeout, 0};
+    }
+
+    OHOS::sptr<IVirusProtectionExecutor> CurrentControl()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return EnsureControlBoundLocked();
+    }
+
+    void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        deathCallback_ = std::move(callback);
+    }
+
+private:
+    bool TryEnterDeathRecipientCallback()
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        if (shuttingDown_) {
+            return false;
+        }
+        ++inFlightCallbacks_;
+        return true;
+    }
+
+    void LeaveDeathRecipientCallback()
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        if (inFlightCallbacks_ > 0) {
+            --inFlightCallbacks_;
+        }
+        if (inFlightCallbacks_ == 0) {
+            callbackCv_.notify_all();
+        }
+    }
+
+    void HandleRemoteDied()
+    {
+        uint64_t sessionId = 0;
+        MemRpc::EngineDeathCallback callback;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessionId = sessionId_;
+            RebindControlLocked(nullptr);
+            callback = deathCallback_;
+        }
+        if (callback) {
+            callback(sessionId);
+        }
+    }
+
+    OHOS::sptr<IVirusProtectionExecutor> LoadOpenSessionControl(VesOpenSessionRequest* request,
+                                                                MemRpc::BootstrapHandles* handles,
+                                                                bool* deadBeforeOpen)
+    {
+        OHOS::sptr<IVirusProtectionExecutor> control;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            *request = openSessionRequest_;
+            control = EnsureControlBoundLocked();
+            *deadBeforeOpen = IsDeadRemoteObject(control);
+            if (*deadBeforeOpen) {
+                control = RefreshControlLocked();
+            }
+            *handles = MemRpc::MakeDefaultBootstrapHandles();
+        }
+        return control;
+    }
+
+    MemRpc::StatusCode RetryOpenSessionAfterRefresh(const VesOpenSessionRequest& request,
+                                                    MemRpc::BootstrapHandles* handles,
+                                                    MemRpc::StatusCode initialStatus)
+    {
+        HILOGW("VesBootstrapChannel::OpenSession retrying after recoverable failure: status=%{public}d",
+               static_cast<int>(initialStatus));
+
+        OHOS::sptr<IVirusProtectionExecutor> control;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            control = RefreshControlLocked();
+        }
+        if (control == nullptr) {
+            HILOGE("VesBootstrapChannel::OpenSession rebind failed: control is null status=%{public}d",
+                   static_cast<int>(initialStatus));
+            *handles = MemRpc::MakeDefaultBootstrapHandles();
+            return initialStatus;
+        }
+
+        MemRpc::StatusCode status = control->OpenSession(request, *handles);
+        if (status == MemRpc::StatusCode::Ok) {
+            HILOGW("VesBootstrapChannel::OpenSession recovered after control refresh");
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessionId_ = handles->sessionId;
+        } else {
+            HILOGW("VesBootstrapChannel::OpenSession retry failed after control refresh: status=%{public}d",
+                   static_cast<int>(status));
+        }
+        return status;
+    }
+
+    OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked()
+    {
+        if (control_ != nullptr) {
+            return control_;
+        }
+        return RefreshControlLocked();
+    }
+
+    OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked()
+    {
+        auto nextControl = controlLoader_();
+        if (nextControl != nullptr) {
+            RebindControlLocked(nextControl);
+            return control_;
+        }
         return nullptr;
     }
-    ++context.inFlightCallbacks;
-    return context.owner;
-}
 
-void VesBootstrapChannel::LeaveDeathRecipientCallback(DeathRecipientContext& context)
-{
-    std::lock_guard<std::mutex> lock(context.mutex);
-    if (context.inFlightCallbacks > 0) {
-        --context.inFlightCallbacks;
+    void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl)
+    {
+        auto previousObject = control_ != nullptr ? control_->AsObject() : nullptr;
+        auto nextObject = nextControl != nullptr ? nextControl->AsObject() : nullptr;
+        if (previousObject != nullptr && deathRecipient_ != nullptr && previousObject != nextObject) {
+            (void)previousObject->RemoveDeathRecipient(deathRecipient_);
+        }
+
+        control_ = nextControl;
+        if (nextObject != nullptr && deathRecipient_ != nullptr && nextObject != previousObject) {
+            (void)nextObject->AddDeathRecipient(deathRecipient_);
+        }
     }
-    if (context.inFlightCallbacks == 0) {
-        context.cv.notify_all();
-    }
-}
+
+    std::mutex mutex_;
+    OHOS::sptr<IVirusProtectionExecutor> control_;
+    ControlLoader controlLoader_;
+    OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
+    MemRpc::EngineDeathCallback deathCallback_;
+    uint64_t sessionId_ = 0;
+    VesOpenSessionRequest openSessionRequest_{};
+
+    std::mutex callbackMutex_;
+    std::condition_variable callbackCv_;
+    size_t inFlightCallbacks_ = 0;
+    bool shuttingDown_ = false;
+};
+
+}  // namespace
 
 VesControlProxy::VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote, const std::string& serviceSocketPath)
     : OHOS::IRemoteProxy<IVirusProtectionExecutor>(remote),
@@ -595,248 +851,46 @@ void VesControlProxy::MonitorSocket()
     }
 }
 
-VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
-    : controlLoader_(std::move(controlLoader)),
-      deathRecipientContext_(std::make_shared<DeathRecipientContext>()),
-      deathRecipient_(std::make_shared<ControlDeathRecipient>([context = deathRecipientContext_]() {
-          auto* owner = TryEnterDeathRecipientCallback(*context);
-          if (owner == nullptr) {
-              return;
-          }
+struct VesBootstrapChannel::State final : public VesBootstrapChannelState {
+    using VesBootstrapChannelState::VesBootstrapChannelState;
+};
 
-          try {
-              owner->HandleRemoteDied();
-          } catch (...) {
-              HILOGW("VesBootstrapChannel death recipient callback threw");
-          }
-          LeaveDeathRecipientCallback(*context);
-      })),
-      openSessionRequest_(std::move(openSessionRequest))
+VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
+    : state_(std::make_shared<State>(std::move(controlLoader), std::move(openSessionRequest)))
 {
-    if (!controlLoader_) {
-        AbortForMissingControlLoader();
-    }
-    openSessionRequest_.engineKinds = NormalizeVesEngineKinds(std::move(openSessionRequest_.engineKinds));
-    {
-        std::lock_guard<std::mutex> guard(deathRecipientContext_->mutex);
-        deathRecipientContext_->owner = this;
-    }
+    state_->InitializeDeathRecipient();
 }
 
 VesBootstrapChannel::~VesBootstrapChannel()
 {
-    ShutdownDeathRecipient();
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (control_ != nullptr && control_->AsObject() != nullptr && deathRecipient_ != nullptr) {
-        (void)control_->AsObject()->RemoveDeathRecipient(deathRecipient_);
+    if (state_ != nullptr) {
+        state_->Shutdown();
     }
-}
-
-void VesBootstrapChannel::HandleRemoteDied()
-{
-    uint64_t sessionId = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        sessionId = sessionId_;
-        RebindControlLocked(nullptr);
-    }
-    NotifyEngineDeath(sessionId);
-}
-
-void VesBootstrapChannel::ShutdownDeathRecipient()
-{
-    const auto context = deathRecipientContext_;
-    if (context == nullptr) {
-        return;
-    }
-
-    std::unique_lock<std::mutex> lock(context->mutex);
-    context->owner = nullptr;
-    context->shuttingDown = true;
-    context->cv.wait(lock, [&context]() { return context->inFlightCallbacks == 0; });
-}
-
-OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::EnsureControlBoundLocked()
-{
-    if (control_ != nullptr) {
-        return control_;
-    }
-    return RefreshControlLocked();
-}
-
-OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::RefreshControlLocked()
-{
-    auto nextControl = controlLoader_();
-    if (nextControl != nullptr) {
-        RebindControlLocked(nextControl);
-        return control_;
-    }
-    return nullptr;
-}
-
-void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl)
-{
-    auto previousObject = control_ != nullptr ? control_->AsObject() : nullptr;
-    auto nextObject = nextControl != nullptr ? nextControl->AsObject() : nullptr;
-    if (previousObject != nullptr && deathRecipient_ != nullptr && previousObject != nextObject) {
-        (void)previousObject->RemoveDeathRecipient(deathRecipient_);
-    }
-
-    control_ = nextControl;
-    if (nextObject != nullptr && deathRecipient_ != nullptr && nextObject != previousObject) {
-        (void)nextObject->AddDeathRecipient(deathRecipient_);
-    }
-}
-
-void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
-{
-    MemRpc::EngineDeathCallback callback;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        callback = deathCallback_;
-        if (sessionId == 0) {
-            sessionId = sessionId_;
-        }
-    }
-    if (callback) {
-        callback(sessionId);
-    }
-}
-
-OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::LoadOpenSessionControl(VesOpenSessionRequest* request,
-                                                                                 MemRpc::BootstrapHandles* handles,
-                                                                                 bool* deadBeforeOpen)
-{
-    OHOS::sptr<IVirusProtectionExecutor> control;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        *request = openSessionRequest_;
-        control = EnsureControlBoundLocked();
-        *deadBeforeOpen = IsDeadRemoteObject(control);
-        if (*deadBeforeOpen) {
-            control = RefreshControlLocked();
-        }
-        *handles = MemRpc::MakeDefaultBootstrapHandles();
-    }
-    return control;
-}
-
-MemRpc::StatusCode VesBootstrapChannel::RetryOpenSessionAfterRefresh(const VesOpenSessionRequest& request,
-                                                                     MemRpc::BootstrapHandles* handles,
-                                                                     MemRpc::StatusCode initialStatus)
-{
-    HILOGW("VesBootstrapChannel::OpenSession retrying after recoverable failure: status=%{public}d",
-           static_cast<int>(initialStatus));
-
-    OHOS::sptr<IVirusProtectionExecutor> control;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        control = RefreshControlLocked();
-    }
-    if (control == nullptr) {
-        HILOGE("VesBootstrapChannel::OpenSession rebind failed: control is null status=%{public}d",
-               static_cast<int>(initialStatus));
-        *handles = MemRpc::MakeDefaultBootstrapHandles();
-        return initialStatus;
-    }
-
-    MemRpc::StatusCode status = control->OpenSession(request, *handles);
-    if (status == MemRpc::StatusCode::Ok) {
-        HILOGW("VesBootstrapChannel::OpenSession recovered after control refresh");
-        std::lock_guard<std::mutex> lock(mutex_);
-        sessionId_ = handles->sessionId;
-    } else {
-        HILOGW("VesBootstrapChannel::OpenSession retry failed after control refresh: status=%{public}d",
-               static_cast<int>(status));
-    }
-    return status;
 }
 
 MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
 {
-    VesOpenSessionRequest request;
-    bool deadBeforeOpen = false;
-    OHOS::sptr<IVirusProtectionExecutor> control = LoadOpenSessionControl(&request, &handles, &deadBeforeOpen);
-    if (control == nullptr) {
-        if (deadBeforeOpen) {
-            HILOGE("VesBootstrapChannel::OpenSession failed: control remote is dead before OpenSession");
-            return MemRpc::StatusCode::PeerDisconnected;
-        }
-        HILOGE("VesBootstrapChannel::OpenSession failed: control is null before OpenSession");
-        return MemRpc::StatusCode::InvalidArgument;
-    }
-    if (deadBeforeOpen && IsDeadRemoteObject(control)) {
-        HILOGE("VesBootstrapChannel::OpenSession failed: refreshed control remote is still dead");
-        return MemRpc::StatusCode::PeerDisconnected;
-    }
-
-    MemRpc::StatusCode status = control->OpenSession(request, handles);
-    if (status == MemRpc::StatusCode::Ok) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        sessionId_ = handles.sessionId;
-        return status;
-    }
-    if (!ShouldRetryOpenSessionAfterRefresh(status)) {
-        return status;
-    }
-    return RetryOpenSessionAfterRefresh(request, &handles, status);
+    return state_->OpenSession(handles);
 }
 
 MemRpc::StatusCode VesBootstrapChannel::CloseSession()
 {
-    OHOS::sptr<IVirusProtectionExecutor> control;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        control = control_;
-        RebindControlLocked(nullptr);
-        sessionId_ = 0;
-    }
-    if (control == nullptr) {
-        return MemRpc::StatusCode::Ok;
-    }
-    return control->CloseSession();
+    return state_->CloseSession();
 }
 
 MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSessionId)
 {
-    OHOS::sptr<IVirusProtectionExecutor> control;
-    uint64_t sessionId = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        control = control_;
-        sessionId = sessionId_;
-    }
-    if (control == nullptr) {
-        if (sessionId != 0) {
-            return {MemRpc::ChannelHealthStatus::Unhealthy, sessionId};
-        }
-        return {};
-    }
-    if (IsDeadRemoteObject(control)) {
-        return {MemRpc::ChannelHealthStatus::Unhealthy, sessionId};
-    }
-
-    VesHeartbeatReply reply{};
-    const MemRpc::StatusCode status = control->Heartbeat(reply);
-    if (status == MemRpc::StatusCode::Ok) {
-        return ToHealthResult(reply, expectedSessionId);
-    }
-    if (status == MemRpc::StatusCode::ProtocolMismatch) {
-        return {MemRpc::ChannelHealthStatus::Malformed, 0};
-    }
-    return {MemRpc::ChannelHealthStatus::Timeout, 0};
+    return state_->CheckHealth(expectedSessionId);
 }
 
 OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::CurrentControl()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return EnsureControlBoundLocked();
+    return state_->CurrentControl();
 }
 
 void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    deathCallback_ = std::move(callback);
+    state_->SetEngineDeathCallback(std::move(callback));
 }
 
 }  // namespace VirusExecutorService
