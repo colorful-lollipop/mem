@@ -22,6 +22,7 @@ class IRemoteObject : public RefBase {
     virtual void OnRemoteDied(const wptr<IRemoteObject>& remote) = 0;
   };
 
+  IRemoteObject();
   ~IRemoteObject() override = default;
 
   virtual bool IsObjectDead() const;

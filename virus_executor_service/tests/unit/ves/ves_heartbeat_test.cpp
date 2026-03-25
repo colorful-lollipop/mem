@@ -126,6 +126,83 @@ class FakeReloadControl final : public VesControlStub {
     std::atomic<int> closeCount_{0};
 };
 
+class TrackingRemoteObject final : public OHOS::IRemoteObject {
+ public:
+    bool AddDeathRecipient(const OHOS::sptr<DeathRecipient>& recipient) override
+    {
+        const int active = activeAdds_.fetch_add(1) + 1;
+        int observed = maxConcurrentAdds_.load();
+        while (active > observed &&
+               !maxConcurrentAdds_.compare_exchange_weak(observed, active)) {
+        }
+        addCount_.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        const bool added = OHOS::IRemoteObject::AddDeathRecipient(recipient);
+        activeAdds_.fetch_sub(1);
+        return added;
+    }
+
+    [[nodiscard]] int addCount() const
+    {
+        return addCount_.load();
+    }
+
+    [[nodiscard]] int maxConcurrentAdds() const
+    {
+        return maxConcurrentAdds_.load();
+    }
+
+ private:
+    std::atomic<int> activeAdds_{0};
+    std::atomic<int> addCount_{0};
+    std::atomic<int> maxConcurrentAdds_{0};
+};
+
+class TrackingControl final : public IVirusProtectionExecutor {
+ public:
+    TrackingControl(uint64_t sessionBase, OHOS::sptr<TrackingRemoteObject> remote)
+        : sessionBase_(sessionBase), remote_(std::move(remote)) {}
+
+    OHOS::sptr<OHOS::IRemoteObject> AsObject() override
+    {
+        return remote_;
+    }
+
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                   MemRpc::BootstrapHandles& handles) override
+    {
+        EXPECT_TRUE(request.engineKinds.empty());
+        handles = MemRpc::MakeDefaultBootstrapHandles();
+        handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
+        handles.sessionId = ++sessionBase_;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode CloseSession() override
+    {
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override
+    {
+        reply = {};
+        reply.version = 2;
+        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::OkIdle);
+        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::None);
+        reply.flags = VES_HEARTBEAT_FLAG_INITIALIZED;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+ private:
+    std::atomic<uint64_t> sessionBase_;
+    OHOS::sptr<TrackingRemoteObject> remote_;
+};
+
 }  // namespace
 
 TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
@@ -468,6 +545,66 @@ TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
     EXPECT_EQ(loadCount.load(), 2);
     EXPECT_EQ(bootstrap.CurrentControl(), freshB);
     EXPECT_EQ(loadCount.load(), 3);
+}
+
+TEST(VesHeartbeatTest, ConcurrentRefreshSerializesDeathRecipientRegistration) {
+    constexpr int kRefreshRounds = 4;
+    constexpr int kRefreshThreads = 8;
+
+    std::vector<OHOS::sptr<TrackingRemoteObject>> remotes;
+    std::vector<OHOS::sptr<IVirusProtectionExecutor>> controls;
+    remotes.reserve(kRefreshRounds + 1);
+    controls.reserve(kRefreshRounds + 1);
+    for (int index = 0; index <= kRefreshRounds; ++index) {
+        auto remote = OHOS::sptr<TrackingRemoteObject>(std::make_shared<TrackingRemoteObject>());
+        remotes.push_back(remote);
+        controls.push_back(OHOS::sptr<IVirusProtectionExecutor>(
+            std::make_shared<TrackingControl>(100u + static_cast<uint64_t>(index) * 100u, remote)));
+    }
+
+    std::atomic<int> loadCount{0};
+    VesBootstrapChannel bootstrap(
+        [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
+            const int index = loadCount.fetch_add(1);
+            return controls[static_cast<size_t>(std::min(index, kRefreshRounds))];
+        },
+        DefaultVesOpenSessionRequest());
+
+    ASSERT_EQ(bootstrap.CurrentControl(), controls.front());
+    EXPECT_EQ(remotes.front()->addCount(), 1);
+    EXPECT_EQ(remotes.front()->maxConcurrentAdds(), 1);
+
+    for (int round = 0; round < kRefreshRounds; ++round) {
+        remotes[static_cast<size_t>(round)]->NotifyRemoteDiedForTest();
+
+        std::atomic<bool> start{false};
+        std::vector<OHOS::sptr<IVirusProtectionExecutor>> seenControls(
+            static_cast<size_t>(kRefreshThreads));
+        std::vector<std::thread> threads;
+        threads.reserve(kRefreshThreads);
+        for (int index = 0; index < kRefreshThreads; ++index) {
+            threads.emplace_back([&, index]() {
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                seenControls[static_cast<size_t>(index)] = bootstrap.CurrentControl();
+            });
+        }
+
+        start.store(true, std::memory_order_release);
+        for (auto& thread : threads) {
+            thread.join();
+        }
+
+        const auto expectedIndex = static_cast<size_t>(round + 1);
+        for (const auto& control : seenControls) {
+            EXPECT_EQ(control, controls[expectedIndex]);
+        }
+        EXPECT_EQ(remotes[expectedIndex]->addCount(), 1);
+        EXPECT_EQ(remotes[expectedIndex]->maxConcurrentAdds(), 1);
+    }
+
+    EXPECT_EQ(loadCount.load(), kRefreshRounds + 1);
 }
 
 TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {

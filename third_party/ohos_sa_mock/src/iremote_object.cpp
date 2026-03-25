@@ -19,6 +19,8 @@ class IRemoteObject::Impl {
   RemoteRequestHandler request_handler;
 };
 
+IRemoteObject::IRemoteObject() : impl_(std::make_shared<Impl>()) {}
+
 bool IRemoteObject::IsObjectDead() const
 {
   if (impl_ == nullptr) {
@@ -32,9 +34,6 @@ bool IRemoteObject::AddDeathRecipient(const sptr<DeathRecipient>& recipient)
 {
   if (recipient == nullptr) {
     return false;
-  }
-  if (impl_ == nullptr) {
-    impl_ = std::make_shared<Impl>();
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->recipients.push_back(recipient);
@@ -86,9 +85,6 @@ void IRemoteObject::NotifyRemoteDiedForTest()
 
 void IRemoteObject::AttachBroker(const sptr<IRemoteBroker>& broker)
 {
-  if (impl_ == nullptr) {
-    impl_ = std::make_shared<Impl>();
-  }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->broker = broker;
 }
@@ -104,9 +100,6 @@ sptr<IRemoteBroker> IRemoteObject::GetBroker() const
 
 void IRemoteObject::SetSaId(int32_t saId)
 {
-  if (impl_ == nullptr) {
-    impl_ = std::make_shared<Impl>();
-  }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->sa_id = saId;
 }
@@ -122,9 +115,6 @@ int32_t IRemoteObject::GetSaId() const
 
 void IRemoteObject::SetServicePath(const std::string& path)
 {
-  if (impl_ == nullptr) {
-    impl_ = std::make_shared<Impl>();
-  }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->service_path = path;
 }
@@ -140,9 +130,6 @@ std::string IRemoteObject::GetServicePath() const
 
 void IRemoteObject::SetRequestHandler(RemoteRequestHandler handler)
 {
-  if (impl_ == nullptr) {
-    impl_ = std::make_shared<Impl>();
-  }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   impl_->request_handler = std::move(handler);
 }
