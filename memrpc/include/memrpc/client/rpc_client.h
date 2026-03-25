@@ -214,9 +214,7 @@ public:
     // RetryUntilRecoverySettles 只在 client 处于内部恢复窗口时等待并重试 invoke。
     // 它不会透明重放已经成功发布到旧 session 的 pending 请求；仅用于对
     // CooldownActive / PeerDisconnected 这类“尚未稳定进入可用 session”的调用做包装。
-    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
-                                         uint32_t minRecoveryWaitMs = 0,
-                                         uint32_t retryGraceMs = 0);
+    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke);
     [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
     [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
     void Shutdown();

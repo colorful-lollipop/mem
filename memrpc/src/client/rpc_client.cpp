@@ -27,6 +27,7 @@ namespace {
 constexpr auto kHealthCheckPeriod = std::chrono::milliseconds(100);
 constexpr auto kIdlePollPeriod = std::chrono::milliseconds(100);
 constexpr auto kRecoveryRetryPollPeriod = std::chrono::milliseconds(20);
+constexpr auto kRetryUntilRecoverySettlesGrace = std::chrono::milliseconds(100);
 
 ReplayHint ReplayHintForStatus(StatusCode status)
 {
@@ -317,6 +318,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     };
 
     enum class ApiLifecycleState : uint8_t {
+        Uninitialized,
         Open,
         Closing,
         Closed,
@@ -1261,7 +1263,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     std::thread submitThread_;
     std::thread responseThread_;
     std::thread watchdogThread_;
-    std::atomic<ApiLifecycleState> apiState_{ApiLifecycleState::Open};
+    std::atomic<ApiLifecycleState> apiState_{ApiLifecycleState::Uninitialized};
     std::atomic<WorkerRunState> workerState_{WorkerRunState::NotStarted};
 
     // Runtime counters and snapshots.
@@ -1282,6 +1284,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         return LoadApiState() == ApiLifecycleState::Open;
     }
 
+    bool CanEnsureLiveSession() const
+    {
+        const ApiLifecycleState state = LoadApiState();
+        return state == ApiLifecycleState::Uninitialized || state == ApiLifecycleState::Open;
+    }
+
     bool IsApiTerminal() const
     {
         return LoadApiState() == ApiLifecycleState::Closed;
@@ -1289,16 +1297,37 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     StatusCode ApiRejectionStatus() const
     {
-        return IsApiOpen() ? StatusCode::Ok : StatusCode::ClientClosed;
+        const ApiLifecycleState state = LoadApiState();
+        return (state == ApiLifecycleState::Uninitialized || state == ApiLifecycleState::Open) ? StatusCode::Ok
+                                                                                               : StatusCode::ClientClosed;
+    }
+
+    bool FinishInit()
+    {
+        ApiLifecycleState expected = ApiLifecycleState::Uninitialized;
+        if (apiState_.compare_exchange_strong(expected,
+                                              ApiLifecycleState::Open,
+                                              std::memory_order_acq_rel,
+                                              std::memory_order_acquire)) {
+            return true;
+        }
+        return expected == ApiLifecycleState::Open;
     }
 
     bool BeginShutdown()
     {
-        ApiLifecycleState expected = ApiLifecycleState::Open;
-        return apiState_.compare_exchange_strong(expected,
-                                                 ApiLifecycleState::Closing,
-                                                 std::memory_order_acq_rel,
-                                                 std::memory_order_acquire);
+        ApiLifecycleState expected = LoadApiState();
+        while (true) {
+            if (expected == ApiLifecycleState::Closing || expected == ApiLifecycleState::Closed) {
+                return false;
+            }
+            if (apiState_.compare_exchange_weak(expected,
+                                                ApiLifecycleState::Closing,
+                                                std::memory_order_acq_rel,
+                                                std::memory_order_acquire)) {
+                return true;
+            }
+        }
     }
 
     void FinishShutdown()
@@ -1765,8 +1794,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     StatusCode EnsureLiveSession()
     {
-        if (!IsApiOpen()) {
-            HILOGW("RpcClient::EnsureLiveSession rejected: client already closed");
+        if (!CanEnsureLiveSession()) {
+            HILOGW("RpcClient::EnsureLiveSession rejected: client not accepting session open");
             return StatusCode::ClientClosed;
         }
         if (CooldownActive()) {
@@ -2199,18 +2228,15 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         return recoveryState_.GetSnapshot(CurrentSessionId(), LastClosedSessionId());
     }
 
-    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
-                                         uint32_t minRecoveryWaitMs,
-                                         uint32_t retryGraceMs)
+    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke)
     {
         if (!invoke) {
             HILOGE("RpcClient::RetryUntilRecoverySettles failed: invoke is null");
             return StatusCode::InvalidArgument;
         }
 
-        const auto computeWaitBudget = [minRecoveryWaitMs, retryGraceMs](const RecoveryRuntimeSnapshot& snapshot) {
-            const uint32_t effectiveDelayMs = std::max(minRecoveryWaitMs, snapshot.cooldownRemainingMs);
-            return std::chrono::milliseconds(effectiveDelayMs + retryGraceMs);
+        const auto computeWaitBudget = [](const RecoveryRuntimeSnapshot& snapshot) {
+            return std::chrono::milliseconds(snapshot.cooldownRemainingMs) + kRetryUntilRecoverySettlesGrace;
         };
 
         auto deadline = std::chrono::steady_clock::now() + computeWaitBudget(GetRecoveryRuntimeSnapshot());
@@ -2299,8 +2325,13 @@ StatusCode RpcClient::Init()
     if (status != StatusCode::Ok) {
         HILOGE("RpcClient::Init failed: EnsureLiveSession status=%{public}d", static_cast<int>(status));
         impl_->Shutdown();
+        return status;
     }
-    return status;
+    if (!impl_->FinishInit()) {
+        HILOGW("RpcClient::Init completed after shutdown started");
+        return StatusCode::ClientClosed;
+    }
+    return StatusCode::Ok;
 }
 
 RpcFuture RpcClient::InvokeAsync(const RpcCall& call)
@@ -2313,11 +2344,9 @@ RpcFuture RpcClient::InvokeAsync(RpcCall&& call)
     return impl_->InvokeAsync(std::move(call));
 }
 
-StatusCode RpcClient::RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
-                                                uint32_t minRecoveryWaitMs,
-                                                uint32_t retryGraceMs)
+StatusCode RpcClient::RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke)
 {
-    return impl_->RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
+    return impl_->RetryUntilRecoverySettles(invoke);
 }
 
 RpcClientRuntimeStats RpcClient::GetRuntimeStats() const

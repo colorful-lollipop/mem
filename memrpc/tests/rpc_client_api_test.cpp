@@ -104,6 +104,18 @@ TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis)
     EXPECT_NE(future.WaitAndTake(&reply), MemRpc::StatusCode::Ok);
 }
 
+TEST(RpcClientApiTest, InvokeAsyncBeforeInitReturnsClientClosed)
+{
+    auto bootstrap = std::make_shared<FakeBootstrapChannel>();
+    MemRpc::RpcClient client(bootstrap);
+
+    MemRpc::RpcReply reply;
+    auto future = client.InvokeAsync(MemRpc::RpcCall{});
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
+}
+
 TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently)
 {
     MemRpc::RpcCall call;

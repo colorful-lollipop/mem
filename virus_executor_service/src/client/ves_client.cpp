@@ -232,10 +232,10 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
             if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
                 return InvokeInlineApi(&client_, opcode, priority, execTimeoutMs, std::move(payload), reply);
             }
+            HILOGW("VesClient::InvokeApi fallback to non-inline, opcode=%{public}u, size=%{public}zu/%{public}zu",
+                   opcode, payload.size(), MemRpc::DEFAULT_MAX_REQUEST_BYTES);
             return fallbackInvoker.Invoke(CurrentControl(), opcode, priority, execTimeoutMs, std::move(payload), reply);
-        },
-        0,
-        100);
+        });
 }
 
 MemRpc::StatusCode VesClient::ScanFile(const ScanTask& scanTask,

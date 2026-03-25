@@ -426,8 +426,7 @@ TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternal
 
     RpcReply reply;
     const auto start = std::chrono::steady_clock::now();
-    const StatusCode status =
-        client.RetryUntilRecoverySettles([&]() { return client.InvokeAsync(call).Wait(&reply); }, 150, 50);
+    const StatusCode status = client.RetryUntilRecoverySettles([&]() { return client.InvokeAsync(call).Wait(&reply); });
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 

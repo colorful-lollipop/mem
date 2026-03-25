@@ -370,13 +370,12 @@
 建议按下面顺序读源码：
 
 1. 空指针检查
-2. 计算 `minRecoveryWaitMs`
-3. 进入 `client_.RetryUntilRecoverySettles()`
-4. `EncodeMessage<Request>()`
-5. 判断 payload 是否超限
-6. 小包走 `memrpc`
-7. 大包走 `AnyCall`
-8. decode typed reply
+2. 进入 `client_.RetryUntilRecoverySettles()`
+3. `EncodeMessage<Request>()`
+4. 判断 payload 是否超限
+5. 小包走 `memrpc`
+6. 大包走 `AnyCall`
+7. decode typed reply
 
 这里最重要的设计判断是：
 
