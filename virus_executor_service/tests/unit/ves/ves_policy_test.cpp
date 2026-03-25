@@ -78,6 +78,45 @@ void RequestRecoveryForTest(VesClient& client, uint32_t delayMs)
     });
 }
 
+class FakeReloadControl final : public VesControlStub {
+ public:
+    explicit FakeReloadControl(uint64_t sessionBase)
+        : sessionBase_(sessionBase) {}
+
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
+                                   MemRpc::BootstrapHandles& handles) override
+    {
+        EXPECT_TRUE(request.engineKinds.empty());
+        handles = MemRpc::MakeDefaultBootstrapHandles();
+        handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
+        handles.sessionId = ++sessionBase_;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode CloseSession() override
+    {
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override
+    {
+        reply = {};
+        reply.version = 2;
+        reply.status = static_cast<uint32_t>(VesHeartbeatStatus::OkIdle);
+        reply.reasonCode = static_cast<uint32_t>(VesHeartbeatReasonCode::None);
+        reply.flags = VES_HEARTBEAT_FLAG_INITIALIZED;
+        return MemRpc::StatusCode::Ok;
+    }
+
+    MemRpc::StatusCode AnyCall(const VesAnyCallRequest&, VesAnyCallReply&) override
+    {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+ private:
+    std::atomic<uint64_t> sessionBase_;
+};
+
 class FakeHealthControlService final : public OHOS::SystemAbility,
                                        public VesControlStub {
  public:
@@ -247,6 +286,29 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
 
     client.Shutdown();
     server.Stop();
+}
+
+TEST(VesPolicyTest, CurrentControlReloadsWhenBootstrapChannelIsGoneInsteadOfReusingStaleProxy) {
+    auto stale = std::make_shared<FakeReloadControl>(100);
+    auto fresh = std::make_shared<FakeReloadControl>(200);
+
+    std::atomic<int> loadCount{0};
+    VesClient client(
+        [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
+            loadCount.fetch_add(1);
+            return fresh;
+        });
+
+    client.bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
+        [stale]() -> OHOS::sptr<IVirusProtectionExecutor> { return stale; },
+        DefaultVesOpenSessionRequest());
+
+    EXPECT_EQ(client.CurrentControl(), stale);
+
+    client.bootstrapChannel_.reset();
+
+    EXPECT_EQ(client.CurrentControl(), fresh);
+    EXPECT_EQ(loadCount.load(), 1);
 }
 
 TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {

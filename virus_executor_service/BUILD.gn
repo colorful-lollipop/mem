@@ -135,7 +135,6 @@ group("tests") {
   if (memrpc_enable_tests) {
     deps += [
       ":virus_executor_service_codec_test",
-      ":virus_executor_service_health_subscription_test",
       ":virus_executor_service_heartbeat_test",
       ":virus_executor_service_recovery_reason_test",
       ":virus_executor_service_session_service_test",
@@ -217,11 +216,6 @@ if (memrpc_enable_tests) {
 
   repo_gtest("virus_executor_service_recovery_reason_test") {
     sources = [ "tests/unit/ves/ves_recovery_reason_test.cpp" ]
-    deps = [ ":virus_executor_service_lib" ]
-  }
-
-  repo_gtest("virus_executor_service_health_subscription_test") {
-    sources = [ "tests/unit/ves/ves_health_subscription_test.cpp" ]
     deps = [ ":virus_executor_service_lib" ]
   }
 

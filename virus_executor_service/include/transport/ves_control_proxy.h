@@ -52,7 +52,6 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutor> {
 
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
  public:
-    using HealthSnapshotCallback = std::function<void(const VesHeartbeatReply&)>;
     using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutor>()>;
 
     explicit VesBootstrapChannel(ControlLoader controlLoader,
@@ -63,12 +62,10 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     MemRpc::StatusCode CloseSession() override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
-    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
  private:
     struct DeathRecipientContext;
-    struct HealthSnapshotContext;
 
     static VesBootstrapChannel* TryEnterDeathRecipientCallback(DeathRecipientContext& context);
     static void LeaveDeathRecipientCallback(DeathRecipientContext& context);
@@ -76,19 +73,15 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked();
     OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked();
     void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl);
-    void PublishHealthSnapshot(const VesHeartbeatReply& reply);
     void NotifyEngineDeath(uint64_t sessionId);
     void HandleRemoteDied();
     void ShutdownDeathRecipient();
-    void InvalidateHealthSnapshotCallbacks(bool shuttingDown);
 
     std::mutex mutex_;
     OHOS::sptr<IVirusProtectionExecutor> control_;
     ControlLoader controlLoader_;
     std::shared_ptr<DeathRecipientContext> deathRecipientContext_;
-    std::shared_ptr<HealthSnapshotContext> healthSnapshotContext_;
     OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
-    HealthSnapshotCallback healthSnapshotCallback_;
     MemRpc::EngineDeathCallback deathCallback_;
     uint64_t sessionId_ = 0;
     VesOpenSessionRequest openSessionRequest_{};

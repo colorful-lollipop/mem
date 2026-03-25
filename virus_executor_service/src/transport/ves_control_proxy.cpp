@@ -184,12 +184,6 @@ struct VesBootstrapChannel::DeathRecipientContext {
     bool shuttingDown = false;
 };
 
-struct VesBootstrapChannel::HealthSnapshotContext {
-    std::mutex mutex;
-    uint64_t generation = 1;
-    bool shuttingDown = false;
-};
-
 VesBootstrapChannel* VesBootstrapChannel::TryEnterDeathRecipientCallback(DeathRecipientContext& context)
 {
     std::lock_guard<std::mutex> lock(context.mutex);
@@ -549,7 +543,6 @@ VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
                                          VesOpenSessionRequest openSessionRequest)
     : controlLoader_(std::move(controlLoader)),
       deathRecipientContext_(std::make_shared<DeathRecipientContext>()),
-      healthSnapshotContext_(std::make_shared<HealthSnapshotContext>()),
       deathRecipient_(std::make_shared<ControlDeathRecipient>(
           [context = deathRecipientContext_]() {
               auto* owner = TryEnterDeathRecipientCallback(*context);
@@ -578,7 +571,6 @@ VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
 
 VesBootstrapChannel::~VesBootstrapChannel()
 {
-    InvalidateHealthSnapshotCallbacks(true);
     ShutdownDeathRecipient();
     std::lock_guard<std::mutex> lock(mutex_);
     if (control_ != nullptr && control_->AsObject() != nullptr && deathRecipient_ != nullptr) {
@@ -641,40 +633,6 @@ void VesBootstrapChannel::RebindControlLocked(const OHOS::sptr<IVirusProtectionE
     control_ = nextControl;
     if (nextObject != nullptr && deathRecipient_ != nullptr && nextObject != previousObject) {
         (void)nextObject->AddDeathRecipient(deathRecipient_);
-    }
-}
-
-void VesBootstrapChannel::PublishHealthSnapshot(const VesHeartbeatReply& reply)
-{
-    HealthSnapshotCallback callback;
-    std::shared_ptr<HealthSnapshotContext> context;
-    uint64_t scheduledGeneration = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        callback = healthSnapshotCallback_;
-        context = healthSnapshotContext_;
-    }
-    if (context != nullptr) {
-        std::lock_guard<std::mutex> lock(context->mutex);
-        scheduledGeneration = context->generation;
-    }
-    if (callback) {
-        std::thread([context = std::move(context),
-                     callback = std::move(callback),
-                     reply,
-                     scheduledGeneration]() mutable {
-            if (context != nullptr) {
-                std::lock_guard<std::mutex> lock(context->mutex);
-                if (context->shuttingDown || context->generation != scheduledGeneration) {
-                    return;
-                }
-            }
-            try {
-                callback(reply);
-            } catch (...) {
-                HILOGW("health snapshot callback threw");
-            }
-        }).detach();
     }
 }
 
@@ -794,7 +752,6 @@ MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSe
     VesHeartbeatReply reply{};
     const MemRpc::StatusCode status = control->Heartbeat(reply);
     if (status == MemRpc::StatusCode::Ok) {
-        PublishHealthSnapshot(reply);
         return ToHealthResult(reply, expectedSessionId);
     }
     if (status == MemRpc::StatusCode::ProtocolMismatch) {
@@ -807,23 +764,6 @@ OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::CurrentControl()
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return EnsureControlBoundLocked();
-}
-
-void VesBootstrapChannel::SetHealthSnapshotCallback(HealthSnapshotCallback callback)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    healthSnapshotCallback_ = std::move(callback);
-    InvalidateHealthSnapshotCallbacks(healthSnapshotCallback_ == nullptr);
-}
-
-void VesBootstrapChannel::InvalidateHealthSnapshotCallbacks(bool shuttingDown)
-{
-    if (healthSnapshotContext_ == nullptr) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(healthSnapshotContext_->mutex);
-    ++healthSnapshotContext_->generation;
-    healthSnapshotContext_->shuttingDown = shuttingDown;
 }
 
 void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)

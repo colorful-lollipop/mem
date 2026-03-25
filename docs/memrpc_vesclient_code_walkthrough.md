@@ -319,7 +319,7 @@
 3. 安装 health snapshot callback
 4. `client_.SetRecoveryPolicy()`
 5. `client_.Init()`
-6. 尝试缓存当前 control 到 `fallbackControl_`
+6. 让 `VesBootstrapChannel` 建立当前 control
 
 读这段代码时要明确：
 
@@ -334,13 +334,12 @@
 它的优先级是：
 
 1. 优先向 `bootstrapChannel_` 取当前 control
-2. 拿不到时退回 `fallbackControl_`
-3. 再不行就调用 `controlLoader_()` 重建
+2. 如果 channel 已不存在，则调用 `controlLoader_()` 重建
 
 这意味着 `VesClient` 处理控制面的思路不是“每次 AnyCall 现连一次”，而是：
 
-- 优先复用当前有效 control
-- 失效时平滑退回缓存
+- 优先复用 `VesBootstrapChannel` 当前持有的有效 control
+- 不在 facade 层额外缓存旧 proxy
 - 必要时再显式重建
 
 ### 8.6 `InvokeApi()`

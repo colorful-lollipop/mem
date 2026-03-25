@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 
 #include "iremote_object.h"
@@ -29,7 +28,6 @@ struct VesClientConnectOptions {
 class VesClient {
  public:
     using ControlLoader = VesBootstrapChannel::ControlLoader;
-    using HealthSnapshotCallback = VesBootstrapChannel::HealthSnapshotCallback;
     using EventCallback = MemRpc::RpcEventCallback;
 
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
@@ -47,7 +45,6 @@ class VesClient {
 
     MemRpc::StatusCode Init();
     void SetEventCallback(EventCallback callback);
-    void SetHealthSnapshotCallback(HealthSnapshotCallback callback);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const ScanTask& scanTask,
@@ -67,12 +64,9 @@ class VesClient {
 
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
     ControlLoader controlLoader_;
-    mutable std::mutex controlMutex_;
-    OHOS::sptr<IVirusProtectionExecutor> fallbackControl_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
-    HealthSnapshotCallback healthSnapshotCallback_;
 };
 
 }  // namespace VirusExecutorService

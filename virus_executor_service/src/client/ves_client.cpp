@@ -165,10 +165,6 @@ namespace VirusExecutorService
             controlLoader_,
             options_.openSessionRequest);
         client_.SetBootstrapChannel(bootstrapChannel_);
-        if (healthSnapshotCallback_)
-        {
-            bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
-        }
         client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_));
         const MemRpc::StatusCode status = client_.Init();
         if (status != MemRpc::StatusCode::Ok)
@@ -178,30 +174,12 @@ namespace VirusExecutorService
                    static_cast<int>(status));
             return status;
         }
-        if (bootstrapChannel_ != nullptr)
-        {
-            auto control = bootstrapChannel_->CurrentControl();
-            if (control != nullptr)
-            {
-                std::lock_guard<std::mutex> lock(controlMutex_);
-                fallbackControl_ = control;
-            }
-        }
         return MemRpc::StatusCode::Ok;
     }
 
     void VesClient::SetEventCallback(EventCallback callback)
     {
         client_.SetEventCallback(std::move(callback));
-    }
-
-    void VesClient::SetHealthSnapshotCallback(HealthSnapshotCallback callback)
-    {
-        healthSnapshotCallback_ = std::move(callback);
-        if (bootstrapChannel_ != nullptr)
-        {
-            bootstrapChannel_->SetHealthSnapshotCallback(healthSnapshotCallback_);
-        }
     }
 
     void VesClient::Shutdown()
@@ -220,20 +198,7 @@ namespace VirusExecutorService
     {
         if (bootstrapChannel_ != nullptr)
         {
-            auto control = bootstrapChannel_->CurrentControl();
-            if (control != nullptr)
-            {
-                std::lock_guard<std::mutex> lock(controlMutex_);
-                fallbackControl_ = control;
-                return control;
-            }
-        }
-        {
-            std::lock_guard<std::mutex> lock(controlMutex_);
-            if (fallbackControl_ != nullptr)
-            {
-                return fallbackControl_;
-            }
+            return bootstrapChannel_->CurrentControl();
         }
         return controlLoader_();
     }
