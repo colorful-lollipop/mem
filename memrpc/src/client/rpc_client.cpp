@@ -324,6 +324,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     class SessionController {
     public:
+        struct DeathCallbackLease {
+        };
+
         explicit SessionController(std::shared_ptr<IBootstrapChannel> bootstrap)
             : bootstrap_(std::move(bootstrap))
         {
@@ -334,6 +337,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         {
             std::lock_guard<std::mutex> lock(bootstrapMutex_);
             if (bootstrap_ != nullptr && bootstrap_ != bootstrap) {
+                deathCallbackLease_.reset();
                 bootstrap_->SetEngineDeathCallback({});
             }
             bootstrap_ = std::move(bootstrap);
@@ -349,6 +353,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         void ClearDeathCallback()
         {
             std::lock_guard<std::mutex> lock(bootstrapMutex_);
+            deathCallbackLease_.reset();
             if (bootstrap_ != nullptr) {
                 bootstrap_->SetEngineDeathCallback({});
             }
@@ -449,9 +454,25 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         void InstallDeathCallbackLocked(const std::function<void(uint64_t)>& deathCallback)
         {
             if (bootstrap_ == nullptr) {
+                deathCallbackLease_.reset();
                 return;
             }
-            bootstrap_->SetEngineDeathCallback(deathCallback);
+            if (!deathCallback) {
+                deathCallbackLease_.reset();
+                bootstrap_->SetEngineDeathCallback({});
+                return;
+            }
+
+            auto lease = std::make_shared<DeathCallbackLease>();
+            deathCallbackLease_ = lease;
+            std::weak_ptr<DeathCallbackLease> weakLease = lease;
+            bootstrap_->SetEngineDeathCallback([weakLease, deathCallback](uint64_t sessionId) {
+                const auto retainedLease = weakLease.lock();
+                if (retainedLease == nullptr) {
+                    return;
+                }
+                deathCallback(sessionId);
+            });
         }
 
         void PublishSnapshotLocked(const SessionSnapshot& snapshot)
@@ -462,6 +483,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         mutable std::mutex bootstrapMutex_;
         std::shared_ptr<IBootstrapChannel> bootstrap_;
+        std::shared_ptr<DeathCallbackLease> deathCallbackLease_;
         Session session_;
         mutable std::mutex sessionMutex_;
         std::shared_ptr<const SessionSnapshot> snapshot_ = std::make_shared<SessionSnapshot>();

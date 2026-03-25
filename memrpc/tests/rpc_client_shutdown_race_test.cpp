@@ -38,6 +38,11 @@ public:
         return static_cast<bool>(callback_);
     }
 
+    [[nodiscard]] MemRpc::EngineDeathCallback CopyDeathCallback() const
+    {
+        return callback_;
+    }
+
     void SimulateDeath(uint64_t sessionId = 0)
     {
         if (callback_) {
@@ -116,6 +121,49 @@ TEST(RpcClientShutdownRaceTest, ReplacingBootstrapClearsPreviousDeathCallback)
 
     client.Shutdown();
     EXPECT_FALSE(secondBootstrap->HasDeathCallback());
+}
+
+TEST(RpcClientShutdownRaceTest, CopiedOldBootstrapDeathCallbackIsIgnoredAfterReplacement)
+{
+    auto firstBootstrap = std::make_shared<FailingBootstrapChannel>();
+    auto secondBootstrap = std::make_shared<FailingBootstrapChannel>();
+    MemRpc::RpcClient client(firstBootstrap);
+
+    const auto staleCallback = firstBootstrap->CopyDeathCallback();
+    ASSERT_TRUE(static_cast<bool>(staleCallback));
+
+    client.SetBootstrapChannel(secondBootstrap);
+    const auto before = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(before.lifecycleState, MemRpc::ClientLifecycleState::Uninitialized);
+
+    staleCallback(0);
+
+    const auto after = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(after.lifecycleState, before.lifecycleState);
+    EXPECT_EQ(after.lastTrigger, before.lastTrigger);
+    EXPECT_EQ(after.currentSessionId, before.currentSessionId);
+
+    client.Shutdown();
+}
+
+TEST(RpcClientShutdownRaceTest, CopiedBootstrapDeathCallbackIsIgnoredAfterShutdown)
+{
+    auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+    MemRpc::RpcClient client(bootstrap);
+
+    const auto copiedCallback = bootstrap->CopyDeathCallback();
+    ASSERT_TRUE(static_cast<bool>(copiedCallback));
+
+    client.Shutdown();
+    const auto before = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(before.lifecycleState, MemRpc::ClientLifecycleState::Closed);
+
+    copiedCallback(0);
+
+    const auto after = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(after.lifecycleState, before.lifecycleState);
+    EXPECT_EQ(after.lastTrigger, before.lastTrigger);
+    EXPECT_EQ(after.currentSessionId, before.currentSessionId);
 }
 
 TEST(RpcClientShutdownRaceTest, InvokeAsyncWaitFailureThenShutdownRemainsFast)
