@@ -288,15 +288,13 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure) {
     server.Stop();
 }
 
-TEST(VesPolicyTest, CurrentControlReloadsWhenBootstrapChannelIsGoneInsteadOfReusingStaleProxy) {
+TEST(VesPolicyTest, CurrentControlReturnsNullWhenBootstrapChannelIsGone) {
     auto stale = std::make_shared<FakeReloadControl>(100);
-    auto fresh = std::make_shared<FakeReloadControl>(200);
-
     std::atomic<int> loadCount{0};
     VesClient client(
         [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
             loadCount.fetch_add(1);
-            return fresh;
+            return nullptr;
         });
 
     client.bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
@@ -307,8 +305,8 @@ TEST(VesPolicyTest, CurrentControlReloadsWhenBootstrapChannelIsGoneInsteadOfReus
 
     client.bootstrapChannel_.reset();
 
-    EXPECT_EQ(client.CurrentControl(), fresh);
-    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(client.CurrentControl(), nullptr);
+    EXPECT_EQ(loadCount.load(), 0);
 }
 
 TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand) {

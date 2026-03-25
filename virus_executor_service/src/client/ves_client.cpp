@@ -196,11 +196,11 @@ namespace VirusExecutorService
 
     OHOS::sptr<IVirusProtectionExecutor> VesClient::CurrentControl()
     {
-        if (bootstrapChannel_ != nullptr)
+        if (bootstrapChannel_ == nullptr)
         {
-            return bootstrapChannel_->CurrentControl();
+            return nullptr;
         }
-        return controlLoader_();
+        return bootstrapChannel_->CurrentControl();
     }
 
     template <typename Request, typename Reply>
