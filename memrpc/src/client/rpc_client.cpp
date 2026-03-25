@@ -324,13 +324,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         Closed,
     };
 
-    enum class WorkerRunState : uint8_t {
-        NotStarted,
-        Running,
-        Stopping,
-        Stopped,
-    };
-
     class ClientSessionTransport {
     public:
         struct DeathCallbackLease {
@@ -751,11 +744,11 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
         StatusCode WaitForRecovery(std::chrono::steady_clock::time_point deadline,
-                                   const std::atomic<WorkerRunState>& workerState,
+                                   const std::atomic<bool>& runtimeRunning,
                                    const std::atomic<ApiLifecycleState>& apiState)
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            while (workerState.load(std::memory_order_acquire) == WorkerRunState::Running) {
+            while (runtimeRunning.load(std::memory_order_acquire)) {
                 if (apiState.load(std::memory_order_acquire) != ApiLifecycleState::Open) {
                     return StatusCode::ClientClosed;
                 }
@@ -780,11 +773,11 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
         StatusCode WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline,
-                                        const std::atomic<WorkerRunState>& workerState,
+                                        const std::atomic<bool>& runtimeRunning,
                                         const std::atomic<ApiLifecycleState>& apiState)
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            while (workerState.load(std::memory_order_acquire) == WorkerRunState::Running) {
+            while (runtimeRunning.load(std::memory_order_acquire)) {
                 if (apiState.load(std::memory_order_acquire) != ApiLifecycleState::Open) {
                     return StatusCode::ClientClosed;
                 }
@@ -1263,8 +1256,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     std::thread submitThread_;
     std::thread responseThread_;
     std::thread watchdogThread_;
+    mutable std::mutex runtimeMutex_;
     std::atomic<ApiLifecycleState> apiState_{ApiLifecycleState::Uninitialized};
-    std::atomic<WorkerRunState> workerState_{WorkerRunState::NotStarted};
+    std::atomic<bool> runtimeRunning_{false};
 
     // Runtime counters and snapshots.
     std::atomic<bool> submitterWaitingForCredit_{false};
@@ -1335,44 +1329,29 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         apiState_.store(ApiLifecycleState::Closed, std::memory_order_release);
     }
 
-    WorkerRunState LoadWorkerState() const
-    {
-        return workerState_.load(std::memory_order_acquire);
-    }
-
     bool WorkersRunning() const
     {
-        return LoadWorkerState() == WorkerRunState::Running;
+        return runtimeRunning_.load(std::memory_order_acquire);
     }
 
-    bool BeginWorkerStart()
+    bool StartRuntime()
     {
-        WorkerRunState expected = workerState_.load(std::memory_order_acquire);
-        while (true) {
-            if (expected == WorkerRunState::Running || expected == WorkerRunState::Stopping) {
-                return false;
-            }
-            if (workerState_.compare_exchange_weak(expected,
-                                                   WorkerRunState::Running,
-                                                   std::memory_order_acq_rel,
-                                                   std::memory_order_acquire)) {
-                return true;
-            }
+        std::lock_guard<std::mutex> lock(runtimeMutex_);
+        if (runtimeRunning_.load(std::memory_order_acquire)) {
+            return false;
         }
+        runtimeRunning_.store(true, std::memory_order_release);
+        return true;
     }
 
-    bool BeginWorkerStop()
+    bool StopRuntime()
     {
-        WorkerRunState expected = WorkerRunState::Running;
-        return workerState_.compare_exchange_strong(expected,
-                                                    WorkerRunState::Stopping,
-                                                    std::memory_order_acq_rel,
-                                                    std::memory_order_acquire);
-    }
-
-    void FinishWorkerStop()
-    {
-        workerState_.store(WorkerRunState::Stopped, std::memory_order_release);
+        std::lock_guard<std::mutex> lock(runtimeMutex_);
+        if (!runtimeRunning_.load(std::memory_order_acquire)) {
+            return false;
+        }
+        runtimeRunning_.store(false, std::memory_order_release);
+        return true;
     }
 
     StatusCode RuntimeStopStatus() const
@@ -1382,10 +1361,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     StatusCode AdmissionStatusForInvoke() const
     {
-        if (!IsApiOpen()) {
-            return StatusCode::ClientClosed;
-        }
-        return WorkersRunning() ? StatusCode::Ok : StatusCode::PeerDisconnected;
+        return IsApiOpen() ? StatusCode::Ok : StatusCode::ClientClosed;
     }
 
     RpcFuture RejectInvoke(RpcCall&& call, StatusCode status)
@@ -1816,7 +1792,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void StartThreads()
     {
-        if (!BeginWorkerStart()) {
+        if (!StartRuntime()) {
             return;
         }
         submitThread_ = std::thread([this] { submitWorker_.Run(); });
@@ -1826,7 +1802,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void StopThreads()
     {
-        if (!BeginWorkerStop()) {
+        if (!StopRuntime()) {
             return;
         }
         submitCv_.notify_all();
@@ -1851,7 +1827,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (watchdogThread_.joinable()) {
             watchdogThread_.join();
         }
-        FinishWorkerStop();
     }
 
     void Shutdown()
@@ -1901,12 +1876,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     StatusCode WaitForRecovery(std::chrono::steady_clock::time_point deadline)
     {
-        return recoveryState_.WaitForRecovery(deadline, workerState_, apiState_);
+        return recoveryState_.WaitForRecovery(deadline, runtimeRunning_, apiState_);
     }
 
     StatusCode WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline)
     {
-        return recoveryState_.WaitForRecoveryRetry(deadline, workerState_, apiState_);
+        return recoveryState_.WaitForRecoveryRetry(deadline, runtimeRunning_, apiState_);
     }
 
     StatusCode ValidatePushSession(const PendingSubmit& submit, Session& session) const

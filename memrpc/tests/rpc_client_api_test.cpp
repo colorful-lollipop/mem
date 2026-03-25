@@ -136,7 +136,7 @@ TEST(RpcClientApiTest, BootstrapHandlesExposeCreditEventFds)
     EXPECT_EQ(handles.respCreditEventFd, -1);
 }
 
-TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure)
+TEST(RpcClientApiTest, PreInitInvokeDoesNotTriggerRecoveryPolicy)
 {
     auto bootstrap = std::make_shared<FakeBootstrapChannel>();
     MemRpc::RpcClient client(bootstrap);
@@ -165,17 +165,9 @@ TEST(RpcClientApiTest, FailureCallbackFiresOnAdmissionFailure)
     const MemRpc::StatusCode status = future.Wait(&reply);
 
     std::lock_guard<std::mutex> lock(mutex);
-    EXPECT_EQ(calls, 1);
-    EXPECT_EQ(captured.status, status);
-    EXPECT_EQ(captured.stage, MemRpc::FailureStage::Admission);
-    EXPECT_EQ(captured.opcode, call.opcode);
-    EXPECT_EQ(captured.priority, call.priority);
-    EXPECT_EQ(captured.admissionTimeoutMs, call.admissionTimeoutMs);
-    EXPECT_EQ(captured.queueTimeoutMs, call.queueTimeoutMs);
-    EXPECT_EQ(captured.execTimeoutMs, call.execTimeoutMs);
-    EXPECT_NE(captured.requestId, 0u);
-    EXPECT_EQ(captured.replayHint, MemRpc::ReplayHint::Unknown);
-    EXPECT_EQ(captured.lastRuntimeState, MemRpc::RpcRuntimeState::Unknown);
+    EXPECT_EQ(status, MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(calls, 0);
 }
 
 TEST(RpcClientApiTest, ShutdownMakesClientPermanentlyTerminal)
