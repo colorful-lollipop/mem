@@ -140,7 +140,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
     server.Stop();
 }
 
-TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmission)
+TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureLeavesBlockedAdmissionPendingUntilShutdown)
 {
     DevBootstrapConfig config;
     config.highRingSize = 1;
@@ -153,8 +153,6 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
 
     RpcCall call;
     call.opcode = kFaultInjectionOpcode;
-    call.admissionTimeoutMs = 100;
-    call.queueTimeoutMs = 1000;
     call.execTimeoutMs = 1000;
 
     auto first_future = client.InvokeAsync(call);
@@ -164,6 +162,8 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureFailsBlockedAdmissi
     EXPECT_EQ(second_future.WaitFor(&second_reply, std::chrono::seconds(1)), StatusCode::QueueTimeout);
 
     client.Shutdown();
+
+    EXPECT_EQ(second_future.Wait(&second_reply), StatusCode::ClientClosed);
 
     RpcReply first_reply;
     EXPECT_NE(first_future.WaitFor(&first_reply, std::chrono::milliseconds(500)), StatusCode::Ok);

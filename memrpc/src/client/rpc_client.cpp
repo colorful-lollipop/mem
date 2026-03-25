@@ -220,8 +220,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     struct PendingInfo {
         Opcode opcode = OPCODE_INVALID;
         Priority priority = Priority::Normal;
-        uint32_t admissionTimeoutMs = 0;
-        uint32_t queueTimeoutMs = 0;
         uint32_t execTimeoutMs = 0;
         uint64_t requestId = 0;
         uint64_t sessionId = 0;
@@ -306,11 +304,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         std::unordered_map<uint64_t, PendingRequest> pending_;
     };
 
-    struct SubmitConfig {
-        bool infiniteWait = false;
-        std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
-    };
-
     enum class SubmitAction {
         Proceed,
         Retry,
@@ -326,8 +319,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     class ClientSessionTransport {
     public:
-        struct DeathCallbackLease {
-        };
+        struct DeathCallbackLease {};
 
         explicit ClientSessionTransport(std::shared_ptr<IBootstrapChannel> bootstrap)
             : bootstrap_(std::move(bootstrap))
@@ -868,27 +860,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
     private:
-        [[nodiscard]] SubmitConfig MakeSubmitConfig(const PendingSubmit& submit) const
-        {
-            SubmitConfig config;
-            config.infiniteWait = submit.call.admissionTimeoutMs == 0;
-            if (!config.infiniteWait) {
-                config.deadline =
-                    std::chrono::steady_clock::now() + std::chrono::milliseconds(submit.call.admissionTimeoutMs);
-            }
-            return config;
-        }
-
-        SubmitAction HandleSessionStatus(const PendingSubmit& submit,
-                                         const PendingInfo& info,
-                                         const SubmitConfig& config,
-                                         StatusCode sessionStatus)
+        SubmitAction HandleSessionStatus(const PendingSubmit& submit, const PendingInfo& info, StatusCode sessionStatus)
         {
             if (sessionStatus == StatusCode::Ok) {
                 return SubmitAction::Proceed;
             }
             if (sessionStatus == StatusCode::CooldownActive) {
-                const StatusCode waitStatus = owner_.WaitForRecovery(config.deadline);
+                const StatusCode waitStatus = owner_.WaitForRecovery(std::chrono::steady_clock::time_point::max());
                 if (waitStatus == StatusCode::Ok) {
                     return SubmitAction::Retry;
                 }
@@ -902,7 +880,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 return SubmitAction::Finish;
             }
             if (sessionStatus == StatusCode::PeerDisconnected) {
-                const StatusCode waitStatus = owner_.WaitForRecoveryRetry(config.deadline);
+                const StatusCode waitStatus = owner_.WaitForRecoveryRetry(std::chrono::steady_clock::time_point::max());
                 if (waitStatus == StatusCode::Ok) {
                     return SubmitAction::Retry;
                 }
@@ -924,46 +902,18 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return SubmitAction::Finish;
         }
 
-        SubmitAction HandleDisconnectedPush(const PendingSubmit& submit,
-                                            const PendingInfo& info,
-                                            const SubmitConfig& config)
+        SubmitAction HandleDisconnectedPush(const PendingSubmit& submit)
         {
             owner_.CloseLiveSession();
-            if (!config.infiniteWait && DeadlineReached(config.deadline)) {
-                HILOGE("RpcClient::SubmitOne timed out after disconnect: request_id=%{public}llu opcode=%{public}u",
-                       static_cast<unsigned long long>(submit.requestId),
-                       submit.call.opcode);
-                owner_.FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
-                return SubmitAction::Finish;
-            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             return SubmitAction::Retry;
         }
 
-        SubmitAction HandleQueueFullPush(const PendingSubmit& submit,
-                                         const PendingInfo& info,
-                                         const SubmitConfig& config)
+        SubmitAction HandleQueueFullPush(const PendingSubmit& submit)
         {
-            if (!config.infiniteWait && DeadlineReached(config.deadline)) {
-                HILOGE("RpcClient::SubmitOne admission deadline reached: request_id=%{public}llu opcode=%{public}u",
-                       static_cast<unsigned long long>(submit.requestId),
-                       submit.call.opcode);
-                owner_.FailAndResolve(info, StatusCode::QueueTimeout, FailureStage::Admission, submit.future);
-                return SubmitAction::Finish;
-            }
-            const auto waitResult = owner_.WaitForRequestCredit(config.deadline);
+            const auto waitResult = owner_.WaitForRequestCredit();
             if (waitResult == PollEventFdResult::Ready || waitResult == PollEventFdResult::Retry) {
                 return SubmitAction::Retry;
-            }
-            if (waitResult == PollEventFdResult::Timeout) {
-                HILOGE("RpcClient::SubmitOne request credit wait timed out: request_id=%{public}llu opcode=%{public}u",
-                       static_cast<unsigned long long>(submit.requestId),
-                       submit.call.opcode);
-                owner_.FailAndResolve(info,
-                                      config.infiniteWait ? StatusCode::QueueFull : StatusCode::QueueTimeout,
-                                      FailureStage::Admission,
-                                      submit.future);
-                return SubmitAction::Finish;
             }
             HILOGE("RpcClient::SubmitOne request credit wait failed: request_id=%{public}llu opcode=%{public}u",
                    static_cast<unsigned long long>(submit.requestId),
@@ -972,10 +922,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return SubmitAction::Retry;
         }
 
-        SubmitAction HandlePushStatus(const PendingSubmit& submit,
-                                      const PendingInfo& info,
-                                      const SubmitConfig& config,
-                                      StatusCode pushStatus)
+        SubmitAction HandlePushStatus(const PendingSubmit& submit, const PendingInfo& info, StatusCode pushStatus)
         {
             if (pushStatus == StatusCode::Ok) {
                 return SubmitAction::Finish;
@@ -988,10 +935,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 return SubmitAction::Finish;
             }
             if (pushStatus == StatusCode::PeerDisconnected) {
-                return HandleDisconnectedPush(submit, info, config);
+                return HandleDisconnectedPush(submit);
             }
             if (pushStatus == StatusCode::QueueFull) {
-                return HandleQueueFullPush(submit, info, config);
+                return HandleQueueFullPush(submit);
             }
             HILOGE("RpcClient::SubmitOne push failed: request_id=%{public}llu opcode=%{public}u status=%{public}d",
                    static_cast<unsigned long long>(submit.requestId),
@@ -1003,18 +950,16 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void SubmitOne(const PendingSubmit& submit)
         {
-            const SubmitConfig config = MakeSubmitConfig(submit);
             PendingInfo info = owner_.MakePendingInfo(submit);
             while (owner_.WorkersRunning()) {
-                const SubmitAction sessionAction =
-                    HandleSessionStatus(submit, info, config, owner_.EnsureLiveSession());
+                const SubmitAction sessionAction = HandleSessionStatus(submit, info, owner_.EnsureLiveSession());
                 if (sessionAction == SubmitAction::Retry) {
                     continue;
                 }
                 if (sessionAction == SubmitAction::Finish) {
                     return;
                 }
-                const SubmitAction pushAction = HandlePushStatus(submit, info, config, owner_.TryPushRequest(submit));
+                const SubmitAction pushAction = HandlePushStatus(submit, info, owner_.TryPushRequest(submit));
                 if (pushAction == SubmitAction::Retry) {
                     continue;
                 }
@@ -1292,8 +1237,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     StatusCode ApiRejectionStatus() const
     {
         const ApiLifecycleState state = LoadApiState();
-        return (state == ApiLifecycleState::Uninitialized || state == ApiLifecycleState::Open) ? StatusCode::Ok
-                                                                                               : StatusCode::ClientClosed;
+        return (state == ApiLifecycleState::Uninitialized || state == ApiLifecycleState::Open)
+                 ? StatusCode::Ok
+                 : StatusCode::ClientClosed;
     }
 
     bool FinishInit()
@@ -1371,8 +1317,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         PendingInfo info;
         info.opcode = call.opcode;
         info.priority = call.priority;
-        info.admissionTimeoutMs = call.admissionTimeoutMs;
-        info.queueTimeoutMs = call.queueTimeoutMs;
         info.execTimeoutMs = call.execTimeoutMs;
         info.requestId = requestId;
         info.sessionId = CurrentSessionId();
@@ -1540,8 +1484,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         PendingInfo info;
         info.opcode = submit.call.opcode;
         info.priority = submit.call.priority;
-        info.admissionTimeoutMs = submit.call.admissionTimeoutMs;
-        info.queueTimeoutMs = submit.call.queueTimeoutMs;
         info.execTimeoutMs = submit.call.execTimeoutMs;
         info.requestId = submit.requestId;
         info.sessionId = CurrentSessionId();
@@ -1568,8 +1510,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         failure.status = status;
         failure.opcode = info.opcode;
         failure.priority = info.priority;
-        failure.admissionTimeoutMs = info.admissionTimeoutMs;
-        failure.queueTimeoutMs = info.queueTimeoutMs;
         failure.execTimeoutMs = info.execTimeoutMs;
         failure.requestId = info.requestId;
         failure.sessionId = info.sessionId;
@@ -1842,7 +1782,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     }
 
     // Submission primitives shared by InvokeAsync and SubmitWorker.
-    PollEventFdResult WaitForRequestCredit(std::chrono::steady_clock::time_point deadline)
+    PollEventFdResult WaitForRequestCredit()
     {
         const int fd = LoadSessionSnapshot()->reqCreditEventFd;
         if (fd < 0) {
@@ -1856,13 +1796,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         pollfd pollFd{fd, POLLIN, 0};
         while (WorkersRunning()) {
-            const int64_t remainingMs = RemainingTimeoutMs(deadline);
-            if (remainingMs <= 0) {
-                HILOGW("RpcClient::WaitForRequestCredit timed out waiting for request credit");
-                return PollEventFdResult::Timeout;
-            }
-            const auto waitResult = PollEventFd(&pollFd, static_cast<int>(remainingMs));
-            if (waitResult == PollEventFdResult::Retry) {
+            const auto waitResult = PollEventFd(&pollFd, 100);
+            if (waitResult == PollEventFdResult::Retry || waitResult == PollEventFdResult::Timeout) {
                 continue;
             }
             if (waitResult == PollEventFdResult::Failed) {
@@ -1910,8 +1845,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     {
         RequestRingEntry entry;
         entry.requestId = submit.requestId;
-        entry.enqueueMonoMs = MonotonicNowMs();
-        entry.queueTimeoutMs = submit.call.queueTimeoutMs;
         entry.execTimeoutMs = submit.call.execTimeoutMs;
         entry.opcode = submit.call.opcode;
         entry.priority = static_cast<uint8_t>(submit.call.priority);

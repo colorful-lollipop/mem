@@ -175,24 +175,21 @@ StatusCode HandleSessionRecovery(const PendingSubmit& submit,
 
 // 3. 处理推送结果 (约30行)
 bool HandlePushResult(StatusCode pushStatus, const PendingSubmit& submit,
-                      const PendingInfo& info,
-                      std::chrono::steady_clock::time_point deadline);
+                      const PendingInfo& info);
 
 // 4. 简化后的 SubmitOne (约30行)
 void SubmitOne(const PendingSubmit& submit) {
-    const auto deadline = CalculateDeadline(submit.call.admissionTimeoutMs);
-    const auto recoveryDeadline = CalculateRecoveryDeadline(submit.call);
     const PendingInfo info = MakePendingInfo(submit);
     
     while (running_.load(std::memory_order_acquire)) {
-        if (auto status = HandleSessionState(submit, deadline, recoveryDeadline); status != StatusCode::Ok) {
+        if (auto status = HandleSessionState(submit); status != StatusCode::Ok) {
             FailAndResolve(info, status, FailureStage::Admission, submit.future);
             return;
         }
         
         if (auto pushStatus = TryPushRequest(submit); pushStatus == StatusCode::Ok) {
             return;
-        } else if (!HandlePushRetry(pushStatus, submit, info, deadline)) {
+        } else if (!HandlePushRetry(pushStatus, submit, info)) {
             return;
         }
     }

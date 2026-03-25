@@ -419,7 +419,7 @@ tools/build_and_test.sh --label dt
 - 慢 handler 是否触发 `ExecTimeout`
 - waiter 是否会先返回
 - 迟到 reply 是否被丢弃
-- 队列阻塞是否触发 `QueueTimeout`
+- 队列阻塞是否也会被 `ExecTimeout` 统一兜住
 
 读这个文件时，建议同时打开：
 

@@ -80,7 +80,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes)
     EXPECT_EQ(reply.status, MemRpc::StatusCode::Ok);
     EXPECT_EQ(stats.pendingCalls, 0u);
     EXPECT_EQ(call.priority, MemRpc::Priority::Normal);
-    EXPECT_EQ(call.admissionTimeoutMs, 0u);
+    EXPECT_EQ(call.execTimeoutMs, 30000u);
     EXPECT_FALSE(std::is_copy_constructible_v<MemRpc::RpcClient>);
 
     auto future = client.InvokeAsync(call);
@@ -116,15 +116,11 @@ TEST(RpcClientApiTest, InvokeAsyncBeforeInitReturnsClientClosed)
     EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
 }
 
-TEST(RpcClientApiTest, AdmissionTimeoutCanBeConfiguredIndependently)
+TEST(RpcClientApiTest, ExecTimeoutCanBeConfigured)
 {
     MemRpc::RpcCall call;
-    call.admissionTimeoutMs = 0;
-    call.queueTimeoutMs = 250;
     call.execTimeoutMs = 500;
 
-    EXPECT_EQ(call.admissionTimeoutMs, 0u);
-    EXPECT_EQ(call.queueTimeoutMs, 250u);
     EXPECT_EQ(call.execTimeoutMs, 500u);
 }
 
@@ -156,8 +152,6 @@ TEST(RpcClientApiTest, PreInitInvokeDoesNotTriggerRecoveryPolicy)
     MemRpc::RpcCall call;
     call.opcode = kTestOpcode;
     call.priority = MemRpc::Priority::Normal;
-    call.admissionTimeoutMs = 1000;
-    call.queueTimeoutMs = 0;
     call.execTimeoutMs = 1000;
 
     auto future = client.InvokeAsync(call);

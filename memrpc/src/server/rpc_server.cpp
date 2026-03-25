@@ -364,7 +364,6 @@ struct RpcServer::Impl {
         RpcServerCall call;
         call.opcode = requestEntry.opcode;
         call.priority = IsHighPriority(requestEntry) ? Priority::High : Priority::Normal;
-        call.queueTimeoutMs = requestEntry.queueTimeoutMs;
         call.execTimeoutMs = requestEntry.execTimeoutMs;
         call.payload = PayloadView(requestEntry.payload.data(), requestEntry.payloadSize);
         return call;
@@ -449,7 +448,8 @@ struct RpcServer::Impl {
         return item;
     }
 
-    StatusCode AwaitWriteCompletion(const RequestRingEntry& requestEntry, const std::shared_ptr<CompletionState>& completion)
+    StatusCode AwaitWriteCompletion(const RequestRingEntry& requestEntry,
+                                    const std::shared_ptr<CompletionState>& completion)
     {
         std::unique_lock<std::mutex> lock(completion->mutex);
         completion->cv.wait(lock, [&completion] { return completion->ready; });
@@ -545,20 +545,6 @@ struct RpcServer::Impl {
             (void)WriteResponse(requestEntry, std::move(reply));
             return;
         }
-
-        const uint32_t nowMs = MonotonicNowMs();
-        if (requestEntry.queueTimeoutMs > 0 && nowMs - requestEntry.enqueueMonoMs > requestEntry.queueTimeoutMs) {
-            HILOGE(
-                "RpcServer::ProcessEntry queue timeout request_id=%{public}llu age_ms=%{public}u limit_ms=%{public}u",
-                static_cast<unsigned long long>(requestEntry.requestId),
-                nowMs - requestEntry.enqueueMonoMs,
-                requestEntry.queueTimeoutMs);
-            RpcServerReply reply;
-            reply.status = StatusCode::QueueTimeout;
-            (void)WriteResponse(requestEntry, std::move(reply));
-            return;
-        }
-
         MarkExecutionStarted(requestEntry.requestId);
         const auto clearExecution =
             MakeScopeExit([this, requestId = requestEntry.requestId] { MarkExecutionFinished(requestId); });

@@ -149,7 +149,6 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler)
 
     RpcCall call;
     call.opcode = kTestEchoOpcode;
-    call.queueTimeoutMs = 5000;
     call.execTimeoutMs = 100;  // Short exec timeout.
     auto future = client.InvokeAsync(call);
 
@@ -190,7 +189,6 @@ TEST(RpcClientTimeoutWatchdogTest, ClientWaitTimeoutUnblocksWaiterBeforeSlowRepl
 
     RpcCall call;
     call.opcode = kTestEchoOpcode;
-    call.queueTimeoutMs = 5000;
     call.execTimeoutMs = 50;
 
     const auto start = std::chrono::steady_clock::now();
@@ -235,7 +233,6 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
 
     RpcCall first;
     first.opcode = kTestEchoOpcode;
-    first.queueTimeoutMs = 5000;
     first.execTimeoutMs = 50;
     auto firstFuture = client.InvokeAsync(first);
 
@@ -246,7 +243,6 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
 
     RpcCall second;
     second.opcode = kTestEchoOpcode;
-    second.queueTimeoutMs = 5000;
     second.execTimeoutMs = 500;
     auto secondFuture = client.InvokeAsync(second);
 
@@ -258,17 +254,13 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
     server.Stop();
 }
 
-TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue)
+TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutWhenStuckInQueue)
 {
-    // Create a server that does NOT start, so requests stay in Queued state.
     auto bootstrap = std::make_shared<DevBootstrapChannel>();
     BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
     CloseHandles(unused_handles);
 
-    // Start server but register a handler that blocks forever to keep
-    // the first request occupying the only worker thread, so subsequent
-    // requests stay queued.
     RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
     std::atomic<bool> server_started{false};
@@ -285,7 +277,6 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue)
     // First request: blocks the server worker.
     RpcCall blocker;
     blocker.opcode = kTestEchoOpcode;
-    blocker.queueTimeoutMs = 10000;
     blocker.execTimeoutMs = 10000;
     auto blocker_future = client.InvokeAsync(blocker);
 
@@ -313,16 +304,15 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersQueueTimeoutWhenStuckInQueue)
 
     RpcCall queued_call;
     queued_call.opcode = kTestEchoOpcode;
-    queued_call.queueTimeoutMs = 100;  // Short queue timeout.
-    queued_call.execTimeoutMs = 5000;
+    queued_call.execTimeoutMs = 100;
     auto queued_future = client.InvokeAsync(queued_call);
 
     RpcReply reply;
     const StatusCode wait_status = queued_future.Wait(&reply);
-    EXPECT_EQ(wait_status, StatusCode::QueueTimeout);
+    EXPECT_EQ(wait_status, StatusCode::ExecTimeout);
     EXPECT_TRUE(got_failure.load());
-    EXPECT_EQ(captured_status, StatusCode::QueueTimeout);
-    EXPECT_EQ(captured_hint, ReplayHint::SafeToReplay);
+    EXPECT_EQ(captured_status, StatusCode::ExecTimeout);
+    EXPECT_EQ(captured_hint, ReplayHint::MaybeExecuted);
 
     client.Shutdown();
     server.Stop();
@@ -428,7 +418,6 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout)
 
     MemRpc::RpcCall call;
     call.opcode = kTestEchoOpcode;
-    call.queueTimeoutMs = 5000;
     call.execTimeoutMs = 120;
     auto future = client.InvokeAsync(call);
 

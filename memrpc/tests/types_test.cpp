@@ -6,7 +6,6 @@ TEST(TypesTest, ScanOptionsDefaultsToNormalPriority)
 {
     const MemRpc::ScanOptions options;
     EXPECT_EQ(options.priority, MemRpc::Priority::Normal);
-    EXPECT_EQ(options.queueTimeoutMs, 1000U);
     EXPECT_EQ(options.execTimeoutMs, 30000U);
 }
 

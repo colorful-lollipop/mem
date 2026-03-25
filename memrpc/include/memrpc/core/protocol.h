@@ -9,7 +9,7 @@ namespace MemRpc {
 
 // 共享内存头和 ring 布局版本号；双方必须严格一致。
 inline constexpr uint32_t SHARED_MEMORY_MAGIC = 0x4d454d52U;
-inline constexpr uint32_t PROTOCOL_VERSION = 5U;
+inline constexpr uint32_t PROTOCOL_VERSION = 6U;
 inline constexpr uint32_t RING_ENTRY_BYTES = 8192U;
 
 // Framework-level opcode type. Applications define their own typed enums and
@@ -30,15 +30,12 @@ constexpr std::size_t SumFieldBytes()
 
 struct RequestRingEntry {
     uint64_t requestId = 0;
-    uint32_t enqueueMonoMs = 0;
-    uint32_t queueTimeoutMs = 0;
     uint32_t execTimeoutMs = 0;
     uint16_t opcode = OPCODE_INVALID;
     uint8_t priority = 0;
     uint8_t reserved0 = 0;
     uint32_t payloadSize = 0;
-    static constexpr std::size_t HEADER_BYTES =
-        SumFieldBytes<uint64_t, uint32_t, uint32_t, uint32_t, Opcode, uint8_t, uint8_t, uint32_t>();
+    static constexpr std::size_t HEADER_BYTES = SumFieldBytes<uint64_t, uint32_t, Opcode, uint8_t, uint8_t, uint32_t>();
     static constexpr std::size_t INLINE_PAYLOAD_BYTES = RING_ENTRY_BYTES - HEADER_BYTES;
     std::array<uint8_t, INLINE_PAYLOAD_BYTES> payload{};
 };
