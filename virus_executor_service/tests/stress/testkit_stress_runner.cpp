@@ -212,7 +212,7 @@ bool RunStress(const StressConfig& config)
                                                   static_cast<Mem::Opcode>(TestkitOpcode::Echo),
                                                   request,
                                                   &reply,
-                                                  priority);
+                                                  Mem::TypedInvokeOptions{priority});
                 } else if (kind == RpcKind::Add) {
                     AddRequest request{static_cast<int32_t>(rng()), static_cast<int32_t>(rng())};
                     AddReply reply;
@@ -220,7 +220,7 @@ bool RunStress(const StressConfig& config)
                                                   static_cast<Mem::Opcode>(TestkitOpcode::Add),
                                                   request,
                                                   &reply,
-                                                  priority);
+                                                  Mem::TypedInvokeOptions{priority});
                 } else {
                     const uint64_t maxSleepMs = static_cast<uint64_t>(std::max(1, config.maxSleepMs));
                     const uint32_t delayMs = static_cast<uint32_t>(rng() % maxSleepMs);
@@ -230,7 +230,7 @@ bool RunStress(const StressConfig& config)
                                                   static_cast<Mem::Opcode>(TestkitOpcode::Sleep),
                                                   request,
                                                   &reply,
-                                                  priority);
+                                                  Mem::TypedInvokeOptions{priority});
                 }
 
                 if (status != Mem::StatusCode::Ok) {

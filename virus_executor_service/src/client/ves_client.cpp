@@ -276,11 +276,9 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
 
     VesInvokeRoute route = VesInvokeRoute::InlineMemRpc;
     if (payload.size() > MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
-        HILOGW(
-            "VesClient::InvokeApi route oversized request to AnyCall, opcode=%{public}u, size=%{public}zu/%{public}zu",
-            opcode,
-            payload.size(),
-            MemRpc::DEFAULT_MAX_REQUEST_BYTES);
+        HILOGW("VesClient::InvokeApi oversized request uses AnyCall: size=%{public}zu/%{public}zu",
+               payload.size(),
+               MemRpc::DEFAULT_MAX_REQUEST_BYTES);
         route = VesInvokeRoute::AnyCall;
     }
 

@@ -10,6 +10,11 @@
 
 namespace MemRpc {
 
+struct TypedInvokeOptions {
+    Priority priority = Priority::Normal;
+    uint32_t execTimeoutMs = 30000;
+};
+
 // Encode request, build RpcCall, and invoke asynchronously.
 template <typename Req>
 RpcFuture InvokeTyped(RpcClient* client,
@@ -63,10 +68,10 @@ StatusCode InvokeTypedSync(RpcClient* client,
                            Opcode opcode,
                            const Req& request,
                            Rep* reply,
-                           Priority priority = Priority::Normal,
-                           uint32_t exec_timeout_ms = 30000)
+                           TypedInvokeOptions options = {})
 {
-    return WaitAndDecode<Rep>(InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms), reply);
+    return WaitAndDecode<Rep>(InvokeTyped<Req>(client, opcode, request, options.priority, options.execTimeoutMs),
+                              reply);
 }
 
 }  // namespace MemRpc

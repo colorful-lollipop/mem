@@ -1,5 +1,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
+#include <atomic>
 #include <csignal>
 #include <cstdlib>
 #include <string>
@@ -12,12 +13,28 @@
 namespace {
 
 volatile std::sig_atomic_t g_stop = 0;
-pid_t g_engine_pid = -1;
-pid_t g_client_pid = -1;
+constexpr pid_t NO_CHILD_PID = -1;
+std::atomic<pid_t> g_engine_pid{NO_CHILD_PID};
+std::atomic<pid_t> g_client_pid{NO_CHILD_PID};
 
 void SignalHandler(int)
 {
     g_stop = 1;
+}
+
+pid_t LoadPid(const std::atomic<pid_t>& pid)
+{
+    return pid.load(std::memory_order_acquire);
+}
+
+void StorePid(std::atomic<pid_t>* slot, pid_t pid)
+{
+    slot->store(pid, std::memory_order_release);
+}
+
+pid_t TakePid(std::atomic<pid_t>* slot)
+{
+    return slot->exchange(NO_CHILD_PID, std::memory_order_acq_rel);
 }
 
 std::string MakeSocketPath(const char* prefix)
@@ -77,13 +94,19 @@ bool ConfigureRegistry(VirusExecutorService::RegistryServer& registry,
         if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return false;
         }
-        if (g_engine_pid > 0) {
+        if (LoadPid(g_engine_pid) > 0) {
             return true;
         }
         HILOGI("spawning engine SA for load request");
-        g_engine_pid = SpawnEngine(enginePath, registrySocket, serviceSocket);
-        if (g_engine_pid < 0) {
+        const pid_t enginePid = SpawnEngine(enginePath, registrySocket, serviceSocket);
+        if (enginePid < 0) {
             return false;
+        }
+        pid_t expected = NO_CHILD_PID;
+        if (!g_engine_pid.compare_exchange_strong(expected, enginePid, std::memory_order_acq_rel,
+                                                  std::memory_order_acquire)) {
+            KillAndWait(enginePid);
+            return expected > 0;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         return true;
@@ -93,9 +116,9 @@ bool ConfigureRegistry(VirusExecutorService::RegistryServer& registry,
         if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return;
         }
-        HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
+        const pid_t enginePid = TakePid(&g_engine_pid);
+        HILOGI("unloading engine SA (pid=%{public}d)", enginePid);
+        KillAndWait(enginePid);
     });
     return true;
 }
@@ -112,37 +135,38 @@ bool StartRegistryAndEngine(VirusExecutorService::RegistryServer& registry,
     }
     HILOGI("registry started at %{public}s", registrySocket.c_str());
 
-    g_engine_pid = SpawnEngine(enginePath, registrySocket, serviceSocket);
-    if (g_engine_pid < 0) {
+    const pid_t enginePid = SpawnEngine(enginePath, registrySocket, serviceSocket);
+    if (enginePid < 0) {
         HILOGE("failed to spawn engine");
         registry.Stop();
         return false;
     }
-    HILOGI("engine spawned pid=%{public}d", g_engine_pid);
+    StorePid(&g_engine_pid, enginePid);
+    HILOGI("engine spawned pid=%{public}d", enginePid);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return true;
 }
 
 int RunClientSession(const std::string& clientPath, const std::string& registrySocket)
 {
-    g_client_pid = SpawnClient(clientPath, registrySocket);
-    if (g_client_pid < 0) {
+    const pid_t clientPid = SpawnClient(clientPath, registrySocket);
+    if (clientPid < 0) {
         HILOGE("failed to spawn client");
         return 1;
     }
-    HILOGI("client spawned pid=%{public}d", g_client_pid);
+    StorePid(&g_client_pid, clientPid);
+    HILOGI("client spawned pid=%{public}d", clientPid);
 
     int clientStatus = 0;
-    waitpid(g_client_pid, &clientStatus, 0);
-    g_client_pid = -1;
+    waitpid(clientPid, &clientStatus, 0);
+    StorePid(&g_client_pid, NO_CHILD_PID);
     HILOGI("client exited status=%{public}d", WEXITSTATUS(clientStatus));
     return WEXITSTATUS(clientStatus);
 }
 
 void ShutdownSupervisor(VirusExecutorService::RegistryServer& registry)
 {
-    KillAndWait(g_engine_pid);
-    g_engine_pid = -1;
+    KillAndWait(TakePid(&g_engine_pid));
     registry.Stop();
 }
 
