@@ -231,7 +231,6 @@
 
 - `InvokeTyped()`
 - `WaitAndDecode()`
-- `Then()`
 - `InvokeTypedAsync()`
 - `InvokeTypedSync()`
 

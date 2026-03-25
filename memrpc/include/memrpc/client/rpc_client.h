@@ -12,8 +12,6 @@
 
 namespace MemRpc {
 
-using RpcThenExecutor = std::function<void(std::function<void()>)>;
-
 struct RpcCall {
     Opcode opcode = OPCODE_INVALID;
     Priority priority = Priority::Normal;
@@ -66,10 +64,6 @@ public:
     StatusCode WaitAndTake(RpcReply* reply);
     // WaitFor 在给定 deadline 内等待 reply；仅用于同步兼容路径。
     StatusCode WaitFor(RpcReply* reply, std::chrono::milliseconds timeout);
-    // Then 注册完成回调，由 dispatcher 线程直接调用（或通过 executor 分发）。
-    // 若 future 已 ready，回调在调用线程立即执行（或通过 executor 分发）。
-    // 与 Wait/WaitFor/WaitAndTake 互斥——同一个 future 只能选一种消费方式。
-    void Then(std::function<void(RpcReply)> callback, RpcThenExecutor executor = {});
 
 private:
     struct State;

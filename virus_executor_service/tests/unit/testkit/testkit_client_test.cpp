@@ -3,11 +3,8 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <atomic>
 #include <chrono>
 #include <memory>
-#include <mutex>
-#include <thread>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -221,48 +218,6 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     client.Shutdown();
     kill(secondChild, SIGTERM);
     waitpid(secondChild, nullptr, 0);
-}
-
-TEST(TestkitClientTest, TypedThenDecodesReply)
-{
-    auto bootstrap = CreateBootstrap();
-
-    MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->serverHandles());
-    TestkitService service;
-    RegisterHandlersToServer(&service, &server);
-    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
-
-    TestkitAsyncClient asyncClient(bootstrap);
-    ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
-
-    EchoRequest request;
-    request.text = "typed-then";
-
-    std::atomic<bool> called{false};
-    std::mutex mutex;
-    EchoReply received;
-
-    auto future = asyncClient.EchoAsync(request);
-    future.Then([&](MemRpc::StatusCode status, EchoReply reply) {
-        EXPECT_EQ(status, MemRpc::StatusCode::Ok);
-        std::lock_guard<std::mutex> lock(mutex);
-        received = std::move(reply);
-        called.store(true);
-    });
-
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (!called.load() && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    EXPECT_TRUE(called.load());
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        EXPECT_EQ(received.text, "typed-then");
-    }
-
-    asyncClient.Shutdown();
-    server.Stop();
 }
 
 }  // namespace VirusExecutorService::testkit

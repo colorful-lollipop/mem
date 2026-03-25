@@ -401,7 +401,7 @@ struct RpcServer::Impl {
         return reply;
     }
 
-    bool ValidateResponsePayloadSize(const RequestRingEntry& requestEntry, RpcServerReply* reply)
+    bool ValidateResponsePayloadSize(const RequestRingEntry& requestEntry, RpcServerReply* reply) const
     {
         if (!session.Valid() || session.Header() == nullptr) {
             HILOGE("RpcServer::WriteResponse failed: invalid session request_id=%{public}llu",

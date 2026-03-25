@@ -2,7 +2,6 @@
 #define MEMRPC_CLIENT_TYPED_FUTURE_H_
 
 #include <chrono>
-#include <functional>
 #include <utility>
 
 #include "memrpc/client/rpc_client.h"
@@ -11,7 +10,7 @@
 namespace MemRpc {
 
 // TypedFuture<Rep> wraps an RpcFuture and performs owning decode at consumption
-// time (Wait/WaitFor/Then). The raw payload stays undecoded until the caller
+// time (Wait/WaitFor). The raw payload stays undecoded until the caller
 // consumes the future, keeping dispatcher threads free of decode CPU.
 template <typename Rep>
 class TypedFuture {
@@ -60,26 +59,6 @@ public:
             return status;
         }
         return DecodeMessage<Rep>(rpcReply.payload, reply) ? rpcReply.status : StatusCode::ProtocolMismatch;
-    }
-
-    // Then registers a completion callback. Decode happens inside the callback
-    // wrapper. Mutually exclusive with Wait/WaitFor on the same future.
-    void Then(std::function<void(StatusCode, Rep)> callback, const RpcThenExecutor& executor = {})
-    {
-        future_.Then(
-            [cb = std::move(callback)](RpcReply rpcReply) {
-                if (rpcReply.status != StatusCode::Ok) {
-                    cb(rpcReply.status, {});
-                    return;
-                }
-                Rep decoded{};
-                if (!DecodeMessage<Rep>(rpcReply.payload, &decoded)) {
-                    cb(StatusCode::ProtocolMismatch, {});
-                    return;
-                }
-                cb(rpcReply.status, std::move(decoded));
-            },
-            executor);
     }
 
     // Access the underlying RpcFuture for low-level use.

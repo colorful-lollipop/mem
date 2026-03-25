@@ -111,10 +111,7 @@ struct RpcFuture::State {
     std::mutex mutex;
     std::condition_variable cv;
     bool ready = false;
-    bool consumed = false;
     RpcReply reply;
-    std::function<void(RpcReply)> callback;
-    RpcThenExecutor executor;
 };
 
 RpcFuture::RpcFuture() = default;
@@ -150,7 +147,6 @@ StatusCode RpcFuture::Wait(RpcReply* reply)
     if (reply != nullptr) {
         *reply = state_->reply;
     }
-    state_->consumed = true;
     return state_->reply.status;
 }
 
@@ -169,7 +165,6 @@ StatusCode RpcFuture::WaitAndTake(RpcReply* reply)
     if (reply != nullptr) {
         *reply = std::move(state_->reply);
     }
-    state_->consumed = true;
     return reply != nullptr ? reply->status : state_->reply.status;
 }
 
@@ -196,33 +191,7 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
     if (reply != nullptr) {
         *reply = state_->reply;
     }
-    state_->consumed = true;
     return state_->reply.status;
-}
-
-void RpcFuture::Then(std::function<void(RpcReply)> callback, RpcThenExecutor executor)
-{
-    if (!state_) {
-        HILOGE("RpcFuture::Then ignored: state is null");
-        return;
-    }
-    if (!callback) {
-        HILOGE("RpcFuture::Then ignored: callback is null");
-        return;
-    }
-    std::unique_lock<std::mutex> lock(state_->mutex);
-    if (state_->ready) {
-        RpcReply reply = state_->reply;
-        lock.unlock();
-        if (executor) {
-            executor([cb = std::move(callback), reply = std::move(reply)]() mutable { cb(std::move(reply)); });
-            return;
-        }
-        callback(std::move(reply));
-        return;
-    }
-    state_->callback = std::move(callback);
-    state_->executor = std::move(executor);
 }
 
 struct RpcClient::Impl {
@@ -1561,20 +1530,6 @@ struct RpcClient::Impl {
         }
         state->reply = std::move(reply);
         state->ready = true;
-        if (state->callback) {
-            auto callback = std::move(state->callback);
-            auto executor = std::move(state->executor);
-            RpcReply callbackReply = state->reply;
-            lock.unlock();
-            if (executor) {
-                executor([callback = std::move(callback), callbackReply = std::move(callbackReply)]() mutable {
-                    callback(std::move(callbackReply));
-                });
-            } else {
-                callback(std::move(callbackReply));
-            }
-            return;
-        }
         state->cv.notify_all();
     }
 

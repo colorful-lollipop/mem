@@ -45,29 +45,8 @@ StatusCode WaitAndDecode(RpcFuture future, Rep* reply)
     return DecodeMessage<Rep>(rpcReply.payload, reply) ? rpcReply.status : StatusCode::ProtocolMismatch;
 }
 
-// Register a callback that decodes the reply payload before invoking.
-// Callback signature: void(StatusCode, Rep).
-template <typename Rep>
-void Then(RpcFuture future, std::function<void(StatusCode, Rep)> callback, const RpcThenExecutor& executor = {})
-{
-    future.Then(
-        [cb = std::move(callback)](RpcReply rpcReply) {
-            if (rpcReply.status != StatusCode::Ok) {
-                cb(rpcReply.status, {});
-                return;
-            }
-            Rep decoded{};
-            if (!DecodeMessage<Rep>(rpcReply.payload, &decoded)) {
-                cb(StatusCode::ProtocolMismatch, {});
-                return;
-            }
-            cb(rpcReply.status, std::move(decoded));
-        },
-        executor);
-}
-
 // Encode request and invoke asynchronously, returning a TypedFuture<Rep> that
-// performs owning decode at consumption time (Wait/Then).
+// performs owning decode at consumption time (Wait/WaitFor).
 template <typename Req, typename Rep>
 TypedFuture<Rep> InvokeTypedAsync(RpcClient* client,
                                   Opcode opcode,
