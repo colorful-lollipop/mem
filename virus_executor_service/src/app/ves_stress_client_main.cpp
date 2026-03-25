@@ -330,8 +330,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote);
-    if (client->Init() != MemRpc::StatusCode::Ok) {
+    auto client = VirusExecutorService::VesClient::Connect();
+    if (client == nullptr) {
         HILOGE("VesClient init failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);

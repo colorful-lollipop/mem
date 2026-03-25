@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 
-#include "iremote_object.h"
 #include "memrpc/client/rpc_client.h"
 #include "transport/ves_control_proxy.h"
 #include "ves/ves_types.h"
@@ -31,7 +30,6 @@ public:
     using EventCallback = MemRpc::RpcEventCallback;
     using RecoveryEventCallback = MemRpc::RecoveryEventCallback;
 
-    explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote, VesClientOptions options = {});
     explicit VesClient(ControlLoader controlLoader, VesClientOptions options = {});
     ~VesClient();
 

@@ -286,7 +286,7 @@
 
 建议重点看：
 
-- 首次是否优先使用已有 `remote`
+- 如何统一通过 SA manager 加载 `remote`
 - 后续如何通过 SA manager 重取 remote
 - 为什么在重新 load 前会先 `CloseSession()` 并 sleep 一下
 

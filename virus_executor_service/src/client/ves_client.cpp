@@ -16,8 +16,6 @@
 
 namespace VirusExecutorService {
 namespace {
-constexpr int CONTROL_RELOAD_TIMEOUT_MS = 5000;
-
 MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
 {
     MemRpc::RecoveryPolicy policy;
@@ -55,35 +53,23 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
     return policy;
 }
 
-VesClient::ControlLoader BuildControlLoader(const OHOS::sptr<OHOS::IRemoteObject>& initialRemote,
-                                            VesClientConnectOptions connectOptions)
+VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptions)
 {
-    auto firstRemote = std::make_shared<OHOS::sptr<OHOS::IRemoteObject>>(initialRemote);
-    auto firstRemoteMutex = std::make_shared<std::mutex>();
-    const int32_t saId =
-        (initialRemote != nullptr && initialRemote->GetSaId() >= 0) ? initialRemote->GetSaId() : VES_CONTROL_SA_ID;
-    return [firstRemote, firstRemoteMutex, saId, connectOptions]() -> OHOS::sptr<IVirusProtectionExecutor> {
-        OHOS::sptr<OHOS::IRemoteObject> remote;
-        {
-            std::lock_guard<std::mutex> lock(*firstRemoteMutex);
-            if (*firstRemote != nullptr) {
-                remote = *firstRemote;
-                firstRemote->reset();
-            }
+    return [connectOptions]() -> OHOS::sptr<IVirusProtectionExecutor> {
+        auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+        if (sam == nullptr) {
+            HILOGE("GetSystemAbilityManager failed");
+            return nullptr;
         }
-        if (remote == nullptr) {
-            auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-            if (sam == nullptr) {
-                HILOGE("GetSystemAbilityManager failed");
-                return nullptr;
-            }
-            remote = sam->CheckSystemAbility(saId);
-            if (remote != nullptr) {
-                OHOS::iface_cast<IVirusProtectionExecutor>(remote)->CloseSession();
+        OHOS::sptr<OHOS::IRemoteObject> remote = sam->CheckSystemAbility(VES_CONTROL_SA_ID);
+        if (remote != nullptr) {
+            auto control = OHOS::iface_cast<IVirusProtectionExecutor>(remote);
+            if (control != nullptr) {
+                control->CloseSession();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
-            remote = sam->LoadSystemAbility(saId, connectOptions.loadTimeoutMs);
         }
+        remote = sam->LoadSystemAbility(VES_CONTROL_SA_ID, connectOptions.loadTimeoutMs);
         return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutor>(remote) : nullptr;
     };
 }
@@ -94,11 +80,6 @@ VesClient::ControlLoader BuildControlLoader(const OHOS::sptr<OHOS::IRemoteObject
     std::abort();
 }
 }  // namespace
-
-VesClient::VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote, VesClientOptions options)
-    : VesClient(BuildControlLoader(remote, VesClientConnectOptions{CONTROL_RELOAD_TIMEOUT_MS}), std::move(options))
-{
-}
 
 VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
     : controlLoader_(std::move(controlLoader)),
@@ -126,7 +107,7 @@ void VesClient::RegisterProxyFactory()
 
 std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options, VesClientConnectOptions connectOptions)
 {
-    auto client = std::make_unique<VesClient>(BuildControlLoader(nullptr, connectOptions), std::move(options));
+    auto client = std::make_unique<VesClient>(BuildControlLoader(connectOptions), std::move(options));
     if (client->Init() != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;

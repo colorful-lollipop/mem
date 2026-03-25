@@ -249,14 +249,11 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
-    ASSERT_NE(remote, nullptr);
-
     VirusExecutorService::VesClientOptions options;
     options.execTimeoutRestartDelayMs = 0;
     options.engineDeathRestartDelayMs = 0;
-    auto client = std::make_unique<VirusExecutorService::VesClient>(remote, options);
+    auto client = VirusExecutorService::VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
     CleanupGuard cleanup([&]() {
         if (client != nullptr) {
             client->Shutdown();
@@ -267,8 +264,6 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
         StoreEnginePid(-1);
     });
 
-    ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
-
     VirusExecutorService::ScanTask cleanTask{"/data/clean.apk"};
     VirusExecutorService::ScanFileReply reply;
     ASSERT_EQ(client->ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
@@ -278,10 +273,8 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
     client->Shutdown();
-    auto recoveredRemote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
-    ASSERT_NE(recoveredRemote, nullptr);
-    client = std::make_unique<VirusExecutorService::VesClient>(recoveredRemote, options);
-    ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
+    client = VirusExecutorService::VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
     ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/clean_after.apk"}, &reply),
               MemRpc::StatusCode::Ok);
     ASSERT_EQ(reply.threatLevel, 0);
@@ -335,52 +328,48 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
-    ASSERT_NE(remote, nullptr);
-
     VirusExecutorService::VesClientOptions options;
     options.execTimeoutRestartDelayMs = 0;
     options.engineDeathRestartDelayMs = 0;
-    VirusExecutorService::VesClient client(remote, options);
+    auto client = VirusExecutorService::VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
     RecoveryEventObserver observer;
     CleanupGuard cleanup([&]() {
-        client.Shutdown();
+        client->Shutdown();
         registry.Stop();
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(LoadEnginePid());
         StoreEnginePid(-1);
     });
 
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
-    observer.Attach(client);
+    observer.Attach(*client);
 
     VirusExecutorService::ScanTask cleanTask{"/data/clean_same_client.apk"};
     VirusExecutorService::ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
     ASSERT_EQ(reply.threatLevel, 0);
 
     const pid_t crashedPid = LoadEnginePid();
     const int previousLoadCount = loadCount.load();
-    const auto* originalClient = &client;
+    const auto* originalClient = client.get();
 
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
     ASSERT_TRUE(WaitForCondition([&]() { return observer.SawFaultRecovery(); }, std::chrono::seconds(2)));
 
     MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
-    ASSERT_TRUE(WaitForRecoveredScan(&client,
+    ASSERT_TRUE(WaitForRecoveredScan(client.get(),
                                      "/data/clean_after_same_client.apk",
                                      0,
                                      &reply,
                                      std::chrono::seconds(5),
                                      &lastStatus))
         << "last status=" << static_cast<int>(lastStatus);
-    EXPECT_EQ(&client, originalClient);
+    EXPECT_EQ(client.get(), originalClient);
     EXPECT_TRUE(observer.SawFaultRecovery());
     EXPECT_TRUE(WaitForLoadCountAdvance(&loadCount, previousLoadCount, std::chrono::seconds(2)));
 
-    ASSERT_EQ(client.ScanFile(VirusExecutorService::ScanTask{"/data/virus_after_same_client.apk"}, &reply),
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/virus_after_same_client.apk"}, &reply),
               MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 1);
 }

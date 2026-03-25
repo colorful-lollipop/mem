@@ -12,7 +12,6 @@
 namespace {
 
 const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
-constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
 }  // namespace
 
@@ -61,14 +60,11 @@ int main()
 
     // --- Restart: load again ---
     HILOGI("=== Second session (after restart) ===");
-    VirusExecutorService::VesClientConnectOptions connectOptions;
-    connectOptions.loadTimeoutMs = LOAD_TIMEOUT_MS;
-
-    auto client2 = VirusExecutorService::VesClient::Connect({}, connectOptions);
+    auto client2 = VirusExecutorService::VesClient::Connect();
     if (!client2) {
         // Retry once after a delay.
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        client2 = VirusExecutorService::VesClient::Connect({}, connectOptions);
+        client2 = VirusExecutorService::VesClient::Connect();
     }
     if (client2) {
         VirusExecutorService::ScanFileReply scan2;

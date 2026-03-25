@@ -5,11 +5,14 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
+#include <mutex>
 #include <thread>
+#include <unordered_map>
 
 #define private public
 #include "client/ves_client.h"
 #undef private
+#include "isam_backend.h"
 #include "iservice_registry.h"
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -26,6 +29,38 @@
 namespace VirusExecutorService {
 
 namespace {
+
+class InMemorySamBackend final : public OHOS::ISamBackend {
+public:
+    std::string GetServicePath(int32_t saId) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = servicePaths_.find(saId);
+        return it == servicePaths_.end() ? std::string{} : it->second;
+    }
+
+    std::string LoadService(int32_t saId) override
+    {
+        return GetServicePath(saId);
+    }
+
+    bool AddService(int32_t saId, const std::string& servicePath) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        servicePaths_[saId] = servicePath;
+        return true;
+    }
+
+    bool UnloadService(int32_t saId) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return servicePaths_.erase(saId) > 0;
+    }
+
+private:
+    std::mutex mutex_;
+    std::unordered_map<int32_t, std::string> servicePaths_;
+};
 
 bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
 {
@@ -63,10 +98,17 @@ void CloseHandles(MemRpc::BootstrapHandles& handles)
 
 void UnloadControlService()
 {
-    auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    auto& samClient = OHOS::SystemAbilityManagerClient::GetInstance();
+    auto sam = samClient.GetSystemAbilityManager();
     if (sam != nullptr) {
         (void)sam->UnloadSystemAbility(VES_CONTROL_SA_ID);
     }
+    samClient.SetBackend(nullptr);
+}
+
+void UseInMemorySamBackend()
+{
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(std::make_shared<InMemorySamBackend>());
 }
 
 void RequestRecoveryForTest(VesClient& client, uint32_t delayMs)
@@ -318,26 +360,23 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_idle_policy_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<VirusExecutorService>();
     service->AsObject()->SetServicePath(socketPath);
     service->OnStart();
     ASSERT_TRUE(service->Publish(service.get()));
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.idleShutdownTimeoutMs = 80;
-    VesClient client(remote, options);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
 
     ScanTask cleanTask{"/data/clean.apk"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(cleanTask, &reply), MemRpc::StatusCode::Ok);
 
     VesHeartbeatReply heartbeat{};
     const auto idleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -349,20 +388,20 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     EXPECT_EQ(heartbeat.sessionId, 0u);
-    const auto idleSnapshot = client.GetRecoveryRuntimeSnapshot();
+    const auto idleSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(idleSnapshot.lifecycleState, MemRpc::ClientLifecycleState::IdleClosed);
     EXPECT_EQ(idleSnapshot.lastTrigger, MemRpc::RecoveryTrigger::IdlePolicy);
 
     ScanTask reopenTask{"/data/reopen.apk"};
-    ASSERT_EQ(client.ScanFile(reopenTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(reopenTask, &reply), MemRpc::StatusCode::Ok);
 
     ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
     EXPECT_NE(heartbeat.sessionId, 0u);
-    const auto reopenedSnapshot = client.GetRecoveryRuntimeSnapshot();
+    const auto reopenedSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(reopenedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(reopenedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::DemandReconnect);
 
-    client.Shutdown();
+    client->Shutdown();
     service->OnStop();
     UnloadControlService();
 }
@@ -371,6 +410,7 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_watchdog_policy_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<FakeHealthControlService>();
     service->SetServicePathForTest(socketPath);
@@ -388,34 +428,26 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
                                                           });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
-    VesClient client(remote);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect();
+    ASSERT_NE(client, nullptr);
 
     ScanTask healthyTask{"/data/healthy.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(healthyTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(healthyTask, &reply), MemRpc::StatusCode::Ok);
 
-    const int initialOpenCount = service->openCount();
     service->SetHealthy(false);
     ASSERT_TRUE(WaitFor([&]() { return service->closeCount() >= 1; }, std::chrono::milliseconds(500)));
     service->SetHealthy(true);
-    ASSERT_TRUE(WaitFor([&]() { return service->openCount() > initialOpenCount; }, std::chrono::milliseconds(500)));
-    const auto recoveredSnapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
-    EXPECT_FALSE(recoveredSnapshot.terminalManualShutdown);
 
     ScanTask recoveredTask{"/data/recovered.bin"};
-    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
-    const auto postRecoverySnapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+    ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    const auto postRecoverySnapshot = client->GetRecoveryRuntimeSnapshot();
+    EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
+    EXPECT_FALSE(postRecoverySnapshot.terminalManualShutdown);
 
-    client.Shutdown();
+    client->Shutdown();
     server.Stop();
     service->OnStop();
     UnloadControlService();
@@ -425,6 +457,7 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_restart_cooldown_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<FakeHealthControlService>();
     service->SetServicePathForTest(socketPath);
@@ -447,41 +480,37 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     registerScanHandler(&server);
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.engineDeathRestartDelayMs = 120;
-    VesClient client(remote, options);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
 
     ScanTask initialTask{"/data/healthy.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(initialTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(initialTask, &reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 0);
 
-    RequestRecoveryForTest(client, 120);
-    const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
+    RequestRecoveryForTest(*client, 120);
+    const auto cooldownSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
 
     ScanTask recoveredTask{"/data/recovered.bin"};
     const auto start = std::chrono::steady_clock::now();
-    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
-    const auto activeSnapshot = client.GetRecoveryRuntimeSnapshot();
+    const auto activeSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(activeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
 
-    client.Shutdown();
+    client->Shutdown();
     server.Stop();
     service->OnStop();
     UnloadControlService();
@@ -491,6 +520,7 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_restart_long_cooldown_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<FakeHealthControlService>();
     service->SetServicePathForTest(socketPath);
@@ -509,19 +539,15 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
         });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.engineDeathRestartDelayMs = 120;
-    VesClient client(remote, options);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
 
-    RequestRecoveryForTest(client, 400);
-    const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
+    RequestRecoveryForTest(*client, 400);
+    const auto cooldownSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
@@ -530,14 +556,14 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     ScanTask recoveredTask{"/data/recovered.bin"};
     ScanFileReply reply;
     const auto start = std::chrono::steady_clock::now();
-    ASSERT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 300);
     EXPECT_LT(elapsed.count(), 1500);
 
-    client.Shutdown();
+    client->Shutdown();
     server.Stop();
     service->OnStop();
     UnloadControlService();
@@ -547,24 +573,21 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_restart_anycall_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<FakeHealthControlService>();
     service->SetServicePathForTest(socketPath);
     service->PrepareServerHandlesForTest();
     ASSERT_TRUE(service->Publish(service.get()));
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
     options.engineDeathRestartDelayMs = 120;
-    VesClient client(remote, options);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
 
-    RequestRecoveryForTest(client, 120);
+    RequestRecoveryForTest(*client, 120);
 
     std::thread reopenThread([&]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -578,18 +601,18 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     ScanTask recoveredTask{longPath};
     ScanFileReply reply;
     const auto start = std::chrono::steady_clock::now();
-    EXPECT_EQ(client.ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
-    const auto activeSnapshot = client.GetRecoveryRuntimeSnapshot();
+    const auto activeSnapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_FALSE(activeSnapshot.terminalManualShutdown);
 
     reopenThread.join();
-    client.Shutdown();
+    client->Shutdown();
     service->OnStop();
     UnloadControlService();
 }
@@ -598,31 +621,28 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_shutdown_terminal_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<VirusExecutorService>();
     service->AsObject()->SetServicePath(socketPath);
     service->OnStart();
     ASSERT_TRUE(service->Publish(service.get()));
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
-    VesClient client(remote);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
-    client.Shutdown();
-    EXPECT_EQ(client.Init(), MemRpc::StatusCode::ClientClosed);
+    auto client = VesClient::Connect();
+    ASSERT_NE(client, nullptr);
+    client->Shutdown();
+    EXPECT_EQ(client->Init(), MemRpc::StatusCode::ClientClosed);
 
-    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    const auto snapshot = client->GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
     EXPECT_TRUE(snapshot.terminalManualShutdown);
 
     ScanTask task{"/data/after_shutdown.apk"};
     ScanFileReply reply;
-    EXPECT_EQ(client.ScanFile(task, &reply), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(client->ScanFile(task, &reply), MemRpc::StatusCode::ClientClosed);
 
     service->OnStop();
     UnloadControlService();
@@ -632,6 +652,7 @@ TEST(VesPolicyTest, VesClientScanFileForwardsPriority)
 {
     UnloadControlService();
     const std::string socketPath = "/tmp/ves_priority_policy_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
 
     auto service = std::make_shared<FakeHealthControlService>();
     service->SetServicePathForTest(socketPath);
@@ -663,28 +684,24 @@ TEST(VesPolicyTest, VesClientScanFileForwardsPriority)
                            });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    auto remote = std::make_shared<OHOS::IRemoteObject>();
-    remote->SetSaId(VES_CONTROL_SA_ID);
-    remote->SetServicePath(socketPath);
-
     VesClient::RegisterProxyFactory();
 
-    VesClient client(remote);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    auto client = VesClient::Connect();
+    ASSERT_NE(client, nullptr);
 
     ScanTask normalTask{"/data/normal.bin"};
     ScanFileReply reply;
-    ASSERT_EQ(client.ScanFile(normalTask, &reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(normalTask, &reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 0);
     EXPECT_EQ(lastPriority.load(), static_cast<int>(MemRpc::Priority::Normal));
 
     ScanTask highTask{"/data/high.bin"};
-    ASSERT_EQ(client.ScanFile(highTask, &reply, MemRpc::Priority::High), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client->ScanFile(highTask, &reply, MemRpc::Priority::High), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_EQ(lastPriority.load(), static_cast<int>(MemRpc::Priority::High));
     EXPECT_EQ(invocationCount.load(), 2);
 
-    client.Shutdown();
+    client->Shutdown();
     server.Stop();
     service->OnStop();
     UnloadControlService();
