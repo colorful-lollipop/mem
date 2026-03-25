@@ -17,15 +17,10 @@ using RpcThenExecutor = std::function<void(std::function<void()>)>;
 struct RpcCall {
     Opcode opcode = OPCODE_INVALID;
     Priority priority = Priority::Normal;
-    // admission_timeout_ms 作用在 client 等待 request ring 可写阶段。
+    // admission_timeout_ms 作用在请求成功发布前的 client 侧等待阶段，
+    // 包括等待恢复窗口结束、建立 live session、以及等待 request ring 可写。
     // 0 = 无限等待。
     uint32_t admissionTimeoutMs = 0;
-    // wait_for_recovery 让框架在 cooldown / restart 恢复窗口内先内部等待，
-    // 而不是立刻把 CooldownActive 返给调用方。
-    bool waitForRecovery = false;
-    // recovery_timeout_ms 仅在 wait_for_recovery=true 时生效。
-    // 0 = 无限等待。
-    uint32_t recoveryTimeoutMs = 0;
     // queue_timeout_ms 作用在服务端排队阶段。0 = 无限等待。
     uint32_t queueTimeoutMs = 0;
     // exec_timeout_ms 从 client 侧请求成功发布到 request ring 后开始计时，

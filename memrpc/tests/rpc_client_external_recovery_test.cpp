@@ -213,7 +213,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate)
+TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGate)
 {
     auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
     BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
@@ -237,7 +237,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate)
     call.opcode = kEchoOpcode;
     auto blockedFuture = client.InvokeAsync(call);
     RpcReply blockedReply;
-    EXPECT_EQ(blockedFuture.Wait(&blockedReply), StatusCode::CooldownActive);
+    EXPECT_EQ(blockedFuture.Wait(&blockedReply), StatusCode::Ok);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     auto recoveredFuture = client.InvokeAsync(call);
@@ -315,8 +315,6 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected)
 
     RpcCall call;
     call.opcode = kEchoOpcode;
-    call.waitForRecovery = true;
-    call.recoveryTimeoutMs = 0;
     auto future = client.InvokeAsync(call);
     RpcReply reply;
     EXPECT_EQ(future.WaitFor(&reply, std::chrono::milliseconds(200)), StatusCode::PeerDisconnected);
@@ -387,8 +385,6 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
 
     RpcCall call;
     call.opcode = kEchoOpcode;
-    call.waitForRecovery = true;
-    call.recoveryTimeoutMs = 600;
 
     const auto start = std::chrono::steady_clock::now();
     auto future = client.InvokeAsync(call);
@@ -424,8 +420,6 @@ TEST(RpcClientExternalRecoveryTest, InvokeWithRecoveryWaitsAcrossExternalCooldow
 
     RpcCall call;
     call.opcode = kEchoOpcode;
-    call.waitForRecovery = true;
-    call.recoveryTimeoutMs = 300;
 
     RpcReply reply;
     const auto start = std::chrono::steady_clock::now();

@@ -265,17 +265,20 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
 
+    MemRpc::RpcServer restarted_server;
+    std::thread reopen_thread([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        MemRpc::BootstrapHandles prewarm_handles = MemRpc::MakeDefaultBootstrapHandles();
+        ASSERT_EQ(bootstrap->OpenSession(prewarm_handles), MemRpc::StatusCode::Ok);
+        CloseHandles(prewarm_handles);
+
+        start_server(&restarted_server);
+    });
+
     auto blocked_future = client.InvokeAsync(call);
     MemRpc::RpcReply blocked_reply;
-    EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::CooldownActive);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    MemRpc::BootstrapHandles prewarm_handles = MemRpc::MakeDefaultBootstrapHandles();
-    ASSERT_EQ(bootstrap->OpenSession(prewarm_handles), MemRpc::StatusCode::Ok);
-    CloseHandles(prewarm_handles);
-
-    MemRpc::RpcServer restarted_server;
-    start_server(&restarted_server);
+    EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::Ok);
+    reopen_thread.join();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     auto recovered_future = client.InvokeAsync(call);

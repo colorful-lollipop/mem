@@ -331,9 +331,7 @@ struct RpcClient::Impl {
 
     struct SubmitConfig {
         bool infiniteWait = false;
-        bool waitForRecovery = false;
         std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
-        std::chrono::steady_clock::time_point recoveryDeadline = std::chrono::steady_clock::time_point::max();
     };
 
     enum class SubmitAction {
@@ -883,14 +881,9 @@ struct RpcClient::Impl {
         {
             SubmitConfig config;
             config.infiniteWait = submit.call.admissionTimeoutMs == 0;
-            config.waitForRecovery = submit.call.waitForRecovery;
             if (!config.infiniteWait) {
                 config.deadline =
                     std::chrono::steady_clock::now() + std::chrono::milliseconds(submit.call.admissionTimeoutMs);
-            }
-            if (config.waitForRecovery && submit.call.recoveryTimeoutMs != 0) {
-                config.recoveryDeadline =
-                    std::chrono::steady_clock::now() + std::chrono::milliseconds(submit.call.recoveryTimeoutMs);
             }
             return config;
         }
@@ -903,8 +896,8 @@ struct RpcClient::Impl {
             if (sessionStatus == StatusCode::Ok) {
                 return SubmitAction::Proceed;
             }
-            if (sessionStatus == StatusCode::CooldownActive && config.waitForRecovery) {
-                const StatusCode waitStatus = owner_.WaitForRecovery(config.recoveryDeadline);
+            if (sessionStatus == StatusCode::CooldownActive) {
+                const StatusCode waitStatus = owner_.WaitForRecovery(config.deadline);
                 if (waitStatus == StatusCode::Ok) {
                     return SubmitAction::Retry;
                 }
@@ -917,8 +910,8 @@ struct RpcClient::Impl {
                 owner_.FailAndResolve(info, waitStatus, FailureStage::Admission, submit.future);
                 return SubmitAction::Finish;
             }
-            if (sessionStatus == StatusCode::PeerDisconnected && config.waitForRecovery) {
-                const StatusCode waitStatus = owner_.WaitForRecoveryRetry(config.recoveryDeadline);
+            if (sessionStatus == StatusCode::PeerDisconnected) {
+                const StatusCode waitStatus = owner_.WaitForRecoveryRetry(config.deadline);
                 if (waitStatus == StatusCode::Ok) {
                     return SubmitAction::Retry;
                 }

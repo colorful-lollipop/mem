@@ -188,8 +188,6 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
                 MemRpc::RpcCall call;
                 call.opcode = opcode;
                 call.priority = priority;
-                call.waitForRecovery = true;
-                call.recoveryTimeoutMs = minRecoveryWaitMs;
                 call.execTimeoutMs = execTimeoutMs;
                 call.payload = std::move(payload);
                 return MemRpc::WaitAndDecode<Reply>(client_.InvokeAsync(std::move(call)), reply);
