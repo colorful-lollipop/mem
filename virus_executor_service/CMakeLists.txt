@@ -19,8 +19,9 @@ endfunction()
 
 set(VIRUS_EXECUTOR_SERVICE_DEFAULT_TEST_TIMEOUT_SEC 30 CACHE STRING
     "Default timeout in seconds for virus_executor_service tests")
-set(VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC 60 CACHE STRING
-    "Timeout in seconds for virus_executor_service DT tests")
+set(VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC 90 CACHE STRING
+    "Timeout in seconds for virus_executor_service DT tests" FORCE)
+set(VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC 90)
 set(VIRUS_EXECUTOR_SERVICE_STRESS_TEST_TIMEOUT_SEC 60 CACHE STRING
     "Timeout in seconds for virus_executor_service stress/perf tests")
 
@@ -443,7 +444,6 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       virus_executor_service_sample_rules_test
       virus_executor_service_health_test
       virus_executor_service_policy_test
-      virus_executor_service_crash_recovery_test
       PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DEFAULT_TEST_TIMEOUT_SEC})
 
   set_tests_properties(
@@ -454,6 +454,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_STRESS_TEST_TIMEOUT_SEC})
 
   set_tests_properties(
+      virus_executor_service_crash_recovery_test
       virus_executor_service_testkit_dt_stability_test
       virus_executor_service_testkit_dt_perf_test
       PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC})

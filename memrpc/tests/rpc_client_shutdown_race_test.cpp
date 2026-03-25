@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
+#include <thread>
+#include <vector>
 
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
@@ -11,7 +14,10 @@ namespace {
 constexpr MemRpc::Opcode kTestOpcode = 1u;
 // ci_sweep/push_gate rerun this test with until-fail coverage, so keep the base suite cheap.
 constexpr int kShutdownRaceIterations = 50;
+constexpr int kShutdownRaceStressIterations = 200;
 constexpr auto kMaxShutdownDuration = std::chrono::milliseconds(200);
+constexpr int kConcurrentCallbackThreads = 4;
+constexpr int kConcurrentCallbackInvocations = 1000;
 
 class FailingBootstrapChannel final : public MemRpc::IBootstrapChannel {
 public:
@@ -81,6 +87,21 @@ TEST(RpcClientShutdownRaceTest, InvokeAsyncFailureThenShutdownRemainsFast)
 TEST(RpcClientShutdownRaceTest, InitFailureThenShutdownRemainsFast)
 {
     for (int i = 0; i < kShutdownRaceIterations; ++i) {
+        auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+        MemRpc::RpcClient client(bootstrap);
+
+        EXPECT_NE(client.Init(), MemRpc::StatusCode::Ok);
+
+        const auto start = std::chrono::steady_clock::now();
+        client.Shutdown();
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        EXPECT_LT(elapsed, kMaxShutdownDuration);
+    }
+}
+
+TEST(RpcClientShutdownRaceTest, InitFailureThenShutdownRemainsFastStress)
+{
+    for (int i = 0; i < kShutdownRaceStressIterations; ++i) {
         auto bootstrap = std::make_shared<FailingBootstrapChannel>();
         MemRpc::RpcClient client(bootstrap);
 
@@ -164,6 +185,87 @@ TEST(RpcClientShutdownRaceTest, CopiedBootstrapDeathCallbackIsIgnoredAfterShutdo
     EXPECT_EQ(after.lifecycleState, before.lifecycleState);
     EXPECT_EQ(after.lastTrigger, before.lastTrigger);
     EXPECT_EQ(after.currentSessionId, before.currentSessionId);
+}
+
+TEST(RpcClientShutdownRaceTest, ConcurrentStaleBootstrapDeathCallbacksAreIgnoredAfterReplacement)
+{
+    for (int iteration = 0; iteration < kShutdownRaceIterations; ++iteration) {
+        auto firstBootstrap = std::make_shared<FailingBootstrapChannel>();
+        auto secondBootstrap = std::make_shared<FailingBootstrapChannel>();
+        MemRpc::RpcClient client(firstBootstrap);
+
+        const auto staleCallback = firstBootstrap->CopyDeathCallback();
+        ASSERT_TRUE(static_cast<bool>(staleCallback));
+
+        client.SetBootstrapChannel(secondBootstrap);
+        const auto before = client.GetRecoveryRuntimeSnapshot();
+        EXPECT_EQ(before.lifecycleState, MemRpc::ClientLifecycleState::Uninitialized);
+
+        std::atomic<bool> start{false};
+        std::vector<std::thread> workers;
+        workers.reserve(kConcurrentCallbackThreads);
+        for (int worker = 0; worker < kConcurrentCallbackThreads; ++worker) {
+            workers.emplace_back([&]() {
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                for (int invoke = 0; invoke < kConcurrentCallbackInvocations; ++invoke) {
+                    staleCallback(0);
+                }
+            });
+        }
+
+        start.store(true, std::memory_order_release);
+        for (auto& worker : workers) {
+            worker.join();
+        }
+
+        const auto after = client.GetRecoveryRuntimeSnapshot();
+        EXPECT_EQ(after.lifecycleState, before.lifecycleState);
+        EXPECT_EQ(after.lastTrigger, before.lastTrigger);
+        EXPECT_EQ(after.currentSessionId, before.currentSessionId);
+
+        client.Shutdown();
+    }
+}
+
+TEST(RpcClientShutdownRaceTest, ConcurrentCopiedBootstrapDeathCallbacksAreIgnoredAfterShutdown)
+{
+    for (int iteration = 0; iteration < kShutdownRaceIterations; ++iteration) {
+        auto bootstrap = std::make_shared<FailingBootstrapChannel>();
+        MemRpc::RpcClient client(bootstrap);
+
+        const auto copiedCallback = bootstrap->CopyDeathCallback();
+        ASSERT_TRUE(static_cast<bool>(copiedCallback));
+
+        client.Shutdown();
+        const auto before = client.GetRecoveryRuntimeSnapshot();
+        EXPECT_EQ(before.lifecycleState, MemRpc::ClientLifecycleState::Closed);
+
+        std::atomic<bool> start{false};
+        std::vector<std::thread> workers;
+        workers.reserve(kConcurrentCallbackThreads);
+        for (int worker = 0; worker < kConcurrentCallbackThreads; ++worker) {
+            workers.emplace_back([&]() {
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                for (int invoke = 0; invoke < kConcurrentCallbackInvocations; ++invoke) {
+                    copiedCallback(0);
+                }
+            });
+        }
+
+        start.store(true, std::memory_order_release);
+        for (auto& worker : workers) {
+            worker.join();
+        }
+
+        const auto after = client.GetRecoveryRuntimeSnapshot();
+        EXPECT_EQ(after.lifecycleState, before.lifecycleState);
+        EXPECT_EQ(after.lastTrigger, before.lastTrigger);
+        EXPECT_EQ(after.currentSessionId, before.currentSessionId);
+    }
 }
 
 TEST(RpcClientShutdownRaceTest, InvokeAsyncWaitFailureThenShutdownRemainsFast)

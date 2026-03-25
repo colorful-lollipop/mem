@@ -847,13 +847,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void Run()
         {
-            while (owner_->WorkersRunning()) {
+            while (true) {
                 PendingSubmit submit;
                 {
                     std::unique_lock<std::mutex> lock(owner_->submitMutex_);
                     owner_->submitCv_.wait(lock,
-                                           [this] { return !owner_->WorkersRunning() || !owner_->submitQueue_.empty(); });
-                    if (!owner_->WorkersRunning()) {
+                                           [this] { return owner_->submitStopRequested_ || !owner_->submitQueue_.empty(); });
+                    if (owner_->submitStopRequested_ && owner_->submitQueue_.empty()) {
                         break;
                     }
                     submit = std::move(owner_->submitQueue_.front());
@@ -1181,6 +1181,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     // Submission and in-flight request state.
     std::deque<PendingSubmit> submitQueue_;
+    bool submitStopRequested_ = false;
+    bool watchdogStopRequested_ = false;
     // Request-store boundary: admitted in-flight requests only.
     ClientRequestStore requestStore_;
 
@@ -1278,6 +1280,14 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return false;
         }
         runtimeRunning_.store(true, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> submitLock(submitMutex_);
+            submitStopRequested_ = false;
+        }
+        {
+            std::lock_guard<std::mutex> watchdogLock(watchdogMutex_);
+            watchdogStopRequested_ = false;
+        }
         return true;
     }
 
@@ -1735,9 +1745,14 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!StopRuntime()) {
             return;
         }
+        {
+            std::lock_guard<std::mutex> lock(submitMutex_);
+            submitStopRequested_ = true;
+        }
         submitCv_.notify_all();
         {
             std::lock_guard<std::mutex> lock(watchdogMutex_);
+            watchdogStopRequested_ = true;
             watchdogCv_.notify_all();
         }
         NotifyRecoveryWaiters();
@@ -2028,14 +2043,17 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void WatchdogLoop()
     {
-        while (WorkersRunning()) {
+        while (true) {
             MaybeRunPendingTimeouts();
             MaybeRunHealthCheck();
             MaybeRunIdlePolicy();
             std::unique_lock<std::mutex> lock(watchdogMutex_);
             watchdogCv_.wait_for(lock, std::min(kHealthCheckPeriod, kIdlePollPeriod), [this] {
-                return !WorkersRunning();
+                return watchdogStopRequested_;
             });
+            if (watchdogStopRequested_) {
+                break;
+            }
         }
     }
 
