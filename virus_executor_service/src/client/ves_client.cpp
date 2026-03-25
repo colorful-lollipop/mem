@@ -16,33 +16,38 @@
 
 namespace VirusExecutorService {
 namespace {
+constexpr uint32_t DEFAULT_RESTART_DELAY_MS = 200;
+
 MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
 {
-    MemRpc::RecoveryPolicy policy;
-    policy.onFailure = [delay = options.execTimeoutRestartDelayMs](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, delay};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    policy.onEngineDeath = [restartDelayMs =
-                                options.engineDeathRestartDelayMs](const MemRpc::EngineDeathReport& report) {
-        HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
-               static_cast<unsigned long long>(report.deadSessionId),
-               report.safeToReplayCount,
-               report.poisonPillSuspects.size());
-        for (const auto& suspect : report.poisonPillSuspects) {
-            HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
-                   static_cast<unsigned long long>(suspect.requestId),
-                   static_cast<unsigned>(suspect.opcode),
-                   static_cast<int>(suspect.lastState));
-        }
-        return MemRpc::RecoveryDecision{
-            MemRpc::RecoveryAction::Restart,
-            restartDelayMs,
+    MemRpc::RecoveryPolicy policy = options.recoveryPolicy;
+    if (!policy.onFailure) {
+        policy.onFailure = [](const MemRpc::RpcFailure& failure) {
+            if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, DEFAULT_RESTART_DELAY_MS};
+            }
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
         };
-    };
-    if (options.idleShutdownTimeoutMs > 0) {
+    }
+    if (!policy.onEngineDeath) {
+        policy.onEngineDeath = [](const MemRpc::EngineDeathReport& report) {
+            HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
+                   static_cast<unsigned long long>(report.deadSessionId),
+                   report.safeToReplayCount,
+                   report.poisonPillSuspects.size());
+            for (const auto& suspect : report.poisonPillSuspects) {
+                HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
+                       static_cast<unsigned long long>(suspect.requestId),
+                       static_cast<unsigned>(suspect.opcode),
+                       static_cast<int>(suspect.lastState));
+            }
+            return MemRpc::RecoveryDecision{
+                MemRpc::RecoveryAction::Restart,
+                DEFAULT_RESTART_DELAY_MS,
+            };
+        };
+    }
+    if (!policy.onIdle && options.idleShutdownTimeoutMs > 0) {
         policy.onIdle = [timeout = options.idleShutdownTimeoutMs](uint64_t idleMs) {
             if (idleMs < timeout) {
                 return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
@@ -51,6 +56,14 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
         };
     }
     return policy;
+}
+
+uint32_t BuildMinRecoveryWaitMs(const VesClientOptions& options)
+{
+    if (options.recoveryPolicy.onFailure || options.recoveryPolicy.onEngineDeath) {
+        return 0;
+    }
+    return DEFAULT_RESTART_DELAY_MS;
 }
 
 VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptions)
@@ -162,7 +175,7 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const uint32_t minRecoveryWaitMs = std::max(options_.execTimeoutRestartDelayMs, options_.engineDeathRestartDelayMs);
+    const uint32_t minRecoveryWaitMs = BuildMinRecoveryWaitMs(options_);
     return client_.InvokeWithRecovery(
         [&]() {
             std::vector<uint8_t> payload;

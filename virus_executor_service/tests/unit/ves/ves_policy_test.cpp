@@ -360,9 +360,10 @@ TEST(VesPolicyTest, CurrentControlReturnsNullWhenBootstrapChannelIsGone)
 TEST(VesPolicyTest, DefaultOptionsEnableOneMinuteIdleShutdown)
 {
     const VesClientOptions options;
-    EXPECT_EQ(options.execTimeoutRestartDelayMs, 200u);
-    EXPECT_EQ(options.engineDeathRestartDelayMs, 200u);
     EXPECT_EQ(options.idleShutdownTimeoutMs, 60000u);
+    EXPECT_FALSE(options.recoveryPolicy.onFailure);
+    EXPECT_FALSE(options.recoveryPolicy.onIdle);
+    EXPECT_FALSE(options.recoveryPolicy.onEngineDeath);
 }
 
 TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
@@ -492,7 +493,9 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
-    options.engineDeathRestartDelayMs = 120;
+    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 120};
+    };
     auto client = VesClient::Connect(options);
     ASSERT_NE(client, nullptr);
 
@@ -551,7 +554,9 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
-    options.engineDeathRestartDelayMs = 120;
+    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 120};
+    };
     auto client = VesClient::Connect(options);
     ASSERT_NE(client, nullptr);
 
@@ -592,7 +597,9 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     VesClient::RegisterProxyFactory();
 
     VesClientOptions options;
-    options.engineDeathRestartDelayMs = 120;
+    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 120};
+    };
     auto client = VesClient::Connect(options);
     ASSERT_NE(client, nullptr);
 

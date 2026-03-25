@@ -18,9 +18,8 @@ class VesClientRecoveryAccess;
 }
 
 struct VesClientOptions {
-    uint32_t execTimeoutRestartDelayMs = 200;
-    uint32_t engineDeathRestartDelayMs = 200;
     uint32_t idleShutdownTimeoutMs = 60000;
+    MemRpc::RecoveryPolicy recoveryPolicy;
     VesOpenSessionRequest openSessionRequest;
 };
 

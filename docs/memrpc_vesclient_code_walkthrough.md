@@ -282,9 +282,8 @@
 
 当前 `VesClientOptions` 的默认策略是：
 
-- `execTimeoutRestartDelayMs = 200`
-- `engineDeathRestartDelayMs = 200`
 - `idleShutdownTimeoutMs = 60000`
+- `recoveryPolicy = {}`（空时由 `VesClient` 安装默认 `MemRpc::RecoveryPolicy`）
 
 也就是：
 
@@ -292,7 +291,11 @@
 - engine death 后默认走 restart，并带 200ms cooldown
 - 空闲 1 分钟后默认触发 idle close；后续业务调用再按需重连
 
-如果你改了这几个默认值，至少要看两类测试：
+如果你要自定义恢复行为，可以直接在 `VesClientOptions::recoveryPolicy` 里覆盖
+`onFailure`、`onEngineDeath`、`onIdle` 中的任意一项；未覆盖的部分继续走
+`VesClient` 默认策略。
+
+如果你改了这些默认行为，至少要看两类测试：
 
 - [`virus_executor_service/tests/unit/ves/ves_policy_test.cpp`](/root/code/demo/mem/virus_executor_service/tests/unit/ves/ves_policy_test.cpp)
   这里有默认配置值校验，以及缩短 idle 阈值后的 idle close/reopen 行为验证
