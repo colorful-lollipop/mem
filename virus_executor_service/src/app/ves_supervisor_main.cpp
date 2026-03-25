@@ -57,26 +57,22 @@ void KillAndWait(pid_t pid)
     }
 }
 
-}  // namespace
-
-int main([[maybe_unused]] int argc, char* argv[])
+std::string ResolveBinaryDir(const char* argv0)
 {
-    std::signal(SIGTERM, SignalHandler);
-    std::signal(SIGINT, SignalHandler);
-
     std::string dir = ".";
-    std::string argv0(argv[0]);
-    auto pos = argv0.rfind('/');
+    std::string programPath(argv0);
+    const auto pos = programPath.rfind('/');
     if (pos != std::string::npos) {
-        dir = argv0.substr(0, pos);
+        dir = programPath.substr(0, pos);
     }
-    std::string enginePath = dir + "/VirusExecutorService";
-    std::string clientPath = dir + "/virus_executor_service_client";
-    const std::string registrySocket = MakeSocketPath("/tmp/virus_executor_service_registry");
-    const std::string serviceSocket = MakeSocketPath("/tmp/virus_executor_service_service");
+    return dir;
+}
 
-    VirusExecutorService::RegistryServer registry(registrySocket);
-
+bool ConfigureRegistry(VirusExecutorService::RegistryServer& registry,
+                       const std::string& enginePath,
+                       const std::string& registrySocket,
+                       const std::string& serviceSocket)
+{
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return false;
@@ -101,10 +97,18 @@ int main([[maybe_unused]] int argc, char* argv[])
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
     });
+    return true;
+}
 
+bool StartRegistryAndEngine(VirusExecutorService::RegistryServer& registry,
+                            const std::string& enginePath,
+                            const std::string& registrySocket,
+                            const std::string& serviceSocket)
+{
+    ConfigureRegistry(registry, enginePath, registrySocket, serviceSocket);
     if (!registry.Start()) {
         HILOGE("failed to start registry");
-        return 1;
+        return false;
     }
     HILOGI("registry started at %{public}s", registrySocket.c_str());
 
@@ -112,17 +116,18 @@ int main([[maybe_unused]] int argc, char* argv[])
     if (g_engine_pid < 0) {
         HILOGE("failed to spawn engine");
         registry.Stop();
-        return 1;
+        return false;
     }
     HILOGI("engine spawned pid=%{public}d", g_engine_pid);
-
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    return true;
+}
 
+int RunClientSession(const std::string& clientPath, const std::string& registrySocket)
+{
     g_client_pid = SpawnClient(clientPath, registrySocket);
     if (g_client_pid < 0) {
         HILOGE("failed to spawn client");
-        KillAndWait(g_engine_pid);
-        registry.Stop();
         return 1;
     }
     HILOGI("client spawned pid=%{public}d", g_client_pid);
@@ -131,11 +136,36 @@ int main([[maybe_unused]] int argc, char* argv[])
     waitpid(g_client_pid, &clientStatus, 0);
     g_client_pid = -1;
     HILOGI("client exited status=%{public}d", WEXITSTATUS(clientStatus));
+    return WEXITSTATUS(clientStatus);
+}
 
+void ShutdownSupervisor(VirusExecutorService::RegistryServer& registry)
+{
     KillAndWait(g_engine_pid);
     g_engine_pid = -1;
     registry.Stop();
+}
 
+}  // namespace
+
+int main([[maybe_unused]] int argc, char* argv[])
+{
+    std::signal(SIGTERM, SignalHandler);
+    std::signal(SIGINT, SignalHandler);
+
+    const std::string dir = ResolveBinaryDir(argv[0]);
+    std::string enginePath = dir + "/VirusExecutorService";
+    std::string clientPath = dir + "/virus_executor_service_client";
+    const std::string registrySocket = MakeSocketPath("/tmp/virus_executor_service_registry");
+    const std::string serviceSocket = MakeSocketPath("/tmp/virus_executor_service_service");
+
+    VirusExecutorService::RegistryServer registry(registrySocket);
+    if (!StartRegistryAndEngine(registry, enginePath, registrySocket, serviceSocket)) {
+        return 1;
+    }
+
+    const int clientStatus = RunClientSession(clientPath, registrySocket);
+    ShutdownSupervisor(registry);
     HILOGI("supervisor done");
-    return WEXITSTATUS(clientStatus);
+    return clientStatus;
 }

@@ -14,72 +14,75 @@ namespace {
 
 const char* REGISTRY_SOCKET_ENV = "OHOS_SA_MOCK_REGISTRY_SOCKET";
 
-}  // namespace
-
-int main()
+std::shared_ptr<VirusExecutorService::RegistryBackend> CreateRegistryBackend()
 {
     const char* registrySocket = std::getenv(REGISTRY_SOCKET_ENV);
     if (registrySocket == nullptr) {
         HILOGE("%{public}s not set", REGISTRY_SOCKET_ENV);
-        return 1;
+        return nullptr;
     }
+    return std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
+}
 
-    // Inject backend for client-side SAM access.
-    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(registrySocket);
-    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-    bool secondSessionSucceeded = false;
-
-    // --- First session ---
-    HILOGI("=== First session ===");
-    auto client = VirusExecutorService::VesClient::Connect();
-    if (!client) {
-        return 1;
-    }
-
+void RunScan(VirusExecutorService::VesClient& client, const char* path)
+{
     VirusExecutorService::ScanFileReply scanReply;
-    VirusExecutorService::ScanTask firstTask{"/data/test_file_1.apk"};
-    client->ScanFile(firstTask, &scanReply);
+    VirusExecutorService::ScanTask task{path};
+    client.ScanFile(task, &scanReply);
     HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
+}
 
-    VirusExecutorService::ScanTask secondTask{"/data/test_file_2.apk"};
-    client->ScanFile(secondTask, &scanReply);
-    HILOGI("ScanFile: code=%{public}d threat=%{public}d", scanReply.code, scanReply.threatLevel);
+void RunFirstSession(VirusExecutorService::VesClient& client)
+{
+    HILOGI("=== First session ===");
+    RunScan(client, "/data/test_file_1.apk");
+    RunScan(client, "/data/test_file_2.apk");
+}
 
-    // Request engine unload (triggers death callback via RecoveryPolicy).
+void UnloadEngineAndLogSnapshot(VirusExecutorService::VesClient& client)
+{
     HILOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->UnloadSystemAbility(VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    const auto firstSnapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(
-        *client);
+    const auto snapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(client);
     HILOGI("last_trigger=%{public}d lifecycle=%{public}d",
-           static_cast<int>(firstSnapshot.lastTrigger),
-           static_cast<int>(firstSnapshot.lifecycleState));
+           static_cast<int>(snapshot.lastTrigger),
+           static_cast<int>(snapshot.lifecycleState));
+}
 
+bool RunSecondSession()
+{
+    HILOGI("=== Second session (after restart) ===");
+    auto client = VirusExecutorService::VesClient::Connect();
+    if (!client) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        client = VirusExecutorService::VesClient::Connect();
+    }
+    if (!client) {
+        HILOGI("engine not available after restart (expected in demo)");
+        return false;
+    }
+
+    RunScan(*client, "/data/test_file_3.apk");
+    client->Shutdown();
+    HILOGI("second session completed");
+    return true;
+}
+
+int RunClientDemo()
+{
+    auto client = VirusExecutorService::VesClient::Connect();
+    if (!client) {
+        return 1;
+    }
+
+    RunFirstSession(*client);
+    UnloadEngineAndLogSnapshot(*client);
     client->Shutdown();
 
-    // --- Restart: load again ---
-    HILOGI("=== Second session (after restart) ===");
-    auto client2 = VirusExecutorService::VesClient::Connect();
-    if (!client2) {
-        // Retry once after a delay.
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        client2 = VirusExecutorService::VesClient::Connect();
-    }
-    if (client2) {
-        VirusExecutorService::ScanFileReply scan2;
-        VirusExecutorService::ScanTask thirdTask{"/data/test_file_3.apk"};
-        client2->ScanFile(thirdTask, &scan2);
-        HILOGI("ScanFile: code=%{public}d threat=%{public}d", scan2.code, scan2.threatLevel);
-
-        client2->Shutdown();
-        secondSessionSucceeded = true;
-        HILOGI("second session completed");
-    } else {
-        HILOGI("engine not available after restart (expected in demo)");
-    }
-
+    const bool secondSessionSucceeded = RunSecondSession();
     HILOGI("=== Done ===");
     const auto finalSnapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(
         *client);
@@ -88,4 +91,16 @@ int main()
            static_cast<int>(finalSnapshot.lifecycleState),
            secondSessionSucceeded ? "true" : "false");
     return secondSessionSucceeded ? 0 : 1;
+}
+
+}  // namespace
+
+int main()
+{
+    auto backend = CreateRegistryBackend();
+    if (backend == nullptr) {
+        return 1;
+    }
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
+    return RunClientDemo();
 }

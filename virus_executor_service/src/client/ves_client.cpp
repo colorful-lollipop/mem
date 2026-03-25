@@ -101,7 +101,7 @@ MemRpc::StatusCode InvokeInlineApi(MemRpc::RpcClient* client,
 }
 
 template <typename Reply>
-MemRpc::StatusCode InvokeLargePayloadApi(OHOS::sptr<IVirusProtectionExecutor> control,
+MemRpc::StatusCode InvokeLargePayloadApi(const OHOS::sptr<IVirusProtectionExecutor>& control,
                                          MemRpc::Opcode opcode,
                                          MemRpc::Priority priority,
                                          uint32_t execTimeoutMs,
