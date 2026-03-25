@@ -2175,12 +2175,12 @@ struct RpcClient::Impl {
         return recoveryCoordinator_.GetSnapshot(CurrentSessionId(), LastClosedSessionId());
     }
 
-    StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
-                                  uint32_t minRecoveryWaitMs,
-                                  uint32_t retryGraceMs)
+    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
+                                         uint32_t minRecoveryWaitMs,
+                                         uint32_t retryGraceMs)
     {
         if (!invoke) {
-            HILOGE("RpcClient::InvokeWithRecovery failed: invoke is null");
+            HILOGE("RpcClient::RetryUntilRecoverySettles failed: invoke is null");
             return StatusCode::InvalidArgument;
         }
 
@@ -2199,7 +2199,7 @@ struct RpcClient::Impl {
             }
             if (std::chrono::steady_clock::now() >= deadline) {
                 HILOGE(
-                    "RpcClient::InvokeWithRecovery timed out retrying status=%{public}d lifecycle=%{public}d "
+                    "RpcClient::RetryUntilRecoverySettles timed out retrying status=%{public}d lifecycle=%{public}d "
                     "cooldown_ms=%{public}u",
                     static_cast<int>(status),
                     static_cast<int>(snapshot.lifecycleState),
@@ -2218,6 +2218,12 @@ struct RpcClient::Impl {
             }
             status = invoke();
         }
+    }
+    StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
+                                  uint32_t minRecoveryWaitMs,
+                                  uint32_t retryGraceMs)
+    {
+        return RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
     }
 };
 
@@ -2294,11 +2300,18 @@ RpcFuture RpcClient::InvokeAsync(RpcCall&& call)
     return impl_->InvokeAsync(std::move(call));
 }
 
+StatusCode RpcClient::RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
+                                                uint32_t minRecoveryWaitMs,
+                                                uint32_t retryGraceMs)
+{
+    return impl_->RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
+}
+
 StatusCode RpcClient::InvokeWithRecovery(const std::function<StatusCode()>& invoke,
                                          uint32_t minRecoveryWaitMs,
                                          uint32_t retryGraceMs)
 {
-    return impl_->InvokeWithRecovery(invoke, minRecoveryWaitMs, retryGraceMs);
+    return RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
 }
 
 RpcClientRuntimeStats RpcClient::GetRuntimeStats() const

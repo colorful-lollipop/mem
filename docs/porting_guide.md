@@ -104,7 +104,7 @@
 - 先编码业务请求
 - 小于等于 inline 上限时走 `memrpc`
 - 大于 inline 上限时直接走同步 `AnyCall`
-- 如果走 `memrpc`，恢复等待与重连判断全部复用 `RpcClient::InvokeWithRecovery(...)`
+- 如果走 `memrpc`，恢复等待与重连判断全部复用 `RpcClient::RetryUntilRecoverySettles(...)`
 - `EngineDeath` 只负责让旧 session / control 失效；下一次真正需要 control 时才按需刷新
 
 这比“对外 async client + 多级大包补救”更符合当前主线。

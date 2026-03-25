@@ -399,7 +399,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
     server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, InvokeWithRecoveryWaitsAcrossExternalCooldown)
+TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternalCooldown)
 {
     auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
     BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
@@ -424,7 +424,7 @@ TEST(RpcClientExternalRecoveryTest, InvokeWithRecoveryWaitsAcrossExternalCooldow
     RpcReply reply;
     const auto start = std::chrono::steady_clock::now();
     const StatusCode status =
-        client.InvokeWithRecovery([&]() { return client.InvokeAsync(call).Wait(&reply); }, 150, 50);
+        client.RetryUntilRecoverySettles([&]() { return client.InvokeAsync(call).Wait(&reply); }, 150, 50);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 

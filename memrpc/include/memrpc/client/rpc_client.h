@@ -229,9 +229,13 @@ public:
     // InvokeAsync 是框架层一等接口；失败时返回 ready future。
     RpcFuture InvokeAsync(const RpcCall& call);
     RpcFuture InvokeAsync(RpcCall&& call);
-    // InvokeWithRecovery 只在 client 处于内部恢复窗口时等待并重试 invoke。
+    // RetryUntilRecoverySettles 只在 client 处于内部恢复窗口时等待并重试 invoke。
     // 它不会透明重放已经成功发布到旧 session 的 pending 请求；仅用于对
     // CooldownActive / PeerDisconnected 这类“尚未稳定进入可用 session”的调用做包装。
+    StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
+                                         uint32_t minRecoveryWaitMs = 0,
+                                         uint32_t retryGraceMs = 0);
+    // 兼容旧命名；新代码优先使用 RetryUntilRecoverySettles。
     StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
                                   uint32_t minRecoveryWaitMs = 0,
                                   uint32_t retryGraceMs = 0);

@@ -112,7 +112,7 @@
 
 - `Init()`
 - `InvokeAsync()`
-- `InvokeWithRecovery()`
+- `RetryUntilRecoverySettles()`
 - `SetRecoveryPolicy()`
 - `RequestExternalRecovery()`
 - `GetRecoveryRuntimeSnapshot()`
@@ -155,7 +155,7 @@
 
 也就是说，`InvokeAsync()` 只是“发起调用”的入口，真正让它完整成立的是整个 pending 生命周期。
 
-### 4.3 `InvokeWithRecovery()`
+### 4.3 `RetryUntilRecoverySettles()`
 
 这是业务 facade 很容易依赖，但也很容易误解的函数。
 
@@ -169,7 +169,7 @@
 - 不会透明重放已经成功发布到旧 session 的请求
 - 不会篡改业务 opcode 或 payload
 
-所以如果你在读业务 client 代码，看到它包了一个 `InvokeWithRecovery()`，要立刻知道它的语义是：
+所以如果你在读业务 client 代码，看到它包了一个 `RetryUntilRecoverySettles()`，要立刻知道它的语义是：
 
 - “等框架恢复好再发起新的 invoke”
 - 不是“帮你重试一切失败请求”
@@ -217,7 +217,7 @@
 
 如果你想追恢复路径，再加：
 
-6. `RpcClient::InvokeWithRecovery()`
+6. `RpcClient::RetryUntilRecoverySettles()`
 7. `RequestExternalRecovery()`
 8. 生命周期转换和 snapshot/report 生成逻辑
 
@@ -371,7 +371,7 @@
 
 1. 空指针检查
 2. 计算 `minRecoveryWaitMs`
-3. 进入 `client_.InvokeWithRecovery()`
+3. 进入 `client_.RetryUntilRecoverySettles()`
 4. `EncodeMessage<Request>()`
 5. 判断 payload 是否超限
 6. 小包走 `memrpc`
@@ -413,7 +413,7 @@
 
 1. `VesClient::ScanFile()`
 2. `VesClient::InvokeApi()`
-3. `client_.InvokeWithRecovery()`
+3. `client_.RetryUntilRecoverySettles()`
 4. `MemRpc::EncodeMessage<ScanTask>()`
 5. 小包时进入 `MemRpc::InvokeTypedSync()` / `RpcClient::InvokeAsync()`
 6. 服务端 `RpcServer` 消费请求

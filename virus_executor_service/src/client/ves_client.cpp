@@ -215,7 +215,7 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    return client_.InvokeWithRecovery(
+    return client_.RetryUntilRecoverySettles(
         [&]() {
             std::vector<uint8_t> payload;
             if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
