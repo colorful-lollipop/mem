@@ -194,7 +194,7 @@ StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout
     return state_->reply.status;
 }
 
-struct RpcClient::Impl {
+struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     struct SessionSnapshot {
         uint64_t sessionId = 0;
         int reqCreditEventFd = -1;
@@ -1192,10 +1192,16 @@ struct RpcClient::Impl {
         Impl& owner_;
     };
 
+    static std::shared_ptr<Impl> Create(std::shared_ptr<IBootstrapChannel> bootstrap)
+    {
+        auto impl = std::shared_ptr<Impl>(new Impl(std::move(bootstrap)));
+        impl->InstallBootstrapDeathCallback();
+        return impl;
+    }
+
     explicit Impl(std::shared_ptr<IBootstrapChannel> bootstrap)
         : sessionController_(std::move(bootstrap))
     {
-        sessionController_.InstallDeathCallback([this](uint64_t sessionId) { HandleEngineDeath(sessionId); });
     }
 
     // Component ownership: session transport, recovery state, request stores, and
@@ -1409,8 +1415,7 @@ struct RpcClient::Impl {
 
     void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap)
     {
-        sessionController_.SetBootstrapChannel(std::move(bootstrap),
-                                               [this](uint64_t sessionId) { HandleEngineDeath(sessionId); });
+        sessionController_.SetBootstrapChannel(std::move(bootstrap), MakeBootstrapDeathCallback());
     }
 
     void SetSessionReadyCallback(SessionReadyCallback callback)
@@ -1478,6 +1483,23 @@ struct RpcClient::Impl {
             callback(report);
         }
         NotifyRecoveryWaiters();
+    }
+
+    std::function<void(uint64_t)> MakeBootstrapDeathCallback()
+    {
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        return [weakSelf](uint64_t sessionId) {
+            const auto self = weakSelf.lock();
+            if (self == nullptr) {
+                return;
+            }
+            self->HandleEngineDeath(sessionId);
+        };
+    }
+
+    void InstallBootstrapDeathCallback()
+    {
+        sessionController_.InstallDeathCallback(MakeBootstrapDeathCallback());
     }
 
     RecoveryPolicy LoadRecoveryPolicy() const
@@ -2228,7 +2250,7 @@ struct RpcClient::Impl {
 };
 
 RpcClient::RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap)
-    : impl_(std::make_unique<Impl>(std::move(bootstrap)))
+    : impl_(Impl::Create(std::move(bootstrap)))
 {
 }
 

@@ -5,7 +5,6 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <cerrno>
-#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <utility>
@@ -253,21 +252,9 @@ public:
         std::weak_ptr<VesBootstrapChannelState> weakSelf = weak_from_this();
         deathRecipient_ = std::make_shared<ControlDeathRecipient>([weakSelf]() {
             const auto self = weakSelf.lock();
-            if (self == nullptr || !self->TryEnterDeathRecipientCallback()) {
+            if (self == nullptr) {
                 return;
             }
-
-            struct ScopedExit {
-                explicit ScopedExit(VesBootstrapChannelState* state) : state_(state) {}
-                ~ScopedExit()
-                {
-                    if (state_ != nullptr) {
-                        state_->LeaveDeathRecipientCallback();
-                    }
-                }
-
-                VesBootstrapChannelState* state_ = nullptr;
-            } scopedExit(self.get());
 
             try {
                 self->HandleRemoteDied();
@@ -279,25 +266,10 @@ public:
 
     void Shutdown()
     {
-        OHOS::sptr<OHOS::IRemoteObject> remoteObject;
-        {
-            std::unique_lock<std::mutex> callbackLock(callbackMutex_);
-            shuttingDown_ = true;
-            callbackCv_.wait(callbackLock, [this]() { return inFlightCallbacks_ == 0; });
-        }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            remoteObject = control_ != nullptr ? control_->AsObject() : nullptr;
-        }
-        if (remoteObject != nullptr && deathRecipient_ != nullptr) {
-            (void)remoteObject->RemoveDeathRecipient(deathRecipient_);
-        }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            deathCallback_ = {};
-            RebindControlLocked(nullptr);
-            sessionId_ = 0;
-        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        deathCallback_ = {};
+        RebindControlLocked(nullptr);
+        sessionId_ = 0;
     }
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles)
@@ -388,27 +360,6 @@ public:
     }
 
 private:
-    bool TryEnterDeathRecipientCallback()
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex_);
-        if (shuttingDown_) {
-            return false;
-        }
-        ++inFlightCallbacks_;
-        return true;
-    }
-
-    void LeaveDeathRecipientCallback()
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex_);
-        if (inFlightCallbacks_ > 0) {
-            --inFlightCallbacks_;
-        }
-        if (inFlightCallbacks_ == 0) {
-            callbackCv_.notify_all();
-        }
-    }
-
     void HandleRemoteDied()
     {
         uint64_t sessionId = 0;
@@ -512,11 +463,6 @@ private:
     MemRpc::EngineDeathCallback deathCallback_;
     uint64_t sessionId_ = 0;
     VesOpenSessionRequest openSessionRequest_{};
-
-    std::mutex callbackMutex_;
-    std::condition_variable callbackCv_;
-    size_t inFlightCallbacks_ = 0;
-    bool shuttingDown_ = false;
 };
 
 }  // namespace
