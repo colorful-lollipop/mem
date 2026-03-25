@@ -11,7 +11,7 @@
 
 namespace VirusExecutorService {
 
-constexpr int32_t VES_CONTROL_SA_ID = 1251;
+constexpr int32_t VIRUS_PROTECTION_EXECUTOR_SA_ID = 1251;
 constexpr uint32_t VES_OPEN_SESSION_REQUEST_VERSION = 1;
 constexpr size_t VES_OPEN_SESSION_MAX_ENGINE_KINDS = 32;
 

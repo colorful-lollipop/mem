@@ -48,7 +48,7 @@ int main()
     // Request engine unload (triggers death callback via RecoveryPolicy).
     HILOGI("=== Unload engine ===");
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    sam->UnloadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID);
+    sam->UnloadSystemAbility(VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
     const auto firstSnapshot = client->GetRecoveryRuntimeSnapshot();

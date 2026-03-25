@@ -257,7 +257,7 @@ int main(int argc, char* argv[])
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return false;
         }
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -274,7 +274,7 @@ int main(int argc, char* argv[])
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return;
         }
         std::lock_guard<std::mutex> lock(g_engine_mutex);
@@ -309,7 +309,7 @@ int main(int argc, char* argv[])
 
     // Create a single shared client (engine supports one session).
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    auto remote = sam->LoadSystemAbility(VirusExecutorService::VES_CONTROL_SA_ID, 5000);
+    auto remote = sam->LoadSystemAbility(VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID, 5000);
     if (remote == nullptr) {
         HILOGE("LoadSystemAbility failed");
         std::lock_guard<std::mutex> lock(g_engine_mutex);

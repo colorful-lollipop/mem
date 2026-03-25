@@ -208,7 +208,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
 
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID)
             return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         const pid_t currentPid = LoadEnginePid();
@@ -229,7 +229,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
         return true;
     });
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID)
             return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(LoadEnginePid());
@@ -287,7 +287,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
 
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID)
             return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         const pid_t currentPid = LoadEnginePid();
@@ -308,7 +308,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
         return true;
     });
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID)
             return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(LoadEnginePid());

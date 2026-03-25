@@ -61,7 +61,7 @@ VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptio
             HILOGE("GetSystemAbilityManager failed");
             return nullptr;
         }
-        OHOS::sptr<OHOS::IRemoteObject> remote = sam->CheckSystemAbility(VES_CONTROL_SA_ID);
+        OHOS::sptr<OHOS::IRemoteObject> remote = sam->CheckSystemAbility(VIRUS_PROTECTION_EXECUTOR_SA_ID);
         if (remote != nullptr) {
             auto control = OHOS::iface_cast<IVirusProtectionExecutor>(remote);
             if (control != nullptr) {
@@ -69,7 +69,7 @@ VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptio
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
-        remote = sam->LoadSystemAbility(VES_CONTROL_SA_ID, connectOptions.loadTimeoutMs);
+        remote = sam->LoadSystemAbility(VIRUS_PROTECTION_EXECUTOR_SA_ID, connectOptions.loadTimeoutMs);
         return remote != nullptr ? OHOS::iface_cast<IVirusProtectionExecutor>(remote) : nullptr;
     };
 }
@@ -98,7 +98,7 @@ VesClient::~VesClient()
 void VesClient::RegisterProxyFactory()
 {
     OHOS::BrokerRegistration::GetInstance().Register(
-        VES_CONTROL_SA_ID,
+        VIRUS_PROTECTION_EXECUTOR_SA_ID,
         [](const OHOS::sptr<OHOS::IRemoteObject>& remote) -> OHOS::sptr<OHOS::IRemoteBroker> {
             std::string servicePath = remote->GetServicePath();
             return std::make_shared<VesControlProxy>(remote, servicePath);
@@ -123,7 +123,7 @@ MemRpc::StatusCode VesClient::Init()
     const MemRpc::StatusCode status = client_.Init();
     if (status != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient::Init failed for saId=%{public}d status=%{public}d",
-               VES_CONTROL_SA_ID,
+               VIRUS_PROTECTION_EXECUTOR_SA_ID,
                static_cast<int>(status));
         return status;
     }

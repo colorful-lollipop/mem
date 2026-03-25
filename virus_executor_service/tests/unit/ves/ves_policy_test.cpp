@@ -101,7 +101,7 @@ void UnloadControlService()
     auto& samClient = OHOS::SystemAbilityManagerClient::GetInstance();
     auto sam = samClient.GetSystemAbilityManager();
     if (sam != nullptr) {
-        (void)sam->UnloadSystemAbility(VES_CONTROL_SA_ID);
+        (void)sam->UnloadSystemAbility(VIRUS_PROTECTION_EXECUTOR_SA_ID);
     }
     samClient.SetBackend(nullptr);
 }
@@ -163,7 +163,7 @@ private:
 class FakeHealthControlService final : public OHOS::SystemAbility, public VesControlStub {
 public:
     FakeHealthControlService()
-        : OHOS::SystemAbility(VES_CONTROL_SA_ID, true),
+        : OHOS::SystemAbility(VIRUS_PROTECTION_EXECUTOR_SA_ID, true),
           bootstrap_(std::make_shared<MemRpc::DevBootstrapChannel>())
     {
     }

@@ -78,7 +78,7 @@ int main([[maybe_unused]] int argc, char* argv[])
     VirusExecutorService::RegistryServer registry(registrySocket);
 
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return false;
         }
         if (g_engine_pid > 0) {
@@ -94,7 +94,7 @@ int main([[maybe_unused]] int argc, char* argv[])
     });
 
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return;
         }
         HILOGI("unloading engine SA (pid=%{public}d)", g_engine_pid);

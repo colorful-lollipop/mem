@@ -55,7 +55,7 @@ void PopulateHealthyReply(const MemRpc::RpcServerRuntimeStats& stats, uint64_t s
 }  // namespace
 
 VirusExecutorService::VirusExecutorService()
-    : OHOS::SystemAbility(VES_CONTROL_SA_ID, true)
+    : OHOS::SystemAbility(VIRUS_PROTECTION_EXECUTOR_SA_ID, true)
 {
 }
 
