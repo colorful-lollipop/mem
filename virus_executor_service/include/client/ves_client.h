@@ -13,10 +13,14 @@
 
 namespace VirusExecutorService {
 
+namespace internal {
+class VesClientRecoveryAccess;
+}
+
 struct VesClientOptions {
     uint32_t execTimeoutRestartDelayMs = 200;
     uint32_t engineDeathRestartDelayMs = 200;
-    uint32_t idleShutdownTimeoutMs = 0;
+    uint32_t idleShutdownTimeoutMs = 60000;
     VesOpenSessionRequest openSessionRequest;
 };
 
@@ -28,7 +32,6 @@ class VesClient {
 public:
     using ControlLoader = VesBootstrapChannel::ControlLoader;
     using EventCallback = MemRpc::RpcEventCallback;
-    using RecoveryEventCallback = MemRpc::RecoveryEventCallback;
 
     explicit VesClient(ControlLoader controlLoader, VesClientOptions options = {});
     ~VesClient();
@@ -42,15 +45,12 @@ public:
 
     MemRpc::StatusCode Init();
     void SetEventCallback(EventCallback callback);
-    void SetRecoveryEventCallback(RecoveryEventCallback callback);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const ScanTask& scanTask,
                                 ScanFileReply* reply,
                                 MemRpc::Priority priority = MemRpc::Priority::Normal,
                                 uint32_t execTimeoutMs = 30000);
-
-    [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
 
 private:
     template <typename Request, typename Reply>
@@ -61,6 +61,7 @@ private:
                                  uint32_t execTimeoutMs);
 
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
+    friend class internal::VesClientRecoveryAccess;
     ControlLoader controlLoader_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;

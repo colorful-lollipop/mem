@@ -280,6 +280,25 @@
 
 所以这里体现的是 policy 装配，而不是状态机本身。状态机仍然在 `RpcClient`。
 
+当前 `VesClientOptions` 的默认策略是：
+
+- `execTimeoutRestartDelayMs = 200`
+- `engineDeathRestartDelayMs = 200`
+- `idleShutdownTimeoutMs = 60000`
+
+也就是：
+
+- 执行超时后默认走 restart，并带 200ms cooldown
+- engine death 后默认走 restart，并带 200ms cooldown
+- 空闲 1 分钟后默认触发 idle close；后续业务调用再按需重连
+
+如果你改了这几个默认值，至少要看两类测试：
+
+- [`virus_executor_service/tests/unit/ves/ves_policy_test.cpp`](/root/code/demo/mem/virus_executor_service/tests/unit/ves/ves_policy_test.cpp)
+  这里有默认配置值校验，以及缩短 idle 阈值后的 idle close/reopen 行为验证
+- [`virus_executor_service/tests/dt/ves_crash_recovery_test.cpp`](/root/code/demo/mem/virus_executor_service/tests/dt/ves_crash_recovery_test.cpp)
+  这里验证真实 crash 后的恢复链路，主要覆盖 restart policy 的集成效果
+
 ### 8.2 `BuildControlLoader()`
 
 这个函数决定了控制面 proxy 是怎么来的。

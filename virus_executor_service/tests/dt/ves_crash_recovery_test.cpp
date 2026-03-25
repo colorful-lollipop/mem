@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "client/ves_client.h"
+#include "client/internal/ves_client_recovery_access.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
@@ -33,12 +34,14 @@ class RecoveryEventObserver {
 public:
     void Attach(VirusExecutorService::VesClient& client)
     {
-        client.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report) {
-            if (!report.terminalManualShutdown && (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
-                                                   report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal)) {
-                sawFaultRecovery_.store(true, std::memory_order_release);
-            }
-        });
+        VirusExecutorService::internal::VesClientRecoveryAccess::SetRecoveryEventCallback(
+            client,
+            [this](const MemRpc::RecoveryEventReport& report) {
+                if (!report.terminalManualShutdown && (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
+                                                       report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal)) {
+                    sawFaultRecovery_.store(true, std::memory_order_release);
+                }
+            });
     }
 
     [[nodiscard]] bool SawFaultRecovery() const

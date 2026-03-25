@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "client/ves_client.h"
+#include "client/internal/ves_client_recovery_access.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/ves_control_interface.h"
@@ -51,7 +52,8 @@ int main()
     sam->UnloadSystemAbility(VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    const auto firstSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto firstSnapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(
+        *client);
     HILOGI("last_trigger=%{public}d lifecycle=%{public}d",
            static_cast<int>(firstSnapshot.lastTrigger),
            static_cast<int>(firstSnapshot.lifecycleState));
@@ -80,7 +82,8 @@ int main()
     }
 
     HILOGI("=== Done ===");
-    const auto finalSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto finalSnapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(
+        *client);
     HILOGI("last_trigger=%{public}d lifecycle=%{public}d second_session_succeeded=%{public}s",
            static_cast<int>(finalSnapshot.lastTrigger),
            static_cast<int>(finalSnapshot.lifecycleState),

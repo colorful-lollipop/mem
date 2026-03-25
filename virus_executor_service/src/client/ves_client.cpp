@@ -135,21 +135,11 @@ void VesClient::SetEventCallback(EventCallback callback)
     client_.SetEventCallback(std::move(callback));
 }
 
-void VesClient::SetRecoveryEventCallback(RecoveryEventCallback callback)
-{
-    client_.SetRecoveryEventCallback(std::move(callback));
-}
-
 void VesClient::Shutdown()
 {
     client_.SetRecoveryPolicy({});
     client_.Shutdown();
     bootstrapChannel_.reset();
-}
-
-MemRpc::RecoveryRuntimeSnapshot VesClient::GetRecoveryRuntimeSnapshot() const
-{
-    return client_.GetRecoveryRuntimeSnapshot();
 }
 
 OHOS::sptr<IVirusProtectionExecutor> VesClient::CurrentControl()

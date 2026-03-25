@@ -12,6 +12,7 @@
 #define private public
 #include "client/ves_client.h"
 #undef private
+#include "client/internal/ves_client_recovery_access.h"
 #include "isam_backend.h"
 #include "iservice_registry.h"
 #include "memrpc/client/dev_bootstrap.h"
@@ -356,6 +357,14 @@ TEST(VesPolicyTest, CurrentControlReturnsNullWhenBootstrapChannelIsGone)
     EXPECT_EQ(loadCount.load(), 0);
 }
 
+TEST(VesPolicyTest, DefaultOptionsEnableOneMinuteIdleShutdown)
+{
+    const VesClientOptions options;
+    EXPECT_EQ(options.execTimeoutRestartDelayMs, 200u);
+    EXPECT_EQ(options.engineDeathRestartDelayMs, 200u);
+    EXPECT_EQ(options.idleShutdownTimeoutMs, 60000u);
+}
+
 TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
 {
     UnloadControlService();
@@ -388,7 +397,7 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     EXPECT_EQ(heartbeat.sessionId, 0u);
-    const auto idleSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto idleSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(idleSnapshot.lifecycleState, MemRpc::ClientLifecycleState::IdleClosed);
     EXPECT_EQ(idleSnapshot.lastTrigger, MemRpc::RecoveryTrigger::IdlePolicy);
 
@@ -397,7 +406,7 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
 
     ASSERT_EQ(service->Heartbeat(heartbeat), MemRpc::StatusCode::Ok);
     EXPECT_NE(heartbeat.sessionId, 0u);
-    const auto reopenedSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto reopenedSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(reopenedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(reopenedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::DemandReconnect);
 
@@ -443,7 +452,7 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
 
     ScanTask recoveredTask{"/data/recovered.bin"};
     ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
-    const auto postRecoverySnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto postRecoverySnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
     EXPECT_FALSE(postRecoverySnapshot.terminalManualShutdown);
 
@@ -493,7 +502,7 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     EXPECT_EQ(reply.threatLevel, 0);
 
     RequestRecoveryForTest(*client, 120);
-    const auto cooldownSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto cooldownSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
@@ -506,7 +515,7 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
-    const auto activeSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto activeSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(activeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
 
@@ -547,7 +556,7 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     ASSERT_NE(client, nullptr);
 
     RequestRecoveryForTest(*client, 400);
-    const auto cooldownSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto cooldownSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
@@ -607,7 +616,7 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     EXPECT_EQ(reply.threatLevel, 1);
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
-    const auto activeSnapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto activeSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_FALSE(activeSnapshot.terminalManualShutdown);
 
@@ -635,7 +644,7 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
     client->Shutdown();
     EXPECT_EQ(client->Init(), MemRpc::StatusCode::ClientClosed);
 
-    const auto snapshot = client->GetRecoveryRuntimeSnapshot();
+    const auto snapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
     EXPECT_TRUE(snapshot.terminalManualShutdown);
