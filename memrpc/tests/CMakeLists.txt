@@ -34,6 +34,8 @@ memrpc_add_test(memrpc_build_config_test build_config_test.cpp)
 memrpc_add_test(memrpc_rpc_client_api_test rpc_client_api_test.cpp)
 memrpc_add_test(memrpc_rpc_payload_limits_test rpc_payload_limits_test.cpp)
 memrpc_add_test(memrpc_rpc_client_shutdown_race_test rpc_client_shutdown_race_test.cpp)
+set_tests_properties(memrpc_rpc_client_shutdown_race_test PROPERTIES
+  TIMEOUT 60)
 memrpc_add_test(memrpc_rpc_server_api_test rpc_server_api_test.cpp)
 memrpc_add_test(memrpc_sa_bootstrap_stub_test sa_bootstrap_stub_test.cpp)
 memrpc_add_test(memrpc_replay_classifier_test replay_classifier_test.cpp)
