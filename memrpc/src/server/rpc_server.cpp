@@ -401,27 +401,31 @@ struct RpcServer::Impl {
         return reply;
     }
 
-    StatusCode WriteResponse(const RequestRingEntry& requestEntry, RpcServerReply reply)
+    bool ValidateResponsePayloadSize(const RequestRingEntry& requestEntry, RpcServerReply* reply)
     {
         if (!session.Valid() || session.Header() == nullptr) {
             HILOGE("RpcServer::WriteResponse failed: invalid session request_id=%{public}llu",
                    static_cast<unsigned long long>(requestEntry.requestId));
-            return StatusCode::PeerDisconnected;
+            return false;
         }
 
-        if (reply.payload.size() > session.Header()->maxResponseBytes ||
-            reply.payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
+        if (reply->payload.size() > session.Header()->maxResponseBytes ||
+            reply->payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
             HILOGE(
                 "RpcServer::WriteResponse payload too large request_id=%{public}llu payload_size=%{public}zu "
                 "max=%{public}u inline_max=%{public}u",
                 static_cast<unsigned long long>(requestEntry.requestId),
-                reply.payload.size(),
+                reply->payload.size(),
                 session.Header()->maxResponseBytes,
                 ResponseRingEntry::INLINE_PAYLOAD_BYTES);
-            reply.status = StatusCode::PayloadTooLarge;
-            reply.payload.clear();
+            reply->status = StatusCode::PayloadTooLarge;
+            reply->payload.clear();
         }
+        return true;
+    }
 
+    static ResponseRingEntry BuildReplyEntry(const RequestRingEntry& requestEntry, const RpcServerReply& reply)
+    {
         ResponseRingEntry entry;
         entry.requestId = requestEntry.requestId;
         entry.messageKind = ResponseMessageKind::Reply;
@@ -431,20 +435,22 @@ struct RpcServer::Impl {
         if (!reply.payload.empty()) {
             std::memcpy(entry.payload.data(), reply.payload.data(), reply.payload.size());
         }
+        return entry;
+    }
 
-        auto completion = std::make_shared<CompletionState>();
+    static CompletionItem BuildResponseCompletionItem(const ResponseRingEntry& entry,
+                                                      const std::shared_ptr<CompletionState>& completion)
+    {
         CompletionItem item;
         item.entry = entry;
         item.retryBudget = RESPONSE_RETRY_BUDGET;
         item.breakSessionOnFailure = true;
         item.completion = completion;
-        if (!EnqueueCompletion(std::move(item))) {
-            HILOGE("RpcServer::WriteResponse failed to enqueue completion request_id=%{public}llu",
-                   static_cast<unsigned long long>(requestEntry.requestId));
-            MarkSessionBroken();
-            return StatusCode::PeerDisconnected;
-        }
+        return item;
+    }
 
+    StatusCode AwaitWriteCompletion(const RequestRingEntry& requestEntry, const std::shared_ptr<CompletionState>& completion)
+    {
         std::unique_lock<std::mutex> lock(completion->mutex);
         completion->cv.wait(lock, [&completion] { return completion->ready; });
         if (completion->status != StatusCode::Ok) {
@@ -453,6 +459,24 @@ struct RpcServer::Impl {
                    static_cast<int>(completion->status));
         }
         return completion->status;
+    }
+
+    StatusCode WriteResponse(const RequestRingEntry& requestEntry, RpcServerReply reply)
+    {
+        if (!ValidateResponsePayloadSize(requestEntry, &reply)) {
+            return StatusCode::PeerDisconnected;
+        }
+
+        const ResponseRingEntry entry = BuildReplyEntry(requestEntry, reply);
+        auto completion = std::make_shared<CompletionState>();
+        CompletionItem item = BuildResponseCompletionItem(entry, completion);
+        if (!EnqueueCompletion(std::move(item))) {
+            HILOGE("RpcServer::WriteResponse failed to enqueue completion request_id=%{public}llu",
+                   static_cast<unsigned long long>(requestEntry.requestId));
+            MarkSessionBroken();
+            return StatusCode::PeerDisconnected;
+        }
+        return AwaitWriteCompletion(requestEntry, completion);
     }
 
     StatusCode PublishEvent(const RpcEvent& event)

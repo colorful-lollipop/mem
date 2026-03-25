@@ -83,6 +83,65 @@ VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptio
     HILOGE("VesClient requires a non-null control loader");
     std::abort();
 }
+
+template <typename Reply>
+MemRpc::StatusCode InvokeInlineApi(MemRpc::RpcClient* client,
+                                   MemRpc::Opcode opcode,
+                                   MemRpc::Priority priority,
+                                   uint32_t execTimeoutMs,
+                                   std::vector<uint8_t> payload,
+                                   Reply* reply)
+{
+    MemRpc::RpcCall call;
+    call.opcode = opcode;
+    call.priority = priority;
+    call.execTimeoutMs = execTimeoutMs;
+    call.payload = std::move(payload);
+    return MemRpc::WaitAndDecode<Reply>(client->InvokeAsync(std::move(call)), reply);
+}
+
+template <typename Reply>
+MemRpc::StatusCode InvokeLargePayloadApi(OHOS::sptr<IVirusProtectionExecutor> control,
+                                         MemRpc::Opcode opcode,
+                                         MemRpc::Priority priority,
+                                         uint32_t execTimeoutMs,
+                                         std::vector<uint8_t> payload,
+                                         Reply* reply)
+{
+    if (control == nullptr) {
+        HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", opcode);
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
+
+    VesAnyCallRequest anyRequest;
+    anyRequest.opcode = static_cast<uint16_t>(opcode);
+    anyRequest.priority = static_cast<uint16_t>(priority);
+    anyRequest.timeoutMs = execTimeoutMs;
+    anyRequest.payload = std::move(payload);
+
+    VesAnyCallReply anyReply;
+    const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("VesClient::InvokeApi AnyCall failed opcode=%{public}u status=%{public}d",
+               opcode,
+               static_cast<int>(status));
+        return status;
+    }
+    if (anyReply.status != MemRpc::StatusCode::Ok) {
+        HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
+               opcode,
+               static_cast<int>(anyReply.status),
+               anyReply.errorCode);
+        return anyReply.status;
+    }
+    if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {
+        HILOGE("VesClient::InvokeApi decode failed opcode=%{public}u payload_size=%{public}zu",
+               opcode,
+               anyReply.payload.size());
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    return MemRpc::StatusCode::Ok;
+}
 }  // namespace
 
 VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
@@ -165,48 +224,9 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
             }
 
             if (payload.size() <= MemRpc::DEFAULT_MAX_REQUEST_BYTES) {
-                MemRpc::RpcCall call;
-                call.opcode = opcode;
-                call.priority = priority;
-                call.execTimeoutMs = execTimeoutMs;
-                call.payload = std::move(payload);
-                return MemRpc::WaitAndDecode<Reply>(client_.InvokeAsync(std::move(call)), reply);
+                return InvokeInlineApi(&client_, opcode, priority, execTimeoutMs, std::move(payload), reply);
             }
-
-            auto control = CurrentControl();
-            if (control == nullptr) {
-                HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", opcode);
-                return MemRpc::StatusCode::PeerDisconnected;
-            }
-
-            VesAnyCallRequest anyRequest;
-            anyRequest.opcode = static_cast<uint16_t>(opcode);
-            anyRequest.priority = static_cast<uint16_t>(priority);
-            anyRequest.timeoutMs = execTimeoutMs;
-            anyRequest.payload = std::move(payload);
-
-            VesAnyCallReply anyReply;
-            const MemRpc::StatusCode status = control->AnyCall(anyRequest, anyReply);
-            if (status != MemRpc::StatusCode::Ok) {
-                HILOGE("VesClient::InvokeApi AnyCall failed opcode=%{public}u status=%{public}d",
-                       opcode,
-                       static_cast<int>(status));
-                return status;
-            }
-            if (anyReply.status != MemRpc::StatusCode::Ok) {
-                HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
-                       opcode,
-                       static_cast<int>(anyReply.status),
-                       anyReply.errorCode);
-                return anyReply.status;
-            }
-            if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {
-                HILOGE("VesClient::InvokeApi decode failed opcode=%{public}u payload_size=%{public}zu",
-                       opcode,
-                       anyReply.payload.size());
-                return MemRpc::StatusCode::ProtocolMismatch;
-            }
-            return MemRpc::StatusCode::Ok;
+            return InvokeLargePayloadApi(CurrentControl(), opcode, priority, execTimeoutMs, std::move(payload), reply);
         },
         0,
         100);

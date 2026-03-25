@@ -68,6 +68,12 @@ private:
     static VesBootstrapChannel* TryEnterDeathRecipientCallback(DeathRecipientContext& context);
     static void LeaveDeathRecipientCallback(DeathRecipientContext& context);
 
+    OHOS::sptr<IVirusProtectionExecutor> LoadOpenSessionControl(VesOpenSessionRequest* request,
+                                                                MemRpc::BootstrapHandles* handles,
+                                                                bool* deadBeforeOpen);
+    MemRpc::StatusCode RetryOpenSessionAfterRefresh(const VesOpenSessionRequest& request,
+                                                    MemRpc::BootstrapHandles* handles,
+                                                    MemRpc::StatusCode initialStatus);
     OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked();
     OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked();
     void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl);

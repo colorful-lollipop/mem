@@ -171,6 +171,51 @@ bool IsDeadRemoteObject(const OHOS::sptr<IVirusProtectionExecutor>& control)
     return remote != nullptr && remote->IsObjectDead();
 }
 
+std::vector<uint8_t> EncodeAnyCallWire(const VesAnyCallRequest& request)
+{
+    AnyCallRequestHeader header{};
+    header.opcode = request.opcode;
+    header.priority = request.priority;
+    header.timeoutMs = request.timeoutMs;
+    header.payloadSize = static_cast<uint32_t>(request.payload.size());
+
+    std::vector<uint8_t> wire(sizeof(header) + request.payload.size());
+    std::memcpy(wire.data(), &header, sizeof(header));
+    if (!request.payload.empty()) {
+        std::memcpy(wire.data() + sizeof(header), request.payload.data(), request.payload.size());
+    }
+    return wire;
+}
+
+MemRpc::StatusCode DecodeAnyCallWire(const std::vector<uint8_t>& payload, uint16_t opcode, VesAnyCallReply* reply)
+{
+    if (payload.size() < sizeof(AnyCallReplyHeader)) {
+        HILOGE(
+            "VesControlProxy::AnyCall protocol mismatch opcode=%{public}u payload_size=%{public}zu "
+            "header_size=%{public}zu",
+            opcode,
+            payload.size(),
+            sizeof(AnyCallReplyHeader));
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+
+    AnyCallReplyHeader replyHeader{};
+    std::memcpy(&replyHeader, payload.data(), sizeof(replyHeader));
+    if (payload.size() != sizeof(replyHeader) + replyHeader.payloadSize) {
+        HILOGE(
+            "VesControlProxy::AnyCall payload size mismatch opcode=%{public}u payload_size=%{public}zu "
+            "declared_payload=%{public}u",
+            opcode,
+            payload.size(),
+            replyHeader.payloadSize);
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    reply->status = static_cast<MemRpc::StatusCode>(replyHeader.status);
+    reply->errorCode = replyHeader.errorCode;
+    reply->payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)), payload.end());
+    return MemRpc::StatusCode::Ok;
+}
+
 class ControlDeathRecipient final : public OHOS::IRemoteObject::DeathRecipient {
 public:
     explicit ControlDeathRecipient(std::function<void()> callback)
@@ -462,17 +507,7 @@ MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply)
 
 MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply)
 {
-    AnyCallRequestHeader header{};
-    header.opcode = request.opcode;
-    header.priority = request.priority;
-    header.timeoutMs = request.timeoutMs;
-    header.payloadSize = static_cast<uint32_t>(request.payload.size());
-
-    std::vector<uint8_t> wire(sizeof(header) + request.payload.size());
-    std::memcpy(wire.data(), &header, sizeof(header));
-    if (!request.payload.empty()) {
-        std::memcpy(wire.data() + sizeof(header), request.payload.data(), request.payload.size());
-    }
+    std::vector<uint8_t> wire = EncodeAnyCallWire(request);
 
     int fd = ConnectToService(service_socket_path_);
     if (fd < 0) {
@@ -499,31 +534,7 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request, Ve
                static_cast<int>(receiveStatus));
         return receiveStatus;
     }
-    if (payload.size() < sizeof(AnyCallReplyHeader)) {
-        HILOGE(
-            "VesControlProxy::AnyCall protocol mismatch opcode=%{public}u payload_size=%{public}zu "
-            "header_size=%{public}zu",
-            request.opcode,
-            payload.size(),
-            sizeof(AnyCallReplyHeader));
-        return MemRpc::StatusCode::ProtocolMismatch;
-    }
-
-    AnyCallReplyHeader replyHeader{};
-    std::memcpy(&replyHeader, payload.data(), sizeof(replyHeader));
-    if (payload.size() != sizeof(replyHeader) + replyHeader.payloadSize) {
-        HILOGE(
-            "VesControlProxy::AnyCall payload size mismatch opcode=%{public}u payload_size=%{public}zu "
-            "declared_payload=%{public}u",
-            request.opcode,
-            payload.size(),
-            replyHeader.payloadSize);
-        return MemRpc::StatusCode::ProtocolMismatch;
-    }
-    reply.status = static_cast<MemRpc::StatusCode>(replyHeader.status);
-    reply.errorCode = replyHeader.errorCode;
-    reply.payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)), payload.end());
-    return MemRpc::StatusCode::Ok;
+    return DecodeAnyCallWire(payload, request.opcode, &reply);
 }
 
 MemRpc::StatusCode VesControlProxy::CloseSession()
@@ -692,21 +703,60 @@ void VesBootstrapChannel::NotifyEngineDeath(uint64_t sessionId)
     }
 }
 
-MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
+OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::LoadOpenSessionControl(VesOpenSessionRequest* request,
+                                                                                 MemRpc::BootstrapHandles* handles,
+                                                                                 bool* deadBeforeOpen)
 {
     OHOS::sptr<IVirusProtectionExecutor> control;
-    VesOpenSessionRequest request;
-    bool deadBeforeOpen = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        request = openSessionRequest_;
+        *request = openSessionRequest_;
         control = EnsureControlBoundLocked();
-        deadBeforeOpen = IsDeadRemoteObject(control);
-        if (deadBeforeOpen) {
+        *deadBeforeOpen = IsDeadRemoteObject(control);
+        if (*deadBeforeOpen) {
             control = RefreshControlLocked();
         }
-        handles = MemRpc::MakeDefaultBootstrapHandles();
+        *handles = MemRpc::MakeDefaultBootstrapHandles();
     }
+    return control;
+}
+
+MemRpc::StatusCode VesBootstrapChannel::RetryOpenSessionAfterRefresh(const VesOpenSessionRequest& request,
+                                                                     MemRpc::BootstrapHandles* handles,
+                                                                     MemRpc::StatusCode initialStatus)
+{
+    HILOGW("VesBootstrapChannel::OpenSession retrying after recoverable failure: status=%{public}d",
+           static_cast<int>(initialStatus));
+
+    OHOS::sptr<IVirusProtectionExecutor> control;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        control = RefreshControlLocked();
+    }
+    if (control == nullptr) {
+        HILOGE("VesBootstrapChannel::OpenSession rebind failed: control is null status=%{public}d",
+               static_cast<int>(initialStatus));
+        *handles = MemRpc::MakeDefaultBootstrapHandles();
+        return initialStatus;
+    }
+
+    MemRpc::StatusCode status = control->OpenSession(request, *handles);
+    if (status == MemRpc::StatusCode::Ok) {
+        HILOGW("VesBootstrapChannel::OpenSession recovered after control refresh");
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessionId_ = handles->sessionId;
+    } else {
+        HILOGW("VesBootstrapChannel::OpenSession retry failed after control refresh: status=%{public}d",
+               static_cast<int>(status));
+    }
+    return status;
+}
+
+MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& handles)
+{
+    VesOpenSessionRequest request;
+    bool deadBeforeOpen = false;
+    OHOS::sptr<IVirusProtectionExecutor> control = LoadOpenSessionControl(&request, &handles, &deadBeforeOpen);
     if (control == nullptr) {
         if (deadBeforeOpen) {
             HILOGE("VesBootstrapChannel::OpenSession failed: control remote is dead before OpenSession");
@@ -729,31 +779,7 @@ MemRpc::StatusCode VesBootstrapChannel::OpenSession(MemRpc::BootstrapHandles& ha
     if (!ShouldRetryOpenSessionAfterRefresh(status)) {
         return status;
     }
-
-    HILOGW("VesBootstrapChannel::OpenSession retrying after recoverable failure: status=%{public}d",
-           static_cast<int>(status));
-
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        control = RefreshControlLocked();
-    }
-    if (control == nullptr) {
-        HILOGE("VesBootstrapChannel::OpenSession rebind failed: control is null status=%{public}d",
-               static_cast<int>(status));
-        handles = MemRpc::MakeDefaultBootstrapHandles();
-        return status;
-    }
-
-    status = control->OpenSession(request, handles);
-    if (status == MemRpc::StatusCode::Ok) {
-        HILOGW("VesBootstrapChannel::OpenSession recovered after control refresh");
-        std::lock_guard<std::mutex> lock(mutex_);
-        sessionId_ = handles.sessionId;
-    } else {
-        HILOGW("VesBootstrapChannel::OpenSession retry failed after control refresh: status=%{public}d",
-               static_cast<int>(status));
-    }
-    return status;
+    return RetryOpenSessionAfterRefresh(request, &handles, status);
 }
 
 MemRpc::StatusCode VesBootstrapChannel::CloseSession()

@@ -124,24 +124,98 @@ void RegistryServer::AcceptLoop(int listen_fd)
     }
 }
 
-void RegistryServer::HandleClient(int client_fd)
+bool RegistryServer::DecodeClientRequest(int client_fd, RegistryRequest* req)
 {
     std::string msg;
     if (!RecvMessage(client_fd, &msg)) {
         HILOGE("RegistryServer::HandleClient recv failed: client_fd=%{public}d", client_fd);
-        return;
+        return false;
     }
 
-    RegistryRequest req;
-    if (!DecodeRegistryRequest(reinterpret_cast<const uint8_t*>(msg.data()), msg.size(), &req)) {
+    if (!DecodeRegistryRequest(reinterpret_cast<const uint8_t*>(msg.data()), msg.size(), req)) {
         HILOGE("RegistryServer::HandleClient decode failed: client_fd=%{public}d msg_size=%{public}zu",
                client_fd,
                msg.size());
-        return;
+        return false;
     }
+    return true;
+}
 
+bool RegistryServer::TryGetServicePath(int32_t sa_id, std::string* servicePath)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = services_.find(sa_id);
+    if (it == services_.end()) {
+        return false;
+    }
+    *servicePath = it->second;
+    return true;
+}
+
+bool RegistryServer::RemoveStaleService(int32_t sa_id, const std::string& servicePath)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = services_.find(sa_id);
+    if (it == services_.end() || it->second != servicePath) {
+        return false;
+    }
+    services_.erase(it);
+    return true;
+}
+
+bool RegistryServer::TryLoadService(int32_t sa_id)
+{
+    if (!load_cb_) {
+        return false;
+    }
+    const bool loaded = load_cb_(sa_id);
+    if (!loaded) {
+        HILOGE("RegistryServer::HandleClient load callback failed: sa_id=%{public}d", sa_id);
+    }
+    return loaded;
+}
+
+bool RegistryServer::PopulateServiceResponse(int32_t sa_id, RegistryResponse* resp)
+{
+    std::string servicePath;
+    if (!TryGetServicePath(sa_id, &servicePath)) {
+        return false;
+    }
+    resp->err_code = 0;
+    resp->payload = std::move(servicePath);
+    return true;
+}
+
+RegistryResponse RegistryServer::HandleLoadRequest(const RegistryRequest& req)
+{
     RegistryResponse resp;
+    std::string servicePath;
+    bool found = TryGetServicePath(req.sa_id, &servicePath);
+    if (found && !IsReachableServiceSocket(servicePath)) {
+        HILOGW("RegistryServer::HandleClient removing stale service: sa_id=%{public}d path=%{public}s",
+               req.sa_id,
+               servicePath.c_str());
+        (void)RemoveStaleService(req.sa_id, servicePath);
+        found = false;
+    }
+    if (!found) {
+        found = TryLoadService(req.sa_id);
+    }
+    if (!found) {
+        HILOGE("RegistryServer::HandleClient load failed: sa_id=%{public}d", req.sa_id);
+        resp.err_code = -1;
+        return resp;
+    }
+    if (!PopulateServiceResponse(req.sa_id, &resp)) {
+        HILOGE("RegistryServer::HandleClient load succeeded but service missing: sa_id=%{public}d", req.sa_id);
+        resp.err_code = -1;
+    }
+    return resp;
+}
 
+RegistryResponse RegistryServer::ProcessRequest(const RegistryRequest& req)
+{
+    RegistryResponse resp;
     switch (req.op) {
         case RegistryOp::Register: {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -150,62 +224,11 @@ void RegistryServer::HandleClient(int client_fd)
             break;
         }
         case RegistryOp::Get: {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = services_.find(req.sa_id);
-            if (it != services_.end()) {
-                resp.err_code = 0;
-                resp.payload = it->second;
-            } else {
-                resp.err_code = -1;
-            }
+            resp.err_code = PopulateServiceResponse(req.sa_id, &resp) ? 0 : -1;
             break;
         }
-        case RegistryOp::Load: {
-            bool found = false;
-            std::string servicePath;
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                auto it = services_.find(req.sa_id);
-                if (it != services_.end()) {
-                    servicePath = it->second;
-                    found = true;
-                }
-            }
-            if (found && !IsReachableServiceSocket(servicePath)) {
-                HILOGW("RegistryServer::HandleClient removing stale service: sa_id=%{public}d path=%{public}s",
-                       req.sa_id,
-                       servicePath.c_str());
-                std::lock_guard<std::mutex> lock(mutex_);
-                auto it = services_.find(req.sa_id);
-                if (it != services_.end() && it->second == servicePath) {
-                    services_.erase(it);
-                }
-                found = false;
-            }
-            if (!found && load_cb_) {
-                // Ask supervisor to start the SA.
-                found = load_cb_(req.sa_id);
-                if (!found) {
-                    HILOGE("RegistryServer::HandleClient load callback failed: sa_id=%{public}d", req.sa_id);
-                }
-            }
-            if (found) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                auto it = services_.find(req.sa_id);
-                if (it != services_.end()) {
-                    resp.err_code = 0;
-                    resp.payload = it->second;
-                } else {
-                    HILOGE("RegistryServer::HandleClient load succeeded but service missing: sa_id=%{public}d",
-                           req.sa_id);
-                    resp.err_code = -1;
-                }
-            } else {
-                HILOGE("RegistryServer::HandleClient load failed: sa_id=%{public}d", req.sa_id);
-                resp.err_code = -1;
-            }
-            break;
-        }
+        case RegistryOp::Load:
+            return HandleLoadRequest(req);
         case RegistryOp::Unload: {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -218,7 +241,11 @@ void RegistryServer::HandleClient(int client_fd)
             break;
         }
     }
+    return resp;
+}
 
+void RegistryServer::SendClientResponse(int client_fd, const RegistryRequest& req, const RegistryResponse& resp)
+{
     std::string resp_msg;
     if (EncodeRegistryResponse(resp, &resp_msg)) {
         if (!SendMessage(client_fd, resp_msg)) {
@@ -232,6 +259,15 @@ void RegistryServer::HandleClient(int client_fd)
                static_cast<int>(req.op),
                req.sa_id);
     }
+}
+
+void RegistryServer::HandleClient(int client_fd)
+{
+    RegistryRequest req;
+    if (!DecodeClientRequest(client_fd, &req)) {
+        return;
+    }
+    SendClientResponse(client_fd, req, ProcessRequest(req));
 }
 
 }  // namespace VirusExecutorService

@@ -8,6 +8,8 @@
 #include <thread>
 #include <unordered_map>
 
+#include "transport/registry_protocol.h"
+
 namespace VirusExecutorService {
 
 using LoadCallback = std::function<bool(int32_t sa_id)>;
@@ -36,6 +38,14 @@ public:
 private:
     void AcceptLoop(int listen_fd);
     void HandleClient(int client_fd);
+    bool DecodeClientRequest(int client_fd, RegistryRequest* req);
+    RegistryResponse ProcessRequest(const RegistryRequest& req);
+    RegistryResponse HandleLoadRequest(const RegistryRequest& req);
+    bool TryGetServicePath(int32_t sa_id, std::string* servicePath);
+    bool RemoveStaleService(int32_t sa_id, const std::string& servicePath);
+    bool TryLoadService(int32_t sa_id);
+    bool PopulateServiceResponse(int32_t sa_id, RegistryResponse* resp);
+    void SendClientResponse(int client_fd, const RegistryRequest& req, const RegistryResponse& resp);
 
     std::string socket_path_;
     int listen_fd_ = -1;

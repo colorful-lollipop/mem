@@ -877,7 +877,7 @@ struct RpcClient::Impl {
         }
 
     private:
-        SubmitConfig MakeSubmitConfig(const PendingSubmit& submit) const
+        [[nodiscard]] SubmitConfig MakeSubmitConfig(const PendingSubmit& submit) const
         {
             SubmitConfig config;
             config.infiniteWait = submit.call.admissionTimeoutMs == 0;
@@ -1049,13 +1049,7 @@ struct RpcClient::Impl {
         {
             int activePollFd = -1;
             uint64_t activePollSessionId = 0;
-            const auto resetActivePollFd = [&]() {
-                if (activePollFd >= 0) {
-                    (void)close(activePollFd);
-                    activePollFd = -1;
-                }
-                activePollSessionId = 0;
-            };
+            const auto resetActivePollFd = [&]() { ResetActivePollFd(&activePollFd, &activePollSessionId); };
             const auto closeActivePollFd = MakeScopeExit([&]() { resetActivePollFd(); });
 
             while (owner_.WorkersRunning()) {
@@ -1063,56 +1057,88 @@ struct RpcClient::Impl {
                     continue;
                 }
 
-                const auto snapshot = owner_.LoadSessionSnapshot();
-                const uint64_t currentSessionId = snapshot->sessionId;
-                int nextPollFd = -1;
-                bool sessionChanged = false;
-                if (currentSessionId != activePollSessionId) {
-                    owner_.sessionController_.WithSessionLocked([&](Session& session) {
-                        if (session.Valid()) {
-                            const uint64_t lockedSessionId = owner_.LoadSessionSnapshot()->sessionId;
-                            if (lockedSessionId != activePollSessionId) {
-                                sessionChanged = true;
-                                const int responseFd = session.Handles().respEventFd;
-                                if (responseFd >= 0) {
-                                    nextPollFd = dup(responseFd);
-                                    if (nextPollFd < 0) {
-                                        HILOGE("RpcClient::ResponseLoop dup failed: responseFd=%{public}d", responseFd);
-                                    }
-                                }
-                            }
-                        }
-                    });
-                } else if (currentSessionId == 0 && activePollSessionId != 0) {
-                    sessionChanged = true;
-                }
-
-                if (sessionChanged) {
-                    resetActivePollFd();
-                    if (nextPollFd >= 0) {
-                        activePollFd = nextPollFd;
-                        activePollSessionId = snapshot->sessionId;
-                    }
-                }
-
+                RefreshPolledSession(&activePollFd, &activePollSessionId, resetActivePollFd);
                 if (activePollFd < 0) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
                     continue;
                 }
-
-                pollfd pollFd{activePollFd, POLLIN, 0};
-                const auto waitResult = PollEventFd(&pollFd, 100);
-                if (waitResult == PollEventFdResult::Failed) {
-                    const uint64_t failedSessionId = activePollSessionId;
-                    HILOGE("RpcClient::ResponseLoop detected response poll failure session_id=%{public}llu",
-                           static_cast<unsigned long long>(failedSessionId));
-                    resetActivePollFd();
-                    owner_.HandleEngineDeath(failedSessionId);
-                }
+                WaitForResponses(activePollFd, activePollSessionId, resetActivePollFd);
             }
         }
 
     private:
+        static void ResetActivePollFd(int* activePollFd, uint64_t* activePollSessionId)
+        {
+            if (*activePollFd >= 0) {
+                (void)close(*activePollFd);
+                *activePollFd = -1;
+            }
+            *activePollSessionId = 0;
+        }
+
+        int DupResponseFdForSession(uint64_t activePollSessionId, bool* sessionChanged) const
+        {
+            int nextPollFd = -1;
+            owner_.sessionController_.WithSessionLocked([&](Session& session) {
+                if (!session.Valid()) {
+                    return;
+                }
+                const uint64_t lockedSessionId = owner_.LoadSessionSnapshot()->sessionId;
+                if (lockedSessionId == activePollSessionId) {
+                    return;
+                }
+                *sessionChanged = true;
+                const int responseFd = session.Handles().respEventFd;
+                if (responseFd >= 0) {
+                    nextPollFd = dup(responseFd);
+                    if (nextPollFd < 0) {
+                        HILOGE("RpcClient::ResponseLoop dup failed: responseFd=%{public}d", responseFd);
+                    }
+                }
+            });
+            return nextPollFd;
+        }
+
+        void RefreshPolledSession(int* activePollFd,
+                                  uint64_t* activePollSessionId,
+                                  const std::function<void()>& resetActivePollFd)
+        {
+            const auto snapshot = owner_.LoadSessionSnapshot();
+            const uint64_t currentSessionId = snapshot->sessionId;
+            int nextPollFd = -1;
+            bool sessionChanged = false;
+            if (currentSessionId != *activePollSessionId) {
+                nextPollFd = DupResponseFdForSession(*activePollSessionId, &sessionChanged);
+            } else if (currentSessionId == 0 && *activePollSessionId != 0) {
+                sessionChanged = true;
+            }
+
+            if (!sessionChanged) {
+                return;
+            }
+            resetActivePollFd();
+            if (nextPollFd >= 0) {
+                *activePollFd = nextPollFd;
+                *activePollSessionId = snapshot->sessionId;
+            }
+        }
+
+        void WaitForResponses(int activePollFd,
+                              uint64_t activePollSessionId,
+                              const std::function<void()>& resetActivePollFd)
+        {
+            pollfd pollFd{activePollFd, POLLIN, 0};
+            const auto waitResult = PollEventFd(&pollFd, 100);
+            if (waitResult != PollEventFdResult::Failed) {
+                return;
+            }
+
+            HILOGE("RpcClient::ResponseLoop detected response poll failure session_id=%{public}llu",
+                   static_cast<unsigned long long>(activePollSessionId));
+            resetActivePollFd();
+            owner_.HandleEngineDeath(activePollSessionId);
+        }
+
         void ResolveCompletedRequest(const ResponseRingEntry& entry)
         {
             std::optional<PendingRequest> pending = owner_.pendingStore_.Take(entry.requestId);
@@ -1875,75 +1901,95 @@ struct RpcClient::Impl {
         return recoveryCoordinator_.WaitForRecoveryRetry(deadline, workerState_, apiState_);
     }
 
+    StatusCode ValidatePushSession(const PendingSubmit& submit, Session& session) const
+    {
+        if (!session.Valid() || session.Header() == nullptr) {
+            HILOGE("RpcClient::TryPushRequest failed: session not valid request_id=%{public}llu opcode=%{public}u",
+                   static_cast<unsigned long long>(submit.requestId),
+                   submit.call.opcode);
+            return StatusCode::PeerDisconnected;
+        }
+        if (submit.call.payload.size() > session.Header()->maxRequestBytes ||
+            submit.call.payload.size() > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
+            HILOGE(
+                "RpcClient::TryPushRequest failed: payload too large request_id=%{public}llu "
+                "payload_size=%{public}zu max=%{public}u inline_max=%{public}u",
+                static_cast<unsigned long long>(submit.requestId),
+                submit.call.payload.size(),
+                session.Header()->maxRequestBytes,
+                RequestRingEntry::INLINE_PAYLOAD_BYTES);
+            return StatusCode::PayloadTooLarge;
+        }
+        return StatusCode::Ok;
+    }
+
+    static RequestRingEntry BuildRequestEntry(const PendingSubmit& submit)
+    {
+        RequestRingEntry entry;
+        entry.requestId = submit.requestId;
+        entry.enqueueMonoMs = MonotonicNowMs();
+        entry.queueTimeoutMs = submit.call.queueTimeoutMs;
+        entry.execTimeoutMs = submit.call.execTimeoutMs;
+        entry.opcode = submit.call.opcode;
+        entry.priority = static_cast<uint8_t>(submit.call.priority);
+        entry.payloadSize = static_cast<uint32_t>(submit.call.payload.size());
+        if (!submit.call.payload.empty()) {
+            std::memcpy(entry.payload.data(), submit.call.payload.data(), submit.call.payload.size());
+        }
+        return entry;
+    }
+
+    PendingRequest BuildPendingRequest(const PendingSubmit& submit)
+    {
+        PendingRequest pending;
+        pending.future = submit.future;
+        pending.info = MakePendingInfo(submit);
+        pending.info.sessionId = CurrentSessionId();
+        pending.waitDeadline = MakePendingWaitDeadline(submit.call.execTimeoutMs);
+        pending.admittedMonoMs = MonotonicNowMs64();
+        return pending;
+    }
+
+    StatusCode PushRequestToSession(Session& session, const PendingSubmit& submit, const RequestRingEntry& entry)
+    {
+        const bool highPriority = IsHighPriority(submit.call);
+        const StatusCode status =
+            session.PushRequest(highPriority ? QueueKind::HighRequest : QueueKind::NormalRequest, entry);
+        if (status != StatusCode::Ok) {
+            pendingStore_.Erase(submit.requestId);
+            if (status != StatusCode::QueueFull) {
+                HILOGE("RpcClient::TryPushRequest failed: status=%{public}d request_id=%{public}llu opcode=%{public}u",
+                       static_cast<int>(status),
+                       static_cast<unsigned long long>(submit.requestId),
+                       submit.call.opcode);
+            }
+            return status;
+        }
+
+        const RingCursor& cursor = highPriority ? session.Header()->highRing : session.Header()->normalRing;
+        if (RingCountIsOneAfterPush(cursor)) {
+            const int fd = highPriority ? session.Handles().highReqEventFd : session.Handles().normalReqEventFd;
+            if (!SignalEventFd(fd)) {
+                HILOGW("RpcClient::TryPushRequest failed to signal request event fd=%{public}d request_id=%{public}llu",
+                       fd,
+                       static_cast<unsigned long long>(submit.requestId));
+            }
+        }
+        TouchActivity();
+        return StatusCode::Ok;
+    }
+
     StatusCode TryPushRequest(const PendingSubmit& submit)
     {
         return sessionController_.WithSessionLocked([&](Session& session) -> StatusCode {
-            if (!session.Valid() || session.Header() == nullptr) {
-                HILOGE("RpcClient::TryPushRequest failed: session not valid request_id=%{public}llu opcode=%{public}u",
-                       static_cast<unsigned long long>(submit.requestId),
-                       submit.call.opcode);
-                return StatusCode::PeerDisconnected;
-            }
-            if (submit.call.payload.size() > session.Header()->maxRequestBytes ||
-                submit.call.payload.size() > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
-                HILOGE(
-                    "RpcClient::TryPushRequest failed: payload too large request_id=%{public}llu "
-                    "payload_size=%{public}zu max=%{public}u inline_max=%{public}u",
-                    static_cast<unsigned long long>(submit.requestId),
-                    submit.call.payload.size(),
-                    session.Header()->maxRequestBytes,
-                    RequestRingEntry::INLINE_PAYLOAD_BYTES);
-                return StatusCode::PayloadTooLarge;
+            const StatusCode validationStatus = ValidatePushSession(submit, session);
+            if (validationStatus != StatusCode::Ok) {
+                return validationStatus;
             }
 
-            RequestRingEntry entry;
-            entry.requestId = submit.requestId;
-            entry.enqueueMonoMs = MonotonicNowMs();
-            entry.queueTimeoutMs = submit.call.queueTimeoutMs;
-            entry.execTimeoutMs = submit.call.execTimeoutMs;
-            entry.opcode = submit.call.opcode;
-            entry.priority = static_cast<uint8_t>(submit.call.priority);
-            entry.payloadSize = static_cast<uint32_t>(submit.call.payload.size());
-            if (!submit.call.payload.empty()) {
-                std::memcpy(entry.payload.data(), submit.call.payload.data(), submit.call.payload.size());
-            }
-
-            PendingRequest pending;
-            pending.future = submit.future;
-            pending.info = MakePendingInfo(submit);
-            pending.info.sessionId = CurrentSessionId();
-            pending.waitDeadline = MakePendingWaitDeadline(submit.call.execTimeoutMs);
-            pending.admittedMonoMs = MonotonicNowMs64();
-            pendingStore_.Put(submit.requestId, std::move(pending));
-
-            const bool highPriority = IsHighPriority(submit.call);
-            const StatusCode status =
-                session.PushRequest(highPriority ? QueueKind::HighRequest : QueueKind::NormalRequest, entry);
-            if (status != StatusCode::Ok) {
-                pendingStore_.Erase(submit.requestId);
-                if (status != StatusCode::QueueFull) {
-                    HILOGE(
-                        "RpcClient::TryPushRequest failed: status=%{public}d request_id=%{public}llu opcode=%{public}u",
-                        static_cast<int>(status),
-                        static_cast<unsigned long long>(submit.requestId),
-                        submit.call.opcode);
-                }
-                return status;
-            }
-
-            const RingCursor& cursor = highPriority ? session.Header()->highRing : session.Header()->normalRing;
-            if (RingCountIsOneAfterPush(cursor)) {
-                const int fd = highPriority ? session.Handles().highReqEventFd : session.Handles().normalReqEventFd;
-                if (!SignalEventFd(fd)) {
-                    HILOGW(
-                        "RpcClient::TryPushRequest failed to signal request event fd=%{public}d "
-                        "request_id=%{public}llu",
-                        fd,
-                        static_cast<unsigned long long>(submit.requestId));
-                }
-            }
-            TouchActivity();
-            return StatusCode::Ok;
+            const RequestRingEntry entry = BuildRequestEntry(submit);
+            pendingStore_.Put(submit.requestId, BuildPendingRequest(submit));
+            return PushRequestToSession(session, submit, entry);
         });
     }
 

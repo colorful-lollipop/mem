@@ -77,61 +77,78 @@ public:
     bool OnRemoteRequest(int command, const OHOS::MockIpcRequest& request, OHOS::MockIpcReply* reply) override
     {
         switch (command) {
-            case 1: {
-                VesOpenSessionRequest openRequest{};
-                if (!detail::DecodeOpenSessionRequest(request, &openRequest)) {
-                    return false;
-                }
-                MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
-                if (OpenSession(openRequest, handles) != MemRpc::StatusCode::Ok) {
-                    return false;
-                }
-
-                constexpr size_t FD_COUNT = 6;
-                reply->fds[0] = handles.shmFd;
-                reply->fds[1] = handles.highReqEventFd;
-                reply->fds[2] = handles.normalReqEventFd;
-                reply->fds[3] = handles.respEventFd;
-                reply->fds[4] = handles.reqCreditEventFd;
-                reply->fds[5] = handles.respCreditEventFd;
-                reply->fd_count = FD_COUNT;
-
-                detail::SessionMetadata meta{};
-                meta.protocol_version = handles.protocolVersion;
-                meta.session_id = handles.sessionId;
-                reply->data.resize(sizeof(meta));
-                std::memcpy(reply->data.data(), &meta, sizeof(meta));
-                return true;
-            }
+            case 1:
+                return HandleOpenSession(request, reply);
             case 2:
                 reply->close_after_reply = true;
                 return CloseSession() == MemRpc::StatusCode::Ok;
-            case 3: {
-                VesHeartbeatReply hb{};
-                if (Heartbeat(hb) != MemRpc::StatusCode::Ok) {
-                    return false;
-                }
-                reply->data.resize(sizeof(hb));
-                std::memcpy(reply->data.data(), &hb, sizeof(hb));
-                reply->close_after_reply = true;
-                return true;
-            }
-            case 4: {
-                VesAnyCallRequest anyRequest{};
-                if (!detail::DecodeAnyCallRequest(request, &anyRequest)) {
-                    return false;
-                }
-                VesAnyCallReply anyReply{};
-                if (AnyCall(anyRequest, anyReply) != MemRpc::StatusCode::Ok) {
-                    return false;
-                }
-                detail::EncodeAnyCallReply(anyReply, &reply->data);
-                reply->close_after_reply = true;
-                return true;
-            }
+            case 3:
+                return HandleHeartbeat(reply);
+            case 4:
+                return HandleAnyCall(request, reply);
             default:
                 return false;
         }
+    }
+
+private:
+    static void EncodeOpenSessionReply(const MemRpc::BootstrapHandles& handles, OHOS::MockIpcReply* reply)
+    {
+        constexpr size_t FD_COUNT = 6;
+        reply->fds[0] = handles.shmFd;
+        reply->fds[1] = handles.highReqEventFd;
+        reply->fds[2] = handles.normalReqEventFd;
+        reply->fds[3] = handles.respEventFd;
+        reply->fds[4] = handles.reqCreditEventFd;
+        reply->fds[5] = handles.respCreditEventFd;
+        reply->fd_count = FD_COUNT;
+
+        detail::SessionMetadata meta{};
+        meta.protocol_version = handles.protocolVersion;
+        meta.session_id = handles.sessionId;
+        reply->data.resize(sizeof(meta));
+        std::memcpy(reply->data.data(), &meta, sizeof(meta));
+    }
+
+    bool HandleOpenSession(const OHOS::MockIpcRequest& request, OHOS::MockIpcReply* reply)
+    {
+        VesOpenSessionRequest openRequest{};
+        if (!detail::DecodeOpenSessionRequest(request, &openRequest)) {
+            return false;
+        }
+        MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+        if (OpenSession(openRequest, handles) != MemRpc::StatusCode::Ok) {
+            return false;
+        }
+        EncodeOpenSessionReply(handles, reply);
+        return true;
+    }
+
+    bool HandleHeartbeat(OHOS::MockIpcReply* reply)
+    {
+        VesHeartbeatReply heartbeatReply{};
+        if (Heartbeat(heartbeatReply) != MemRpc::StatusCode::Ok) {
+            return false;
+        }
+        reply->data.resize(sizeof(heartbeatReply));
+        std::memcpy(reply->data.data(), &heartbeatReply, sizeof(heartbeatReply));
+        reply->close_after_reply = true;
+        return true;
+    }
+
+    bool HandleAnyCall(const OHOS::MockIpcRequest& request, OHOS::MockIpcReply* reply)
+    {
+        VesAnyCallRequest anyRequest{};
+        if (!detail::DecodeAnyCallRequest(request, &anyRequest)) {
+            return false;
+        }
+        VesAnyCallReply anyReply{};
+        if (AnyCall(anyRequest, anyReply) != MemRpc::StatusCode::Ok) {
+            return false;
+        }
+        detail::EncodeAnyCallReply(anyReply, &reply->data);
+        reply->close_after_reply = true;
+        return true;
     }
 };
 
