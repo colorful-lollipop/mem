@@ -229,33 +229,19 @@ StressConfig ParseArgs(int argc, char* argv[])
     return config;
 }
 
-}  // namespace
-
-int main(int argc, char* argv[])
+std::string ResolveBinaryDir(const char* argv0)
 {
-    std::signal(SIGTERM, SignalHandler);
-    std::signal(SIGINT, SignalHandler);
-
-    StressConfig config = ParseArgs(argc, argv);
-
-    HILOGI("stress client: threads=%{public}d iterations=%{public}d seed=%{public}u crash=%{public}s",
-           config.threads,
-           config.iterations,
-           config.seed,
-           config.enableCrash ? "5%" : "off");
-
-    // Determine engine path relative to our binary.
     std::string dir = ".";
-    std::string argv0(argv[0]);
-    auto pos = argv0.rfind('/');
+    std::string programPath(argv0);
+    const auto pos = programPath.rfind('/');
     if (pos != std::string::npos) {
-        dir = argv0.substr(0, pos);
+        dir = programPath.substr(0, pos);
     }
-    std::string enginePath = dir + "/VirusExecutorService";
+    return dir;
+}
 
-    // Self-host registry server.
-    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
-
+void ConfigureRegistry(VirusExecutorService::RegistryServer& registry, const std::string& enginePath)
+{
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
         if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
             return false;
@@ -282,18 +268,21 @@ int main(int argc, char* argv[])
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
     });
+}
 
+bool StartRegistry(VirusExecutorService::RegistryServer& registry, const std::string& enginePath)
+{
+    ConfigureRegistry(registry, enginePath);
     if (!registry.Start()) {
         HILOGE("failed to start registry");
-        return 1;
+        return false;
     }
     HILOGI("registry started at %{public}s", REGISTRY_SOCKET.c_str());
+    return true;
+}
 
-    // Inject backend for client-side SAM access.
-    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
-    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
-
-    // Spawn engine.
+bool StartEngine(const std::string& enginePath, VirusExecutorService::RegistryServer& registry)
+{
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         g_engine_pid = SpawnEngine(enginePath);
@@ -301,89 +290,158 @@ int main(int argc, char* argv[])
     if (g_engine_pid < 0) {
         HILOGE("failed to spawn engine");
         registry.Stop();
-        return 1;
+        return false;
     }
     HILOGI("engine spawned pid=%{public}d", g_engine_pid);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    return true;
+}
 
-    // Create a single shared client (engine supports one session).
+OHOS::sptr<OHOS::IRemoteObject> LoadEngineRemote(VirusExecutorService::RegistryServer& registry)
+{
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
+
     auto sam = OHOS::SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     auto remote = sam->LoadSystemAbility(VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID, 5000);
-    if (remote == nullptr) {
-        HILOGE("LoadSystemAbility failed");
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
-        registry.Stop();
-        return 1;
+    if (remote != nullptr) {
+        return remote;
     }
 
-    StressStats stats;
-    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &stats);
-    if (!remote->AddDeathRecipient(respawnRecipient)) {
-        HILOGE("failed to register DeathRecipient");
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
-        registry.Stop();
-        return 1;
-    }
+    HILOGE("LoadSystemAbility failed");
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    KillAndWait(g_engine_pid);
+    g_engine_pid = -1;
+    registry.Stop();
+    return nullptr;
+}
 
+std::unique_ptr<VirusExecutorService::VesClient> ConnectClient(VirusExecutorService::RegistryServer& registry)
+{
     auto client = VirusExecutorService::VesClient::Connect();
-    if (client == nullptr) {
-        HILOGE("VesClient init failed");
-        std::lock_guard<std::mutex> lock(g_engine_mutex);
-        KillAndWait(g_engine_pid);
-        g_engine_pid = -1;
-        registry.Stop();
-        return 1;
+    if (client != nullptr) {
+        return client;
     }
 
-    // Run worker threads sharing the single client.
+    HILOGE("VesClient init failed");
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    KillAndWait(g_engine_pid);
+    g_engine_pid = -1;
+    registry.Stop();
+    return nullptr;
+}
+
+bool InstallRespawnRecipient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
+                             const std::shared_ptr<EngineRespawnRecipient>& recipient,
+                             VirusExecutorService::RegistryServer& registry)
+{
+    if (remote->AddDeathRecipient(recipient)) {
+        return true;
+    }
+
+    HILOGE("failed to register DeathRecipient");
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    KillAndWait(g_engine_pid);
+    g_engine_pid = -1;
+    registry.Stop();
+    return false;
+}
+
+void RunWorkers(const StressConfig& config, VirusExecutorService::VesClient& client, StressStats* stats)
+{
     std::vector<std::thread> workers;
     const size_t workerCount = config.threads > 0 ? static_cast<size_t>(config.threads) : 0U;
     workers.reserve(workerCount);
-
-    const auto startTime = std::chrono::steady_clock::now();
-
     for (int t = 0; t < config.threads; t++) {
-        workers.emplace_back(WorkerThread, std::cref(config), static_cast<uint32_t>(t), client.get(), &stats);
+        workers.emplace_back(WorkerThread, std::cref(config), static_cast<uint32_t>(t), &client, stats);
     }
-
-    for (auto& w : workers) {
-        w.join();
+    for (auto& worker : workers) {
+        worker.join();
     }
+}
 
-    const auto endTime = std::chrono::steady_clock::now();
-    const auto actualMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-
+void LogStressResults(const StressStats& stats, uint64_t actualMs)
+{
     const uint64_t estimatedMs = stats.sleepMs.load();
-
     HILOGI("=== Stress Results ===");
     HILOGI("total=%{public}d ok=%{public}d mismatch=%{public}d rpc_error=%{public}d",
            stats.total.load(),
            stats.ok.load(),
            stats.mismatch.load(),
            stats.rpcError.load());
-    HILOGI("crashes_sent=%{public}d engine_restarts=%{public}d", stats.crashesSent.load(), stats.engineRestarts.load());
+    HILOGI("crashes_sent=%{public}d engine_restarts=%{public}d",
+           stats.crashesSent.load(),
+           stats.engineRestarts.load());
     HILOGI("estimated=%{public}llu ms (sleep_total=%{public}llu ms / server_workers=1)  actual=%{public}llu ms",
            static_cast<unsigned long long>(estimatedMs),
            static_cast<unsigned long long>(stats.sleepMs.load()),
            static_cast<unsigned long long>(actualMs));
+}
 
-    // Cleanup.
-    respawnRecipient->Disable();
-    client->Shutdown();
+void ShutdownStressClient(const std::shared_ptr<EngineRespawnRecipient>& recipient,
+                          VirusExecutorService::VesClient& client,
+                          VirusExecutorService::RegistryServer& registry)
+{
+    recipient->Disable();
+    client.Shutdown();
     {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(g_engine_pid);
         g_engine_pid = -1;
     }
     registry.Stop();
+}
 
-    // With crash enabled, RPC errors are expected (in-flight requests fail on engine death).
-    // Only mismatch (wrong result) is a real failure.
-    int exitCode = (stats.mismatch.load() == 0) ? 0 : 1;
+}  // namespace
+
+int main(int argc, char* argv[])
+{
+    std::signal(SIGTERM, SignalHandler);
+    std::signal(SIGINT, SignalHandler);
+
+    StressConfig config = ParseArgs(argc, argv);
+
+    HILOGI("stress client: threads=%{public}d iterations=%{public}d seed=%{public}u crash=%{public}s",
+           config.threads,
+           config.iterations,
+           config.seed,
+           config.enableCrash ? "5%" : "off");
+
+    const std::string enginePath = ResolveBinaryDir(argv[0]) + "/VirusExecutorService";
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
+    if (!StartRegistry(registry, enginePath)) {
+        return 1;
+    }
+    if (!StartEngine(enginePath, registry)) {
+        return 1;
+    }
+
+    auto remote = LoadEngineRemote(registry);
+    if (remote == nullptr) {
+        return 1;
+    }
+
+    StressStats stats;
+    auto respawnRecipient = std::make_shared<EngineRespawnRecipient>(enginePath, &stats);
+    if (!InstallRespawnRecipient(remote, respawnRecipient, registry)) {
+        return 1;
+    }
+
+    auto client = ConnectClient(registry);
+    if (client == nullptr) {
+        return 1;
+    }
+
+    const auto startTime = std::chrono::steady_clock::now();
+    RunWorkers(config, *client, &stats);
+    const auto endTime = std::chrono::steady_clock::now();
+    const auto actualMs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count());
+
+    LogStressResults(stats, actualMs);
+    ShutdownStressClient(respawnRecipient, *client, registry);
+
+    const int exitCode = (stats.mismatch.load() == 0) ? 0 : 1;
     HILOGI("stress client exit=%{public}d", exitCode);
     return exitCode;
 }

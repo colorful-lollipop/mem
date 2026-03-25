@@ -1216,7 +1216,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     static std::shared_ptr<Impl> Create(std::shared_ptr<IBootstrapChannel> bootstrap)
     {
-        auto impl = std::shared_ptr<Impl>(new Impl(std::move(bootstrap)));
+        auto impl = std::make_shared<Impl>(std::move(bootstrap));
         impl->InstallBootstrapDeathCallback();
         return impl;
     }
@@ -1938,7 +1938,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         return entry;
     }
 
-    PendingRequest BuildPendingRequest(const PendingSubmit& submit)
+    PendingRequest BuildPendingRequest(const PendingSubmit& submit) const
     {
         PendingRequest pending;
         pending.future = submit.future;
@@ -2263,12 +2263,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             status = invoke();
         }
     }
-    StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
-                                  uint32_t minRecoveryWaitMs,
-                                  uint32_t retryGraceMs)
-    {
-        return RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
-    }
 };
 
 RpcClient::RpcClient(std::shared_ptr<IBootstrapChannel> bootstrap)
@@ -2349,13 +2343,6 @@ StatusCode RpcClient::RetryUntilRecoverySettles(const std::function<StatusCode()
                                                 uint32_t retryGraceMs)
 {
     return impl_->RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
-}
-
-StatusCode RpcClient::InvokeWithRecovery(const std::function<StatusCode()>& invoke,
-                                         uint32_t minRecoveryWaitMs,
-                                         uint32_t retryGraceMs)
-{
-    return RetryUntilRecoverySettles(invoke, minRecoveryWaitMs, retryGraceMs);
 }
 
 RpcClientRuntimeStats RpcClient::GetRuntimeStats() const

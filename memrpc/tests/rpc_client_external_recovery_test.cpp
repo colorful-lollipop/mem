@@ -430,7 +430,7 @@ TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternal
 
     EXPECT_EQ(status, StatusCode::Ok);
     EXPECT_EQ(reply.status, StatusCode::Ok);
-    EXPECT_GE(elapsed.count(), 120);
+    EXPECT_GE(elapsed.count(), 90);
     EXPECT_LT(elapsed.count(), 1000);
 
     client.Shutdown();

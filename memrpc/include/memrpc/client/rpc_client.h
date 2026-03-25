@@ -235,10 +235,6 @@ public:
     StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke,
                                          uint32_t minRecoveryWaitMs = 0,
                                          uint32_t retryGraceMs = 0);
-    // 兼容旧命名；新代码优先使用 RetryUntilRecoverySettles。
-    StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
-                                  uint32_t minRecoveryWaitMs = 0,
-                                  uint32_t retryGraceMs = 0);
     [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
     [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
     void Shutdown();
