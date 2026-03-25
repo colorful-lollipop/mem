@@ -248,39 +248,11 @@ class RpcClient {
                                 uint32_t retryGraceMs = 0);
   [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
   [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
-  void Shutdown();
+ void Shutdown();
 
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
-};
-
-class RpcSyncClient {
- public:
-  explicit RpcSyncClient(std::shared_ptr<IBootstrapChannel> bootstrap = nullptr);
-  ~RpcSyncClient();
-
-  RpcSyncClient(const RpcSyncClient&) = delete;
-  RpcSyncClient& operator=(const RpcSyncClient&) = delete;
-  RpcSyncClient(RpcSyncClient&&) noexcept = default;
-  RpcSyncClient& operator=(RpcSyncClient&&) noexcept = default;
-
-  void SetBootstrapChannel(std::shared_ptr<IBootstrapChannel> bootstrap);
-  void SetEventCallback(RpcEventCallback callback);
-  void SetSessionReadyCallback(SessionReadyCallback callback);
-  void SetRecoveryEventCallback(RecoveryEventCallback callback);
-  void SetRecoveryPolicy(RecoveryPolicy policy);
-  StatusCode Init();
-  StatusCode InvokeSync(const RpcCall& call, RpcReply* reply);
-  StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
-                                uint32_t minRecoveryWaitMs = 0,
-                                uint32_t retryGraceMs = 0);
-  [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
-  [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
-  void Shutdown();
-
- private:
-  RpcClient client_;
 };
 
 }  // namespace MemRpc

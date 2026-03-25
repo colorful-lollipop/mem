@@ -109,16 +109,16 @@ TEST(RpcClientShutdownRaceTest, ReplacingBootstrapClearsPreviousDeathCallback) {
   EXPECT_FALSE(secondBootstrap->HasDeathCallback());
 }
 
-TEST(RpcClientShutdownRaceTest, SyncInvokeFailureThenShutdownRemainsFast) {
+TEST(RpcClientShutdownRaceTest, InvokeAsyncWaitFailureThenShutdownRemainsFast) {
   for (int i = 0; i < kShutdownRaceIterations; ++i) {
     auto bootstrap = std::make_shared<FailingBootstrapChannel>();
-    MemRpc::RpcSyncClient client(bootstrap);
+    MemRpc::RpcClient client(bootstrap);
 
     MemRpc::RpcCall call;
     call.opcode = kTestOpcode;
 
     MemRpc::RpcReply reply;
-    EXPECT_NE(client.InvokeSync(call, &reply), MemRpc::StatusCode::Ok);
+    EXPECT_NE(client.InvokeAsync(call).Wait(&reply), MemRpc::StatusCode::Ok);
 
     const auto start = std::chrono::steady_clock::now();
     client.Shutdown();

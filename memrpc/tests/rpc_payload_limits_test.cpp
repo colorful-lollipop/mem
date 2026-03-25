@@ -52,7 +52,7 @@ TEST(RpcPayloadLimitsTest, OversizedRequestFailsBeforeSubmission) {
                          });
   ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  RpcSyncClient client(bootstrap);
+  RpcClient client(bootstrap);
   ASSERT_EQ(client.Init(), StatusCode::Ok);
 
   RpcCall call;
@@ -60,7 +60,7 @@ TEST(RpcPayloadLimitsTest, OversizedRequestFailsBeforeSubmission) {
   call.payload.resize(DEFAULT_MAX_REQUEST_BYTES + 1U, 0x5a);
 
   RpcReply reply;
-  EXPECT_EQ(client.InvokeSync(call, &reply), StatusCode::PayloadTooLarge);
+  EXPECT_EQ(client.InvokeAsync(call).Wait(&reply), StatusCode::PayloadTooLarge);
   EXPECT_EQ(reply.status, StatusCode::PayloadTooLarge);
 
   client.Shutdown();
@@ -83,7 +83,7 @@ TEST(RpcPayloadLimitsTest, OversizedResponseReturnsPayloadTooLargeWithoutRetry) 
                          });
   ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  RpcSyncClient client(bootstrap);
+  RpcClient client(bootstrap);
   ASSERT_EQ(client.Init(), StatusCode::Ok);
 
   RpcCall call;
@@ -91,7 +91,7 @@ TEST(RpcPayloadLimitsTest, OversizedResponseReturnsPayloadTooLargeWithoutRetry) 
   call.payload = {1, 2, 3};
 
   RpcReply reply;
-  EXPECT_EQ(client.InvokeSync(call, &reply), StatusCode::PayloadTooLarge);
+  EXPECT_EQ(client.InvokeAsync(call).Wait(&reply), StatusCode::PayloadTooLarge);
   EXPECT_EQ(reply.status, StatusCode::PayloadTooLarge);
   EXPECT_TRUE(reply.payload.empty());
   EXPECT_EQ(callCount.load(std::memory_order_relaxed), 1);

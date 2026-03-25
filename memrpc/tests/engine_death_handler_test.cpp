@@ -148,10 +148,10 @@ TEST(EngineDeathHandlerTest, RecoveryDecisionDefaults) {
   EXPECT_EQ(decision.delayMs, 0u);
 }
 
-// Verify SetRecoveryPolicy on RpcSyncClient compiles and runs.
-TEST(EngineDeathHandlerTest, SyncClientSetRecoveryPolicy) {
+// Verify synchronous waiting still works directly on RpcClient.
+TEST(EngineDeathHandlerTest, ClientWaitSetRecoveryPolicy) {
   auto bootstrap = std::make_shared<FakeBootstrapChannel>();
-  MemRpc::RpcSyncClient client(bootstrap);
+  MemRpc::RpcClient client(bootstrap);
 
   bool called = false;
   MemRpc::RecoveryPolicy policy;
@@ -164,7 +164,7 @@ TEST(EngineDeathHandlerTest, SyncClientSetRecoveryPolicy) {
   MemRpc::RpcCall call;
   call.opcode = kTestOpcode;
   MemRpc::RpcReply reply;
-  client.InvokeSync(call, &reply);
+  client.InvokeAsync(call).Wait(&reply);
 
   client.Shutdown();
 }

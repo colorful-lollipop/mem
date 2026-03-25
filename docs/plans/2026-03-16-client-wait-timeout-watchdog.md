@@ -18,7 +18,7 @@ The current codebase has three timeout concepts:
 - `queueTimeoutMs`: server-side timeout while the request waits in the server queue.
 - `execTimeoutMs`: currently implemented as a post-hoc soft timeout on the server, which only changes the final status if the handler eventually returns.
 
-Today, synchronous callers (`RpcSyncClient::InvokeSync`) ultimately wait through `RpcFuture::Wait()`, which blocks indefinitely until the future becomes ready. There is no built-in client-side deadline for the interval between "request published to the ring" and "final response received".
+Today, synchronous callers (`RpcClient::InvokeAsync(...).Wait()`) ultimately wait through `RpcFuture::Wait()`, which blocks indefinitely until the future becomes ready. There is no built-in client-side deadline for the interval between "request published to the ring" and "final response received".
 
 That creates an operational problem:
 
@@ -652,7 +652,7 @@ git commit -m "feat: validate client wait timeout watchdog"
 ## Acceptance Criteria
 
 - A request that has been published to the request ring and waits longer than `execTimeoutMs` is completed on the client with `StatusCode::ExecTimeout`.
-- `RpcFuture::Wait()` and `RpcSyncClient::InvokeSync()` no longer block indefinitely in that scenario.
+- `RpcFuture::Wait()` and `RpcClient::InvokeAsync(...).Wait()` no longer block indefinitely in that scenario.
 - A late real response for a timed-out request is ignored.
 - Existing queue-timeout and health-recovery tests still pass.
 - The code comments reflect the new semantics accurately.

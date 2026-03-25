@@ -98,22 +98,3 @@ TEST(RpcClientRecoveryPolicyTest, RecoverySnapshotCanBeQueried) {
   const MemRpc::RecoveryRuntimeSnapshot snapshot = client.GetRecoveryRuntimeSnapshot();
   EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Uninitialized);
 }
-
-TEST(RpcClientRecoveryPolicyTest, SyncClientPolicyCanBeSet) {
-  MemRpc::RpcSyncClient client;
-  MemRpc::RecoveryPolicy policy;
-  policy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
-    return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 200};
-  };
-  client.SetRecoveryPolicy(std::move(policy));
-}
-
-TEST(RpcClientRecoveryPolicyTest, SyncClientSessionReadyCallbackCanBeSet) {
-  MemRpc::RpcSyncClient client;
-  client.SetSessionReadyCallback([](const MemRpc::SessionReadyReport&) {});
-}
-
-TEST(RpcClientRecoveryPolicyTest, SyncClientRecoveryEventCallbackCanBeSet) {
-  MemRpc::RpcSyncClient client;
-  client.SetRecoveryEventCallback([](const MemRpc::RecoveryEventReport&) {});
-}
