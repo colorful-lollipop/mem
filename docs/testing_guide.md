@@ -264,7 +264,6 @@ VPS 测试可以分为五层来看。
 - `virus_executor_service_testkit_dt_stability_test`
 - `virus_executor_service_testkit_dt_perf_test`
 - `virus_executor_service_crash_recovery_test`
-- `virus_executor_service_dt_crash_recovery_test`
 
 最值得重点阅读的是：
 
@@ -385,7 +384,7 @@ tools/build_and_test.sh --test-regex "memrpc_(rpc_client_timeout_watchdog|engine
 再补：
 
 ```bash
-tools/build_and_test.sh --test-regex "virus_executor_service_(crash_recovery|dt_crash_recovery)"
+tools/build_and_test.sh --test-regex "virus_executor_service_crash_recovery"
 tools/push_gate.sh --deep
 ```
 

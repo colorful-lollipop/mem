@@ -29,6 +29,7 @@ class VesClient {
  public:
     using ControlLoader = VesBootstrapChannel::ControlLoader;
     using EventCallback = MemRpc::RpcEventCallback;
+    using RecoveryEventCallback = MemRpc::RecoveryEventCallback;
 
     explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
                        VesClientOptions options = {});
@@ -45,6 +46,7 @@ class VesClient {
 
     MemRpc::StatusCode Init();
     void SetEventCallback(EventCallback callback);
+    void SetRecoveryEventCallback(RecoveryEventCallback callback);
     void Shutdown();
 
     MemRpc::StatusCode ScanFile(const ScanTask& scanTask,

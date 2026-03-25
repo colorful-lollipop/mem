@@ -111,19 +111,10 @@ executable("virus_executor_service_stress_client") {
   ]
 }
 
-executable("virus_executor_service_dt_crash_recovery") {
-  sources = [ "src/app/ves_dt_crash_recovery_main.cpp" ]
-  deps = [
-    ":virus_executor_service_client_lib",
-    ":virus_executor_service_transport",
-  ]
-}
-
 group("apps") {
   deps = [
     ":virus_executor_service",
     ":virus_executor_service_client",
-    ":virus_executor_service_dt_crash_recovery",
     ":virus_executor_service_stress_client",
     ":virus_executor_service_supervisor",
   ]

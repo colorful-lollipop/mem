@@ -16,9 +16,7 @@
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
-#define private public
 #include "client/ves_client.h"
-#undef private
 #include "ves/ves_types.h"
 
 namespace {
@@ -35,7 +33,7 @@ class RecoveryEventObserver {
 public:
     void Attach(VirusExecutorService::VesClient& client)
     {
-        client.client_.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report)
+        client.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report)
         {
             if (!report.terminalManualShutdown &&
                 (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||

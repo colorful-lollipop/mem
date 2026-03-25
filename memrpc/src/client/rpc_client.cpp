@@ -1812,41 +1812,50 @@ struct RpcClient::Impl {
 
   // Public-operation entrypoints and runtime introspection.
   RpcFuture InvokeAsync(RpcCall call) {
-    if (!running_.load(std::memory_order_acquire)) {
-      const StatusCode status = clientClosed_.load(std::memory_order_acquire)
-                                    ? StatusCode::ClientClosed
-                                    : StatusCode::PeerDisconnected;
+    const auto rejectInvoke = [this](RpcCall&& rejectedCall, StatusCode status) {
       auto state = std::make_shared<RpcFuture::State>();
       const uint64_t requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
       PendingInfo info;
-      info.opcode = call.opcode;
-      info.priority = call.priority;
-      info.admissionTimeoutMs = call.admissionTimeoutMs;
-      info.queueTimeoutMs = call.queueTimeoutMs;
-      info.execTimeoutMs = call.execTimeoutMs;
+      info.opcode = rejectedCall.opcode;
+      info.priority = rejectedCall.priority;
+      info.admissionTimeoutMs = rejectedCall.admissionTimeoutMs;
+      info.queueTimeoutMs = rejectedCall.queueTimeoutMs;
+      info.execTimeoutMs = rejectedCall.execTimeoutMs;
       info.requestId = requestId;
       info.sessionId = CurrentSessionId();
       if (status != StatusCode::ClientClosed) {
         HILOGE("RpcClient::InvokeAsync rejected because client not running opcode=%{public}u status=%{public}d",
-               call.opcode, static_cast<int>(status));
+               rejectedCall.opcode, static_cast<int>(status));
         ApplyFailureRecoveryDecision(info, status, FailureStage::Admission);
       }
       RpcReply reply;
       reply.status = status;
       ResolveState(state, std::move(reply));
       return RpcFuture(state);
-    }
-    auto futureState = std::make_shared<RpcFuture::State>();
-    PendingSubmit submit;
-    submit.requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
-    submit.call = std::move(call);
-    submit.future = futureState;
+    };
 
+    auto futureState = std::make_shared<RpcFuture::State>();
+    bool queued = false;
     {
       std::lock_guard<std::mutex> lock(submitMutex_);
+      if (!running_.load(std::memory_order_acquire) ||
+          clientClosed_.load(std::memory_order_acquire)) {
+        const StatusCode status = clientClosed_.load(std::memory_order_acquire)
+                                      ? StatusCode::ClientClosed
+                                      : StatusCode::PeerDisconnected;
+        return rejectInvoke(std::move(call), status);
+      }
+
+      PendingSubmit submit;
+      submit.requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
+      submit.call = std::move(call);
+      submit.future = futureState;
       submitQueue_.push_back(std::move(submit));
+      queued = true;
     }
-    submitCv_.notify_one();
+    if (queued) {
+      submitCv_.notify_one();
+    }
     return RpcFuture(futureState);
   }
 

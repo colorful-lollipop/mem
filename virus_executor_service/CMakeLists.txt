@@ -164,12 +164,6 @@ target_link_libraries(virus_executor_service_stress_client PRIVATE
     virus_executor_service_ves
 )
 
-add_executable(virus_executor_service_dt_crash_recovery src/app/ves_dt_crash_recovery_main.cpp)
-target_link_libraries(virus_executor_service_dt_crash_recovery PRIVATE
-    virus_executor_service_transport
-    virus_executor_service_client_lib
-)
-
 option(VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS "Build virus_executor_service tests" OFF)
 option(VIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ "Build virus_executor_service fuzz targets" OFF)
 
@@ -424,14 +418,6 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       TIMEOUT 30
       RUN_SERIAL TRUE)
 
-  add_test(NAME virus_executor_service_dt_crash_recovery_test
-      COMMAND virus_executor_service_dt_crash_recovery
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-  set_tests_properties(virus_executor_service_dt_crash_recovery_test PROPERTIES
-      LABELS "dt"
-      TIMEOUT 60
-      RUN_SERIAL TRUE)
-
   set_tests_properties(
       virus_executor_service_session_service_test
       virus_executor_service_heartbeat_test
@@ -516,8 +502,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
         virus_executor_service_sample_rules_test
         virus_executor_service_health_test
         virus_executor_service_policy_test
-        virus_executor_service_crash_recovery_test
-        virus_executor_service_dt_crash_recovery)
+        virus_executor_service_crash_recovery_test)
     foreach(target IN LISTS virus_executor_service_tidy_excluded_targets)
       ves_maybe_disable_clang_tidy(${target})
     endforeach()
