@@ -180,6 +180,15 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
   add_test(NAME virus_executor_service_session_service_test
       COMMAND virus_executor_service_session_service_test)
 
+  add_executable(virus_executor_service_transport_selection_test
+      tests/unit/ves/ves_transport_selection_test.cpp)
+  target_link_libraries(virus_executor_service_transport_selection_test PRIVATE
+      virus_executor_service_lib
+      GTest::gtest_main
+  )
+  add_test(NAME virus_executor_service_transport_selection_test
+      COMMAND virus_executor_service_transport_selection_test)
+
   add_executable(virus_executor_service_heartbeat_test
       tests/unit/ves/ves_heartbeat_test.cpp)
   target_link_libraries(virus_executor_service_heartbeat_test PRIVATE
