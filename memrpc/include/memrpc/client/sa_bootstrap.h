@@ -9,34 +9,34 @@
 namespace MemRpc {
 
 struct SaBootstrapConfig {
-  std::string serviceName;
-  std::string instanceName;
-  bool lazyConnect = false;
+    std::string serviceName;
+    std::string instanceName;
+    bool lazyConnect = false;
 };
 
 class SaBootstrapChannel : public IBootstrapChannel {
- public:
-  explicit SaBootstrapChannel(SaBootstrapConfig config = {});
-  ~SaBootstrapChannel() override;
+public:
+    explicit SaBootstrapChannel(SaBootstrapConfig config = {});
+    ~SaBootstrapChannel() override;
 
-  SaBootstrapChannel(const SaBootstrapChannel&) = delete;
-  SaBootstrapChannel& operator=(const SaBootstrapChannel&) = delete;
-  SaBootstrapChannel(SaBootstrapChannel&&) noexcept = default;
-  SaBootstrapChannel& operator=(SaBootstrapChannel&&) noexcept = default;
+    SaBootstrapChannel(const SaBootstrapChannel&) = delete;
+    SaBootstrapChannel& operator=(const SaBootstrapChannel&) = delete;
+    SaBootstrapChannel(SaBootstrapChannel&&) noexcept = default;
+    SaBootstrapChannel& operator=(SaBootstrapChannel&&) noexcept = default;
 
-  [[nodiscard]] const SaBootstrapConfig& Config() const;
-  [[nodiscard]] const std::string& LastError() const;
-  [[nodiscard]] BootstrapHandles ServerHandles() const;
-  void SimulateEngineDeathForTest(uint64_t session_id = 0);
+    [[nodiscard]] const SaBootstrapConfig& Config() const;
+    [[nodiscard]] const std::string& LastError() const;
+    [[nodiscard]] BootstrapHandles ServerHandles() const;
+    void SimulateEngineDeathForTest(uint64_t session_id = 0);
 
-  StatusCode OpenSession(BootstrapHandles& handles) override;
-  StatusCode CloseSession() override;
-  ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
-  void SetEngineDeathCallback(EngineDeathCallback callback) override;
+    StatusCode OpenSession(BootstrapHandles& handles) override;
+    StatusCode CloseSession() override;
+    ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
+    void SetEngineDeathCallback(EngineDeathCallback callback) override;
 
- private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace MemRpc

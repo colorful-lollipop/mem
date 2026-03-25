@@ -1,6 +1,6 @@
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
-#include <cctype>
 #include <string>
 #include <vector>
 
@@ -10,12 +10,14 @@
 
 namespace {
 
-std::string SanitizePath(std::string path) {
+std::string SanitizePath(std::string path)
+{
     // Strip "crash" to avoid abort().
     const std::string kCrash = "crash";
     for (;;) {
         auto pos = path.find(kCrash);
-        if (pos == std::string::npos) break;
+        if (pos == std::string::npos)
+            break;
         path.erase(pos, kCrash.size());
     }
 
@@ -34,7 +36,8 @@ std::string SanitizePath(std::string path) {
 
 }  // namespace
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
+{
     VirusExecutorService::ScanTask req;
     if (!MemRpc::CodecTraits<VirusExecutorService::ScanTask>::Decode(data, size, &req)) {
         return 0;
@@ -50,8 +53,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     std::vector<uint8_t> bytes;
     if (MemRpc::CodecTraits<VirusExecutorService::ScanFileReply>::Encode(reply, &bytes)) {
         VirusExecutorService::ScanFileReply decoded;
-        (void)MemRpc::CodecTraits<VirusExecutorService::ScanFileReply>::Decode(
-            bytes.data(), bytes.size(), &decoded);
+        (void)MemRpc::CodecTraits<VirusExecutorService::ScanFileReply>::Decode(bytes.data(), bytes.size(), &decoded);
     }
 
     return 0;

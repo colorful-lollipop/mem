@@ -18,34 +18,32 @@
 namespace VirusExecutorService {
 
 class VesSessionProvider {
- public:
+public:
     virtual ~VesSessionProvider() = default;
     virtual MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;
 };
 
 class VesEventPublisher {
- public:
+public:
     virtual ~VesEventPublisher() = default;
     virtual MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) = 0;
 };
 
-class EngineSessionService final : public VesSessionProvider,
-                                   public VesEventPublisher {
- public:
+class EngineSessionService final : public VesSessionProvider, public VesEventPublisher {
+public:
     explicit EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars = {});
     ~EngineSessionService() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) override;
-    MemRpc::StatusCode InvokeAnyCall(const MemRpc::RpcServerCall& call,
-                                     MemRpc::RpcServerReply* reply);
+    MemRpc::StatusCode InvokeAnyCall(const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply);
 
     [[nodiscard]] uint64_t session_id() const;
     [[nodiscard]] MemRpc::RpcServerRuntimeStats GetRuntimeStats() const;
 
- private:
+private:
     MemRpc::StatusCode EnsureInitialized();
     void StartEventPublisherLocked();
     void EventPublisherLoop();

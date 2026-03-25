@@ -9,8 +9,10 @@ namespace VirusExecutorService::testkit {
 namespace {
 
 class ScopedEnv {
- public:
-    ScopedEnv(const char* key, const char* value) : key_(key) {
+public:
+    ScopedEnv(const char* key, const char* value)
+        : key_(key)
+    {
         const char* previous = std::getenv(key);
         if (previous != nullptr) {
             hadPrevious_ = true;
@@ -19,7 +21,8 @@ class ScopedEnv {
         setenv(key, value, 1);
     }
 
-    ~ScopedEnv() {
+    ~ScopedEnv()
+    {
         if (hadPrevious_) {
             setenv(key_, previousValue_.c_str(), 1);
         } else {
@@ -27,7 +30,7 @@ class ScopedEnv {
         }
     }
 
- private:
+private:
     const char* key_;
     bool hadPrevious_ = false;
     std::string previousValue_;
@@ -35,7 +38,8 @@ class ScopedEnv {
 
 }  // namespace
 
-TEST(TestkitStressConfigTest, ParsesEnvOverrides) {
+TEST(TestkitStressConfigTest, ParsesEnvOverrides)
+{
     ScopedEnv duration("MEMRPC_STRESS_DURATION_SEC", "5");
     ScopedEnv threads("MEMRPC_STRESS_THREADS", "3");
     ScopedEnv payloads("MEMRPC_STRESS_PAYLOAD_SIZES", "0,16,128");

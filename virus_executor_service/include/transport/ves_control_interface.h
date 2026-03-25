@@ -90,20 +90,18 @@ inline bool IsValidVesOpenSessionRequest(const VesOpenSessionRequest& request)
         request.engineKinds.size() > VES_OPEN_SESSION_MAX_ENGINE_KINDS) {
         return false;
     }
-    return std::all_of(request.engineKinds.begin(),
-                       request.engineKinds.end(),
-                       [](uint32_t engineKind) { return engineKind != 0; });
+    return std::all_of(request.engineKinds.begin(), request.engineKinds.end(), [](uint32_t engineKind) {
+        return engineKind != 0;
+    });
 }
 
 class IVirusProtectionExecutor : public OHOS::IRemoteBroker {
- public:
+public:
     ~IVirusProtectionExecutor() override = default;
-    virtual MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
-                                           MemRpc::BootstrapHandles& handles) = 0;
+    virtual MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles) = 0;
     virtual MemRpc::StatusCode CloseSession() = 0;
     virtual MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) = 0;
-    virtual MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request,
-                                       VesAnyCallReply& reply) = 0;
+    virtual MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) = 0;
 };
 
 }  // namespace VirusExecutorService

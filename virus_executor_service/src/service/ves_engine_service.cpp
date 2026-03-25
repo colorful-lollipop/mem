@@ -7,8 +7,8 @@
 
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
-#include "ves/ves_session_service.h"
 #include "ves/ves_sample_rules.h"
+#include "ves/ves_session_service.h"
 #include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
 
@@ -27,10 +27,10 @@ std::vector<uint32_t> ResolveEngineKinds(const VesOpenSessionRequest& request)
 
 }  // namespace
 
-void VesEngineService::Initialize() {
+void VesEngineService::Initialize()
+{
     bool expected = false;
-    if (!initialized_.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel, std::memory_order_acquire)) {
+    if (!initialized_.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire)) {
         return;
     }
     HILOGI("VesEngineService initialized");
@@ -40,7 +40,8 @@ MemRpc::StatusCode VesEngineService::ConfigureEngines(const VesOpenSessionReques
 {
     if (!IsValidVesOpenSessionRequest(request)) {
         HILOGE("invalid open-session request version=%{public}u count=%{public}zu",
-               request.version, request.engineKinds.size());
+               request.version,
+               request.engineKinds.size());
         return MemRpc::StatusCode::InvalidArgument;
     }
 
@@ -59,7 +60,8 @@ MemRpc::StatusCode VesEngineService::ConfigureEngines(const VesOpenSessionReques
     return MemRpc::StatusCode::Ok;
 }
 
-bool VesEngineService::initialized() const {
+bool VesEngineService::initialized() const
+{
     return initialized_.load(std::memory_order_acquire);
 }
 
@@ -76,12 +78,14 @@ void VesEngineService::ResetEngines()
     enginesConfigured_ = false;
 }
 
-void VesEngineService::SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher) {
+void VesEngineService::SetEventPublisher(std::weak_ptr<VesEventPublisher> publisher)
+{
     std::lock_guard<std::mutex> lock(eventPublisherMutex_);
     eventPublisher_ = std::move(publisher);
 }
 
-ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
+ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const
+{
     ScanFileReply result;
     if (!initialized() || !IsScanEngineEnabled()) {
         result.code = -1;
@@ -97,8 +101,7 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
         result.code = 0;
         result.threatLevel = behavior.threatLevel;
     }
-    HILOGI("ScanFile(%{public}s): threat=%{public}d",
-          request.path.c_str(), result.threatLevel);
+    HILOGI("ScanFile(%{public}s): threat=%{public}d", request.path.c_str(), result.threatLevel);
 
     return result;
 }
@@ -106,15 +109,16 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
 bool VesEngineService::IsScanEngineEnabled() const
 {
     std::lock_guard<std::mutex> lock(engineConfigMutex_);
-    return !enginesConfigured_ ||
-           std::find(configuredEngineKinds_.begin(), configuredEngineKinds_.end(),
-                     static_cast<uint32_t>(VesEngineKind::Scan)) != configuredEngineKinds_.end();
+    return !enginesConfigured_ || std::find(configuredEngineKinds_.begin(),
+                                            configuredEngineKinds_.end(),
+                                            static_cast<uint32_t>(VesEngineKind::Scan)) != configuredEngineKinds_.end();
 }
 
 MemRpc::StatusCode VesEngineService::PublishEvent(uint32_t eventType,
                                                   const std::vector<uint8_t>& payload,
                                                   uint32_t flags,
-                                                  uint32_t eventDomain) const {
+                                                  uint32_t eventDomain) const
+{
     std::shared_ptr<VesEventPublisher> publisher;
     {
         std::lock_guard<std::mutex> lock(eventPublisherMutex_);
@@ -135,18 +139,16 @@ MemRpc::StatusCode VesEngineService::PublishEvent(uint32_t eventType,
 MemRpc::StatusCode VesEngineService::PublishTextEvent(uint32_t eventType,
                                                       const std::string& payload,
                                                       uint32_t flags,
-                                                      uint32_t eventDomain) const {
-    return PublishEvent(eventType,
-                        std::vector<uint8_t>(payload.begin(), payload.end()),
-                        flags,
-                        eventDomain);
+                                                      uint32_t eventDomain) const
+{
+    return PublishEvent(eventType, std::vector<uint8_t>(payload.begin(), payload.end()), flags, eventDomain);
 }
 
-void VesEngineService::RegisterHandlers(RpcHandlerSink* sink) {
-    RegisterTypedHandler<ScanTask, ScanFileReply>(
-        sink,
-        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [this](const ScanTask& request) { return ScanFile(request); });
+void VesEngineService::RegisterHandlers(RpcHandlerSink* sink)
+{
+    RegisterTypedHandler<ScanTask, ScanFileReply>(sink,
+                                                  static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+                                                  [this](const ScanTask& request) { return ScanFile(request); });
 }
 
 }  // namespace VirusExecutorService

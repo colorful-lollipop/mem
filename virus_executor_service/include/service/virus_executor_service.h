@@ -13,17 +13,15 @@
 
 namespace VirusExecutorService {
 
-class VirusExecutorService : public OHOS::SystemAbility,
-                              public VesControlStub {
- public:
+class VirusExecutorService : public OHOS::SystemAbility, public VesControlStub {
+public:
     VirusExecutorService();
     ~VirusExecutorService() override = default;
 
     using OHOS::SystemAbility::Publish;
     bool Publish(VirusExecutorService* service);
 
-    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
-                                   MemRpc::BootstrapHandles& handles) override;
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& heartbeat) override;
     MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& vesReply) override;
@@ -31,9 +29,12 @@ class VirusExecutorService : public OHOS::SystemAbility,
     void OnStart() override;
     void OnStop() override;
 
-    VesEngineService& service() { return service_; }
+    VesEngineService& service()
+    {
+        return service_;
+    }
 
- private:
+private:
     VesEngineService service_;
     testkit::TestkitService testkitService_;
     std::mutex lifecycleMutex_;

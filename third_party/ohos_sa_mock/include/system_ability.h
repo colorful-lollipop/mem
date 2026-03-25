@@ -9,33 +9,33 @@
 namespace OHOS {
 
 class SystemAbility : public virtual RefBase {
- public:
-  SystemAbility(int32_t systemAbilityId, bool runOnCreate);
-  ~SystemAbility() override;
+public:
+    SystemAbility(int32_t systemAbilityId, bool runOnCreate);
+    ~SystemAbility() override;
 
-  virtual void OnStart();
-  virtual void OnStop();
-  virtual void OnAddSystemAbility(int32_t systemAbilityId, const std::string& deviceId);
-  virtual void OnRemoveSystemAbility(int32_t systemAbilityId, const std::string& deviceId);
+    virtual void OnStart();
+    virtual void OnStop();
+    virtual void OnAddSystemAbility(int32_t systemAbilityId, const std::string& deviceId);
+    virtual void OnRemoveSystemAbility(int32_t systemAbilityId, const std::string& deviceId);
 
-  int32_t GetSystemAbilityId() const;
-  bool IsRunOnCreate() const;
+    int32_t GetSystemAbilityId() const;
+    bool IsRunOnCreate() const;
 
-  template <typename T>
-  bool Publish(T* service)
-  {
-    if (service == nullptr) {
-      return false;
+    template <typename T>
+    bool Publish(T* service)
+    {
+        if (service == nullptr) {
+            return false;
+        }
+        return Publish(service->AsObject());
     }
-    return Publish(service->AsObject());
-  }
 
-  bool Publish(const sptr<IRemoteObject>& object);
+    bool Publish(const sptr<IRemoteObject>& object);
 
- private:
-  int32_t system_ability_id_;
-  bool run_on_create_;
-  MockServiceSocket transport_;
+private:
+    int32_t system_ability_id_;
+    bool run_on_create_;
+    MockServiceSocket transport_;
 };
 
 #define DECLARE_SYSTEM_ABILITY(class_name)

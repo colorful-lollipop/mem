@@ -26,15 +26,13 @@ struct VesClientConnectOptions {
 };
 
 class VesClient {
- public:
+public:
     using ControlLoader = VesBootstrapChannel::ControlLoader;
     using EventCallback = MemRpc::RpcEventCallback;
     using RecoveryEventCallback = MemRpc::RecoveryEventCallback;
 
-    explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote,
-                       VesClientOptions options = {});
-    explicit VesClient(ControlLoader controlLoader,
-                       VesClientOptions options = {});
+    explicit VesClient(const OHOS::sptr<OHOS::IRemoteObject>& remote, VesClientOptions options = {});
+    explicit VesClient(ControlLoader controlLoader, VesClientOptions options = {});
     ~VesClient();
 
     VesClient(const VesClient&) = delete;
@@ -56,7 +54,7 @@ class VesClient {
 
     [[nodiscard]] MemRpc::RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
 
- private:
+private:
     template <typename Request, typename Reply>
     MemRpc::StatusCode InvokeApi(MemRpc::Opcode opcode,
                                  const Request& request,

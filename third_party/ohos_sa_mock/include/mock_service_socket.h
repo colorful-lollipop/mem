@@ -14,15 +14,18 @@ namespace OHOS {
 // Encapsulates Unix domain socket listen + accept loop + SCM_RIGHTS reply.
 // This is the mock-IPC transport that replaces OHOS binder for Linux dev.
 class MockServiceSocket {
- public:
+public:
     MockServiceSocket() = default;
     ~MockServiceSocket();
 
     bool Start(const std::string& path, MockIpcHandler handler);
     void Stop();
-    [[nodiscard]] const std::string& socket_path() const { return socket_path_; }
+    [[nodiscard]] const std::string& socket_path() const
+    {
+        return socket_path_;
+    }
 
- private:
+private:
     void AcceptLoop();
 
     std::mutex mutex_;

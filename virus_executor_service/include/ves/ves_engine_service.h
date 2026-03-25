@@ -20,7 +20,7 @@ namespace VirusExecutorService {
 class VesEventPublisher;
 
 class VesEngineService : public RpcHandlerRegistrar {
- public:
+public:
     void RegisterHandlers(RpcHandlerSink* sink) override;
     void Initialize();
     MemRpc::StatusCode ConfigureEngines(const VesOpenSessionRequest& request);
@@ -39,7 +39,7 @@ class VesEngineService : public RpcHandlerRegistrar {
                                         uint32_t flags = 0,
                                         uint32_t eventDomain = VES_EVENT_DOMAIN_RUNTIME) const;
 
- private:
+private:
     bool IsScanEngineEnabled() const;
 
     std::atomic<bool> initialized_{false};

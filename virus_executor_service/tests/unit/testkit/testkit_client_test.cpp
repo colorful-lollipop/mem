@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <memory>
 #include <mutex>
-#include <signal.h>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -22,7 +22,8 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-bool ThreadSanitizerEnabled() {
+bool ThreadSanitizerEnabled()
+{
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
     return true;
@@ -31,10 +32,10 @@ bool ThreadSanitizerEnabled() {
     return false;
 }
 
-constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
-    MemRpc::StatusCode::CrashedDuringExecution;
+constexpr MemRpc::StatusCode kExpectedEngineDeathStatus = MemRpc::StatusCode::CrashedDuringExecution;
 
-void CloseHandles(MemRpc::BootstrapHandles* handles) {
+void CloseHandles(MemRpc::BootstrapHandles* handles)
+{
     if (handles == nullptr) {
         return;
     }
@@ -54,7 +55,8 @@ void CloseHandles(MemRpc::BootstrapHandles* handles) {
     }
 }
 
-void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
+void RunTestkitServerProcess(MemRpc::BootstrapHandles handles)
+{
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(handles);
     TestkitServiceOptions options;
@@ -68,7 +70,8 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     _exit(0);
 }
 
-std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
+std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap()
+{
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -78,7 +81,8 @@ std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
 
 }  // namespace
 
-TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip) {
+TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip)
+{
     auto bootstrap = CreateBootstrap();
 
     MemRpc::RpcServer server;
@@ -110,7 +114,8 @@ TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip) {
     server.Stop();
 }
 
-TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
+TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog)
+{
     auto bootstrap = CreateBootstrap();
 
     MemRpc::RpcServer server;
@@ -143,7 +148,8 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog) {
     server.Stop();
 }
 
-TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRestart) {
+TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRestart)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based recovery test is unsupported under ThreadSanitizer";
     }
@@ -217,7 +223,8 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     waitpid(secondChild, nullptr, 0);
 }
 
-TEST(TestkitClientTest, TypedThenDecodesReply) {
+TEST(TestkitClientTest, TypedThenDecodesReply)
+{
     auto bootstrap = CreateBootstrap();
 
     MemRpc::RpcServer server;

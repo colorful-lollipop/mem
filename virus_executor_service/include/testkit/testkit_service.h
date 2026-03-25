@@ -11,7 +11,7 @@ struct TestkitServiceOptions {
 };
 
 class TestkitService : public VirusExecutorService::RpcHandlerRegistrar {
- public:
+public:
     explicit TestkitService(TestkitServiceOptions options = {});
 
     void SetFaultInjectionEnabled(bool enabled);
@@ -21,7 +21,7 @@ class TestkitService : public VirusExecutorService::RpcHandlerRegistrar {
     [[nodiscard]] AddReply Add(const AddRequest& request) const;
     [[nodiscard]] SleepReply Sleep(const SleepRequest& request) const;
 
- private:
+private:
     TestkitServiceOptions options_;
 };
 

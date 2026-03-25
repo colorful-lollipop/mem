@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -7,7 +8,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -19,7 +19,8 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-bool ThreadSanitizerEnabled() {
+bool ThreadSanitizerEnabled()
+{
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
     return true;
@@ -31,16 +32,24 @@ bool ThreadSanitizerEnabled() {
     return false;
 }
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -61,7 +70,8 @@ struct PipelineResult {
 
 }  // namespace
 
-TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
+TEST(TestkitAsyncPipelineTest, BatchSizeThroughput)
+{
     const int defaultDurationMs = ThreadSanitizerEnabled() ? 250 : 500;
     const int defaultWarmupMs = ThreadSanitizerEnabled() ? 50 : 100;
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", defaultDurationMs);
@@ -88,16 +98,14 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         TestkitClient syncClient(bootstrap);
         ASSERT_EQ(syncClient.Init(), MemRpc::StatusCode::Ok);
 
-        const auto warmupEnd =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
+        const auto warmupEnd = std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
         while (std::chrono::steady_clock::now() < warmupEnd) {
             EchoReply reply;
             syncClient.Echo("ping", &reply);
         }
 
         uint64_t syncOps = 0;
-        const auto endTime =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
+        const auto endTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
         while (std::chrono::steady_clock::now() < endTime) {
             EchoReply reply;
             const auto status = syncClient.Echo("ping", &reply);
@@ -123,8 +131,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
     std::cout << "\n=== Testkit Async Pipeline Throughput ===" << std::endl;
 
     for (const int batchSize : batchSizes) {
-        const auto warmupEnd =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
+        const auto warmupEnd = std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
         while (std::chrono::steady_clock::now() < warmupEnd) {
             EchoRequest request;
             request.text = "ping";
@@ -140,8 +147,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         }
 
         uint64_t totalOps = 0;
-        const auto endTime =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
+        const auto endTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
         while (std::chrono::steady_clock::now() < endTime) {
             EchoRequest request;
             request.text = "ping";
@@ -182,12 +188,11 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput) {
         result.opsPerSec = static_cast<double>(totalOps) / durationSec;
         results.push_back(result);
 
-        std::cout << "  batch=" << std::setw(3) << batchSize << ": " << std::fixed
-                  << std::setprecision(0) << result.opsPerSec << " ops/sec" << std::endl;
+        std::cout << "  batch=" << std::setw(3) << batchSize << ": " << std::fixed << std::setprecision(0)
+                  << result.opsPerSec << " ops/sec" << std::endl;
     }
 
-    std::cout << "  sync:     " << std::fixed << std::setprecision(0) << syncOpsPerSec
-              << " ops/sec" << std::endl;
+    std::cout << "  sync:     " << std::fixed << std::setprecision(0) << syncOpsPerSec << " ops/sec" << std::endl;
 
     asyncClient.Shutdown();
     server.Stop();

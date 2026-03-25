@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -9,7 +10,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <unistd.h>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
@@ -19,16 +19,24 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -41,7 +49,8 @@ int GetEnvInt(const char* name, int defaultValue) {
     }
 }
 
-uint32_t GetThreadCount() {
+uint32_t GetThreadCount()
+{
     const unsigned int hw = std::thread::hardware_concurrency();
     const unsigned int hwThreads = hw == 0 ? 1u : hw;
     const int defaultThreads = std::max(1, static_cast<int>(std::min(4u, hwThreads)));
@@ -50,7 +59,8 @@ uint32_t GetThreadCount() {
 
 }  // namespace
 
-TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy) {
+TEST(TestkitDtStabilityTest, ShortRandomLoadStaysHealthy)
+{
     const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
     const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
     const uint32_t threadCount = GetThreadCount();

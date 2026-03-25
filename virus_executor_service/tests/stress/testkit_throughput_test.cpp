@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -10,7 +11,6 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -21,13 +21,20 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
 struct PerfConfig {
@@ -45,7 +52,8 @@ struct PerfCaseResult {
 
 enum class RpcKind { Echo, Add, Sleep };
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -58,7 +66,8 @@ int GetEnvInt(const char* name, int defaultValue) {
     }
 }
 
-std::filesystem::path GetBaselinePath() {
+std::filesystem::path GetBaselinePath()
+{
     const char* path = std::getenv("MEMRPC_PERF_BASELINE_PATH");
     if (path != nullptr && *path != '\0') {
         return std::filesystem::path(path);
@@ -66,7 +75,8 @@ std::filesystem::path GetBaselinePath() {
     return std::filesystem::current_path() / "perf_baselines" / "testkit_throughput.baseline";
 }
 
-PerfConfig LoadPerfConfig() {
+PerfConfig LoadPerfConfig()
+{
     const unsigned int hwThreads = std::thread::hardware_concurrency();
     const unsigned int normalizedHw = hwThreads == 0 ? 1u : hwThreads;
     const int defaultThreads = std::max(1, static_cast<int>(std::min(4u, normalizedHw)));
@@ -78,7 +88,8 @@ PerfConfig LoadPerfConfig() {
     return config;
 }
 
-const char* RpcKindName(RpcKind kind) {
+const char* RpcKindName(RpcKind kind)
+{
     switch (kind) {
         case RpcKind::Echo:
             return "echo";
@@ -90,7 +101,8 @@ const char* RpcKindName(RpcKind kind) {
     return "unknown";
 }
 
-std::string MakeBaselineKey(RpcKind kind, int threads) {
+std::string MakeBaselineKey(RpcKind kind, int threads)
+{
     std::ostringstream stream;
     stream << RpcKindName(kind) << ".threads=" << threads;
     return stream.str();
@@ -102,7 +114,8 @@ bool InvokeOnce(TestkitClient* client,
                 EchoReply* echoReply,
                 AddReply* addReply,
                 SleepReply* sleepReply,
-                MemRpc::StatusCode* status) {
+                MemRpc::StatusCode* status)
+{
     if (client == nullptr) {
         if (status != nullptr) {
             *status = MemRpc::StatusCode::InvalidArgument;
@@ -138,7 +151,8 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
                          RpcKind kind,
                          const std::shared_ptr<MemRpc::IBootstrapChannel>& bootstrap,
                          double* opsPerSec,
-                         std::string* error) {
+                         std::string* error)
+{
     if (opsPerSec == nullptr) {
         if (error != nullptr) {
             *error = "missing opsPerSec output";
@@ -162,8 +176,7 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     std::vector<std::thread> workers;
     workers.reserve(static_cast<std::size_t>(threadCount));
 
-    const auto startTime =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+    const auto startTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
     const auto warmupEnd = startTime + std::chrono::milliseconds(config.warmupMs);
     const auto endTime = warmupEnd + std::chrono::milliseconds(config.durationMs);
 
@@ -180,18 +193,14 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
             const std::string echoText = "ping";
 
             while (std::chrono::steady_clock::now() < warmupEnd) {
-                if (!InvokeOnce(
-                        &client, kind, echoText, &echoReply, &addReply, &sleepReply,
-                        &result.status)) {
+                if (!InvokeOnce(&client, kind, echoText, &echoReply, &addReply, &sleepReply, &result.status)) {
                     result.ok = false;
                     break;
                 }
             }
 
             while (result.ok && std::chrono::steady_clock::now() < endTime) {
-                if (!InvokeOnce(
-                        &client, kind, echoText, &echoReply, &addReply, &sleepReply,
-                        &result.status)) {
+                if (!InvokeOnce(&client, kind, echoText, &echoReply, &addReply, &sleepReply, &result.status)) {
                     result.ok = false;
                     break;
                 }
@@ -226,7 +235,8 @@ bool MeasureOpsPerSecond(const PerfConfig& config,
     return true;
 }
 
-std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
+std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config)
+{
     std::vector<PerfCaseResult> results;
     const int threadCount = std::max(1, config.threads);
     const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
@@ -259,8 +269,7 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     for (const auto kind : kinds) {
         PerfCaseResult result;
         result.key = MakeBaselineKey(kind, threadCount);
-        if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.opsPerSec, &result.error) &&
-            result.error.empty()) {
+        if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.opsPerSec, &result.error) && result.error.empty()) {
             result.error = "measurement failed";
         }
         results.push_back(result);
@@ -270,7 +279,8 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config) {
     return results;
 }
 
-std::map<std::string, double> LoadBaseline(const std::filesystem::path& path) {
+std::map<std::string, double> LoadBaseline(const std::filesystem::path& path)
+{
     std::map<std::string, double> baseline;
     std::ifstream input(path);
     if (!input.is_open()) {
@@ -296,8 +306,8 @@ std::map<std::string, double> LoadBaseline(const std::filesystem::path& path) {
     return baseline;
 }
 
-bool WriteBaseline(const std::filesystem::path& path,
-                   const std::map<std::string, double>& baseline) {
+bool WriteBaseline(const std::filesystem::path& path, const std::map<std::string, double>& baseline)
+{
     if (path.has_parent_path()) {
         std::filesystem::create_directories(path.parent_path());
     }
@@ -307,23 +317,22 @@ bool WriteBaseline(const std::filesystem::path& path,
     }
     output << "# testkit throughput baseline\n";
     for (const auto& entry : baseline) {
-        output << entry.first << "=" << std::fixed << std::setprecision(3) << entry.second
-               << "\n";
+        output << entry.first << "=" << std::fixed << std::setprecision(3) << entry.second << "\n";
     }
     return true;
 }
 
 bool UpdateBaseline(const std::filesystem::path& path,
                     const std::vector<PerfCaseResult>& results,
-                    std::map<std::string, double>* baseline) {
+                    std::map<std::string, double>* baseline)
+{
     if (baseline == nullptr) {
         return false;
     }
     bool updated = false;
     for (const auto& result : results) {
         if (!result.error.empty()) {
-            ADD_FAILURE() << "Throughput measurement failed for " << result.key << ": "
-                          << result.error;
+            ADD_FAILURE() << "Throughput measurement failed for " << result.key << ": " << result.error;
             continue;
         }
         auto it = baseline->find(result.key);
@@ -335,8 +344,8 @@ bool UpdateBaseline(const std::filesystem::path& path,
 
         const double baselineValue = it->second;
         if (baselineValue > 0.0 && result.opsPerSec < baselineValue * 0.9) {
-            ADD_FAILURE() << "Throughput regression for " << result.key << ": baseline="
-                          << baselineValue << " current=" << result.opsPerSec;
+            ADD_FAILURE() << "Throughput regression for " << result.key << ": baseline=" << baselineValue
+                          << " current=" << result.opsPerSec;
             continue;
         }
         if (result.opsPerSec > baselineValue) {
@@ -353,7 +362,8 @@ bool UpdateBaseline(const std::filesystem::path& path,
 
 }  // namespace
 
-TEST(TestkitThroughputTest, RecordsAndValidatesBaseline) {
+TEST(TestkitThroughputTest, RecordsAndValidatesBaseline)
+{
     const PerfConfig config = LoadPerfConfig();
     const std::vector<PerfCaseResult> results = RunThroughputSuite(config);
     std::map<std::string, double> baseline = LoadBaseline(config.baselinePath);

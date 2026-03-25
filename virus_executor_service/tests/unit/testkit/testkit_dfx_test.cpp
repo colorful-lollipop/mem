@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <memory>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
+#include <memory>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -12,13 +12,14 @@
 #include "testkit/testkit_codec.h"
 #include "testkit/testkit_failure_monitor.h"
 #include "testkit/testkit_protocol.h"
-#include "testkit_resilient_invoker.h"
 #include "testkit/testkit_service.h"
+#include "testkit_resilient_invoker.h"
 
 namespace VirusExecutorService::testkit {
 namespace {
 
-bool ThreadSanitizerEnabled() {
+bool ThreadSanitizerEnabled()
+{
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
     return true;
@@ -27,19 +28,26 @@ bool ThreadSanitizerEnabled() {
     return false;
 }
 
-constexpr MemRpc::StatusCode kExpectedEngineDeathStatus =
-    MemRpc::StatusCode::CrashedDuringExecution;
+constexpr MemRpc::StatusCode kExpectedEngineDeathStatus = MemRpc::StatusCode::CrashedDuringExecution;
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
+void RunTestkitServerProcess(MemRpc::BootstrapHandles handles)
+{
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(handles);
     TestkitServiceOptions options;
@@ -53,7 +61,8 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles) {
     _exit(0);
 }
 
-pid_t ForkServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap) {
+pid_t ForkServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap)
+{
     const pid_t child = fork();
     if (child == 0) {
         RunTestkitServerProcess(bootstrap->serverHandles());
@@ -61,12 +70,14 @@ pid_t ForkServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap) 
     return child;
 }
 
-void KillAndReap(pid_t child) {
+void KillAndReap(pid_t child)
+{
     kill(child, SIGKILL);
     waitpid(child, nullptr, 0);
 }
 
-MemRpc::RpcCall MakeAddCall(int32_t lhs, int32_t rhs) {
+MemRpc::RpcCall MakeAddCall(int32_t lhs, int32_t rhs)
+{
     AddRequest request;
     request.lhs = lhs;
     request.rhs = rhs;
@@ -78,7 +89,8 @@ MemRpc::RpcCall MakeAddCall(int32_t lhs, int32_t rhs) {
     return call;
 }
 
-MemRpc::RpcCall MakeSleepCall(uint32_t delayMs) {
+MemRpc::RpcCall MakeSleepCall(uint32_t delayMs)
+{
     SleepRequest request;
     request.delayMs = delayMs;
     std::vector<uint8_t> payload;
@@ -90,14 +102,16 @@ MemRpc::RpcCall MakeSleepCall(uint32_t delayMs) {
     return call;
 }
 
-MemRpc::RpcCall MakeFaultCall(MemRpc::Opcode opcode) {
+MemRpc::RpcCall MakeFaultCall(MemRpc::Opcode opcode)
+{
     MemRpc::RpcCall call;
     call.opcode = opcode;
     call.priority = MemRpc::Priority::High;
     return call;
 }
 
-std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
+std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap()
+{
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     EXPECT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -107,7 +121,8 @@ std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap() {
 
 }  // namespace
 
-TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
+TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -149,7 +164,8 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures) {
     invoker.Shutdown();
 }
 
-TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
+TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -161,9 +177,8 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     auto replayNonFault = [](const FailedCallRecord& record) {
         EXPECT_TRUE(record.hasRecoveryEvent);
         EXPECT_EQ(record.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
-        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)
-                   ? ReplayDecision::Skip
-                   : ReplayDecision::Replay;
+        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest) ? ReplayDecision::Skip
+                                                                                         : ReplayDecision::Replay;
     };
     ResilientBatchInvoker invoker(bootstrap, replayNonFault);
     ASSERT_EQ(invoker.Init(), MemRpc::StatusCode::Ok);
@@ -196,9 +211,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     ASSERT_EQ(replayCompleted.size(), replayed.size());
     EXPECT_EQ(invoker.GetFailedCalls().size(), 1u);
     if (!invoker.GetFailedCalls().empty()) {
-        EXPECT_EQ(
-            invoker.GetFailedCalls()[0].opcode,
-            static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
+        EXPECT_EQ(invoker.GetFailedCalls()[0].opcode, static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
     }
 
     std::vector<int32_t> sums;
@@ -230,7 +243,8 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
+TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -241,9 +255,8 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
 
     auto replayNonFault = [](const FailedCallRecord& record) {
         EXPECT_EQ(record.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
-        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)
-                   ? ReplayDecision::Skip
-                   : ReplayDecision::Replay;
+        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest) ? ReplayDecision::Skip
+                                                                                         : ReplayDecision::Replay;
     };
     ResilientBatchInvoker invoker(bootstrap, replayNonFault);
     ASSERT_EQ(invoker.Init(), MemRpc::StatusCode::Ok);
@@ -275,9 +288,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
     invoker.CollectResults(&replayCompleted);
     EXPECT_EQ(invoker.GetFailedCalls().size(), 1u);
     if (!invoker.GetFailedCalls().empty()) {
-        EXPECT_EQ(
-            invoker.GetFailedCalls()[0].opcode,
-            static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
+        EXPECT_EQ(invoker.GetFailedCalls()[0].opcode, static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest));
     }
 
     for (const auto& reply : replayCompleted) {
@@ -288,7 +299,8 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
+TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -298,9 +310,8 @@ TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
     ASSERT_GT(child, 0);
 
     auto skipAdd = [](const FailedCallRecord& record) {
-        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::Add)
-                   ? ReplayDecision::Skip
-                   : ReplayDecision::Replay;
+        return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::Add) ? ReplayDecision::Skip
+                                                                                : ReplayDecision::Replay;
     };
 
     ResilientBatchInvoker invoker(bootstrap, skipAdd);
@@ -341,7 +352,8 @@ TEST(TestkitDfxTest, ReplayPolicySkipsSelectedCalls) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
+TEST(TestkitDfxTest, HangingChildKilledAndRecovered)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -353,8 +365,7 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    auto hangFuture = client.InvokeAsync(
-        MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest)));
+    auto hangFuture = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest)));
 
     usleep(100000);
     KillAndReap(child);
@@ -380,7 +391,8 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, OomKilledChildRecovery) {
+TEST(TestkitDfxTest, OomKilledChildRecovery)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -392,14 +404,14 @@ TEST(TestkitDfxTest, OomKilledChildRecovery) {
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    auto oomFuture = client.InvokeAsync(
-        MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest)));
+    auto oomFuture = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest)));
 
     int status = 0;
     int waitResult = 0;
     for (int i = 0; i < 30; ++i) {
         waitResult = waitpid(child, &status, WNOHANG);
-        if (waitResult > 0) break;
+        if (waitResult > 0)
+            break;
         usleep(100000);
     }
     if (waitResult == 0) {
@@ -427,7 +439,8 @@ TEST(TestkitDfxTest, OomKilledChildRecovery) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, StackOverflowChildRecovery) {
+TEST(TestkitDfxTest, StackOverflowChildRecovery)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -439,14 +452,14 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery) {
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
-    auto future = client.InvokeAsync(
-        MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest)));
+    auto future = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest)));
 
     int status = 0;
     int waitResult = 0;
     for (int i = 0; i < 30; ++i) {
         waitResult = waitpid(child, &status, WNOHANG);
-        if (waitResult > 0) break;
+        if (waitResult > 0)
+            break;
         usleep(100000);
     }
     if (waitResult == 0) {
@@ -474,7 +487,8 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery) {
     KillAndReap(child2);
 }
 
-TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
+TEST(TestkitDfxTest, BatchPartialCompletionTracking)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -515,7 +529,8 @@ TEST(TestkitDfxTest, BatchPartialCompletionTracking) {
     invoker.Shutdown();
 }
 
-TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
+TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries)
+{
     if (ThreadSanitizerEnabled()) {
         GTEST_SKIP() << "fork-based DFX tests are unsupported under ThreadSanitizer";
     }
@@ -531,20 +546,17 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
 
         const auto addCall = MakeAddCall(cycle, 10);
         MemRpc::RpcReply addReply;
-        ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok)
-            << "cycle " << cycle;
+        ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok) << "cycle " << cycle;
         AddReply decoded;
         ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
         EXPECT_EQ(decoded.sum, cycle + 10);
 
-        auto crashFuture = client.InvokeAsync(
-            MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)));
+        auto crashFuture = client.InvokeAsync(MakeFaultCall(static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest)));
         waitpid(child, nullptr, 0);
         bootstrap->SimulateEngineDeathForTest();
 
         MemRpc::RpcReply crashReply;
-        EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus)
-            << "cycle " << cycle;
+        EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus) << "cycle " << cycle;
 
         MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
         ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok) << "cycle " << cycle;
@@ -565,7 +577,8 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries) {
     KillAndReap(finalChild);
 }
 
-TEST(TestkitDfxTest, FailureMonitorTriggersAfterExecTimeoutThreshold) {
+TEST(TestkitDfxTest, FailureMonitorTriggersAfterExecTimeoutThreshold)
+{
     int triggered = 0;
     FailureMonitor::Options options;
     options.windowMs = 60000;

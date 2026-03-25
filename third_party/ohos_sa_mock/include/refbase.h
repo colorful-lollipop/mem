@@ -12,8 +12,8 @@ template <typename T>
 using wptr = std::weak_ptr<T>;
 
 class RefBase : public std::enable_shared_from_this<RefBase> {
- public:
-  virtual ~RefBase() = default;
+public:
+    virtual ~RefBase() = default;
 };
 
 }  // namespace OHOS

@@ -5,12 +5,13 @@
 
 namespace VirusExecutorService::testkit {
 
-using MemRpc::EchoRequest;
-using MemRpc::EchoReply;
 using MemRpc::AddReply;
+using MemRpc::EchoReply;
+using MemRpc::EchoRequest;
 using MemRpc::SleepReply;
 
-TEST(TestkitCodecTest, EchoRequestRoundTrip) {
+TEST(TestkitCodecTest, EchoRequestRoundTrip)
+{
     EchoRequest request;
     request.text = "hello";
 
@@ -22,7 +23,8 @@ TEST(TestkitCodecTest, EchoRequestRoundTrip) {
     EXPECT_EQ(decoded.text, request.text);
 }
 
-TEST(TestkitCodecTest, AddReplyRoundTrip) {
+TEST(TestkitCodecTest, AddReplyRoundTrip)
+{
     AddReply reply;
     reply.sum = 42;
 
@@ -34,11 +36,11 @@ TEST(TestkitCodecTest, AddReplyRoundTrip) {
     EXPECT_EQ(decoded.sum, reply.sum);
 }
 
-TEST(TestkitCodecTest, SleepDecodeRejectsTruncatedPayload) {
+TEST(TestkitCodecTest, SleepDecodeRejectsTruncatedPayload)
+{
     std::vector<uint8_t> truncated(2, 0);
     SleepReply decoded;
-    EXPECT_FALSE(MemRpc::CodecTraits<SleepReply>::Decode(
-        truncated.data(), truncated.size(), &decoded));
+    EXPECT_FALSE(MemRpc::CodecTraits<SleepReply>::Decode(truncated.data(), truncated.size(), &decoded));
 }
 
 }  // namespace VirusExecutorService::testkit

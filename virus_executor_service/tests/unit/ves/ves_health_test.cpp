@@ -32,22 +32,20 @@ bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds t
 }
 
 class SessionServiceBootstrapChannel final : public MemRpc::IBootstrapChannel {
- public:
+public:
     explicit SessionServiceBootstrapChannel(std::shared_ptr<EngineSessionService> sessionService)
-        : sessionService_(std::move(sessionService)) {}
+        : sessionService_(std::move(sessionService))
+    {
+    }
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
     {
-        return sessionService_ != nullptr
-                   ? sessionService_->OpenSession(handles)
-                   : MemRpc::StatusCode::InvalidArgument;
+        return sessionService_ != nullptr ? sessionService_->OpenSession(handles) : MemRpc::StatusCode::InvalidArgument;
     }
 
     MemRpc::StatusCode CloseSession() override
     {
-        return sessionService_ != nullptr
-                   ? sessionService_->CloseSession()
-                   : MemRpc::StatusCode::Ok;
+        return sessionService_ != nullptr ? sessionService_->CloseSession() : MemRpc::StatusCode::Ok;
     }
 
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override
@@ -55,29 +53,27 @@ class SessionServiceBootstrapChannel final : public MemRpc::IBootstrapChannel {
         (void)callback;
     }
 
- private:
+private:
     std::shared_ptr<EngineSessionService> sessionService_;
 };
 
 class BlockingRegistrar final : public RpcHandlerRegistrar {
- public:
+public:
     void RegisterHandlers(RpcHandlerSink* sink) override
     {
         ASSERT_NE(sink, nullptr);
-        sink->RegisterHandler(kBlockingOpcode,
-                              [this](const MemRpc::RpcServerCall&,
-                                     MemRpc::RpcServerReply* reply) {
-                                  ASSERT_NE(reply, nullptr);
-                                  {
-                                      std::lock_guard<std::mutex> lock(mutex_);
-                                      running_ = true;
-                                  }
-                                  cv_.notify_all();
+        sink->RegisterHandler(kBlockingOpcode, [this](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+            ASSERT_NE(reply, nullptr);
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                running_ = true;
+            }
+            cv_.notify_all();
 
-                                  std::unique_lock<std::mutex> lock(mutex_);
-                                  cv_.wait(lock, [this] { return allowReply_; });
-                                  reply->status = MemRpc::StatusCode::Ok;
-                              });
+            std::unique_lock<std::mutex> lock(mutex_);
+            cv_.wait(lock, [this] { return allowReply_; });
+            reply->status = MemRpc::StatusCode::Ok;
+        });
     }
 
     bool WaitUntilRunning(std::chrono::milliseconds timeout)
@@ -95,7 +91,7 @@ class BlockingRegistrar final : public RpcHandlerRegistrar {
         cv_.notify_all();
     }
 
- private:
+private:
     std::mutex mutex_;
     std::condition_variable cv_;
     bool running_ = false;
@@ -104,10 +100,10 @@ class BlockingRegistrar final : public RpcHandlerRegistrar {
 
 }  // namespace
 
-TEST(VesHealthTest, SessionServiceRuntimeStatsStayIdleWithoutRequests) {
+TEST(VesHealthTest, SessionServiceRuntimeStatsStayIdleWithoutRequests)
+{
     BlockingRegistrar registrar;
-    auto sessionService = std::make_shared<EngineSessionService>(
-        std::vector<RpcHandlerRegistrar*>{&registrar});
+    auto sessionService = std::make_shared<EngineSessionService>(std::vector<RpcHandlerRegistrar*>{&registrar});
     auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
 
     MemRpc::RpcClient client(bootstrap);
@@ -120,10 +116,10 @@ TEST(VesHealthTest, SessionServiceRuntimeStatsStayIdleWithoutRequests) {
     client.Shutdown();
 }
 
-TEST(VesHealthTest, SessionServiceRuntimeStatsTrackActiveRequests) {
+TEST(VesHealthTest, SessionServiceRuntimeStatsTrackActiveRequests)
+{
     BlockingRegistrar registrar;
-    auto sessionService = std::make_shared<EngineSessionService>(
-        std::vector<RpcHandlerRegistrar*>{&registrar});
+    auto sessionService = std::make_shared<EngineSessionService>(std::vector<RpcHandlerRegistrar*>{&registrar});
     auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
 
     MemRpc::RpcClient client(bootstrap);
@@ -145,11 +141,12 @@ TEST(VesHealthTest, SessionServiceRuntimeStatsTrackActiveRequests) {
     MemRpc::RpcReply reply;
     EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
 
-    ASSERT_TRUE(WaitFor([&]() {
-        const auto stats = sessionService->GetRuntimeStats();
-        return stats.activeRequestExecutions == 0 &&
-               stats.oldestExecutionAgeMs == 0;
-    }, std::chrono::milliseconds(200)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto stats = sessionService->GetRuntimeStats();
+            return stats.activeRequestExecutions == 0 && stats.oldestExecutionAgeMs == 0;
+        },
+        std::chrono::milliseconds(200)));
 
     client.Shutdown();
 }

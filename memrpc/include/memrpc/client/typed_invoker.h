@@ -16,7 +16,8 @@ RpcFuture InvokeTyped(RpcClient* client,
                       Opcode opcode,
                       const Req& request,
                       Priority priority = Priority::Normal,
-                      uint32_t exec_timeout_ms = 30000) {
+                      uint32_t exec_timeout_ms = 30000)
+{
     std::vector<uint8_t> payload;
     if (!EncodeMessage<Req>(request, &payload)) {
         return {};
@@ -31,7 +32,8 @@ RpcFuture InvokeTyped(RpcClient* client,
 
 // Wait on a future and decode the reply payload.
 template <typename Rep>
-StatusCode WaitAndDecode(RpcFuture future, Rep* reply) {
+StatusCode WaitAndDecode(RpcFuture future, Rep* reply)
+{
     if (reply == nullptr) {
         return StatusCode::InvalidArgument;
     }
@@ -40,28 +42,28 @@ StatusCode WaitAndDecode(RpcFuture future, Rep* reply) {
     if (status != StatusCode::Ok) {
         return status;
     }
-    return DecodeMessage<Rep>(rpcReply.payload, reply) ? rpcReply.status
-                                                       : StatusCode::ProtocolMismatch;
+    return DecodeMessage<Rep>(rpcReply.payload, reply) ? rpcReply.status : StatusCode::ProtocolMismatch;
 }
 
 // Register a callback that decodes the reply payload before invoking.
 // Callback signature: void(StatusCode, Rep).
 template <typename Rep>
-void Then(RpcFuture future,
-          std::function<void(StatusCode, Rep)> callback,
-          const RpcThenExecutor& executor = {}) {
-    future.Then([cb = std::move(callback)](RpcReply rpcReply) {
-        if (rpcReply.status != StatusCode::Ok) {
-            cb(rpcReply.status, {});
-            return;
-        }
-        Rep decoded{};
-        if (!DecodeMessage<Rep>(rpcReply.payload, &decoded)) {
-            cb(StatusCode::ProtocolMismatch, {});
-            return;
-        }
-        cb(rpcReply.status, std::move(decoded));
-    }, executor);
+void Then(RpcFuture future, std::function<void(StatusCode, Rep)> callback, const RpcThenExecutor& executor = {})
+{
+    future.Then(
+        [cb = std::move(callback)](RpcReply rpcReply) {
+            if (rpcReply.status != StatusCode::Ok) {
+                cb(rpcReply.status, {});
+                return;
+            }
+            Rep decoded{};
+            if (!DecodeMessage<Rep>(rpcReply.payload, &decoded)) {
+                cb(StatusCode::ProtocolMismatch, {});
+                return;
+            }
+            cb(rpcReply.status, std::move(decoded));
+        },
+        executor);
 }
 
 // Encode request and invoke asynchronously, returning a TypedFuture<Rep> that
@@ -71,9 +73,9 @@ TypedFuture<Rep> InvokeTypedAsync(RpcClient* client,
                                   Opcode opcode,
                                   const Req& request,
                                   Priority priority = Priority::Normal,
-                                  uint32_t exec_timeout_ms = 30000) {
-    return TypedFuture<Rep>(
-        InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms));
+                                  uint32_t exec_timeout_ms = 30000)
+{
+    return TypedFuture<Rep>(InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms));
 }
 
 // Synchronous convenience: encode, invoke, wait, decode — all in one call.
@@ -83,9 +85,9 @@ StatusCode InvokeTypedSync(RpcClient* client,
                            const Req& request,
                            Rep* reply,
                            Priority priority = Priority::Normal,
-                           uint32_t exec_timeout_ms = 30000) {
-    return WaitAndDecode<Rep>(
-        InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms), reply);
+                           uint32_t exec_timeout_ms = 30000)
+{
+    return WaitAndDecode<Rep>(InvokeTyped<Req>(client, opcode, request, priority, exec_timeout_ms), reply);
 }
 
 }  // namespace MemRpc

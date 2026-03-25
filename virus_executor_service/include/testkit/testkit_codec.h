@@ -18,12 +18,14 @@ using VirusExecutorService::testkit::SleepRequest;
 
 template <>
 struct CodecTraits<EchoRequest> {
-    static bool Encode(const EchoRequest& request, std::vector<uint8_t>* bytes) {
+    static bool Encode(const EchoRequest& request, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteString(request.text) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, EchoRequest* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, EchoRequest* request)
+    {
         if (request == nullptr) {
             return false;
         }
@@ -34,12 +36,14 @@ struct CodecTraits<EchoRequest> {
 
 template <>
 struct CodecTraits<EchoReply> {
-    static bool Encode(const EchoReply& reply, std::vector<uint8_t>* bytes) {
+    static bool Encode(const EchoReply& reply, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteString(reply.text) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, EchoReply* reply) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, EchoReply* reply)
+    {
         if (reply == nullptr) {
             return false;
         }
@@ -50,13 +54,14 @@ struct CodecTraits<EchoReply> {
 
 template <>
 struct CodecTraits<AddRequest> {
-    static bool Encode(const AddRequest& request, std::vector<uint8_t>* bytes) {
+    static bool Encode(const AddRequest& request, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
-        return writer.WriteInt32(request.lhs) && writer.WriteInt32(request.rhs) &&
-               detail::AssignBytes(writer, bytes);
+        return writer.WriteInt32(request.lhs) && writer.WriteInt32(request.rhs) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, AddRequest* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, AddRequest* request)
+    {
         if (request == nullptr) {
             return false;
         }
@@ -67,12 +72,14 @@ struct CodecTraits<AddRequest> {
 
 template <>
 struct CodecTraits<AddReply> {
-    static bool Encode(const AddReply& reply, std::vector<uint8_t>* bytes) {
+    static bool Encode(const AddReply& reply, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteInt32(reply.sum) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, AddReply* reply) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, AddReply* reply)
+    {
         if (reply == nullptr) {
             return false;
         }
@@ -83,12 +90,14 @@ struct CodecTraits<AddReply> {
 
 template <>
 struct CodecTraits<SleepRequest> {
-    static bool Encode(const SleepRequest& request, std::vector<uint8_t>* bytes) {
+    static bool Encode(const SleepRequest& request, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteUint32(request.delayMs) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, SleepRequest* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, SleepRequest* request)
+    {
         if (request == nullptr) {
             return false;
         }
@@ -99,12 +108,14 @@ struct CodecTraits<SleepRequest> {
 
 template <>
 struct CodecTraits<SleepReply> {
-    static bool Encode(const SleepReply& reply, std::vector<uint8_t>* bytes) {
+    static bool Encode(const SleepReply& reply, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteInt32(reply.status) && detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size, SleepReply* reply) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, SleepReply* reply)
+    {
         if (reply == nullptr) {
             return false;
         }

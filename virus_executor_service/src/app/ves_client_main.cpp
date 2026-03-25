@@ -3,10 +3,10 @@
 #include <string>
 #include <thread>
 
+#include "client/ves_client.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/ves_control_interface.h"
-#include "client/ves_client.h"
 #include "virus_protection_service_log.h"
 
 namespace {
@@ -16,7 +16,8 @@ constexpr int32_t LOAD_TIMEOUT_MS = 5000;
 
 }  // namespace
 
-int main() {
+int main()
+{
     const char* registrySocket = std::getenv(REGISTRY_SOCKET_ENV);
     if (registrySocket == nullptr) {
         HILOGE("%{public}s not set", REGISTRY_SOCKET_ENV);

@@ -6,10 +6,11 @@
 
 namespace VirusExecutorService {
 
-using VirusExecutorService::ScanTask;
 using VirusExecutorService::ScanFileReply;
+using VirusExecutorService::ScanTask;
 
-TEST(VesDemoCodecTest, ScanTaskRoundTrip) {
+TEST(VesDemoCodecTest, ScanTaskRoundTrip)
+{
     ScanTask req;
     req.path = "/data/scan/clean.apk";
 
@@ -21,7 +22,8 @@ TEST(VesDemoCodecTest, ScanTaskRoundTrip) {
     EXPECT_EQ(decoded.path, req.path);
 }
 
-TEST(VesDemoCodecTest, ScanFileReplyRoundTrip) {
+TEST(VesDemoCodecTest, ScanFileReplyRoundTrip)
+{
     ScanFileReply reply;
     reply.code = 0;
     reply.threatLevel = 1;
@@ -35,14 +37,16 @@ TEST(VesDemoCodecTest, ScanFileReplyRoundTrip) {
     EXPECT_EQ(decoded.threatLevel, reply.threatLevel);
 }
 
-TEST(VesDemoCodecTest, DecodeRejectsTruncatedPayload) {
+TEST(VesDemoCodecTest, DecodeRejectsTruncatedPayload)
+{
     // Valid reply encoding is 8 bytes. Provide 4 bytes to force Decode failure.
     std::vector<uint8_t> truncated(4, 0);
     ScanFileReply decoded;
     EXPECT_FALSE(MemRpc::CodecTraits<ScanFileReply>::Decode(truncated.data(), truncated.size(), &decoded));
 }
 
-TEST(VesDemoCodecTest, NormalizeVesEngineKindsSortsAndDeduplicates) {
+TEST(VesDemoCodecTest, NormalizeVesEngineKindsSortsAndDeduplicates)
+{
     std::vector<uint32_t> engineKinds = {
         99u,
         static_cast<uint32_t>(VesEngineKind::Scan),
@@ -58,7 +62,8 @@ TEST(VesDemoCodecTest, NormalizeVesEngineKindsSortsAndDeduplicates) {
               }));
 }
 
-TEST(VesDemoCodecTest, IsValidVesOpenSessionRequestRejectsZeroAndOversizedKinds) {
+TEST(VesDemoCodecTest, IsValidVesOpenSessionRequestRejectsZeroAndOversizedKinds)
+{
     VesOpenSessionRequest request;
     request.engineKinds = {static_cast<uint32_t>(VesEngineKind::Scan), 0u};
     EXPECT_FALSE(IsValidVesOpenSessionRequest(request));

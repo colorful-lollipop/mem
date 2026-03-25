@@ -3,21 +3,23 @@
 #include <thread>
 
 #include "iservice_registry.h"
-#include "transport/registry_backend.h"
 #include "service/virus_executor_service.h"
+#include "transport/registry_backend.h"
 #include "virus_protection_service_log.h"
 
 namespace {
 
 volatile std::sig_atomic_t g_stop = 0;
 
-void SignalHandler(int) {
+void SignalHandler(int)
+{
     g_stop = 1;
 }
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc < 3) {
         HILOGE("usage: VirusExecutorService <registry_socket> <service_socket>");
         return 1;

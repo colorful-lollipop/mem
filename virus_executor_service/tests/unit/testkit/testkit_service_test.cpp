@@ -4,15 +4,16 @@
 
 namespace VirusExecutorService::testkit {
 
-using VirusExecutorService::testkit::TestkitService;
-using MemRpc::EchoRequest;
-using MemRpc::EchoReply;
-using MemRpc::AddRequest;
 using MemRpc::AddReply;
-using MemRpc::SleepRequest;
+using MemRpc::AddRequest;
+using MemRpc::EchoReply;
+using MemRpc::EchoRequest;
 using MemRpc::SleepReply;
+using MemRpc::SleepRequest;
+using VirusExecutorService::testkit::TestkitService;
 
-TEST(TestkitServiceTest, EchoAndAddWork) {
+TEST(TestkitServiceTest, EchoAndAddWork)
+{
     TestkitService service;
 
     EchoRequest echoRequest;
@@ -27,7 +28,8 @@ TEST(TestkitServiceTest, EchoAndAddWork) {
     EXPECT_EQ(addReply.sum, 13);
 }
 
-TEST(TestkitServiceTest, SleepWorks) {
+TEST(TestkitServiceTest, SleepWorks)
+{
     TestkitService service;
 
     SleepRequest sleepRequest;

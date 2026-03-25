@@ -27,10 +27,8 @@ enum class ReplayDecision { Replay, Skip };
 using ReplayPolicy = std::function<ReplayDecision(const FailedCallRecord&)>;
 
 class ResilientBatchInvoker {
- public:
-    explicit ResilientBatchInvoker(
-        std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
-        ReplayPolicy policy = nullptr);
+public:
+    explicit ResilientBatchInvoker(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap, ReplayPolicy policy = nullptr);
 
     MemRpc::StatusCode Init();
 
@@ -51,7 +49,7 @@ class ResilientBatchInvoker {
     void SetReplayPolicy(ReplayPolicy policy);
     void Shutdown();
 
- private:
+private:
     struct ActiveCall {
         uint64_t sequenceId = 0;
         MemRpc::RpcCall originalCall;

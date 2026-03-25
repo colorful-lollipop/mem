@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -10,145 +11,155 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <unistd.h>
 
 #include "memrpc/client/dev_bootstrap.h"
-#include "memrpc/core/protocol.h"
 #include "memrpc/client/rpc_client.h"
+#include "memrpc/core/protocol.h"
 #include "memrpc/server/rpc_server.h"
 
 namespace {
 
 constexpr MemRpc::Opcode kTestOpcode = 1u;
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-  if (handles.shmFd >= 0) close(handles.shmFd);
-  if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-  if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-  if (handles.respEventFd >= 0) close(handles.respEventFd);
-  if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-  if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-int GetEnvInt(const char* name, int default_value) {
-  const char* value = std::getenv(name);
-  if (value == nullptr || *value == '\0') {
-    return default_value;
-  }
-  try {
-    const int parsed = std::stoi(value);
-    return parsed > 0 ? parsed : default_value;
-  } catch (const std::exception&) {
-    return default_value;
-  }
+int GetEnvInt(const char* name, int default_value)
+{
+    const char* value = std::getenv(name);
+    if (value == nullptr || *value == '\0') {
+        return default_value;
+    }
+    try {
+        const int parsed = std::stoi(value);
+        return parsed > 0 ? parsed : default_value;
+    } catch (const std::exception&) {
+        return default_value;
+    }
 }
 
-uint32_t GetThreadCount() {
-  const unsigned int hw = std::thread::hardware_concurrency();
-  const unsigned int hw_threads = hw == 0 ? 1u : hw;
-  const int default_threads = std::max(1, static_cast<int>(std::min(4u, hw_threads)));
-  return static_cast<uint32_t>(GetEnvInt("MEMRPC_DT_THREADS", default_threads));
+uint32_t GetThreadCount()
+{
+    const unsigned int hw = std::thread::hardware_concurrency();
+    const unsigned int hw_threads = hw == 0 ? 1u : hw;
+    const int default_threads = std::max(1, static_cast<int>(std::min(4u, hw_threads)));
+    return static_cast<uint32_t>(GetEnvInt("MEMRPC_DT_THREADS", default_threads));
 }
 
-std::vector<uint8_t> MakePayload(size_t size, uint8_t seed) {
-  return std::vector<uint8_t>(size, static_cast<uint8_t>(seed));
+std::vector<uint8_t> MakePayload(size_t size, uint8_t seed)
+{
+    return std::vector<uint8_t>(size, static_cast<uint8_t>(seed));
 }
 
-std::vector<size_t> StablePayloadSizes() {
-  const size_t maxInlinePayload =
-      std::min<size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
-  const size_t mediumPayload = std::min<size_t>(256, maxInlinePayload);
-  return {0, 64, mediumPayload, maxInlinePayload};
+std::vector<size_t> StablePayloadSizes()
+{
+    const size_t maxInlinePayload =
+        std::min<size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+    const size_t mediumPayload = std::min<size_t>(256, maxInlinePayload);
+    return {0, 64, mediumPayload, maxInlinePayload};
 }
 
 }  // namespace
 
-TEST(DtStabilityTest, ShortRandomLoadStaysHealthy) {
-  const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
-  const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
-  const uint32_t threadCount = GetThreadCount();
+TEST(DtStabilityTest, ShortRandomLoadStaysHealthy)
+{
+    const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
+    const int progressTimeoutMs = GetEnvInt("MEMRPC_DT_progressTimeoutMs", 200);
+    const uint32_t threadCount = GetThreadCount();
 
-  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-  MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
-  ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
-  CloseHandles(unused_handles);
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+    MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
+    CloseHandles(unused_handles);
 
-  MemRpc::RpcServer server;
-  server.SetBootstrapHandles(bootstrap->serverHandles());
-  MemRpc::ServerOptions options;
-  options.highWorkerThreads = threadCount;
-  options.normalWorkerThreads = threadCount;
-  server.SetOptions(options);
-  server.RegisterHandler(kTestOpcode,
-                         [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
-                           reply->status = MemRpc::StatusCode::Ok;
-                           reply->payload = call.payload;
-                         });
-  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
-
-  MemRpc::RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
-
-  std::atomic<uint64_t> success{0};
-  std::atomic<MemRpc::StatusCode> first_error{MemRpc::StatusCode::Ok};
-  std::atomic<int64_t> last_success_ms{0};
-
-  const auto start = std::chrono::steady_clock::now();
-  const auto deadline = start + std::chrono::milliseconds(durationMs);
-
-  auto now_ms = []() -> int64_t {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now().time_since_epoch())
-        .count();
-  };
-  last_success_ms.store(now_ms());
-
-  std::vector<std::thread> workers;
-  workers.reserve(threadCount);
-  for (uint32_t i = 0; i < threadCount; ++i) {
-    workers.emplace_back([&, i]() {
-      std::mt19937 rng(static_cast<uint32_t>(i + 1));
-      const std::vector<size_t> sizes = StablePayloadSizes();
-      while (std::chrono::steady_clock::now() < deadline) {
-        const size_t payload_size = sizes[rng() % sizes.size()];
-        MemRpc::RpcCall call;
-        call.opcode = kTestOpcode;
-        call.payload = MakePayload(payload_size, static_cast<uint8_t>(i));
-
-        auto future = client.InvokeAsync(call);
-        MemRpc::RpcReply reply;
-        MemRpc::StatusCode status = future.Wait(&reply);
-        if (status != MemRpc::StatusCode::Ok) {
-          first_error.store(status);
-          return;
-        }
-        ++success;
-        last_success_ms.store(now_ms());
-      }
+    MemRpc::RpcServer server;
+    server.SetBootstrapHandles(bootstrap->serverHandles());
+    MemRpc::ServerOptions options;
+    options.highWorkerThreads = threadCount;
+    options.normalWorkerThreads = threadCount;
+    server.SetOptions(options);
+    server.RegisterHandler(kTestOpcode, [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+        reply->status = MemRpc::StatusCode::Ok;
+        reply->payload = call.payload;
     });
-  }
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-  std::atomic<bool> progress_ok{true};
-  std::thread watchdog([&]() {
-    while (std::chrono::steady_clock::now() < deadline) {
-      const int64_t last = last_success_ms.load();
-      if (now_ms() - last > progressTimeoutMs) {
-        progress_ok.store(false);
-        return;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    std::atomic<uint64_t> success{0};
+    std::atomic<MemRpc::StatusCode> first_error{MemRpc::StatusCode::Ok};
+    std::atomic<int64_t> last_success_ms{0};
+
+    const auto start = std::chrono::steady_clock::now();
+    const auto deadline = start + std::chrono::milliseconds(durationMs);
+
+    auto now_ms = []() -> int64_t {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    };
+    last_success_ms.store(now_ms());
+
+    std::vector<std::thread> workers;
+    workers.reserve(threadCount);
+    for (uint32_t i = 0; i < threadCount; ++i) {
+        workers.emplace_back([&, i]() {
+            std::mt19937 rng(static_cast<uint32_t>(i + 1));
+            const std::vector<size_t> sizes = StablePayloadSizes();
+            while (std::chrono::steady_clock::now() < deadline) {
+                const size_t payload_size = sizes[rng() % sizes.size()];
+                MemRpc::RpcCall call;
+                call.opcode = kTestOpcode;
+                call.payload = MakePayload(payload_size, static_cast<uint8_t>(i));
+
+                auto future = client.InvokeAsync(call);
+                MemRpc::RpcReply reply;
+                MemRpc::StatusCode status = future.Wait(&reply);
+                if (status != MemRpc::StatusCode::Ok) {
+                    first_error.store(status);
+                    return;
+                }
+                ++success;
+                last_success_ms.store(now_ms());
+            }
+        });
     }
-  });
 
-  for (auto& t : workers) {
-    t.join();
-  }
-  watchdog.join();
+    std::atomic<bool> progress_ok{true};
+    std::thread watchdog([&]() {
+        while (std::chrono::steady_clock::now() < deadline) {
+            const int64_t last = last_success_ms.load();
+            if (now_ms() - last > progressTimeoutMs) {
+                progress_ok.store(false);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    });
 
-  client.Shutdown();
-  server.Stop();
+    for (auto& t : workers) {
+        t.join();
+    }
+    watchdog.join();
 
-  EXPECT_EQ(first_error.load(), MemRpc::StatusCode::Ok);
-  EXPECT_TRUE(progress_ok.load());
-  EXPECT_GT(success.load(), 0u);
+    client.Shutdown();
+    server.Stop();
+
+    EXPECT_EQ(first_error.load(), MemRpc::StatusCode::Ok);
+    EXPECT_TRUE(progress_ok.load());
+    EXPECT_GT(success.load(), 0u);
 }

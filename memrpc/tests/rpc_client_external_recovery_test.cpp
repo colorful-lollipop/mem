@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -15,416 +15,432 @@ namespace {
 
 constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(202);
 
-void CloseHandles(MemRpc::BootstrapHandles& h) {
-  if (h.shmFd >= 0) {
-    close(h.shmFd);
-  }
-  if (h.highReqEventFd >= 0) {
-    close(h.highReqEventFd);
-  }
-  if (h.normalReqEventFd >= 0) {
-    close(h.normalReqEventFd);
-  }
-  if (h.respEventFd >= 0) {
-    close(h.respEventFd);
-  }
-  if (h.reqCreditEventFd >= 0) {
-    close(h.reqCreditEventFd);
-  }
-  if (h.respCreditEventFd >= 0) {
-    close(h.respCreditEventFd);
-  }
+void CloseHandles(MemRpc::BootstrapHandles& h)
+{
+    if (h.shmFd >= 0) {
+        close(h.shmFd);
+    }
+    if (h.highReqEventFd >= 0) {
+        close(h.highReqEventFd);
+    }
+    if (h.normalReqEventFd >= 0) {
+        close(h.normalReqEventFd);
+    }
+    if (h.respEventFd >= 0) {
+        close(h.respEventFd);
+    }
+    if (h.reqCreditEventFd >= 0) {
+        close(h.reqCreditEventFd);
+    }
+    if (h.respCreditEventFd >= 0) {
+        close(h.respCreditEventFd);
+    }
 }
 
-bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (predicate()) {
-      return true;
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return predicate();
+    return predicate();
 }
 
 class CountingBootstrapChannel final : public MemRpc::IBootstrapChannel {
- public:
-  explicit CountingBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
-      : delegate_(std::move(delegate)) {}
+public:
+    explicit CountingBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
+        : delegate_(std::move(delegate))
+    {
+    }
 
-  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    openCount_.fetch_add(1);
-    return delegate_->OpenSession(handles);
-  }
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
+    {
+        openCount_.fetch_add(1);
+        return delegate_->OpenSession(handles);
+    }
 
-  MemRpc::StatusCode CloseSession() override {
-    closeCount_.fetch_add(1);
-    return delegate_->CloseSession();
-  }
+    MemRpc::StatusCode CloseSession() override
+    {
+        closeCount_.fetch_add(1);
+        return delegate_->CloseSession();
+    }
 
-  void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
-    deathCallback_ = std::move(callback);
-    delegate_->SetEngineDeathCallback(deathCallback_);
-  }
+    void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override
+    {
+        deathCallback_ = std::move(callback);
+        delegate_->SetEngineDeathCallback(deathCallback_);
+    }
 
-  [[nodiscard]] int openCount() const {
-    return openCount_.load();
-  }
+    [[nodiscard]] int openCount() const
+    {
+        return openCount_.load();
+    }
 
-  [[nodiscard]] int closeCount() const {
-    return closeCount_.load();
-  }
+    [[nodiscard]] int closeCount() const
+    {
+        return closeCount_.load();
+    }
 
- private:
-  std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
-  MemRpc::EngineDeathCallback deathCallback_;
-  std::atomic<int> openCount_{0};
-  std::atomic<int> closeCount_{0};
+private:
+    std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
+    MemRpc::EngineDeathCallback deathCallback_;
+    std::atomic<int> openCount_{0};
+    std::atomic<int> closeCount_{0};
 };
 
 class FailAfterFirstOpenBootstrapChannel final : public MemRpc::IBootstrapChannel {
- public:
-  explicit FailAfterFirstOpenBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
-      : delegate_(std::move(delegate)) {}
-
-  MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
-    const int attempt = openCount_.fetch_add(1, std::memory_order_relaxed);
-    if (attempt == 0) {
-      return delegate_->OpenSession(handles);
+public:
+    explicit FailAfterFirstOpenBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
+        : delegate_(std::move(delegate))
+    {
     }
-    handles = MemRpc::MakeDefaultBootstrapHandles();
-    return MemRpc::StatusCode::PeerDisconnected;
-  }
 
-  MemRpc::StatusCode CloseSession() override {
-    closeCount_.fetch_add(1, std::memory_order_relaxed);
-    return delegate_->CloseSession();
-  }
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
+    {
+        const int attempt = openCount_.fetch_add(1, std::memory_order_relaxed);
+        if (attempt == 0) {
+            return delegate_->OpenSession(handles);
+        }
+        handles = MemRpc::MakeDefaultBootstrapHandles();
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
 
-  void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override {
-    delegate_->SetEngineDeathCallback(std::move(callback));
-  }
+    MemRpc::StatusCode CloseSession() override
+    {
+        closeCount_.fetch_add(1, std::memory_order_relaxed);
+        return delegate_->CloseSession();
+    }
 
-  [[nodiscard]] int openCount() const {
-    return openCount_.load(std::memory_order_acquire);
-  }
+    void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override
+    {
+        delegate_->SetEngineDeathCallback(std::move(callback));
+    }
 
-  [[nodiscard]] int closeCount() const {
-    return closeCount_.load(std::memory_order_acquire);
-  }
+    [[nodiscard]] int openCount() const
+    {
+        return openCount_.load(std::memory_order_acquire);
+    }
 
- private:
-  std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
-  std::atomic<int> openCount_{0};
-  std::atomic<int> closeCount_{0};
+    [[nodiscard]] int closeCount() const
+    {
+        return closeCount_.load(std::memory_order_acquire);
+    }
+
+private:
+    std::shared_ptr<MemRpc::DevBootstrapChannel> delegate_;
+    std::atomic<int> openCount_{0};
+    std::atomic<int> closeCount_{0};
 };
 
 }  // namespace
 
 namespace MemRpc {
 
-TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
-  RpcClient client(bootstrap);
-  std::mutex sessionMutex;
-  std::vector<SessionReadyReport> reports;
-  client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
-    std::lock_guard<std::mutex> lock(sessionMutex);
-    reports.push_back(report);
-  });
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
+    RpcClient client(bootstrap);
+    std::mutex sessionMutex;
+    std::vector<SessionReadyReport> reports;
+    client.SetSessionReadyCallback([&](const SessionReadyReport& report) {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        reports.push_back(report);
+    });
 
-  std::atomic<int> engineDeathCalls{0};
-  RecoveryPolicy policy;
-  policy.onEngineDeath = [&](const EngineDeathReport&) {
-    engineDeathCalls.fetch_add(1);
-    return RecoveryDecision{RecoveryAction::Ignore, 0};
-  };
-  client.SetRecoveryPolicy(std::move(policy));
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    std::atomic<int> engineDeathCalls{0};
+    RecoveryPolicy policy;
+    policy.onEngineDeath = [&](const EngineDeathReport&) {
+        engineDeathCalls.fetch_add(1);
+        return RecoveryDecision{RecoveryAction::Ignore, 0};
+    };
+    client.SetRecoveryPolicy(std::move(policy));
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthUnhealthy, rawBootstrap->serverHandles().sessionId, 0});
+    client.RequestExternalRecovery(
+        {ExternalRecoverySignal::ChannelHealthUnhealthy, rawBootstrap->serverHandles().sessionId, 0});
 
-  const auto recoveringSnapshot = client.GetRecoveryRuntimeSnapshot();
-  EXPECT_EQ(recoveringSnapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+    const auto recoveringSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(recoveringSnapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
 
-  ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; },
-                      std::chrono::milliseconds(500)));
-  ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; },
-                      std::chrono::milliseconds(500)));
-  ASSERT_TRUE(WaitFor([&]() {
-    std::lock_guard<std::mutex> lock(sessionMutex);
-    return reports.size() >= 2;
-  }, std::chrono::milliseconds(500)));
-  EXPECT_EQ(engineDeathCalls.load(), 0);
+    ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; }, std::chrono::milliseconds(500)));
+    ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; }, std::chrono::milliseconds(500)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            std::lock_guard<std::mutex> lock(sessionMutex);
+            return reports.size() >= 2;
+        },
+        std::chrono::milliseconds(500)));
+    EXPECT_EQ(engineDeathCalls.load(), 0);
 
-  SessionReadyReport initialReport;
-  SessionReadyReport recoveredReport;
-  {
-    std::lock_guard<std::mutex> lock(sessionMutex);
-    ASSERT_GE(reports.size(), 2u);
-    initialReport = reports[0];
-    recoveredReport = reports[1];
-  }
-  EXPECT_EQ(initialReport.reason, SessionOpenReason::InitialInit);
-  EXPECT_EQ(initialReport.previousSessionId, 0u);
-  EXPECT_EQ(initialReport.generation, 1u);
-  EXPECT_EQ(recoveredReport.reason, SessionOpenReason::ExternalRecovery);
-  EXPECT_EQ(recoveredReport.previousSessionId, initialReport.sessionId);
-  EXPECT_EQ(recoveredReport.generation, 2u);
-  EXPECT_EQ(recoveredReport.scheduledDelayMs, 0u);
-  EXPECT_NE(recoveredReport.sessionId, 0u);
+    SessionReadyReport initialReport;
+    SessionReadyReport recoveredReport;
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        ASSERT_GE(reports.size(), 2u);
+        initialReport = reports[0];
+        recoveredReport = reports[1];
+    }
+    EXPECT_EQ(initialReport.reason, SessionOpenReason::InitialInit);
+    EXPECT_EQ(initialReport.previousSessionId, 0u);
+    EXPECT_EQ(initialReport.generation, 1u);
+    EXPECT_EQ(recoveredReport.reason, SessionOpenReason::ExternalRecovery);
+    EXPECT_EQ(recoveredReport.previousSessionId, initialReport.sessionId);
+    EXPECT_EQ(recoveredReport.generation, 2u);
+    EXPECT_EQ(recoveredReport.scheduledDelayMs, 0u);
+    EXPECT_NE(recoveredReport.sessionId, 0u);
 
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  auto future = client.InvokeAsync(call);
-  RpcReply reply;
-  EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    auto future = client.InvokeAsync(call);
+    RpcReply reply;
+    EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
 
-  client.Shutdown();
-  server.Stop();
+    client.Shutdown();
+    server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryHonorsCooldownGate)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
-  RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
+    RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
+    client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
 
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  auto blockedFuture = client.InvokeAsync(call);
-  RpcReply blockedReply;
-  EXPECT_EQ(blockedFuture.Wait(&blockedReply), StatusCode::CooldownActive);
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    auto blockedFuture = client.InvokeAsync(call);
+    RpcReply blockedReply;
+    EXPECT_EQ(blockedFuture.Wait(&blockedReply), StatusCode::CooldownActive);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
-  auto recoveredFuture = client.InvokeAsync(call);
-  RpcReply recoveredReply;
-  EXPECT_EQ(recoveredFuture.Wait(&recoveredReply), StatusCode::Ok);
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    auto recoveredFuture = client.InvokeAsync(call);
+    RpcReply recoveredReply;
+    EXPECT_EQ(recoveredFuture.Wait(&recoveredReply), StatusCode::Ok);
 
-  client.Shutdown();
-  server.Stop();
+    client.Shutdown();
+    server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  RpcClient client(rawBootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    RpcClient client(rawBootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
+    client.RequestExternalRecovery(
+        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
 
-  const RpcClientRuntimeStats stats = client.GetRuntimeStats();
-  EXPECT_GT(stats.cooldownRemainingMs, 0u);
-  EXPECT_LE(stats.cooldownRemainingMs, 200u);
-  const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-  EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Cooldown);
-  EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
-  EXPECT_TRUE(snapshot.recoveryPending);
-
-  client.Shutdown();
-  server.Stop();
-}
-
-TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
-
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
-
-  auto bootstrap = std::make_shared<FailAfterFirstOpenBootstrapChannel>(rawBootstrap);
-  RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
-
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 0});
-
-  ASSERT_TRUE(WaitFor([&]() {
+    const RpcClientRuntimeStats stats = client.GetRuntimeStats();
+    EXPECT_GT(stats.cooldownRemainingMs, 0u);
+    EXPECT_LE(stats.cooldownRemainingMs, 200u);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-    return snapshot.lifecycleState == ClientLifecycleState::Disconnected;
-  }, std::chrono::milliseconds(500)));
+    EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Cooldown);
+    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_TRUE(snapshot.recoveryPending);
 
-  const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-  EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
-  EXPECT_FALSE(snapshot.recoveryPending);
-  EXPECT_EQ(snapshot.currentSessionId, 0u);
-  EXPECT_EQ(bootstrap->openCount(), 2);
-  EXPECT_EQ(bootstrap->closeCount(), 1);
-
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  call.waitForRecovery = true;
-  call.recoveryTimeoutMs = 0;
-  auto future = client.InvokeAsync(call);
-  RpcReply reply;
-  EXPECT_EQ(future.WaitFor(&reply, std::chrono::milliseconds(200)), StatusCode::PeerDisconnected);
-
-  client.Shutdown();
-  server.Stop();
+    client.Shutdown();
+    server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
-  RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    auto bootstrap = std::make_shared<FailAfterFirstOpenBootstrapChannel>(rawBootstrap);
+    RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  client.Shutdown();
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
+    client.RequestExternalRecovery(
+        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 0});
 
-  const RpcClientRuntimeStats stats = client.GetRuntimeStats();
-  EXPECT_FALSE(stats.recoveryPending);
-  EXPECT_EQ(stats.cooldownRemainingMs, 0u);
-  const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-  EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Closed);
-  EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ManualShutdown);
-  EXPECT_TRUE(snapshot.terminalManualShutdown);
-  EXPECT_EQ(bootstrap->openCount(), 1);
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            return snapshot.lifecycleState == ClientLifecycleState::Disconnected;
+        },
+        std::chrono::milliseconds(500)));
 
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  auto future = client.InvokeAsync(call);
-  RpcReply reply;
-  EXPECT_EQ(future.Wait(&reply), StatusCode::ClientClosed);
-  EXPECT_EQ(bootstrap->openCount(), 1);
+    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_FALSE(snapshot.recoveryPending);
+    EXPECT_EQ(snapshot.currentSessionId, 0u);
+    EXPECT_EQ(bootstrap->openCount(), 2);
+    EXPECT_EQ(bootstrap->closeCount(), 1);
 
-  server.Stop();
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    call.waitForRecovery = true;
+    call.recoveryTimeoutMs = 0;
+    auto future = client.InvokeAsync(call);
+    RpcReply reply;
+    EXPECT_EQ(future.WaitFor(&reply, std::chrono::milliseconds(200)), StatusCode::PeerDisconnected);
+
+    client.Shutdown();
+    server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcrossCooldown) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
-  RpcClient client(bootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
+    RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    client.Shutdown();
+    client.RequestExternalRecovery(
+        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
 
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  call.waitForRecovery = true;
-  call.recoveryTimeoutMs = 600;
+    const RpcClientRuntimeStats stats = client.GetRuntimeStats();
+    EXPECT_FALSE(stats.recoveryPending);
+    EXPECT_EQ(stats.cooldownRemainingMs, 0u);
+    const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Closed);
+    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ManualShutdown);
+    EXPECT_TRUE(snapshot.terminalManualShutdown);
+    EXPECT_EQ(bootstrap->openCount(), 1);
 
-  const auto start = std::chrono::steady_clock::now();
-  auto future = client.InvokeAsync(call);
-  RpcReply reply;
-  EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
-  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - start);
-  EXPECT_GE(elapsed.count(), 180);
-  EXPECT_LT(elapsed.count(), 1000);
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    auto future = client.InvokeAsync(call);
+    RpcReply reply;
+    EXPECT_EQ(future.Wait(&reply), StatusCode::ClientClosed);
+    EXPECT_EQ(bootstrap->openCount(), 1);
 
-  client.Shutdown();
-  server.Stop();
+    server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, InvokeWithRecoveryWaitsAcrossExternalCooldown) {
-  auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
-  BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
-  ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
-  CloseHandles(unusedHandles);
+TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcrossCooldown)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
 
-  RpcServer server;
-  server.SetBootstrapHandles(rawBootstrap->serverHandles());
-  server.RegisterHandler(kEchoOpcode, [](const RpcServerCall&, RpcServerReply* reply) {
-    reply->status = StatusCode::Ok;
-  });
-  ASSERT_EQ(server.Start(), StatusCode::Ok);
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
 
-  RpcClient client(rawBootstrap);
-  ASSERT_EQ(client.Init(), StatusCode::Ok);
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
+    RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-  client.RequestExternalRecovery(
-      {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 150});
+    const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
+    client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
 
-  RpcCall call;
-  call.opcode = kEchoOpcode;
-  call.waitForRecovery = true;
-  call.recoveryTimeoutMs = 300;
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    call.waitForRecovery = true;
+    call.recoveryTimeoutMs = 600;
 
-  RpcReply reply;
-  const auto start = std::chrono::steady_clock::now();
-  const StatusCode status = client.InvokeWithRecovery(
-      [&]() { return client.InvokeAsync(call).Wait(&reply); }, 150, 50);
-  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - start);
+    const auto start = std::chrono::steady_clock::now();
+    auto future = client.InvokeAsync(call);
+    RpcReply reply;
+    EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+    EXPECT_GE(elapsed.count(), 180);
+    EXPECT_LT(elapsed.count(), 1000);
 
-  EXPECT_EQ(status, StatusCode::Ok);
-  EXPECT_EQ(reply.status, StatusCode::Ok);
-  EXPECT_GE(elapsed.count(), 120);
-  EXPECT_LT(elapsed.count(), 1000);
+    client.Shutdown();
+    server.Stop();
+}
 
-  client.Shutdown();
-  server.Stop();
+TEST(RpcClientExternalRecoveryTest, InvokeWithRecoveryWaitsAcrossExternalCooldown)
+{
+    auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(rawBootstrap->OpenSession(unusedHandles), StatusCode::Ok);
+    CloseHandles(unusedHandles);
+
+    RpcServer server;
+    server.SetBootstrapHandles(rawBootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode,
+                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
+    ASSERT_EQ(server.Start(), StatusCode::Ok);
+
+    RpcClient client(rawBootstrap);
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
+
+    client.RequestExternalRecovery(
+        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 150});
+
+    RpcCall call;
+    call.opcode = kEchoOpcode;
+    call.waitForRecovery = true;
+    call.recoveryTimeoutMs = 300;
+
+    RpcReply reply;
+    const auto start = std::chrono::steady_clock::now();
+    const StatusCode status =
+        client.InvokeWithRecovery([&]() { return client.InvokeAsync(call).Wait(&reply); }, 150, 50);
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+    EXPECT_EQ(status, StatusCode::Ok);
+    EXPECT_EQ(reply.status, StatusCode::Ok);
+    EXPECT_GE(elapsed.count(), 120);
+    EXPECT_LT(elapsed.count(), 1000);
+
+    client.Shutdown();
+    server.Stop();
 }
 
 }  // namespace MemRpc

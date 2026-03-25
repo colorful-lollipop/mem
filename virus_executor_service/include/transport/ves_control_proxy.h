@@ -14,21 +14,19 @@
 
 namespace VirusExecutorService {
 
-   // 这个类后续会被生产的代码替换，逻辑保持最薄，只是简单的proxy抽象
+// 这个类后续会被生产的代码替换，逻辑保持最薄，只是简单的proxy抽象
 class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutor> {
- public:
-    VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote,
-                      const std::string& serviceSocketPath);
+public:
+    VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote, const std::string& serviceSocketPath);
     ~VesControlProxy() override;
 
-    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
-                                   MemRpc::BootstrapHandles& handles) override;
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode Heartbeat(VesHeartbeatReply& reply) override;
     MemRpc::StatusCode AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply) override;
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback);
 
- private:
+private:
     void MonitorSocket();
     void StopMonitorThread();
     void ResetSocketConnection();
@@ -51,7 +49,7 @@ class VesControlProxy : public OHOS::IRemoteProxy<IVirusProtectionExecutor> {
 };
 
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
- public:
+public:
     using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutor>()>;
 
     explicit VesBootstrapChannel(ControlLoader controlLoader,
@@ -64,7 +62,7 @@ class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
- private:
+private:
     struct DeathRecipientContext;
 
     static VesBootstrapChannel* TryEnterDeathRecipientCallback(DeathRecipientContext& context);

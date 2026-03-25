@@ -10,6 +10,7 @@
 #include "refbase.h"
 #include "system_ability.h"
 
-TEST(OhosSaHeadersTest, HeadersCompileTogether) {
-  SUCCEED();
+TEST(OhosSaHeadersTest, HeadersCompileTogether)
+{
+    SUCCEED();
 }

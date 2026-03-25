@@ -7,12 +7,12 @@
 namespace OHOS {
 
 class ISamBackend {
- public:
-  virtual ~ISamBackend() = default;
-  virtual std::string GetServicePath(int32_t saId) = 0;
-  virtual std::string LoadService(int32_t saId) = 0;
-  virtual bool AddService(int32_t saId, const std::string& servicePath) = 0;
-  virtual bool UnloadService(int32_t saId) = 0;
+public:
+    virtual ~ISamBackend() = default;
+    virtual std::string GetServicePath(int32_t saId) = 0;
+    virtual std::string LoadService(int32_t saId) = 0;
+    virtual bool AddService(int32_t saId, const std::string& servicePath) = 0;
+    virtual bool UnloadService(int32_t saId) = 0;
 };
 
 }  // namespace OHOS

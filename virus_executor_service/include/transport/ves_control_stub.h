@@ -4,8 +4,8 @@
 #include <cstring>
 
 #include "iremote_stub.h"
-#include "mock_ipc_types.h"
 #include "memrpc/core/bootstrap.h"
+#include "mock_ipc_types.h"
 #include "transport/ves_control_interface.h"
 #include "ves/ves_codec.h"
 
@@ -44,16 +44,13 @@ inline bool DecodeAnyCallRequest(const OHOS::MockIpcRequest& request, VesAnyCall
     out->opcode = header.opcode;
     out->priority = header.priority;
     out->timeoutMs = header.timeoutMs;
-    out->payload.assign(request.data.begin() + static_cast<std::ptrdiff_t>(sizeof(header)),
-                        request.data.end());
+    out->payload.assign(request.data.begin() + static_cast<std::ptrdiff_t>(sizeof(header)), request.data.end());
     return true;
 }
 
-inline bool DecodeOpenSessionRequest(const OHOS::MockIpcRequest& request,
-                                     VesOpenSessionRequest* out)
+inline bool DecodeOpenSessionRequest(const OHOS::MockIpcRequest& request, VesOpenSessionRequest* out)
 {
-    return out != nullptr &&
-           MemRpc::DecodeMessage<VesOpenSessionRequest>(request.data, out) &&
+    return out != nullptr && MemRpc::DecodeMessage<VesOpenSessionRequest>(request.data, out) &&
            IsValidVesOpenSessionRequest(*out);
 }
 
@@ -76,9 +73,9 @@ inline void EncodeAnyCallReply(const VesAnyCallReply& reply, std::vector<uint8_t
 }  // namespace detail
 
 class VesControlStub : public OHOS::IRemoteStub<IVirusProtectionExecutor> {
- public:
-    bool OnRemoteRequest(int command, const OHOS::MockIpcRequest& request,
-                         OHOS::MockIpcReply* reply) override {
+public:
+    bool OnRemoteRequest(int command, const OHOS::MockIpcRequest& request, OHOS::MockIpcReply* reply) override
+    {
         switch (command) {
             case 1: {
                 VesOpenSessionRequest openRequest{};

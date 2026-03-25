@@ -13,8 +13,8 @@
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
-#include "memrpc/core/runtime_utils.h"
 #include "memrpc/client/typed_invoker.h"
+#include "memrpc/core/runtime_utils.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_codec.h"
 #include "testkit/testkit_protocol.h"
@@ -27,17 +27,24 @@ namespace {
 
 namespace Mem = ::MemRpc;
 
-using VirusExecutorService::testkit::TestkitService;
-using MemRpc::EchoRequest;
 using MemRpc::EchoReply;
+using MemRpc::EchoRequest;
+using VirusExecutorService::testkit::TestkitService;
 
-void CloseHandles(Mem::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(Mem::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
 struct SharedState {
@@ -49,7 +56,8 @@ struct SharedState {
     std::string error;
 };
 
-void WritePidFile(pid_t childPid) {
+void WritePidFile(pid_t childPid)
+{
     const char* path = std::getenv("MEMRPC_STRESS_PID_FILE");
     if (path == nullptr || *path == '\0') {
         return;
@@ -62,7 +70,8 @@ void WritePidFile(pid_t childPid) {
     output << "child_pid=" << static_cast<long long>(childPid) << "\n";
 }
 
-void RunChild(Mem::BootstrapHandles handles, uint32_t threads) {
+void RunChild(Mem::BootstrapHandles handles, uint32_t threads)
+{
     Mem::RpcServer server;
     server.SetBootstrapHandles(handles);
     Mem::ServerOptions options;
@@ -81,9 +90,9 @@ void RunChild(Mem::BootstrapHandles handles, uint32_t threads) {
 
 enum class RpcKind { Echo, Add, Sleep };
 
-RpcKind PickKind(std::mt19937_64& rng, const StressConfig& config) {
-    const int total = std::max(0, config.echoWeight) + std::max(0, config.addWeight) +
-                      std::max(0, config.sleepWeight);
+RpcKind PickKind(std::mt19937_64& rng, const StressConfig& config)
+{
+    const int total = std::max(0, config.echoWeight) + std::max(0, config.addWeight) + std::max(0, config.sleepWeight);
     if (total <= 0) {
         return RpcKind::Echo;
     }
@@ -98,7 +107,8 @@ RpcKind PickKind(std::mt19937_64& rng, const StressConfig& config) {
     return RpcKind::Sleep;
 }
 
-std::size_t PickPayloadSize(std::mt19937_64& rng, const StressConfig& config) {
+std::size_t PickPayloadSize(std::mt19937_64& rng, const StressConfig& config)
+{
     if (config.payloadSizes.empty()) {
         return 0;
     }
@@ -106,13 +116,15 @@ std::size_t PickPayloadSize(std::mt19937_64& rng, const StressConfig& config) {
     return config.payloadSizes[dist(rng)];
 }
 
-Mem::Priority PickPriority(std::mt19937_64& rng, const StressConfig& config) {
+Mem::Priority PickPriority(std::mt19937_64& rng, const StressConfig& config)
+{
     const int pct = std::max(0, std::min(100, config.highPriorityPct));
     std::uniform_int_distribution<int> dist(1, 100);
     return dist(rng) <= pct ? Mem::Priority::High : Mem::Priority::Normal;
 }
 
-bool InBurstWindow(uint64_t elapsedMs, const StressConfig& config) {
+bool InBurstWindow(uint64_t elapsedMs, const StressConfig& config)
+{
     if (config.burstIntervalMs <= 0 || config.burstDurationMs <= 0) {
         return false;
     }
@@ -121,7 +133,8 @@ bool InBurstWindow(uint64_t elapsedMs, const StressConfig& config) {
     return (elapsedMs % interval) < duration;
 }
 
-void RecordError(SharedState* state, const std::string& message) {
+void RecordError(SharedState* state, const std::string& message)
+{
     if (state == nullptr) {
         return;
     }
@@ -132,7 +145,8 @@ void RecordError(SharedState* state, const std::string& message) {
     state->stop.store(true);
 }
 
-bool RunStress(const StressConfig& config) {
+bool RunStress(const StressConfig& config)
+{
     Mem::DevBootstrapConfig bootstrapConfig;
     bootstrapConfig.maxRequestBytes = config.maxRequestBytes;
     bootstrapConfig.maxResponseBytes = config.maxResponseBytes;
@@ -178,13 +192,11 @@ bool RunStress(const StressConfig& config) {
 
     for (int i = 0; i < config.threads; ++i) {
         workers.emplace_back([&, i]() {
-            const uint64_t workerSeedBase =
-                config.seed != 0 ? config.seed : Mem::MonotonicNowMs64();
+            const uint64_t workerSeedBase = config.seed != 0 ? config.seed : Mem::MonotonicNowMs64();
             std::mt19937_64 rng(workerSeedBase + static_cast<uint64_t>(i));
             while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
                 const uint64_t elapsedMs = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - start)
+                    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start)
                         .count());
 
                 const RpcKind kind = PickKind(rng, config);
@@ -196,30 +208,34 @@ bool RunStress(const StressConfig& config) {
                     std::string text(size, 'x');
                     EchoRequest request{text};
                     EchoReply reply;
-                    status = Mem::InvokeTypedSync(
-                        &client, static_cast<Mem::Opcode>(TestkitOpcode::Echo), request, &reply,
-                        priority);
+                    status = Mem::InvokeTypedSync(&client,
+                                                  static_cast<Mem::Opcode>(TestkitOpcode::Echo),
+                                                  request,
+                                                  &reply,
+                                                  priority);
                 } else if (kind == RpcKind::Add) {
                     AddRequest request{static_cast<int32_t>(rng()), static_cast<int32_t>(rng())};
                     AddReply reply;
-                    status = Mem::InvokeTypedSync(
-                        &client, static_cast<Mem::Opcode>(TestkitOpcode::Add), request, &reply,
-                        priority);
+                    status = Mem::InvokeTypedSync(&client,
+                                                  static_cast<Mem::Opcode>(TestkitOpcode::Add),
+                                                  request,
+                                                  &reply,
+                                                  priority);
                 } else {
-                    const uint64_t maxSleepMs =
-                        static_cast<uint64_t>(std::max(1, config.maxSleepMs));
+                    const uint64_t maxSleepMs = static_cast<uint64_t>(std::max(1, config.maxSleepMs));
                     const uint32_t delayMs = static_cast<uint32_t>(rng() % maxSleepMs);
                     SleepRequest request{delayMs};
                     SleepReply reply;
-                    status = Mem::InvokeTypedSync(
-                        &client, static_cast<Mem::Opcode>(TestkitOpcode::Sleep), request, &reply,
-                        priority);
+                    status = Mem::InvokeTypedSync(&client,
+                                                  static_cast<Mem::Opcode>(TestkitOpcode::Sleep),
+                                                  request,
+                                                  &reply,
+                                                  priority);
                 }
 
                 if (status != Mem::StatusCode::Ok) {
                     state.failCount.fetch_add(1);
-                    RecordError(
-                        &state, "rpc failed status=" + std::to_string(static_cast<int>(status)));
+                    RecordError(&state, "rpc failed status=" + std::to_string(static_cast<int>(status)));
                     break;
                 }
 
@@ -229,10 +245,8 @@ bool RunStress(const StressConfig& config) {
                 }
 
                 if (!InBurstWindow(elapsedMs, config)) {
-                    const uint64_t burstMultiplier =
-                        static_cast<uint64_t>(std::max(1, config.burstMultiplier));
-                    const int sleepUs =
-                        static_cast<int>((rng() % 1000ULL) * burstMultiplier);
+                    const uint64_t burstMultiplier = static_cast<uint64_t>(std::max(1, config.burstMultiplier));
+                    const int sleepUs = static_cast<int>((rng() % 1000ULL) * burstMultiplier);
                     if (sleepUs > 0) {
                         std::this_thread::sleep_for(std::chrono::microseconds(sleepUs));
                     }
@@ -245,8 +259,7 @@ bool RunStress(const StressConfig& config) {
         while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
             const uint64_t nowMs = Mem::MonotonicNowMs64();
             const uint64_t lastOk = state.lastOkMs.load();
-            if (nowMs > lastOk &&
-                (nowMs - lastOk) / 1000 > static_cast<uint64_t>(config.noProgressTimeoutSec)) {
+            if (nowMs > lastOk && (nowMs - lastOk) / 1000 > static_cast<uint64_t>(config.noProgressTimeoutSec)) {
                 RecordError(&state, "no progress within timeout");
                 break;
             }
@@ -269,22 +282,25 @@ bool RunStress(const StressConfig& config) {
         return false;
     }
 
-    HILOGI("stress ok: ops=%{public}llu",
-           static_cast<unsigned long long>(state.okCount.load()));
+    HILOGI("stress ok: ops=%{public}llu", static_cast<unsigned long long>(state.okCount.load()));
     return true;
 }
 
 }  // namespace
 
-bool RunStressMain(const StressConfig& config) {
+bool RunStressMain(const StressConfig& config)
+{
     return RunStress(config);
 }
 
 }  // namespace VirusExecutorService::testkit
 
-int main() {
+int main()
+{
     const auto config = VirusExecutorService::testkit::ParseStressConfigFromEnv();
     HILOGI("stress start: duration=%{public}d warmup=%{public}d threads=%{public}d",
-           config.durationSec, config.warmupSec, config.threads);
+           config.durationSec,
+           config.warmupSec,
+           config.threads);
     return VirusExecutorService::testkit::RunStressMain(config) ? 0 : 1;
 }

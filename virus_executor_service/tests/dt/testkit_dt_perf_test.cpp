@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -12,7 +13,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <unistd.h>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/protocol.h"
@@ -23,16 +23,24 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -45,21 +53,23 @@ int GetEnvInt(const char* name, int defaultValue) {
     }
 }
 
-uint32_t GetThreadCount() {
+uint32_t GetThreadCount()
+{
     const unsigned int hw = std::thread::hardware_concurrency();
     const unsigned int hwThreads = hw == 0 ? 1u : hw;
     const int defaultThreads = std::max(1, static_cast<int>(std::min(4u, hwThreads)));
     return static_cast<uint32_t>(GetEnvInt("MEMRPC_DT_THREADS", defaultThreads));
 }
 
-std::filesystem::path BaselinePath() {
+std::filesystem::path BaselinePath()
+{
     const char* dir = std::getenv("MEMRPC_DT_BASELINE_DIR");
-    std::filesystem::path base =
-        (dir && *dir) ? dir : (std::filesystem::current_path() / "perf_baselines");
+    std::filesystem::path base = (dir && *dir) ? dir : (std::filesystem::current_path() / "perf_baselines");
     return base / "testkit_dt_perf.baseline";
 }
 
-std::map<std::string, double> LoadBaseline(const std::filesystem::path& path) {
+std::map<std::string, double> LoadBaseline(const std::filesystem::path& path)
+{
     std::map<std::string, double> baseline;
     std::ifstream input(path);
     if (!input.is_open()) {
@@ -85,8 +95,8 @@ std::map<std::string, double> LoadBaseline(const std::filesystem::path& path) {
     return baseline;
 }
 
-bool WriteBaseline(const std::filesystem::path& path,
-                   const std::map<std::string, double>& baseline) {
+bool WriteBaseline(const std::filesystem::path& path, const std::map<std::string, double>& baseline)
+{
     if (path.has_parent_path()) {
         std::filesystem::create_directories(path.parent_path());
     }
@@ -96,8 +106,7 @@ bool WriteBaseline(const std::filesystem::path& path,
     }
     output << "# testkit dt perf baseline\n";
     for (const auto& entry : baseline) {
-        output << entry.first << "=" << std::fixed << std::setprecision(3) << entry.second
-               << "\n";
+        output << entry.first << "=" << std::fixed << std::setprecision(3) << entry.second << "\n";
     }
     return true;
 }
@@ -107,9 +116,8 @@ struct PerfStats {
     double p99Us = 0.0;
 };
 
-PerfStats ComputeStats(const std::vector<double>& latenciesUs,
-                       double durationSec,
-                       uint64_t ops) {
+PerfStats ComputeStats(const std::vector<double>& latenciesUs, double durationSec, uint64_t ops)
+{
     PerfStats stats;
     stats.opsPerSec = durationSec > 0.0 ? static_cast<double>(ops) / durationSec : 0.0;
     if (!latenciesUs.empty()) {
@@ -120,15 +128,17 @@ PerfStats ComputeStats(const std::vector<double>& latenciesUs,
     return stats;
 }
 
-std::size_t MaxEchoTextBytes() {
-    const std::size_t inlineLimit = std::min<std::size_t>(
-        MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+std::size_t MaxEchoTextBytes()
+{
+    const std::size_t inlineLimit =
+        std::min<std::size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
     return inlineLimit > sizeof(uint32_t) ? inlineLimit - sizeof(uint32_t) : 0;
 }
 
 }  // namespace
 
-TEST(TestkitDtPerfTest, ShortPerfBaseline) {
+TEST(TestkitDtPerfTest, ShortPerfBaseline)
+{
     const int durationMs = GetEnvInt("MEMRPC_DT_durationMs", 3000);
     const int warmupMs = GetEnvInt("MEMRPC_DT_WARMUP_MS", 200);
     const int minOps = GetEnvInt("MEMRPC_DT_MIN_OPS", 50);
@@ -166,8 +176,7 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
         const std::string caseName = current.first;
         const size_t payloadSize = current.second;
 
-        const auto warmupEnd =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
+        const auto warmupEnd = std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
         while (std::chrono::steady_clock::now() < warmupEnd) {
             if (caseName == "add") {
                 AddReply reply;
@@ -223,18 +232,14 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
             const auto t1 = std::chrono::steady_clock::now();
             ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
-                static_cast<double>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()) /
-                1000.0);
+                static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()) / 1000.0);
         }
 
         const double durationSec = std::max(1, durationMs) / 1000.0;
         const PerfStats stats = ComputeStats(latencies, durationSec, ops.load());
 
-        const std::string opsKey =
-            "testkit." + caseName + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
-        const std::string p99Key =
-            "testkit." + caseName + ".threads=" + std::to_string(threadCount) + ".p99_us";
+        const std::string opsKey = "testkit." + caseName + ".threads=" + std::to_string(threadCount) + ".ops_per_sec";
+        const std::string p99Key = "testkit." + caseName + ".threads=" + std::to_string(threadCount) + ".p99_us";
 
         EXPECT_GE(stats.opsPerSec, static_cast<double>(minOps));
         EXPECT_LE(stats.p99Us, static_cast<double>(maxP99Us));
@@ -243,12 +248,12 @@ TEST(TestkitDtPerfTest, ShortPerfBaseline) {
         const double p99Baseline = baseline.count(p99Key) ? baseline[p99Key] : 0.0;
 
         if (opsBaseline > 0.0 && stats.opsPerSec < opsBaseline * 0.9) {
-            ADD_FAILURE() << "Throughput regression for " << opsKey << ": baseline="
-                          << opsBaseline << " current=" << stats.opsPerSec;
+            ADD_FAILURE() << "Throughput regression for " << opsKey << ": baseline=" << opsBaseline
+                          << " current=" << stats.opsPerSec;
         }
         if (p99Baseline > 0.0 && stats.p99Us > p99Baseline * 1.1) {
-            ADD_FAILURE() << "Latency regression for " << p99Key << ": baseline="
-                          << p99Baseline << " current=" << stats.p99Us;
+            ADD_FAILURE() << "Latency regression for " << p99Key << ": baseline=" << p99Baseline
+                          << " current=" << stats.p99Us;
         }
 
         if (stats.opsPerSec > opsBaseline) {

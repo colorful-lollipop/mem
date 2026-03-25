@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -7,7 +8,6 @@
 #include <iostream>
 #include <numeric>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -19,16 +19,24 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -50,7 +58,8 @@ struct LatencyStats {
     uint64_t samples = 0;
 };
 
-LatencyStats ComputeStats(std::vector<double>& latenciesUs) {
+LatencyStats ComputeStats(std::vector<double>& latenciesUs)
+{
     LatencyStats stats;
     if (latenciesUs.empty()) {
         return stats;
@@ -58,8 +67,7 @@ LatencyStats ComputeStats(std::vector<double>& latenciesUs) {
     std::sort(latenciesUs.begin(), latenciesUs.end());
     const std::size_t sampleCount = latenciesUs.size();
     stats.samples = static_cast<uint64_t>(sampleCount);
-    stats.meanUs =
-        std::accumulate(latenciesUs.begin(), latenciesUs.end(), 0.0) / static_cast<double>(sampleCount);
+    stats.meanUs = std::accumulate(latenciesUs.begin(), latenciesUs.end(), 0.0) / static_cast<double>(sampleCount);
     stats.p50Us = latenciesUs[sampleCount * 50 / 100];
     stats.p99Us = latenciesUs[sampleCount * 99 / 100];
     stats.p999Us = latenciesUs[std::min(sampleCount - 1, sampleCount * 999 / 1000)];
@@ -67,7 +75,8 @@ LatencyStats ComputeStats(std::vector<double>& latenciesUs) {
     return stats;
 }
 
-void PrintStats(const char* label, const LatencyStats& stats) {
+void PrintStats(const char* label, const LatencyStats& stats)
+{
     std::cout << std::setw(20) << label << ": "
               << "p50=" << std::fixed << std::setprecision(1) << stats.p50Us << "us  "
               << "p99=" << stats.p99Us << "us  "
@@ -77,15 +86,17 @@ void PrintStats(const char* label, const LatencyStats& stats) {
               << "n=" << stats.samples << std::endl;
 }
 
-std::size_t MaxEchoTextBytes() {
-    const std::size_t inlineLimit = std::min<std::size_t>(
-        MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
+std::size_t MaxEchoTextBytes()
+{
+    const std::size_t inlineLimit =
+        std::min<std::size_t>(MemRpc::DEFAULT_MAX_REQUEST_BYTES, MemRpc::DEFAULT_MAX_RESPONSE_BYTES);
     return inlineLimit > sizeof(uint32_t) ? inlineLimit - sizeof(uint32_t) : 0;
 }
 
 }  // namespace
 
-TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
+TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize)
+{
     const int iterations = GetEnvInt("MEMRPC_LATENCY_ITERATIONS", 2000);
     const int warmup = GetEnvInt("MEMRPC_LATENCY_WARMUP", 200);
 
@@ -132,8 +143,7 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
             const auto end = std::chrono::steady_clock::now();
             ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             latencies.push_back(
-                static_cast<double>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
+                static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
                 1000.0);
         }
         const LatencyStats stats = ComputeStats(latencies);
@@ -145,7 +155,8 @@ TEST(TestkitLatencyTest, SingleThreadSerialLatencyByPayloadSize) {
     server.Stop();
 }
 
-TEST(TestkitLatencyTest, DirectCallBaselineLatency) {
+TEST(TestkitLatencyTest, DirectCallBaselineLatency)
+{
     const int iterations = GetEnvInt("MEMRPC_LATENCY_ITERATIONS", 2000);
     TestkitService service;
 
@@ -169,8 +180,7 @@ TEST(TestkitLatencyTest, DirectCallBaselineLatency) {
             const auto end = std::chrono::steady_clock::now();
             (void)reply;
             latencies.push_back(
-                static_cast<double>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
+                static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
                 1000.0);
         }
         const LatencyStats stats = ComputeStats(latencies);

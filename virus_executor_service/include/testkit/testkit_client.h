@@ -9,7 +9,7 @@
 namespace VirusExecutorService::testkit {
 
 class TestkitClient {
- public:
+public:
     explicit TestkitClient(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap = nullptr);
     ~TestkitClient();
 
@@ -22,14 +22,13 @@ class TestkitClient {
     MemRpc::StatusCode Init();
     MemRpc::StatusCode Echo(const std::string& text, EchoReply* reply);
     MemRpc::StatusCode Add(int32_t lhs, int32_t rhs, AddReply* reply);
-    MemRpc::StatusCode Sleep(
-        uint32_t delayMs,
-        SleepReply* reply,
-        MemRpc::Priority priority = MemRpc::Priority::Normal,
-        uint32_t execTimeoutMs = 30000);
+    MemRpc::StatusCode Sleep(uint32_t delayMs,
+                             SleepReply* reply,
+                             MemRpc::Priority priority = MemRpc::Priority::Normal,
+                             uint32_t execTimeoutMs = 30000);
     void Shutdown();
 
- private:
+private:
     TestkitAsyncClient asyncClient_;
 };
 

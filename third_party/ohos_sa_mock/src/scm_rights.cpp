@@ -1,21 +1,21 @@
 #include "scm_rights.h"
 
-#include <cstring>
-#include <vector>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <cstring>
+#include <vector>
 
 namespace OHOS {
 
-bool SendFds(int sock_fd, const int* fds, size_t fd_count,
-             const void* data, size_t data_len) {
+bool SendFds(int sock_fd, const int* fds, size_t fd_count, const void* data, size_t data_len)
+{
     if (fd_count == 0 || fds == nullptr) {
         return false;
     }
 
     // Ensure at least 1 byte of data for ancillary messages.
     char dummy = 0;
-    struct iovec iov{};
+    struct iovec iov {};
     if (data != nullptr && data_len > 0) {
         iov.iov_base = const_cast<void*>(data);
         iov.iov_len = data_len;
@@ -27,7 +27,7 @@ bool SendFds(int sock_fd, const int* fds, size_t fd_count,
     const size_t cmsg_space = CMSG_SPACE(fd_count * sizeof(int));
     std::vector<char> buf(cmsg_space, 0);
 
-    struct msghdr msg{};
+    struct msghdr msg {};
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
     msg.msg_control = buf.data();
@@ -42,14 +42,14 @@ bool SendFds(int sock_fd, const int* fds, size_t fd_count,
     return sendmsg(sock_fd, &msg, MSG_NOSIGNAL) >= 0;
 }
 
-size_t RecvFds(int sock_fd, int* fds, size_t max_fds,
-               void* data, size_t* data_len) {
+size_t RecvFds(int sock_fd, int* fds, size_t max_fds, void* data, size_t* data_len)
+{
     if (fds == nullptr || max_fds == 0) {
         return 0;
     }
 
     char dummy = 0;
-    struct iovec iov{};
+    struct iovec iov {};
     if (data != nullptr && data_len != nullptr && *data_len > 0) {
         iov.iov_base = data;
         iov.iov_len = *data_len;
@@ -61,7 +61,7 @@ size_t RecvFds(int sock_fd, int* fds, size_t max_fds,
     const size_t cmsg_space = CMSG_SPACE(max_fds * sizeof(int));
     std::vector<char> buf(cmsg_space, 0);
 
-    struct msghdr msg{};
+    struct msghdr msg {};
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
     msg.msg_control = buf.data();
@@ -76,8 +76,7 @@ size_t RecvFds(int sock_fd, int* fds, size_t max_fds,
     }
 
     struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-    if (cmsg == nullptr || cmsg->cmsg_level != SOL_SOCKET ||
-        cmsg->cmsg_type != SCM_RIGHTS) {
+    if (cmsg == nullptr || cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
         return 0;
     }
 

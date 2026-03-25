@@ -1,7 +1,7 @@
 #include "service/virus_executor_service.h"
 
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 
@@ -17,13 +17,13 @@ namespace {
 
 constexpr uint32_t LONG_RUNNING_REQUEST_THRESHOLD_MS = 100;
 
-bool IsTestkitFaultInjectionEnabled() {
+bool IsTestkitFaultInjectionEnabled()
+{
     const char* value = std::getenv("VES_ENABLE_TESTKIT_FAULTS");
     return value != nullptr && value[0] == '1' && value[1] == '\0';
 }
 
-void PopulateHealthyReply(const MemRpc::RpcServerRuntimeStats& stats, uint64_t sessionId,
-                          VesHeartbeatReply* reply)
+void PopulateHealthyReply(const MemRpc::RpcServerRuntimeStats& stats, uint64_t sessionId, VesHeartbeatReply* reply)
 {
     if (reply == nullptr) {
         return;
@@ -55,9 +55,12 @@ void PopulateHealthyReply(const MemRpc::RpcServerRuntimeStats& stats, uint64_t s
 }  // namespace
 
 VirusExecutorService::VirusExecutorService()
-    : OHOS::SystemAbility(VES_CONTROL_SA_ID, true) {}
+    : OHOS::SystemAbility(VES_CONTROL_SA_ID, true)
+{
+}
 
-bool VirusExecutorService::Publish(VirusExecutorService* service) {
+bool VirusExecutorService::Publish(VirusExecutorService* service)
+{
     const bool published = OHOS::SystemAbility::Publish(service);
     if (!published) {
         return false;
@@ -68,7 +71,8 @@ bool VirusExecutorService::Publish(VirusExecutorService* service) {
 }
 
 MemRpc::StatusCode VirusExecutorService::OpenSession(const VesOpenSessionRequest& request,
-                                                     MemRpc::BootstrapHandles& handles) {
+                                                     MemRpc::BootstrapHandles& handles)
+{
     const MemRpc::StatusCode configStatus = service_.ConfigureEngines(request);
     if (configStatus != MemRpc::StatusCode::Ok) {
         return configStatus;
@@ -86,7 +90,8 @@ MemRpc::StatusCode VirusExecutorService::OpenSession(const VesOpenSessionRequest
     return sessionService->OpenSession(handles);
 }
 
-MemRpc::StatusCode VirusExecutorService::CloseSession() {
+MemRpc::StatusCode VirusExecutorService::CloseSession()
+{
     std::shared_ptr<EngineSessionService> sessionService;
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
@@ -98,7 +103,8 @@ MemRpc::StatusCode VirusExecutorService::CloseSession() {
     return sessionService->CloseSession();
 }
 
-MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat) {
+MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat)
+{
     heartbeat = VesHeartbeatReply{};
     if (stopping_.load()) {
         heartbeat.status = static_cast<uint32_t>(VesHeartbeatStatus::UnhealthyStopping);
@@ -133,8 +139,8 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat)
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& request,
-                                                 VesAnyCallReply& vesReply) {
+MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& vesReply)
+{
     vesReply = VesAnyCallReply{};
     if (!service_.initialized()) {
         vesReply.status = MemRpc::StatusCode::PeerDisconnected;
@@ -163,7 +169,8 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
     return MemRpc::StatusCode::Ok;
 }
 
-void VirusExecutorService::OnStart() {
+void VirusExecutorService::OnStart()
+{
     HILOGI("OnStart sa_id=%{public}d", GetSystemAbilityId());
     stopping_.store(false);
     testkitService_.SetFaultInjectionEnabled(IsTestkitFaultInjectionEnabled());
@@ -172,14 +179,14 @@ void VirusExecutorService::OnStart() {
         published_ = false;
         unloadRequested_ = false;
         session_service_ =
-            std::make_shared<EngineSessionService>(
-                std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
+            std::make_shared<EngineSessionService>(std::vector<RpcHandlerRegistrar*>{&service_, &testkitService_});
         service_.SetEventPublisher(session_service_);
     }
     service_.Initialize();
 }
 
-void VirusExecutorService::OnStop() {
+void VirusExecutorService::OnStop()
+{
     HILOGI("OnStop");
     stopping_.store(true);
     std::shared_ptr<EngineSessionService> sessionService;

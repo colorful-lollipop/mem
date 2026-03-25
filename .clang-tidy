@@ -43,7 +43,7 @@ Checks: >-
   -readability-redundant-access-specifiers,
   -clang-diagnostic-missing-field-initializers
 WarningsAsErrors: ''
-FormatStyle: none
+FormatStyle: file
 HeaderFilterRegex: '(.*/)?(memrpc|virus_executor_service|third_party/ohos_sa_mock)/(include|src|tests)/.*'
 CheckOptions:
   - key: bugprone-dangling-handle.HandleClasses

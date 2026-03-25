@@ -14,7 +14,8 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-int GetEnvInt(const char* name, int defaultValue) {
+int GetEnvInt(const char* name, int defaultValue)
+{
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return defaultValue;
@@ -29,14 +30,14 @@ int GetEnvInt(const char* name, int defaultValue) {
 
 }  // namespace
 
-TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
+TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec)
+{
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", 1000);
     const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", 200);
 
     TestkitService service;
 
-    const auto warmupEnd =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
+    const auto warmupEnd = std::chrono::steady_clock::now() + std::chrono::milliseconds(warmupMs);
     while (std::chrono::steady_clock::now() < warmupEnd) {
         EchoRequest request;
         request.text = "ping";
@@ -51,8 +52,7 @@ TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
     std::vector<Case> cases = {{"echo"}, {"add"}, {"echo+codec"}};
 
     for (auto& current : cases) {
-        const auto endTime =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
+        const auto endTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
         if (std::string(current.name) == "echo") {
             EchoRequest request;
             request.text = "ping";
@@ -93,8 +93,8 @@ TEST(TestkitBaselineTest, DirectHandlerCallOpsPerSec) {
     std::cout << "\n=== Testkit In-Process Baseline ===" << std::endl;
     for (const auto& current : cases) {
         const double opsPerSec = static_cast<double>(current.ops) / durationSec;
-        std::cout << std::setw(14) << current.name << ": " << std::fixed
-                  << std::setprecision(0) << opsPerSec << " ops/sec" << std::endl;
+        std::cout << std::setw(14) << current.name << ": " << std::fixed << std::setprecision(0) << opsPerSec
+                  << " ops/sec" << std::endl;
         EXPECT_GT(current.ops, 0u);
     }
 }

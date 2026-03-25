@@ -14,18 +14,17 @@ class IRemoteBroker;
 using BrokerDelegateCreator = std::function<sptr<IRemoteBroker>(const sptr<IRemoteObject>&)>;
 
 class BrokerRegistration {
- public:
-  static BrokerRegistration& GetInstance();
+public:
+    static BrokerRegistration& GetInstance();
 
-  void Register(int32_t saId, BrokerDelegateCreator creator);
-  [[nodiscard]] sptr<IRemoteBroker> CreateBroker(int32_t saId,
-                                                 const sptr<IRemoteObject>& remote) const;
+    void Register(int32_t saId, BrokerDelegateCreator creator);
+    [[nodiscard]] sptr<IRemoteBroker> CreateBroker(int32_t saId, const sptr<IRemoteObject>& remote) const;
 
- private:
-  BrokerRegistration() = default;
+private:
+    BrokerRegistration() = default;
 
-  class Impl;
-  std::shared_ptr<Impl> impl_;
+    class Impl;
+    std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace OHOS

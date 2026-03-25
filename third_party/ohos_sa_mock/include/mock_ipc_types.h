@@ -21,8 +21,7 @@ struct MockIpcReply {
 };
 
 // Handles a single client connection's framed command + payload, fills fds + data reply.
-using MockIpcHandler = std::function<bool(int command, const MockIpcRequest& request,
-                                          MockIpcReply* reply)>;
+using MockIpcHandler = std::function<bool(int command, const MockIpcRequest& request, MockIpcReply* reply)>;
 
 }  // namespace OHOS
 

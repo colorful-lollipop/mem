@@ -8,18 +8,18 @@
 namespace MemRpc {
 
 class ByteWriter {
- public:
-  ByteWriter() = default;
+public:
+    ByteWriter() = default;
 
-  bool WriteUint32(uint32_t value);
-  bool WriteInt32(int32_t value);
-  bool WriteBytes(const void* data, uint32_t size);
-  bool WriteString(const std::string& value);
+    bool WriteUint32(uint32_t value);
+    bool WriteInt32(int32_t value);
+    bool WriteBytes(const void* data, uint32_t size);
+    bool WriteString(const std::string& value);
 
-  [[nodiscard]] const std::vector<uint8_t>& bytes() const;
+    [[nodiscard]] const std::vector<uint8_t>& bytes() const;
 
- private:
-  std::vector<uint8_t> bytes_;
+private:
+    std::vector<uint8_t> bytes_;
 };
 
 }  // namespace MemRpc

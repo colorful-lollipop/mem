@@ -12,12 +12,10 @@ ReplayDecision DefaultReplayDecision(const FailedCallRecord& record)
         record.runtimeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Closed) {
         return ReplayDecision::Skip;
     }
-    if (record.hasRecoveryEvent &&
-        record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::ManualShutdown) {
+    if (record.hasRecoveryEvent && record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::ManualShutdown) {
         return ReplayDecision::Skip;
     }
-    if (record.hasRecoveryEvent &&
-        record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::IdlePolicy) {
+    if (record.hasRecoveryEvent && record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::IdlePolicy) {
         return ReplayDecision::Skip;
     }
     if (record.replayHint == MemRpc::ReplayHint::SafeToReplay ||
@@ -29,22 +27,24 @@ ReplayDecision DefaultReplayDecision(const FailedCallRecord& record)
 
 }  // namespace
 
-ResilientBatchInvoker::ResilientBatchInvoker(
-    std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap,
-    ReplayPolicy policy)
-    : client_(std::move(bootstrap)), policy_(std::move(policy)) {
+ResilientBatchInvoker::ResilientBatchInvoker(std::shared_ptr<MemRpc::IBootstrapChannel> bootstrap, ReplayPolicy policy)
+    : client_(std::move(bootstrap)),
+      policy_(std::move(policy))
+{
     client_.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report) {
         lastRecoveryEvent_ = report;
         hasRecoveryEvent_ = true;
     });
 }
 
-MemRpc::StatusCode ResilientBatchInvoker::Init() {
+MemRpc::StatusCode ResilientBatchInvoker::Init()
+{
     return client_.Init();
 }
 
 std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::SubmitBatch(
-    const std::vector<MemRpc::RpcCall>& calls) {
+    const std::vector<MemRpc::RpcCall>& calls)
+{
     std::vector<TrackedFuture> tracked;
     tracked.reserve(calls.size());
     for (const auto& call : calls) {
@@ -63,7 +63,8 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::SubmitB
     return tracked;
 }
 
-void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* completedReplies) {
+void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* completedReplies)
+{
     if (completedReplies == nullptr) {
         return;
     }
@@ -79,12 +80,11 @@ void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* comple
             record.opcode = activeCall.originalCall.opcode;
             record.payload = activeCall.originalCall.payload;
             record.failureStatus = status;
-            record.replayHint = status == MemRpc::StatusCode::QueueTimeout
-                                    ? MemRpc::ReplayHint::SafeToReplay
-                                    : status == MemRpc::StatusCode::ExecTimeout ||
-                                              status == MemRpc::StatusCode::CrashedDuringExecution
-                                          ? MemRpc::ReplayHint::MaybeExecuted
-                                          : MemRpc::ReplayHint::Unknown;
+            record.replayHint =
+                status == MemRpc::StatusCode::QueueTimeout ? MemRpc::ReplayHint::SafeToReplay
+                : status == MemRpc::StatusCode::ExecTimeout || status == MemRpc::StatusCode::CrashedDuringExecution
+                    ? MemRpc::ReplayHint::MaybeExecuted
+                    : MemRpc::ReplayHint::Unknown;
             record.runtimeSnapshot = client_.GetRecoveryRuntimeSnapshot();
             record.recoveryEvent = lastRecoveryEvent_;
             record.hasRecoveryEvent = hasRecoveryEvent_;
@@ -95,11 +95,13 @@ void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* comple
     activeCalls_.clear();
 }
 
-const std::vector<FailedCallRecord>& ResilientBatchInvoker::GetFailedCalls() const {
+const std::vector<FailedCallRecord>& ResilientBatchInvoker::GetFailedCalls() const
+{
     return failedCalls_;
 }
 
-std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayFailed() {
+std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayFailed()
+{
     std::vector<TrackedFuture> replayed;
     std::vector<FailedCallRecord> skipped;
 
@@ -131,15 +133,18 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayF
     return replayed;
 }
 
-void ResilientBatchInvoker::ClearFailedCalls() {
+void ResilientBatchInvoker::ClearFailedCalls()
+{
     failedCalls_.clear();
 }
 
-void ResilientBatchInvoker::SetReplayPolicy(ReplayPolicy policy) {
+void ResilientBatchInvoker::SetReplayPolicy(ReplayPolicy policy)
+{
     policy_ = std::move(policy);
 }
 
-void ResilientBatchInvoker::Shutdown() {
+void ResilientBatchInvoker::Shutdown()
+{
     client_.Shutdown();
 }
 

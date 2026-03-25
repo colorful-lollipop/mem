@@ -12,11 +12,13 @@ namespace MemRpc {
 
 template <>
 struct CodecTraits<VirusExecutorService::InitReply> {
-    static bool Encode(const VirusExecutorService::InitReply& reply, std::vector<uint8_t>* bytes) {
+    static bool Encode(const VirusExecutorService::InitReply& reply, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteInt32(reply.code) && detail::AssignBytes(writer, bytes);
     }
-    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::InitReply* reply) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::InitReply* reply)
+    {
         if (reply == nullptr) {
             return false;
         }
@@ -27,11 +29,13 @@ struct CodecTraits<VirusExecutorService::InitReply> {
 
 template <>
 struct CodecTraits<VirusExecutorService::ScanTask> {
-    static bool Encode(const VirusExecutorService::ScanTask& request, std::vector<uint8_t>* bytes) {
+    static bool Encode(const VirusExecutorService::ScanTask& request, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteString(request.path) && detail::AssignBytes(writer, bytes);
     }
-    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanTask* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanTask* request)
+    {
         if (request == nullptr) {
             return false;
         }
@@ -42,12 +46,14 @@ struct CodecTraits<VirusExecutorService::ScanTask> {
 
 template <>
 struct CodecTraits<VirusExecutorService::ScanFileReply> {
-    static bool Encode(const VirusExecutorService::ScanFileReply& reply, std::vector<uint8_t>* bytes) {
+    static bool Encode(const VirusExecutorService::ScanFileReply& reply, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         return writer.WriteInt32(reply.code) && writer.WriteInt32(reply.threatLevel) &&
                detail::AssignBytes(writer, bytes);
     }
-    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanFileReply* reply) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::ScanFileReply* reply)
+    {
         if (reply == nullptr) {
             return false;
         }
@@ -58,8 +64,8 @@ struct CodecTraits<VirusExecutorService::ScanFileReply> {
 
 template <>
 struct CodecTraits<VirusExecutorService::VesOpenSessionRequest> {
-    static bool Encode(const VirusExecutorService::VesOpenSessionRequest& request,
-                       std::vector<uint8_t>* bytes) {
+    static bool Encode(const VirusExecutorService::VesOpenSessionRequest& request, std::vector<uint8_t>* bytes)
+    {
         ByteWriter writer;
         if (!writer.WriteUint32(request.version) ||
             !writer.WriteUint32(static_cast<uint32_t>(request.engineKinds.size()))) {
@@ -73,8 +79,8 @@ struct CodecTraits<VirusExecutorService::VesOpenSessionRequest> {
         return detail::AssignBytes(writer, bytes);
     }
 
-    static bool Decode(const uint8_t* bytes, std::size_t size,
-                       VirusExecutorService::VesOpenSessionRequest* request) {
+    static bool Decode(const uint8_t* bytes, std::size_t size, VirusExecutorService::VesOpenSessionRequest* request)
+    {
         if (request == nullptr) {
             return false;
         }

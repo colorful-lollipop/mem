@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -15,18 +15,25 @@
 namespace VirusExecutorService::testkit {
 namespace {
 
-void CloseHandles(MemRpc::BootstrapHandles& handles) {
-    if (handles.shmFd >= 0) close(handles.shmFd);
-    if (handles.highReqEventFd >= 0) close(handles.highReqEventFd);
-    if (handles.normalReqEventFd >= 0) close(handles.normalReqEventFd);
-    if (handles.respEventFd >= 0) close(handles.respEventFd);
-    if (handles.reqCreditEventFd >= 0) close(handles.reqCreditEventFd);
-    if (handles.respCreditEventFd >= 0) close(handles.respCreditEventFd);
+void CloseHandles(MemRpc::BootstrapHandles& handles)
+{
+    if (handles.shmFd >= 0)
+        close(handles.shmFd);
+    if (handles.highReqEventFd >= 0)
+        close(handles.highReqEventFd);
+    if (handles.normalReqEventFd >= 0)
+        close(handles.normalReqEventFd);
+    if (handles.respEventFd >= 0)
+        close(handles.respEventFd);
+    if (handles.reqCreditEventFd >= 0)
+        close(handles.reqCreditEventFd);
+    if (handles.respCreditEventFd >= 0)
+        close(handles.respCreditEventFd);
 }
 
-bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs) {
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
         if (condition()) {
             return true;
@@ -38,7 +45,8 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs) {
 
 }  // namespace
 
-TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
+TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery)
+{
     MemRpc::DevBootstrapConfig config;
     config.highRingSize = 8;
     config.normalRingSize = 8;
@@ -99,7 +107,8 @@ TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery) {
     server.Stop();
 }
 
-TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter) {
+TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter)
+{
     MemRpc::DevBootstrapConfig config;
     config.highRingSize = 4;
     config.normalRingSize = 4;

@@ -7,22 +7,25 @@ namespace OHOS {
 
 template <typename T>
 class IRemoteProxy : public T {
- public:
-  explicit IRemoteProxy(const sptr<IRemoteObject>& remote) : remote_(remote) {}
-  ~IRemoteProxy() override = default;
+public:
+    explicit IRemoteProxy(const sptr<IRemoteObject>& remote)
+        : remote_(remote)
+    {
+    }
+    ~IRemoteProxy() override = default;
 
-  [[nodiscard]] sptr<IRemoteObject> Remote() const
-  {
-    return remote_;
-  }
+    [[nodiscard]] sptr<IRemoteObject> Remote() const
+    {
+        return remote_;
+    }
 
-  sptr<IRemoteObject> AsObject() override
-  {
-    return remote_;
-  }
+    sptr<IRemoteObject> AsObject() override
+    {
+        return remote_;
+    }
 
- private:
-  sptr<IRemoteObject> remote_;
+private:
+    sptr<IRemoteObject> remote_;
 };
 
 }  // namespace OHOS

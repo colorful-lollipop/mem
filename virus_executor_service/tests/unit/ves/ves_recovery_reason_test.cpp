@@ -42,14 +42,13 @@ MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& p
 
 VesBootstrapChannel::ControlLoader MakeStaticControlLoader(const OHOS::sptr<IVirusProtectionExecutor>& control)
 {
-    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> {
-        return control;
-    };
+    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> { return control; };
 }
 
 }  // namespace
 
-TEST(VesRecoveryReasonTest, NoSessionMapsToUnhealthyNoSession) {
+TEST(VesRecoveryReasonTest, NoSessionMapsToUnhealthyNoSession)
+{
     VirusExecutorService service;
     service.OnStart();
 
@@ -61,7 +60,8 @@ TEST(VesRecoveryReasonTest, NoSessionMapsToUnhealthyNoSession) {
     service.OnStop();
 }
 
-TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
+TEST(VesRecoveryReasonTest, BusyMapsToBusyReason)
+{
     auto service = std::make_shared<VirusExecutorService>();
     service->OnStart();
 
@@ -73,10 +73,12 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     auto future = StartAsyncScan(&client, "/data/sleep50_reason.bin");
-    ASSERT_TRUE(WaitFor([&]() {
-        VesHeartbeatReply reply{};
-        return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
-    }, std::chrono::milliseconds(200)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            VesHeartbeatReply reply{};
+            return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+        },
+        std::chrono::milliseconds(200)));
 
     VesHeartbeatReply reply{};
     ASSERT_EQ(service->Heartbeat(reply), MemRpc::StatusCode::Ok);
@@ -89,7 +91,8 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason) {
     service->OnStop();
 }
 
-TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason) {
+TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason)
+{
     auto service = std::make_shared<VirusExecutorService>();
     service->OnStart();
 
@@ -101,10 +104,12 @@ TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason) {
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     auto future = StartAsyncScan(&client, "/data/sleep200_reason.bin");
-    ASSERT_TRUE(WaitFor([&]() {
-        VesHeartbeatReply reply{};
-        return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
-    }, std::chrono::milliseconds(200)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            VesHeartbeatReply reply{};
+            return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+        },
+        std::chrono::milliseconds(200)));
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     VesHeartbeatReply reply{};

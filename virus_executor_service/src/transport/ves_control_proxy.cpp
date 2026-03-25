@@ -1,18 +1,18 @@
 #include "transport/ves_control_proxy.h"
 
-#include <condition_variable>
-#include <cerrno>
-#include <cstdlib>
-#include <cstring>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <utility>
 #include <unistd.h>
+#include <cerrno>
+#include <condition_variable>
+#include <cstdlib>
+#include <cstring>
+#include <utility>
 
 #include "iremote_broker.h"
-#include "scm_rights.h"
 #include "iservice_registry.h"
+#include "scm_rights.h"
 #include "ves/ves_codec.h"
 #include "virus_protection_service_log.h"
 
@@ -30,12 +30,13 @@ std::shared_ptr<VesControlProxy> RetainProxy(VesControlProxy* proxy)
     }
 }
 
-int ConnectToService(const std::string& path) {
+int ConnectToService(const std::string& path)
+{
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         return -1;
     }
-    struct sockaddr_un addr{};
+    struct sockaddr_un addr {};
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
     if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -143,9 +144,8 @@ MemRpc::ChannelHealthResult ToHealthResult(const VesHeartbeatReply& reply, uint6
         result.status = MemRpc::ChannelHealthStatus::SessionMismatch;
         return result;
     }
-    result.status = IsHealthyHeartbeatStatus(reply.status)
-                        ? MemRpc::ChannelHealthStatus::Healthy
-                        : MemRpc::ChannelHealthStatus::Unhealthy;
+    result.status = IsHealthyHeartbeatStatus(reply.status) ? MemRpc::ChannelHealthStatus::Healthy
+                                                           : MemRpc::ChannelHealthStatus::Unhealthy;
     return result;
 }
 
@@ -159,9 +159,11 @@ bool IsDeadRemoteObject(const OHOS::sptr<IVirusProtectionExecutor>& control)
 }
 
 class ControlDeathRecipient final : public OHOS::IRemoteObject::DeathRecipient {
- public:
+public:
     explicit ControlDeathRecipient(std::function<void()> callback)
-        : callback_(std::move(callback)) {}
+        : callback_(std::move(callback))
+    {
+    }
 
     void OnRemoteDied(const OHOS::wptr<OHOS::IRemoteObject>&) override
     {
@@ -170,7 +172,7 @@ class ControlDeathRecipient final : public OHOS::IRemoteObject::DeathRecipient {
         }
     }
 
- private:
+private:
     std::function<void()> callback_;
 };
 
@@ -205,17 +207,19 @@ void VesBootstrapChannel::LeaveDeathRecipientCallback(DeathRecipientContext& con
     }
 }
 
-VesControlProxy::VesControlProxy(
-    const OHOS::sptr<OHOS::IRemoteObject>& remote,
-    const std::string& serviceSocketPath)
+VesControlProxy::VesControlProxy(const OHOS::sptr<OHOS::IRemoteObject>& remote, const std::string& serviceSocketPath)
     : OHOS::IRemoteProxy<IVirusProtectionExecutor>(remote),
-      service_socket_path_(serviceSocketPath) {}
+      service_socket_path_(serviceSocketPath)
+{
+}
 
-VesControlProxy::~VesControlProxy() {
+VesControlProxy::~VesControlProxy()
+{
     ResetSocketConnection();
 }
 
-void VesControlProxy::StopMonitorThread() {
+void VesControlProxy::StopMonitorThread()
+{
     std::thread monitorThread;
     int fd = -1;
     {
@@ -237,19 +241,20 @@ void VesControlProxy::StopMonitorThread() {
     }
 }
 
-void VesControlProxy::ResetSocketConnection() {
+void VesControlProxy::ResetSocketConnection()
+{
     StopMonitorThread();
 }
 
-bool VesControlProxy::SendCommand(int fd, char cmd, const std::vector<uint8_t>& payload) const {
+bool VesControlProxy::SendCommand(int fd, char cmd, const std::vector<uint8_t>& payload) const
+{
     const uint32_t payloadSize = static_cast<uint32_t>(payload.size());
-    return send(fd, &cmd, 1, MSG_NOSIGNAL) == 1 &&
-           SendAll(fd, &payloadSize, sizeof(payloadSize)) &&
+    return send(fd, &cmd, 1, MSG_NOSIGNAL) == 1 && SendAll(fd, &payloadSize, sizeof(payloadSize)) &&
            (payload.empty() || SendAll(fd, payload.data(), payload.size()));
 }
 
-MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_t>* payload,
-                                                      int timeoutMs) const {
+MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_t>* payload, int timeoutMs) const
+{
     if (payload == nullptr) {
         HILOGE("VesControlProxy::ReceiveSizedReply failed: payload is null");
         return MemRpc::StatusCode::InvalidArgument;
@@ -260,8 +265,11 @@ MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_
         pfd.events = POLLIN | POLLHUP | POLLERR;
         const int pollResult = poll(&pfd, 1, timeoutMs);
         if (pollResult <= 0) {
-            HILOGE("VesControlProxy::ReceiveSizedReply poll failed fd=%{public}d timeout_ms=%{public}d result=%{public}d",
-                fd, timeoutMs, pollResult);
+            HILOGE(
+                "VesControlProxy::ReceiveSizedReply poll failed fd=%{public}d timeout_ms=%{public}d result=%{public}d",
+                fd,
+                timeoutMs,
+                pollResult);
             return MemRpc::StatusCode::PeerDisconnected;
         }
     }
@@ -274,22 +282,30 @@ MemRpc::StatusCode VesControlProxy::ReceiveSizedReply(int fd, std::vector<uint8_
     payload->resize(replySize);
     if (replySize > 0 && !RecvAll(fd, payload->data(), payload->size())) {
         HILOGE("VesControlProxy::ReceiveSizedReply failed reading payload fd=%{public}d size=%{public}u",
-            fd, replySize);
+               fd,
+               replySize);
         payload->clear();
         return MemRpc::StatusCode::PeerDisconnected;
     }
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::BootstrapHandles& handles)
+{
     handles = MemRpc::MakeDefaultBootstrapHandles();
     int fds[FD_COUNT] = {-1, -1, -1, -1, -1, -1};
     SessionMetadata meta{};
     size_t data_len = sizeof(meta);
     const size_t received = OHOS::RecvFds(fd, fds, FD_COUNT, &meta, &data_len);
     if (received != FD_COUNT || data_len != sizeof(meta)) {
-        HILOGE("VesControlProxy::ReceiveSessionHandles failed fd=%{public}d received=%{public}zu expected=%{public}d data_len=%{public}zu meta_size=%{public}zu",
-            fd, received, FD_COUNT, data_len, sizeof(meta));
+        HILOGE(
+            "VesControlProxy::ReceiveSessionHandles failed fd=%{public}d received=%{public}zu expected=%{public}d "
+            "data_len=%{public}zu meta_size=%{public}zu",
+            fd,
+            received,
+            FD_COUNT,
+            data_len,
+            sizeof(meta));
         for (size_t i = 0; i < received; ++i) {
             close(fds[i]);
         }
@@ -307,13 +323,15 @@ MemRpc::StatusCode VesControlProxy::ReceiveSessionHandles(int fd, MemRpc::Bootst
     return MemRpc::StatusCode::Ok;
 }
 
-bool VesControlProxy::IsPeerDisconnected(int fd) const {
+bool VesControlProxy::IsPeerDisconnected(int fd) const
+{
     char buf = 0;
     const ssize_t received = recv(fd, &buf, 1, MSG_PEEK | MSG_DONTWAIT);
     return received == 0 || (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK);
 }
 
-void VesControlProxy::NotifyPeerDisconnected() {
+void VesControlProxy::NotifyPeerDisconnected()
+{
     // Keep the proxy alive while the callback reports the disconnect event.
     const auto self = RetainProxy(this);
     (void)self;
@@ -331,17 +349,18 @@ void VesControlProxy::NotifyPeerDisconnected() {
         callback = deathCallback_;
     }
     HILOGW("VesControlProxy::NotifyPeerDisconnected session_id=%{public}llu",
-        static_cast<unsigned long long>(sessionId));
+           static_cast<unsigned long long>(sessionId));
     if (callback) {
         callback(sessionId);
     }
 }
 
-MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& request,
-                                                MemRpc::BootstrapHandles& handles) {
+MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles)
+{
     if (!IsValidVesOpenSessionRequest(request)) {
         HILOGE("VesControlProxy::OpenSession failed: invalid request version=%{public}u engines=%{public}zu",
-            request.version, request.engineKinds.size());
+               request.version,
+               request.engineKinds.size());
         return MemRpc::StatusCode::InvalidArgument;
     }
 
@@ -369,7 +388,7 @@ MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& req
     const MemRpc::StatusCode receive_status = ReceiveSessionHandles(fd, handles);
     if (receive_status != MemRpc::StatusCode::Ok) {
         HILOGE("VesControlProxy::OpenSession receive handles failed status=%{public}d",
-            static_cast<int>(receive_status));
+               static_cast<int>(receive_status));
         close(fd);
         return receive_status;
     }
@@ -389,12 +408,11 @@ MemRpc::StatusCode VesControlProxy::OpenSession(const VesOpenSessionRequest& req
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& reply,
-                                                         int timeoutMs) const {
+MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& reply, int timeoutMs) const
+{
     int hb_fd = ConnectToService(service_socket_path_);
     if (hb_fd < 0) {
-        HILOGE("VesControlProxy::HeartbeatWithTimeout connect failed path=%{public}s",
-            service_socket_path_.c_str());
+        HILOGE("VesControlProxy::HeartbeatWithTimeout connect failed path=%{public}s", service_socket_path_.c_str());
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
@@ -409,12 +427,13 @@ MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& repl
     close(hb_fd);
     if (receiveStatus != MemRpc::StatusCode::Ok) {
         HILOGE("VesControlProxy::HeartbeatWithTimeout receive failed status=%{public}d",
-            static_cast<int>(receiveStatus));
+               static_cast<int>(receiveStatus));
         return receiveStatus;
     }
     if (payload.size() != sizeof(VesHeartbeatReply)) {
         HILOGE("VesControlProxy::HeartbeatWithTimeout protocol mismatch payload_size=%{public}zu expected=%{public}zu",
-            payload.size(), sizeof(VesHeartbeatReply));
+               payload.size(),
+               sizeof(VesHeartbeatReply));
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     VesHeartbeatReply buf{};
@@ -423,12 +442,13 @@ MemRpc::StatusCode VesControlProxy::HeartbeatWithTimeout(VesHeartbeatReply& repl
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply) {
+MemRpc::StatusCode VesControlProxy::Heartbeat(VesHeartbeatReply& reply)
+{
     return HeartbeatWithTimeout(reply, DEFAULT_HEARTBEAT_TIMEOUT_MS);
 }
 
-MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
-                                            VesAnyCallReply& reply) {
+MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& reply)
+{
     AnyCallRequestHeader header{};
     header.opcode = request.opcode;
     header.priority = request.priority;
@@ -444,12 +464,14 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
     int fd = ConnectToService(service_socket_path_);
     if (fd < 0) {
         HILOGE("VesControlProxy::AnyCall connect failed path=%{public}s opcode=%{public}u",
-            service_socket_path_.c_str(), request.opcode);
+               service_socket_path_.c_str(),
+               request.opcode);
         return MemRpc::StatusCode::PeerDisconnected;
     }
     if (!SendCommand(fd, 4, wire)) {
         HILOGE("VesControlProxy::AnyCall send failed opcode=%{public}u payload_size=%{public}zu",
-            request.opcode, request.payload.size());
+               request.opcode,
+               request.payload.size());
         close(fd);
         return MemRpc::StatusCode::PeerDisconnected;
     }
@@ -460,37 +482,45 @@ MemRpc::StatusCode VesControlProxy::AnyCall(const VesAnyCallRequest& request,
     close(fd);
     if (receiveStatus != MemRpc::StatusCode::Ok) {
         HILOGE("VesControlProxy::AnyCall receive failed opcode=%{public}u status=%{public}d",
-            request.opcode, static_cast<int>(receiveStatus));
+               request.opcode,
+               static_cast<int>(receiveStatus));
         return receiveStatus;
     }
     if (payload.size() < sizeof(AnyCallReplyHeader)) {
-        HILOGE("VesControlProxy::AnyCall protocol mismatch opcode=%{public}u payload_size=%{public}zu header_size=%{public}zu",
-            request.opcode, payload.size(), sizeof(AnyCallReplyHeader));
+        HILOGE(
+            "VesControlProxy::AnyCall protocol mismatch opcode=%{public}u payload_size=%{public}zu "
+            "header_size=%{public}zu",
+            request.opcode,
+            payload.size(),
+            sizeof(AnyCallReplyHeader));
         return MemRpc::StatusCode::ProtocolMismatch;
     }
 
     AnyCallReplyHeader replyHeader{};
     std::memcpy(&replyHeader, payload.data(), sizeof(replyHeader));
     if (payload.size() != sizeof(replyHeader) + replyHeader.payloadSize) {
-        HILOGE("VesControlProxy::AnyCall payload size mismatch opcode=%{public}u payload_size=%{public}zu declared_payload=%{public}u",
-            request.opcode, payload.size(), replyHeader.payloadSize);
+        HILOGE(
+            "VesControlProxy::AnyCall payload size mismatch opcode=%{public}u payload_size=%{public}zu "
+            "declared_payload=%{public}u",
+            request.opcode,
+            payload.size(),
+            replyHeader.payloadSize);
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     reply.status = static_cast<MemRpc::StatusCode>(replyHeader.status);
     reply.errorCode = replyHeader.errorCode;
-    reply.payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)),
-                         payload.end());
+    reply.payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)), payload.end());
     return MemRpc::StatusCode::Ok;
 }
 
-MemRpc::StatusCode VesControlProxy::CloseSession() {
+MemRpc::StatusCode VesControlProxy::CloseSession()
+{
     std::lock_guard<std::mutex> lock(operationMutex_);
     ResetSocketConnection();
 
     int close_fd = ConnectToService(service_socket_path_);
     if (close_fd < 0) {
-        HILOGE("VesControlProxy::CloseSession connect failed path=%{public}s",
-            service_socket_path_.c_str());
+        HILOGE("VesControlProxy::CloseSession connect failed path=%{public}s", service_socket_path_.c_str());
         return MemRpc::StatusCode::PeerDisconnected;
     }
 
@@ -503,12 +533,14 @@ MemRpc::StatusCode VesControlProxy::CloseSession() {
     return MemRpc::StatusCode::Ok;
 }
 
-void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) {
+void VesControlProxy::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
+{
     std::lock_guard<std::mutex> lock(callbackMutex_);
     deathCallback_ = std::move(callback);
 }
 
-void VesControlProxy::MonitorSocket() {
+void VesControlProxy::MonitorSocket()
+{
     int monitoredFd = -1;
     {
         std::lock_guard<std::mutex> lock(connectionMutex_);
@@ -518,7 +550,7 @@ void VesControlProxy::MonitorSocket() {
         return;
     }
 
-    struct pollfd pfd{};
+    struct pollfd pfd {};
     pfd.fd = monitoredFd;
     pfd.events = POLLIN | POLLHUP | POLLERR;
 
@@ -539,24 +571,22 @@ void VesControlProxy::MonitorSocket() {
     }
 }
 
-VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
-                                         VesOpenSessionRequest openSessionRequest)
+VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
     : controlLoader_(std::move(controlLoader)),
       deathRecipientContext_(std::make_shared<DeathRecipientContext>()),
-      deathRecipient_(std::make_shared<ControlDeathRecipient>(
-          [context = deathRecipientContext_]() {
-              auto* owner = TryEnterDeathRecipientCallback(*context);
-              if (owner == nullptr) {
-                  return;
-              }
+      deathRecipient_(std::make_shared<ControlDeathRecipient>([context = deathRecipientContext_]() {
+          auto* owner = TryEnterDeathRecipientCallback(*context);
+          if (owner == nullptr) {
+              return;
+          }
 
-              try {
-                  owner->HandleRemoteDied();
-              } catch (...) {
-                  HILOGW("VesBootstrapChannel death recipient callback threw");
-              }
-              LeaveDeathRecipientCallback(*context);
-          })),
+          try {
+              owner->HandleRemoteDied();
+          } catch (...) {
+              HILOGW("VesBootstrapChannel death recipient callback threw");
+          }
+          LeaveDeathRecipientCallback(*context);
+      })),
       openSessionRequest_(std::move(openSessionRequest))
 {
     if (!controlLoader_) {
@@ -599,9 +629,7 @@ void VesBootstrapChannel::ShutdownDeathRecipient()
     std::unique_lock<std::mutex> lock(context->mutex);
     context->owner = nullptr;
     context->shuttingDown = true;
-    context->cv.wait(lock, [&context]() {
-        return context->inFlightCallbacks == 0;
-    });
+    context->cv.wait(lock, [&context]() { return context->inFlightCallbacks == 0; });
 }
 
 OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::EnsureControlBoundLocked()

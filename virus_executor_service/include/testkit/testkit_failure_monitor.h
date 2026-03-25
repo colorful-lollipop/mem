@@ -12,7 +12,7 @@
 namespace VirusExecutorService::testkit {
 
 class FailureMonitor {
- public:
+public:
     struct Options {
         uint32_t windowMs = 60000;
         uint32_t execTimeoutThreshold = 3;
@@ -24,19 +24,25 @@ class FailureMonitor {
     FailureMonitor() = default;
 
     explicit FailureMonitor(Options options, ThresholdCallback callback = nullptr)
-        : options_(options), callback_(std::move(callback)) {}
+        : options_(options),
+          callback_(std::move(callback))
+    {
+    }
 
-    void SetThresholdCallback(ThresholdCallback callback) {
+    void SetThresholdCallback(ThresholdCallback callback)
+    {
         std::lock_guard<std::mutex> lock(mutex_);
         callback_ = std::move(callback);
     }
 
-    void Reset() {
+    void Reset()
+    {
         std::lock_guard<std::mutex> lock(mutex_);
         execTimeouts_.clear();
     }
 
-    void OnFailure(const MemRpc::RpcFailure& failure) {
+    void OnFailure(const MemRpc::RpcFailure& failure)
+    {
         ThresholdCallback callback;
         bool fire = false;
         if (failure.status == MemRpc::StatusCode::PeerDisconnected ||
@@ -51,8 +57,8 @@ class FailureMonitor {
             std::lock_guard<std::mutex> lock(mutex_);
             execTimeouts_.push_back(now);
             while (!execTimeouts_.empty() &&
-                   std::chrono::duration_cast<std::chrono::milliseconds>(
-                       now - execTimeouts_.front()).count() > options_.windowMs) {
+                   std::chrono::duration_cast<std::chrono::milliseconds>(now - execTimeouts_.front()).count() >
+                       options_.windowMs) {
                 execTimeouts_.pop_front();
             }
             if (execTimeouts_.size() >= options_.execTimeoutThreshold && callback_) {
@@ -66,7 +72,7 @@ class FailureMonitor {
         }
     }
 
- private:
+private:
     Options options_;
     ThresholdCallback callback_;
     std::mutex mutex_;

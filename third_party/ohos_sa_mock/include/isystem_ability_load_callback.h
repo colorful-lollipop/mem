@@ -6,17 +6,16 @@
 namespace OHOS {
 
 class ISystemAbilityLoadCallback : public IRemoteBroker {
- public:
-  ~ISystemAbilityLoadCallback() override = default;
+public:
+    ~ISystemAbilityLoadCallback() override = default;
 
-  virtual void OnLoadSystemAbilitySuccess(int32_t systemAbilityId,
-                                          const sptr<IRemoteObject>& object) = 0;
-  virtual void OnLoadSystemAbilityFail(int32_t systemAbilityId) = 0;
+    virtual void OnLoadSystemAbilitySuccess(int32_t systemAbilityId, const sptr<IRemoteObject>& object) = 0;
+    virtual void OnLoadSystemAbilityFail(int32_t systemAbilityId) = 0;
 };
 
 class SystemAbilityLoadCallbackStub : public IRemoteStub<ISystemAbilityLoadCallback> {
- public:
-  ~SystemAbilityLoadCallbackStub() override = default;
+public:
+    ~SystemAbilityLoadCallbackStub() override = default;
 };
 
 }  // namespace OHOS

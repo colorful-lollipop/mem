@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
@@ -47,9 +47,7 @@ MemRpc::RpcFuture StartAsyncScan(MemRpc::RpcClient* client, const std::string& p
 
 VesBootstrapChannel::ControlLoader MakeStaticControlLoader(const OHOS::sptr<IVirusProtectionExecutor>& control)
 {
-    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> {
-        return control;
-    };
+    return [control]() -> OHOS::sptr<IVirusProtectionExecutor> { return control; };
 }
 
 void CloseHandles(MemRpc::BootstrapHandles* handles)
@@ -74,12 +72,13 @@ void CloseHandles(MemRpc::BootstrapHandles* handles)
 }
 
 class FakeReloadControl final : public VesControlStub {
- public:
+public:
     explicit FakeReloadControl(uint64_t sessionBase)
-        : sessionBase_(sessionBase) {}
+        : sessionBase_(sessionBase)
+    {
+    }
 
-    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
-                                   MemRpc::BootstrapHandles& handles) override
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles) override
     {
         EXPECT_TRUE(request.engineKinds.empty());
         handles = MemRpc::MakeDefaultBootstrapHandles();
@@ -120,20 +119,19 @@ class FakeReloadControl final : public VesControlStub {
         return closeCount_.load();
     }
 
- private:
+private:
     std::atomic<uint64_t> sessionBase_;
     std::atomic<int> openCount_{0};
     std::atomic<int> closeCount_{0};
 };
 
 class TrackingRemoteObject final : public OHOS::IRemoteObject {
- public:
+public:
     bool AddDeathRecipient(const OHOS::sptr<DeathRecipient>& recipient) override
     {
         const int active = activeAdds_.fetch_add(1) + 1;
         int observed = maxConcurrentAdds_.load();
-        while (active > observed &&
-               !maxConcurrentAdds_.compare_exchange_weak(observed, active)) {
+        while (active > observed && !maxConcurrentAdds_.compare_exchange_weak(observed, active)) {
         }
         addCount_.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -152,24 +150,26 @@ class TrackingRemoteObject final : public OHOS::IRemoteObject {
         return maxConcurrentAdds_.load();
     }
 
- private:
+private:
     std::atomic<int> activeAdds_{0};
     std::atomic<int> addCount_{0};
     std::atomic<int> maxConcurrentAdds_{0};
 };
 
 class TrackingControl final : public IVirusProtectionExecutor {
- public:
+public:
     TrackingControl(uint64_t sessionBase, OHOS::sptr<TrackingRemoteObject> remote)
-        : sessionBase_(sessionBase), remote_(std::move(remote)) {}
+        : sessionBase_(sessionBase),
+          remote_(std::move(remote))
+    {
+    }
 
     OHOS::sptr<OHOS::IRemoteObject> AsObject() override
     {
         return remote_;
     }
 
-    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request,
-                                   MemRpc::BootstrapHandles& handles) override
+    MemRpc::StatusCode OpenSession(const VesOpenSessionRequest& request, MemRpc::BootstrapHandles& handles) override
     {
         EXPECT_TRUE(request.engineKinds.empty());
         handles = MemRpc::MakeDefaultBootstrapHandles();
@@ -198,14 +198,15 @@ class TrackingControl final : public IVirusProtectionExecutor {
         return MemRpc::StatusCode::InvalidArgument;
     }
 
- private:
+private:
     std::atomic<uint64_t> sessionBase_;
     OHOS::sptr<TrackingRemoteObject> remote_;
 };
 
 }  // namespace
 
-TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
+TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession)
+{
     VirusExecutorService service;
     service.OnStart();
 
@@ -219,7 +220,8 @@ TEST(VesHeartbeatTest, UnhealthyBeforeOpenSession) {
     service.OnStop();
 }
 
-TEST(VesHeartbeatTest, OkAfterOpenSession) {
+TEST(VesHeartbeatTest, OkAfterOpenSession)
+{
     VirusExecutorService service;
     service.OnStart();
 
@@ -236,14 +238,14 @@ TEST(VesHeartbeatTest, OkAfterOpenSession) {
     EXPECT_EQ(reply.version, 2u);
     EXPECT_EQ(reply.inFlight, 0u);
     EXPECT_EQ(reply.lastTaskAgeMs, 0u);
-    EXPECT_EQ(reply.flags,
-              VES_HEARTBEAT_FLAG_HAS_SESSION | VES_HEARTBEAT_FLAG_INITIALIZED);
+    EXPECT_EQ(reply.flags, VES_HEARTBEAT_FLAG_HAS_SESSION | VES_HEARTBEAT_FLAG_INITIALIZED);
 
     service.CloseSession();
     service.OnStop();
 }
 
-TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
+TEST(VesHeartbeatTest, HeartbeatOverSaSocket)
+{
     const std::string socketPath = "/tmp/virus_executor_service_hb_" + std::to_string(getpid());
 
     auto stub = std::make_shared<VirusExecutorService>();
@@ -270,7 +272,8 @@ TEST(VesHeartbeatTest, HeartbeatOverSaSocket) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, OpenSessionRejectsDifferentEngineListAfterConfiguration) {
+TEST(VesHeartbeatTest, OpenSessionRejectsDifferentEngineListAfterConfiguration)
+{
     VirusExecutorService service;
     service.OnStart();
 
@@ -296,7 +299,8 @@ TEST(VesHeartbeatTest, OpenSessionRejectsDifferentEngineListAfterConfiguration) 
     service.OnStop();
 }
 
-TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
+TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl)
+{
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
@@ -315,7 +319,8 @@ TEST(VesHeartbeatTest, BootstrapChannelWorksWithInterfaceOnlyControl) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
+TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply)
+{
     const std::string socketPath = "/tmp/virus_executor_service_health_" + std::to_string(getpid());
 
     auto stub = std::make_shared<VirusExecutorService>();
@@ -338,9 +343,9 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesHealthyReply) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) {
-    const std::string socketPath =
-        "/tmp/virus_executor_service_health_mismatch_" + std::to_string(getpid());
+TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies)
+{
+    const std::string socketPath = "/tmp/virus_executor_service_health_mismatch_" + std::to_string(getpid());
 
     auto stub = std::make_shared<VirusExecutorService>();
     stub->AsObject()->SetServicePath(socketPath);
@@ -368,7 +373,8 @@ TEST(VesHeartbeatTest, CheckHealthTranslatesUnhealthyAndSessionMismatchReplies) 
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientAfterInitialBind) {
+TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientAfterInitialBind)
+{
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
@@ -389,7 +395,8 @@ TEST(VesHeartbeatTest, BootstrapChannelInstallsDeathRecipientAfterInitialBind) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, OpenSessionUsesLoaderSequenceAcrossReloads) {
+TEST(VesHeartbeatTest, OpenSessionUsesLoaderSequenceAcrossReloads)
+{
     auto seed = std::make_shared<FakeReloadControl>(100);
     auto fresh = std::make_shared<FakeReloadControl>(200);
 
@@ -418,7 +425,8 @@ TEST(VesHeartbeatTest, OpenSessionUsesLoaderSequenceAcrossReloads) {
     EXPECT_EQ(bootstrap.CurrentControl(), fresh);
 }
 
-TEST(VesHeartbeatTest, OpenSessionRefreshesDeadControlBeforeCallingOpenSession) {
+TEST(VesHeartbeatTest, OpenSessionRefreshesDeadControlBeforeCallingOpenSession)
+{
     auto seed = std::make_shared<FakeReloadControl>(100);
     auto fresh = std::make_shared<FakeReloadControl>(200);
     seed->AsObject()->NotifyRemoteDiedForTest();
@@ -439,23 +447,26 @@ TEST(VesHeartbeatTest, OpenSessionRefreshesDeadControlBeforeCallingOpenSession) 
     EXPECT_EQ(bootstrap.CurrentControl(), fresh);
 }
 
-TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
+TEST(VesHeartbeatTest, HeartbeatShowsInFlight)
+{
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
-                                                           DefaultVesOpenSessionRequest());
+    auto bootstrap =
+        std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     auto future = StartAsyncScan(&client, "/data/sleep50.bin");
-    ASSERT_TRUE(WaitFor([&]() {
-        VesHeartbeatReply reply{};
-        return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
-    }, std::chrono::milliseconds(200)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            VesHeartbeatReply reply{};
+            return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+        },
+        std::chrono::milliseconds(200)));
 
     VesHeartbeatReply reply{};
     EXPECT_EQ(stub->Heartbeat(reply), MemRpc::StatusCode::Ok);
@@ -471,7 +482,8 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
+TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient)
+{
     const std::string socketPath = "/tmp/virus_executor_service_death_" + std::to_string(getpid());
 
     auto stub = std::make_shared<VirusExecutorService>();
@@ -479,11 +491,12 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     stub->OnStart();
     ASSERT_TRUE(stub->Publish(stub.get()));
 
-    auto control = OHOS::sptr<IVirusProtectionExecutor>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
+    auto control =
+        OHOS::sptr<IVirusProtectionExecutor>(std::make_shared<VesControlProxy>(stub->AsObject(), socketPath));
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
-                                                           DefaultVesOpenSessionRequest());
+    auto bootstrap =
+        std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
     std::atomic<int> deathCount{0};
     bootstrap->SetEngineDeathCallback([&](uint64_t) { deathCount.fetch_add(1); });
 
@@ -498,7 +511,8 @@ TEST(VesHeartbeatTest, ProxyControlUsesChannelDeathRecipient) {
     stub->OnStop();
 }
 
-TEST(VesHeartbeatTest, CheckHealthReturnsUnhealthyAfterControlDeathWithoutHeartbeat) {
+TEST(VesHeartbeatTest, CheckHealthReturnsUnhealthyAfterControlDeathWithoutHeartbeat)
+{
     auto seed = std::make_shared<FakeReloadControl>(300);
     VesBootstrapChannel bootstrap(MakeStaticControlLoader(seed), DefaultVesOpenSessionRequest());
 
@@ -512,7 +526,8 @@ TEST(VesHeartbeatTest, CheckHealthReturnsUnhealthyAfterControlDeathWithoutHeartb
     EXPECT_EQ(result.sessionId, handles.sessionId);
 }
 
-TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
+TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh)
+{
     auto seed = std::make_shared<FakeReloadControl>(300);
     auto freshA = std::make_shared<FakeReloadControl>(400);
     auto freshB = std::make_shared<FakeReloadControl>(500);
@@ -547,7 +562,8 @@ TEST(VesHeartbeatTest, EngineDeathInvalidatesControlUntilNextExplicitRefresh) {
     EXPECT_EQ(loadCount.load(), 3);
 }
 
-TEST(VesHeartbeatTest, ConcurrentRefreshSerializesDeathRecipientRegistration) {
+TEST(VesHeartbeatTest, ConcurrentRefreshSerializesDeathRecipientRegistration)
+{
     constexpr int kRefreshRounds = 4;
     constexpr int kRefreshThreads = 8;
 
@@ -578,8 +594,7 @@ TEST(VesHeartbeatTest, ConcurrentRefreshSerializesDeathRecipientRegistration) {
         remotes[static_cast<size_t>(round)]->NotifyRemoteDiedForTest();
 
         std::atomic<bool> start{false};
-        std::vector<OHOS::sptr<IVirusProtectionExecutor>> seenControls(
-            static_cast<size_t>(kRefreshThreads));
+        std::vector<OHOS::sptr<IVirusProtectionExecutor>> seenControls(static_cast<size_t>(kRefreshThreads));
         std::vector<std::thread> threads;
         threads.reserve(kRefreshThreads);
         for (int index = 0; index < kRefreshThreads; ++index) {
@@ -607,23 +622,26 @@ TEST(VesHeartbeatTest, ConcurrentRefreshSerializesDeathRecipientRegistration) {
     EXPECT_EQ(loadCount.load(), kRefreshRounds + 1);
 }
 
-TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded) {
+TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded)
+{
     auto stub = std::make_shared<VirusExecutorService>();
     stub->OnStart();
 
     auto control = OHOS::iface_cast<IVirusProtectionExecutor>(stub->AsObject());
     ASSERT_NE(control, nullptr);
 
-    auto bootstrap = std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control),
-                                                           DefaultVesOpenSessionRequest());
+    auto bootstrap =
+        std::make_shared<VesBootstrapChannel>(MakeStaticControlLoader(control), DefaultVesOpenSessionRequest());
     MemRpc::RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     auto future = StartAsyncScan(&client, "/data/sleep200_long.bin");
-    ASSERT_TRUE(WaitFor([&]() {
-        VesHeartbeatReply reply{};
-        return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
-    }, std::chrono::milliseconds(200)));
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            VesHeartbeatReply reply{};
+            return stub->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+        },
+        std::chrono::milliseconds(200)));
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     VesHeartbeatReply reply{};

@@ -1,3 +1,5 @@
+#include <sys/wait.h>
+#include <unistd.h>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -8,17 +10,15 @@
 #include <mutex>
 #include <random>
 #include <string>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
+#include "client/ves_client.h"
 #include "iremote_object.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
-#include "client/ves_client.h"
 #include "ves/ves_sample_rules.h"
 #include "ves/ves_types.h"
 #include "virus_protection_service_log.h"
@@ -32,12 +32,16 @@ volatile std::sig_atomic_t g_stop = 0;
 std::mutex g_engine_mutex;
 pid_t g_engine_pid = -1;
 
-void SignalHandler(int) {
+void SignalHandler(int)
+{
     g_stop = 1;
 }
 
 const std::vector<std::string> kNormalTokens = {
-    "clean", "virus", "eicar", "sleep10",
+    "clean",
+    "virus",
+    "eicar",
+    "sleep10",
 };
 
 constexpr double kCrashProbability = 0.05;
@@ -59,15 +63,15 @@ struct StressStats {
     std::atomic<uint64_t> sleepMs{0};
 };
 
-bool ParseIntArg(const char* text, int* value) {
+bool ParseIntArg(const char* text, int* value)
+{
     if (text == nullptr || value == nullptr) {
         return false;
     }
     errno = 0;
     char* end = nullptr;
     const long parsed = std::strtol(text, &end, 10);
-    if (errno != 0 || end == text || (end != nullptr && *end != '\0') ||
-        parsed < std::numeric_limits<int>::min() ||
+    if (errno != 0 || end == text || (end != nullptr && *end != '\0') || parsed < std::numeric_limits<int>::min() ||
         parsed > std::numeric_limits<int>::max()) {
         return false;
     }
@@ -75,7 +79,8 @@ bool ParseIntArg(const char* text, int* value) {
     return true;
 }
 
-bool ParseUint32Arg(const char* text, uint32_t* value) {
+bool ParseUint32Arg(const char* text, uint32_t* value)
+{
     if (text == nullptr || value == nullptr) {
         return false;
     }
@@ -90,19 +95,19 @@ bool ParseUint32Arg(const char* text, uint32_t* value) {
     return true;
 }
 
-pid_t SpawnEngine(const std::string& enginePath) {
+pid_t SpawnEngine(const std::string& enginePath)
+{
     pid_t pid = fork();
     if (pid == 0) {
-        execl(enginePath.c_str(), enginePath.c_str(),
-              REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
-              nullptr);
+        execl(enginePath.c_str(), enginePath.c_str(), REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(), nullptr);
         HILOGE("exec engine failed");
         _exit(1);
     }
     return pid;
 }
 
-void KillAndWait(pid_t pid) {
+void KillAndWait(pid_t pid)
+{
     if (pid > 0) {
         kill(pid, SIGTERM);
         int status = 0;
@@ -110,7 +115,8 @@ void KillAndWait(pid_t pid) {
     }
 }
 
-void RespawnEngine(const std::string& enginePath, StressStats* stats) {
+void RespawnEngine(const std::string& enginePath, StressStats* stats)
+{
     std::lock_guard<std::mutex> lock(g_engine_mutex);
     // Reap the dead engine process.
     if (g_engine_pid > 0) {
@@ -127,9 +133,12 @@ void RespawnEngine(const std::string& enginePath, StressStats* stats) {
 }
 
 class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
- public:
+public:
     EngineRespawnRecipient(const std::string& enginePath, StressStats* stats)
-        : enginePath_(enginePath), stats_(stats) {}
+        : enginePath_(enginePath),
+          stats_(stats)
+    {
+    }
 
     void Disable()
     {
@@ -144,14 +153,17 @@ class EngineRespawnRecipient : public OHOS::IRemoteObject::DeathRecipient {
         RespawnEngine(enginePath_, stats_);
     }
 
- private:
+private:
     std::string enginePath_;
     StressStats* stats_;
     std::atomic<bool> enabled_{true};
 };
 
-void WorkerThread(const StressConfig& config, uint32_t threadId,
-                  VirusExecutorService::VesClient* client, StressStats* stats) {
+void WorkerThread(const StressConfig& config,
+                  uint32_t threadId,
+                  VirusExecutorService::VesClient* client,
+                  StressStats* stats)
+{
     std::mt19937 rng(config.seed + threadId);
     std::uniform_int_distribution<size_t> tokenDist(0, kNormalTokens.size() - 1);
     std::uniform_real_distribution<double> crashDist(0.0, 1.0);
@@ -159,8 +171,7 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
     for (int i = 0; i < config.iterations && !g_stop; i++) {
         bool doCrash = config.enableCrash && crashDist(rng) < kCrashProbability;
         std::string token = doCrash ? "crash" : kNormalTokens[tokenDist(rng)];
-        std::string path = "/data/stress_" + token + "_" +
-                           std::to_string(threadId) + "_" + std::to_string(i) + ".apk";
+        std::string path = "/data/stress_" + token + "_" + std::to_string(threadId) + "_" + std::to_string(i) + ".apk";
 
         const auto behavior = VirusExecutorService::EvaluateSamplePath(path);
 
@@ -182,14 +193,18 @@ void WorkerThread(const StressConfig& config, uint32_t threadId,
         if (reply.threatLevel != behavior.threatLevel) {
             stats->mismatch++;
             HILOGE("thread %{public}u: MISMATCH %{public}s expected=%{public}d got=%{public}d",
-                  threadId, path.c_str(), behavior.threatLevel, reply.threatLevel);
+                   threadId,
+                   path.c_str(),
+                   behavior.threatLevel,
+                   reply.threatLevel);
         } else {
             stats->ok++;
         }
     }
 }
 
-StressConfig ParseArgs(int argc, char* argv[]) {
+StressConfig ParseArgs(int argc, char* argv[])
+{
     StressConfig config;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--threads") == 0 && i + 1 < argc) {
@@ -216,15 +231,18 @@ StressConfig ParseArgs(int argc, char* argv[]) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     std::signal(SIGTERM, SignalHandler);
     std::signal(SIGINT, SignalHandler);
 
     StressConfig config = ParseArgs(argc, argv);
 
     HILOGI("stress client: threads=%{public}d iterations=%{public}d seed=%{public}u crash=%{public}s",
-          config.threads, config.iterations, config.seed,
-          config.enableCrash ? "5%" : "off");
+           config.threads,
+           config.iterations,
+           config.seed,
+           config.enableCrash ? "5%" : "off");
 
     // Determine engine path relative to our binary.
     std::string dir = ".";
@@ -330,8 +348,7 @@ int main(int argc, char* argv[]) {
     const auto startTime = std::chrono::steady_clock::now();
 
     for (int t = 0; t < config.threads; t++) {
-        workers.emplace_back(WorkerThread, std::cref(config),
-                             static_cast<uint32_t>(t), client.get(), &stats);
+        workers.emplace_back(WorkerThread, std::cref(config), static_cast<uint32_t>(t), client.get(), &stats);
     }
 
     for (auto& w : workers) {
@@ -339,20 +356,21 @@ int main(int argc, char* argv[]) {
     }
 
     const auto endTime = std::chrono::steady_clock::now();
-    const auto actualMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        endTime - startTime).count();
+    const auto actualMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
     const uint64_t estimatedMs = stats.sleepMs.load();
 
     HILOGI("=== Stress Results ===");
     HILOGI("total=%{public}d ok=%{public}d mismatch=%{public}d rpc_error=%{public}d",
-          stats.total.load(), stats.ok.load(), stats.mismatch.load(), stats.rpcError.load());
-    HILOGI("crashes_sent=%{public}d engine_restarts=%{public}d",
-          stats.crashesSent.load(), stats.engineRestarts.load());
+           stats.total.load(),
+           stats.ok.load(),
+           stats.mismatch.load(),
+           stats.rpcError.load());
+    HILOGI("crashes_sent=%{public}d engine_restarts=%{public}d", stats.crashesSent.load(), stats.engineRestarts.load());
     HILOGI("estimated=%{public}llu ms (sleep_total=%{public}llu ms / server_workers=1)  actual=%{public}llu ms",
-          static_cast<unsigned long long>(estimatedMs),
-          static_cast<unsigned long long>(stats.sleepMs.load()),
-          static_cast<unsigned long long>(actualMs));
+           static_cast<unsigned long long>(estimatedMs),
+           static_cast<unsigned long long>(stats.sleepMs.load()),
+           static_cast<unsigned long long>(actualMs));
 
     // Cleanup.
     respawnRecipient->Disable();

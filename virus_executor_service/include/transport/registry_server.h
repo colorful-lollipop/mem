@@ -14,12 +14,18 @@ using LoadCallback = std::function<bool(int32_t sa_id)>;
 using UnloadCallback = std::function<void(int32_t sa_id)>;
 
 class RegistryServer {
- public:
+public:
     explicit RegistryServer(const std::string& socketPath);
     ~RegistryServer();
 
-    void SetLoadCallback(LoadCallback cb) { load_cb_ = std::move(cb); }
-    void SetUnloadCallback(UnloadCallback cb) { unload_cb_ = std::move(cb); }
+    void SetLoadCallback(LoadCallback cb)
+    {
+        load_cb_ = std::move(cb);
+    }
+    void SetUnloadCallback(UnloadCallback cb)
+    {
+        unload_cb_ = std::move(cb);
+    }
 
     bool Start();
     void Stop();
@@ -27,7 +33,7 @@ class RegistryServer {
     void RegisterService(int32_t sa_id, const std::string& serviceSocketPath);
     void UnregisterService(int32_t sa_id);
 
- private:
+private:
     void AcceptLoop(int listen_fd);
     void HandleClient(int client_fd);
 

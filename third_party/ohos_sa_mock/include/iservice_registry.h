@@ -9,17 +9,17 @@
 namespace OHOS {
 
 class SystemAbilityManagerClient {
- public:
-  static SystemAbilityManagerClient& GetInstance();
+public:
+    static SystemAbilityManagerClient& GetInstance();
 
-  sptr<ISystemAbilityManager> GetSystemAbilityManager();
+    sptr<ISystemAbilityManager> GetSystemAbilityManager();
 
-  void SetBackend(const std::shared_ptr<ISamBackend>& backend);
+    void SetBackend(const std::shared_ptr<ISamBackend>& backend);
 
- private:
-  SystemAbilityManagerClient() = default;
+private:
+    SystemAbilityManagerClient() = default;
 
-  std::shared_ptr<ISamBackend> backend_;
+    std::shared_ptr<ISamBackend> backend_;
 };
 
 }  // namespace OHOS

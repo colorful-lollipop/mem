@@ -11,40 +11,39 @@ namespace OHOS {
 
 class IRemoteBroker;
 
-using RemoteRequestHandler = std::function<bool(int command, const MockIpcRequest& request,
-                                                MockIpcReply* reply)>;
+using RemoteRequestHandler = std::function<bool(int command, const MockIpcRequest& request, MockIpcReply* reply)>;
 
 class IRemoteObject : public RefBase {
- public:
-  class DeathRecipient : public RefBase {
-   public:
-    ~DeathRecipient() override = default;
-    virtual void OnRemoteDied(const wptr<IRemoteObject>& remote) = 0;
-  };
+public:
+    class DeathRecipient : public RefBase {
+    public:
+        ~DeathRecipient() override = default;
+        virtual void OnRemoteDied(const wptr<IRemoteObject>& remote) = 0;
+    };
 
-  IRemoteObject();
-  ~IRemoteObject() override = default;
+    IRemoteObject();
+    ~IRemoteObject() override = default;
 
-  virtual bool IsObjectDead() const;
-  virtual bool AddDeathRecipient(const sptr<DeathRecipient>& recipient);
-  virtual bool RemoveDeathRecipient(const sptr<DeathRecipient>& recipient);
-  virtual void NotifyRemoteDiedForTest();
+    virtual bool IsObjectDead() const;
+    virtual bool AddDeathRecipient(const sptr<DeathRecipient>& recipient);
+    virtual bool RemoveDeathRecipient(const sptr<DeathRecipient>& recipient);
+    virtual void NotifyRemoteDiedForTest();
 
-  void AttachBroker(const sptr<IRemoteBroker>& broker);
-  sptr<IRemoteBroker> GetBroker() const;
+    void AttachBroker(const sptr<IRemoteBroker>& broker);
+    sptr<IRemoteBroker> GetBroker() const;
 
-  void SetSaId(int32_t saId);
-  int32_t GetSaId() const;
+    void SetSaId(int32_t saId);
+    int32_t GetSaId() const;
 
-  void SetServicePath(const std::string& path);
-  std::string GetServicePath() const;
+    void SetServicePath(const std::string& path);
+    std::string GetServicePath() const;
 
-  void SetRequestHandler(RemoteRequestHandler handler);
-  bool HandleRequest(int command, const MockIpcRequest& request, MockIpcReply* reply);
+    void SetRequestHandler(RemoteRequestHandler handler);
+    bool HandleRequest(int command, const MockIpcRequest& request, MockIpcReply* reply);
 
- private:
-  class Impl;
-  std::shared_ptr<Impl> impl_;
+private:
+    class Impl;
+    std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace OHOS

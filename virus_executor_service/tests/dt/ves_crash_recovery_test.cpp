@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <sys/wait.h>
+#include <unistd.h>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -8,15 +10,13 @@
 #include <functional>
 #include <mutex>
 #include <string>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 
+#include "client/ves_client.h"
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
-#include "client/ves_client.h"
 #include "ves/ves_types.h"
 
 namespace {
@@ -33,11 +33,9 @@ class RecoveryEventObserver {
 public:
     void Attach(VirusExecutorService::VesClient& client)
     {
-        client.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report)
-        {
-            if (!report.terminalManualShutdown &&
-                (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
-                 report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal)) {
+        client.SetRecoveryEventCallback([this](const MemRpc::RecoveryEventReport& report) {
+            if (!report.terminalManualShutdown && (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
+                                                   report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal)) {
                 sawFaultRecovery_.store(true, std::memory_order_release);
             }
         });
@@ -62,18 +60,18 @@ void StoreEnginePid(pid_t pid)
     g_engine_pid.store(pid, std::memory_order_relaxed);
 }
 
-pid_t SpawnEngine(const std::string& enginePath) {
+pid_t SpawnEngine(const std::string& enginePath)
+{
     pid_t pid = fork();
     if (pid == 0) {
-        execl(enginePath.c_str(), enginePath.c_str(),
-              REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(),
-              nullptr);
+        execl(enginePath.c_str(), enginePath.c_str(), REGISTRY_SOCKET.c_str(), SERVICE_SOCKET.c_str(), nullptr);
         _exit(1);
     }
     return pid;
 }
 
-void KillAndWait(pid_t pid) {
+void KillAndWait(pid_t pid)
+{
     if (pid > 0) {
         kill(pid, SIGTERM);
         int status = 0;
@@ -81,7 +79,8 @@ void KillAndWait(pid_t pid) {
     }
 }
 
-bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout) {
+bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout)
+{
     if (pid <= 0) {
         return true;
     }
@@ -111,20 +110,27 @@ bool WaitForEngineExit(pid_t pid, std::chrono::milliseconds timeout) {
     return false;
 }
 
-std::string EnginePathFromSelf() {
+std::string EnginePathFromSelf()
+{
     char buf[1024] = {};
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0) return "./VirusExecutorService";
+    if (len <= 0)
+        return "./VirusExecutorService";
     std::string self(buf, static_cast<size_t>(len));
     auto pos = self.rfind('/');
-    if (pos == std::string::npos) return "./VirusExecutorService";
+    if (pos == std::string::npos)
+        return "./VirusExecutorService";
     return self.substr(0, pos) + "/VirusExecutorService";
 }
 
 class CleanupGuard {
 public:
-    explicit CleanupGuard(std::function<void()> cleanup) : cleanup_(std::move(cleanup)) {}
-    ~CleanupGuard() {
+    explicit CleanupGuard(std::function<void()> cleanup)
+        : cleanup_(std::move(cleanup))
+    {
+    }
+    ~CleanupGuard()
+    {
         if (cleanup_) {
             cleanup_();
         }
@@ -137,10 +143,8 @@ private:
     std::function<void()> cleanup_;
 };
 
-bool WaitForLoadCountAdvance(
-    std::atomic<int>* loadCount,
-    int previousLoadCount,
-    std::chrono::milliseconds timeout) {
+bool WaitForLoadCountAdvance(std::atomic<int>* loadCount, int previousLoadCount, std::chrono::milliseconds timeout)
+{
     if (loadCount == nullptr) {
         return false;
     }
@@ -154,8 +158,8 @@ bool WaitForLoadCountAdvance(
     return loadCount->load() > previousLoadCount;
 }
 
-bool WaitForCondition(const std::function<bool()>& predicate,
-                      std::chrono::milliseconds timeout) {
+bool WaitForCondition(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
@@ -166,13 +170,13 @@ bool WaitForCondition(const std::function<bool()>& predicate,
     return predicate();
 }
 
-bool WaitForRecoveredScan(
-    VirusExecutorService::VesClient* client,
-    const std::string& path,
-    int expectedThreatLevel,
-    VirusExecutorService::ScanFileReply* reply,
-    std::chrono::milliseconds timeout,
-    MemRpc::StatusCode* lastStatus) {
+bool WaitForRecoveredScan(VirusExecutorService::VesClient* client,
+                          const std::string& path,
+                          int expectedThreatLevel,
+                          VirusExecutorService::ScanFileReply* reply,
+                          std::chrono::milliseconds timeout,
+                          MemRpc::StatusCode* lastStatus)
+{
     if (client == nullptr || reply == nullptr) {
         return false;
     }
@@ -180,8 +184,7 @@ bool WaitForRecoveredScan(
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
     VirusExecutorService::ScanTask task{path};
     while (std::chrono::steady_clock::now() < deadline) {
-        status = client->ScanFile(task, reply, MemRpc::Priority::Normal,
-                                  RECOVERY_PROBE_EXEC_TIMEOUT_MS);
+        status = client->ScanFile(task, reply, MemRpc::Priority::Normal, RECOVERY_PROBE_EXEC_TIMEOUT_MS);
         if (status == MemRpc::StatusCode::Ok && reply->threatLevel == expectedThreatLevel) {
             if (lastStatus != nullptr) {
                 *lastStatus = status;
@@ -198,13 +201,15 @@ bool WaitForRecoveredScan(
 
 }  // namespace
 
-TEST(VesCrashRecoveryTest, CrashThenRecover) {
+TEST(VesCrashRecoveryTest, CrashThenRecover)
+{
     const std::string enginePath = EnginePathFromSelf();
     std::atomic<int> loadCount{0};
 
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+            return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         const pid_t currentPid = LoadEnginePid();
         if (currentPid > 0) {
@@ -217,13 +222,15 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
         }
         const pid_t spawnedPid = SpawnEngine(enginePath);
         StoreEnginePid(spawnedPid);
-        if (spawnedPid < 0) return false;
+        if (spawnedPid < 0)
+            return false;
         loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return true;
     });
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+            return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(LoadEnginePid());
         StoreEnginePid(-1);
@@ -280,13 +287,15 @@ TEST(VesCrashRecoveryTest, CrashThenRecover) {
     ASSERT_EQ(reply.threatLevel, 0);
 }
 
-TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
+TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
+{
     const std::string enginePath = EnginePathFromSelf();
     std::atomic<int> loadCount{0};
 
     VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
     registry.SetLoadCallback([&](int32_t sa_id) -> bool {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return false;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+            return false;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         const pid_t currentPid = LoadEnginePid();
         if (currentPid > 0) {
@@ -299,13 +308,15 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
         }
         const pid_t spawnedPid = SpawnEngine(enginePath);
         StoreEnginePid(spawnedPid);
-        if (spawnedPid < 0) return false;
+        if (spawnedPid < 0)
+            return false;
         loadCount.fetch_add(1);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return true;
     });
     registry.SetUnloadCallback([&](int32_t sa_id) {
-        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID) return;
+        if (sa_id != VirusExecutorService::VES_CONTROL_SA_ID)
+            return;
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         KillAndWait(LoadEnginePid());
         StoreEnginePid(-1);
@@ -355,8 +366,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
 
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
-    ASSERT_TRUE(WaitForCondition([&]() { return observer.SawFaultRecovery(); },
-                                 std::chrono::seconds(2)));
+    ASSERT_TRUE(WaitForCondition([&]() { return observer.SawFaultRecovery(); }, std::chrono::seconds(2)));
 
     MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
     ASSERT_TRUE(WaitForRecoveredScan(&client,
@@ -368,12 +378,9 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient) {
         << "last status=" << static_cast<int>(lastStatus);
     EXPECT_EQ(&client, originalClient);
     EXPECT_TRUE(observer.SawFaultRecovery());
-    EXPECT_TRUE(WaitForLoadCountAdvance(&loadCount,
-                                        previousLoadCount,
-                                        std::chrono::seconds(2)));
+    EXPECT_TRUE(WaitForLoadCountAdvance(&loadCount, previousLoadCount, std::chrono::seconds(2)));
 
-    ASSERT_EQ(client.ScanFile(VirusExecutorService::ScanTask{"/data/virus_after_same_client.apk"},
-                              &reply),
+    ASSERT_EQ(client.ScanFile(VirusExecutorService::ScanTask{"/data/virus_after_same_client.apk"}, &reply),
               MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.threatLevel, 1);
 }

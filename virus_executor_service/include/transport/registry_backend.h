@@ -9,7 +9,7 @@
 namespace VirusExecutorService {
 
 class RegistryBackend : public OHOS::ISamBackend {
- public:
+public:
     explicit RegistryBackend(const std::string& registrySocketPath);
 
     std::string GetServicePath(int32_t saId) override;
@@ -17,7 +17,7 @@ class RegistryBackend : public OHOS::ISamBackend {
     bool AddService(int32_t saId, const std::string& servicePath) override;
     bool UnloadService(int32_t saId) override;
 
- private:
+private:
     RegistryClient client_;
 };
 

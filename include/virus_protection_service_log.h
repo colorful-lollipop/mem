@@ -10,10 +10,10 @@
 namespace MemRpc {
 
 enum class LogLevel : uint8_t {
-  Debug = 0,
-  Info = 1,
-  Warn = 2,
-  Error = 3,
+    Debug = 0,
+    Info = 1,
+    Warn = 2,
+    Error = 3,
 };
 
 std::string NormalizeLogFormat(std::string_view format);
@@ -23,22 +23,18 @@ void LogVPrint(LogLevel level, const char* file, int line, const char* format, v
 template <typename... Args>
 inline void LogWrite(LogLevel level, const char* file, int line, const char* format, Args&&... args)
 {
-  LogPrint(level, file, line, format, std::forward<Args>(args)...);
+    LogPrint(level, file, line, format, std::forward<Args>(args)...);
 }
 
 }  // namespace MemRpc
 
-#define HILOGD(...)                                                                            \
-  ::MemRpc::LogWrite(::MemRpc::LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
+#define HILOGD(...) ::MemRpc::LogWrite(::MemRpc::LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGI(...)                                                                            \
-  ::MemRpc::LogWrite(::MemRpc::LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
+#define HILOGI(...) ::MemRpc::LogWrite(::MemRpc::LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGW(...)                                                                            \
-  ::MemRpc::LogWrite(::MemRpc::LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
+#define HILOGW(...) ::MemRpc::LogWrite(::MemRpc::LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
 
-#define HILOGE(...)                                                                            \
-  ::MemRpc::LogWrite(::MemRpc::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
+#define HILOGE(...) ::MemRpc::LogWrite(::MemRpc::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
 
 namespace OHOS {
 namespace Security {

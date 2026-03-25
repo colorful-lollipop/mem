@@ -9,7 +9,7 @@
 namespace VirusExecutorService {
 
 class RegistryClient {
- public:
+public:
     explicit RegistryClient(const std::string& registrySocketPath);
 
     std::string GetServicePath(int32_t sa_id);
@@ -17,7 +17,7 @@ class RegistryClient {
     bool UnloadService(int32_t sa_id);
     bool RegisterService(int32_t sa_id, const std::string& serviceSocketPath);
 
- private:
+private:
     std::string SendRequest(RegistryOp op, int32_t sa_id, const std::string& payload = {});
 
     std::string registry_socket_path_;

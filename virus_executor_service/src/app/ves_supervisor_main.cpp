@@ -1,9 +1,9 @@
+#include <sys/wait.h>
+#include <unistd.h>
 #include <csignal>
 #include <cstdlib>
 #include <string>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
@@ -15,29 +15,29 @@ volatile std::sig_atomic_t g_stop = 0;
 pid_t g_engine_pid = -1;
 pid_t g_client_pid = -1;
 
-void SignalHandler(int) {
+void SignalHandler(int)
+{
     g_stop = 1;
 }
 
-std::string MakeSocketPath(const char* prefix) {
+std::string MakeSocketPath(const char* prefix)
+{
     return std::string(prefix) + "_" + std::to_string(getpid()) + ".sock";
 }
 
-pid_t SpawnEngine(const std::string& enginePath,
-                  const std::string& registrySocket,
-                  const std::string& serviceSocket) {
+pid_t SpawnEngine(const std::string& enginePath, const std::string& registrySocket, const std::string& serviceSocket)
+{
     pid_t pid = fork();
     if (pid == 0) {
-        execl(enginePath.c_str(), enginePath.c_str(),
-              registrySocket.c_str(), serviceSocket.c_str(),
-              nullptr);
+        execl(enginePath.c_str(), enginePath.c_str(), registrySocket.c_str(), serviceSocket.c_str(), nullptr);
         HILOGE("exec engine failed");
         _exit(1);
     }
     return pid;
 }
 
-pid_t SpawnClient(const std::string& clientPath, const std::string& registrySocket) {
+pid_t SpawnClient(const std::string& clientPath, const std::string& registrySocket)
+{
     pid_t pid = fork();
     if (pid == 0) {
         setenv("OHOS_SA_MOCK_REGISTRY_SOCKET", registrySocket.c_str(), 1);
@@ -48,7 +48,8 @@ pid_t SpawnClient(const std::string& clientPath, const std::string& registrySock
     return pid;
 }
 
-void KillAndWait(pid_t pid) {
+void KillAndWait(pid_t pid)
+{
     if (pid > 0) {
         kill(pid, SIGTERM);
         int status = 0;
@@ -58,7 +59,8 @@ void KillAndWait(pid_t pid) {
 
 }  // namespace
 
-int main([[maybe_unused]] int argc, char* argv[]) {
+int main([[maybe_unused]] int argc, char* argv[])
+{
     std::signal(SIGTERM, SignalHandler);
     std::signal(SIGINT, SignalHandler);
 

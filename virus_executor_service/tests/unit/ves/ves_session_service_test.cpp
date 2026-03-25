@@ -5,18 +5,19 @@
 #include "memrpc/core/codec.h"
 #include "memrpc/core/types.h"
 #include "ves/ves_codec.h"
-#include "ves/ves_session_service.h"
 #include "ves/ves_engine_service.h"
 #include "ves/ves_protocol.h"
+#include "ves/ves_session_service.h"
 #include "ves/ves_types.h"
 
 namespace VirusExecutorService {
 
-using VirusExecutorService::VesEngineService;
 using VirusExecutorService::EngineSessionService;
+using VirusExecutorService::VesEngineService;
 
 namespace {
-void CloseHandles(MemRpc::BootstrapHandles* handles) {
+void CloseHandles(MemRpc::BootstrapHandles* handles)
+{
     if (handles == nullptr) {
         return;
     }
@@ -37,7 +38,8 @@ void CloseHandles(MemRpc::BootstrapHandles* handles) {
 }
 }  // namespace
 
-TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles) {
+TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles)
+{
     VesEngineService service;
     EngineSessionService sessionService({&service});
 
@@ -47,7 +49,8 @@ TEST(VesSessionServiceTest, OpenSessionCreatesSessionHandles) {
     CloseHandles(&handles);
 }
 
-TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
+TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched)
+{
     VesEngineService service;
     EXPECT_FALSE(service.initialized());
 
@@ -60,7 +63,8 @@ TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched) {
     CloseHandles(&handles);
 }
 
-TEST(VesSessionServiceTest, InvokeAnyCallUsesRegisteredTypedHandlers) {
+TEST(VesSessionServiceTest, InvokeAnyCallUsesRegisteredTypedHandlers)
+{
     VesEngineService service;
     service.Initialize();
 
