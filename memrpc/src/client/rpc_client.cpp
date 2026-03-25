@@ -1344,6 +1344,45 @@ struct RpcClient::Impl {
   }
 
   // Lifecycle and session orchestration.
+  uint64_t LastClosedSessionId() const {
+    return lastClosedSessionId_.load(std::memory_order_acquire);
+  }
+
+  void BeginOpenLifecycleTransition(ClientLifecycleState lifecycleState) {
+    const uint64_t currentSessionId = CurrentSessionId();
+    const uint64_t previousSessionId = LastClosedSessionId();
+    const RecoveryAction lastAction = recoveryCoordinator_.LastRecoveryAction();
+    if (lifecycleState == ClientLifecycleState::IdleClosed ||
+        lifecycleState == ClientLifecycleState::Disconnected) {
+      recoveryCoordinator_.EnterDemandReconnect(
+          RecoveryAction::Ignore, currentSessionId, previousSessionId);
+      return;
+    }
+    if (lifecycleState != ClientLifecycleState::Recovering &&
+        lifecycleState != ClientLifecycleState::Uninitialized) {
+      recoveryCoordinator_.EnterRecovering(lastAction, currentSessionId, previousSessionId);
+    }
+  }
+
+  void HandleSessionOpenFailure(StatusCode status) {
+    const RecoveryTrigger failureTrigger = PendingSessionOpenTrigger();
+    const ClientLifecycleState lifecycleState = LifecycleState();
+    if (RecoveryPending() || lifecycleState == ClientLifecycleState::Recovering ||
+        lifecycleState == ClientLifecycleState::Cooldown) {
+      HILOGW("RpcClient::EnsureLiveSession abandoning recovery after open failure: status=%{public}d trigger=%{public}d",
+             static_cast<int>(status), static_cast<int>(failureTrigger));
+      EnterDisconnected(failureTrigger);
+    }
+    HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
+           static_cast<int>(status), static_cast<int>(LifecycleState()));
+  }
+
+  void MaybeReconnectImmediately(uint32_t delayMs) {
+    if (delayMs == 0) {
+      (void)EnsureLiveSession();
+    }
+  }
+
   StatusCode OpenSession() {
     const StatusCode status = sessionController_.OpenSession();
     if (status != StatusCode::Ok) {
@@ -1368,24 +1407,21 @@ struct RpcClient::Impl {
     }
     ClearRecoveryWindow();
     CloseLiveSession();
-    recoveryCoordinator_.EnterIdleClosed(
-        CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+    recoveryCoordinator_.EnterIdleClosed(CurrentSessionId(), LastClosedSessionId());
   }
 
   void EnterDisconnected(RecoveryTrigger trigger) {
     if (clientClosed_.load(std::memory_order_acquire)) {
       return;
     }
-    recoveryCoordinator_.EnterDisconnected(
-        trigger, CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+    recoveryCoordinator_.EnterDisconnected(trigger, CurrentSessionId(), LastClosedSessionId());
   }
 
   void EnterTerminalClosed() {
     clientClosed_.store(true, std::memory_order_release);
     shuttingDown.store(true, std::memory_order_release);
     CloseLiveSession();
-    recoveryCoordinator_.EnterTerminalClosed(
-        CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+    recoveryCoordinator_.EnterTerminalClosed(CurrentSessionId(), LastClosedSessionId());
   }
 
   void ScheduleRecovery(RecoveryTrigger trigger,
@@ -1396,15 +1432,12 @@ struct RpcClient::Impl {
       return;
     }
     recoveryCoordinator_.StartRecovery(
-        trigger, openReason, delayMs,
-        CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+        trigger, openReason, delayMs, CurrentSessionId(), LastClosedSessionId());
     CloseLiveSession();
     if (!fromEngineDeath) {
       FailAllPending(StatusCode::PeerDisconnected);
     }
-    if (delayMs == 0) {
-      (void)EnsureLiveSession();
-    }
+    MaybeReconnectImmediately(delayMs);
   }
 
   bool CooldownActive() const {
@@ -1436,30 +1469,10 @@ struct RpcClient::Impl {
     if (sessionController_.HasLiveSession()) {
       return StatusCode::Ok;
     }
-    ClientLifecycleState lifecycleState = LifecycleState();
-    const RecoveryAction lastAction = recoveryCoordinator_.LastRecoveryAction();
-    if (lifecycleState == ClientLifecycleState::IdleClosed ||
-        lifecycleState == ClientLifecycleState::Disconnected) {
-      recoveryCoordinator_.EnterDemandReconnect(
-          RecoveryAction::Ignore,
-          CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
-    } else if (lifecycleState != ClientLifecycleState::Recovering &&
-               lifecycleState != ClientLifecycleState::Uninitialized) {
-      recoveryCoordinator_.EnterRecovering(
-          lastAction, CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
-    }
+    BeginOpenLifecycleTransition(LifecycleState());
     const StatusCode status = OpenSession();
     if (status != StatusCode::Ok) {
-      const RecoveryTrigger failureTrigger = PendingSessionOpenTrigger();
-      lifecycleState = LifecycleState();
-      if (RecoveryPending() || lifecycleState == ClientLifecycleState::Recovering ||
-          lifecycleState == ClientLifecycleState::Cooldown) {
-        HILOGW("RpcClient::EnsureLiveSession abandoning recovery after open failure: status=%{public}d trigger=%{public}d",
-               static_cast<int>(status), static_cast<int>(failureTrigger));
-        EnterDisconnected(failureTrigger);
-      }
-      HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
-             static_cast<int>(status), static_cast<int>(LifecycleState()));
+      HandleSessionOpenFailure(status);
     }
     return status;
   }
