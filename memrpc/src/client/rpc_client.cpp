@@ -327,6 +327,19 @@ struct RpcClient::Impl {
     Finish,
   };
 
+  enum class ApiLifecycleState : uint8_t {
+    Open,
+    Closing,
+    Closed,
+  };
+
+  enum class WorkerRunState : uint8_t {
+    NotStarted,
+    Running,
+    Stopping,
+    Stopped,
+  };
+
   class SessionController {
    public:
     explicit SessionController(std::shared_ptr<IBootstrapChannel> bootstrap)
@@ -675,11 +688,11 @@ struct RpcClient::Impl {
     }
 
     StatusCode WaitForRecovery(std::chrono::steady_clock::time_point deadline,
-                               const std::atomic<bool>& running,
-                               const std::atomic<bool>& clientClosed) {
+                               const std::atomic<WorkerRunState>& workerState,
+                               const std::atomic<ApiLifecycleState>& apiState) {
       std::unique_lock<std::mutex> lock(mutex_);
-      while (running.load(std::memory_order_acquire)) {
-        if (clientClosed.load(std::memory_order_acquire)) {
+      while (workerState.load(std::memory_order_acquire) == WorkerRunState::Running) {
+        if (apiState.load(std::memory_order_acquire) != ApiLifecycleState::Open) {
           return StatusCode::ClientClosed;
         }
         const uint64_t nowMs = MonotonicNowMs64();
@@ -697,16 +710,18 @@ struct RpcClient::Impl {
         }
         cv_.wait_until(lock, wakeAt);
       }
-      HILOGW("RpcClient::WaitForRecovery aborted because client stopped");
-      return StatusCode::PeerDisconnected;
+      HILOGW("RpcClient::WaitForRecovery aborted because workers stopped");
+      return apiState.load(std::memory_order_acquire) == ApiLifecycleState::Open
+                 ? StatusCode::PeerDisconnected
+                 : StatusCode::ClientClosed;
     }
 
     StatusCode WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline,
-                                    const std::atomic<bool>& running,
-                                    const std::atomic<bool>& clientClosed) {
+                                    const std::atomic<WorkerRunState>& workerState,
+                                    const std::atomic<ApiLifecycleState>& apiState) {
       std::unique_lock<std::mutex> lock(mutex_);
-      while (running.load(std::memory_order_acquire)) {
-        if (clientClosed.load(std::memory_order_acquire)) {
+      while (workerState.load(std::memory_order_acquire) == WorkerRunState::Running) {
+        if (apiState.load(std::memory_order_acquire) != ApiLifecycleState::Open) {
           return StatusCode::ClientClosed;
         }
         if (!recoveryPending_) {
@@ -729,8 +744,10 @@ struct RpcClient::Impl {
         cv_.wait_for(lock, waitFor);
         return StatusCode::Ok;
       }
-      HILOGW("RpcClient::WaitForRecoveryRetry aborted because client stopped");
-      return StatusCode::PeerDisconnected;
+      HILOGW("RpcClient::WaitForRecoveryRetry aborted because workers stopped");
+      return apiState.load(std::memory_order_acquire) == ApiLifecycleState::Open
+                 ? StatusCode::PeerDisconnected
+                 : StatusCode::ClientClosed;
     }
 
     RecoveryRuntimeSnapshot GetSnapshot(uint64_t currentSessionId, uint64_t lastClosedSessionId) const {
@@ -773,14 +790,14 @@ struct RpcClient::Impl {
     explicit SubmitWorker(Impl& owner) : owner_(owner) {}
 
     void Run() {
-      while (owner_.running_.load(std::memory_order_acquire)) {
+      while (owner_.WorkersRunning()) {
         PendingSubmit submit;
         {
           std::unique_lock<std::mutex> lock(owner_.submitMutex_);
           owner_.submitCv_.wait(lock, [this] {
-            return !owner_.running_.load(std::memory_order_acquire) || !owner_.submitQueue_.empty();
+            return !owner_.WorkersRunning() || !owner_.submitQueue_.empty();
           });
-          if (!owner_.running_.load(std::memory_order_acquire) && owner_.submitQueue_.empty()) {
+          if (!owner_.WorkersRunning()) {
             break;
           }
           submit = std::move(owner_.submitQueue_.front());
@@ -912,7 +929,7 @@ struct RpcClient::Impl {
     void SubmitOne(const PendingSubmit& submit) {
       const SubmitConfig config = MakeSubmitConfig(submit);
       PendingInfo info = owner_.MakePendingInfo(submit);
-      while (owner_.running_.load(std::memory_order_acquire)) {
+      while (owner_.WorkersRunning()) {
         const SubmitAction sessionAction =
             HandleSessionStatus(submit, info, config, owner_.EnsureLiveSession());
         if (sessionAction == SubmitAction::Retry) {
@@ -927,9 +944,10 @@ struct RpcClient::Impl {
         }
         return;
       }
-      HILOGE("RpcClient::SubmitOne aborted because client stopped: request_id=%{public}llu opcode=%{public}u",
+      HILOGE("RpcClient::SubmitOne aborted because workers stopped: request_id=%{public}llu opcode=%{public}u",
              static_cast<unsigned long long>(submit.requestId), submit.call.opcode);
-      owner_.FailAndResolve(info, StatusCode::PeerDisconnected, FailureStage::Admission, submit.future);
+      owner_.FailAndResolve(
+          info, owner_.RuntimeStopStatus(), FailureStage::Admission, submit.future);
     }
 
     Impl& owner_;
@@ -951,7 +969,7 @@ struct RpcClient::Impl {
       };
       const auto closeActivePollFd = MakeScopeExit([&]() { resetActivePollFd(); });
 
-      while (owner_.running_.load(std::memory_order_acquire)) {
+      while (owner_.WorkersRunning()) {
         if (DrainResponseRing()) {
           continue;
         }
@@ -1094,42 +1112,175 @@ struct RpcClient::Impl {
   // Component ownership: session transport, recovery state, request stores, and
   // worker threads each have a dedicated helper. Impl keeps only the shared
   // orchestration and cross-component glue.
+  // Session transport and external callbacks.
   SessionController sessionController_;
   mutable std::mutex submitMutex_;
   mutable std::mutex eventMutex_;
   mutable std::mutex sessionReadyMutex_;
   mutable std::mutex watchdogMutex_;
-  RecoveryCoordinator recoveryCoordinator_;
-  mutable std::mutex recoveryPolicyMutex_;
-  SubmitWorker submitWorker_{*this};
-  ResponseWorker responseWorker_{*this};
-  RecoveryPolicy recoveryPolicy_;
   RpcEventCallback eventCallback_;
   SessionReadyCallback sessionReadyCallback_;
+
+  // Recovery lifecycle and policy.
+  RecoveryCoordinator recoveryCoordinator_;
+  mutable std::mutex recoveryPolicyMutex_;
+  RecoveryPolicy recoveryPolicy_;
+
+  // Submission and in-flight request state.
   std::deque<PendingSubmit> submitQueue_;
   PendingRequestStore pendingStore_;
+
+  // Worker coordination.
   std::condition_variable submitCv_;
   std::condition_variable watchdogCv_;
+  SubmitWorker submitWorker_{*this};
+  ResponseWorker responseWorker_{*this};
   std::thread submitThread_;
   std::thread responseThread_;
   std::thread watchdogThread_;
-  std::atomic<bool> running_{false};
-  std::atomic<bool> shuttingDown{false};
-  std::atomic<bool> clientClosed_{false};
+  std::atomic<ApiLifecycleState> apiState_{ApiLifecycleState::Open};
+  std::atomic<WorkerRunState> workerState_{WorkerRunState::NotStarted};
+
+  // Runtime counters and snapshots.
   std::atomic<bool> submitterWaitingForCredit_{false};
   std::atomic<uint64_t> nextRequestId_{1};
   std::atomic<uint64_t> lastActivityMs_{0};
   std::atomic<uint64_t> lastClosedSessionId_{0};
   std::atomic<uint32_t> sessionGeneration_{0};
 
-  static RpcFuture MakeReadyFuture(StatusCode status) {
+  // Shared state snapshots and callback plumbing.
+  ApiLifecycleState LoadApiState() const {
+    return apiState_.load(std::memory_order_acquire);
+  }
+
+  bool IsApiOpen() const {
+    return LoadApiState() == ApiLifecycleState::Open;
+  }
+
+  bool IsApiTerminal() const {
+    return LoadApiState() == ApiLifecycleState::Closed;
+  }
+
+  StatusCode ApiRejectionStatus() const {
+    return IsApiOpen() ? StatusCode::Ok : StatusCode::ClientClosed;
+  }
+
+  bool BeginShutdown() {
+    ApiLifecycleState expected = ApiLifecycleState::Open;
+    return apiState_.compare_exchange_strong(expected, ApiLifecycleState::Closing,
+                                             std::memory_order_acq_rel,
+                                             std::memory_order_acquire);
+  }
+
+  void FinishShutdown() {
+    apiState_.store(ApiLifecycleState::Closed, std::memory_order_release);
+  }
+
+  WorkerRunState LoadWorkerState() const {
+    return workerState_.load(std::memory_order_acquire);
+  }
+
+  bool WorkersRunning() const {
+    return LoadWorkerState() == WorkerRunState::Running;
+  }
+
+  bool BeginWorkerStart() {
+    WorkerRunState expected = workerState_.load(std::memory_order_acquire);
+    while (true) {
+      if (expected == WorkerRunState::Running || expected == WorkerRunState::Stopping) {
+        return false;
+      }
+      if (workerState_.compare_exchange_weak(expected, WorkerRunState::Running,
+                                             std::memory_order_acq_rel,
+                                             std::memory_order_acquire)) {
+        return true;
+      }
+    }
+  }
+
+  bool BeginWorkerStop() {
+    WorkerRunState expected = WorkerRunState::Running;
+    return workerState_.compare_exchange_strong(expected, WorkerRunState::Stopping,
+                                                std::memory_order_acq_rel,
+                                                std::memory_order_acquire);
+  }
+
+  void FinishWorkerStop() {
+    workerState_.store(WorkerRunState::Stopped, std::memory_order_release);
+  }
+
+  StatusCode RuntimeStopStatus() const {
+    return IsApiOpen() ? StatusCode::PeerDisconnected : StatusCode::ClientClosed;
+  }
+
+  StatusCode AdmissionStatusForInvoke() const {
+    if (!IsApiOpen()) {
+      return StatusCode::ClientClosed;
+    }
+    return WorkersRunning() ? StatusCode::Ok : StatusCode::PeerDisconnected;
+  }
+
+  RpcFuture RejectInvoke(RpcCall&& call, StatusCode status) {
     auto state = std::make_shared<RpcFuture::State>();
-    state->ready = true;
-    state->reply.status = status;
+    const uint64_t requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
+    PendingInfo info;
+    info.opcode = call.opcode;
+    info.priority = call.priority;
+    info.admissionTimeoutMs = call.admissionTimeoutMs;
+    info.queueTimeoutMs = call.queueTimeoutMs;
+    info.execTimeoutMs = call.execTimeoutMs;
+    info.requestId = requestId;
+    info.sessionId = CurrentSessionId();
+    if (status != StatusCode::ClientClosed) {
+      HILOGE("RpcClient::InvokeAsync rejected because client not running opcode=%{public}u status=%{public}d",
+             call.opcode, static_cast<int>(status));
+      ApplyFailureRecoveryDecision(info, status, FailureStage::Admission);
+    }
+    RpcReply reply;
+    reply.status = status;
+    ResolveState(state, std::move(reply));
     return RpcFuture(state);
   }
 
-  // Shared state snapshots and callback plumbing.
+  void EnqueueSubmitLocked(RpcCall&& call, const std::shared_ptr<RpcFuture::State>& futureState) {
+    PendingSubmit submit;
+    submit.requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
+    submit.call = std::move(call);
+    submit.future = futureState;
+    submitQueue_.push_back(std::move(submit));
+  }
+
+  void ClearCallbacks() {
+    {
+      std::lock_guard<std::mutex> lock(recoveryPolicyMutex_);
+      recoveryPolicy_ = {};
+    }
+    recoveryCoordinator_.ClearRecoveryEventCallback();
+    sessionController_.ClearDeathCallback();
+    {
+      std::lock_guard<std::mutex> lock(sessionReadyMutex_);
+      sessionReadyCallback_ = {};
+    }
+  }
+
+  void FailQueuedSubmissions(StatusCode status) {
+    std::deque<PendingSubmit> queued;
+    {
+      std::lock_guard<std::mutex> lock(submitMutex_);
+      queued.swap(submitQueue_);
+    }
+    for (auto& submit : queued) {
+      RpcReply reply;
+      reply.status = status;
+      ResolveState(submit.future, std::move(reply));
+    }
+  }
+
+  void FailOutstandingWork(StatusCode status) {
+    FailAllPending(status);
+    FailQueuedSubmissions(status);
+  }
+
   void TouchActivity() {
     lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
   }
@@ -1166,7 +1317,7 @@ struct RpcClient::Impl {
                            uint32_t cooldownDelayMs = 0) {
     recoveryCoordinator_.TransitionLifecycle(
         state, trigger, action, cooldownDelayMs,
-        CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+        CurrentSessionId(), LastClosedSessionId());
   }
 
   void MarkNextSessionOpen(SessionOpenReason reason, uint32_t delayMs) {
@@ -1298,7 +1449,7 @@ struct RpcClient::Impl {
   void ApplyRecoveryDecision(const RecoveryDecision& decision,
                              RecoveryTrigger trigger,
                              bool fromEngineDeath) {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     switch (decision.action) {
@@ -1402,7 +1553,7 @@ struct RpcClient::Impl {
   }
 
   void EnterIdleClosed() {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     ClearRecoveryWindow();
@@ -1411,15 +1562,13 @@ struct RpcClient::Impl {
   }
 
   void EnterDisconnected(RecoveryTrigger trigger) {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     recoveryCoordinator_.EnterDisconnected(trigger, CurrentSessionId(), LastClosedSessionId());
   }
 
   void EnterTerminalClosed() {
-    clientClosed_.store(true, std::memory_order_release);
-    shuttingDown.store(true, std::memory_order_release);
     CloseLiveSession();
     recoveryCoordinator_.EnterTerminalClosed(CurrentSessionId(), LastClosedSessionId());
   }
@@ -1428,7 +1577,7 @@ struct RpcClient::Impl {
                         SessionOpenReason openReason,
                         uint32_t delayMs,
                         bool fromEngineDeath) {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     recoveryCoordinator_.StartRecovery(
@@ -1457,7 +1606,7 @@ struct RpcClient::Impl {
   }
 
   StatusCode EnsureLiveSession() {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       HILOGW("RpcClient::EnsureLiveSession rejected: client already closed");
       return StatusCode::ClientClosed;
     }
@@ -1478,17 +1627,17 @@ struct RpcClient::Impl {
   }
 
   void StartThreads() {
-    running_.store(true, std::memory_order_release);
-    shuttingDown.store(false, std::memory_order_release);
+    if (!BeginWorkerStart()) {
+      return;
+    }
     submitThread_ = std::thread([this] { submitWorker_.Run(); });
     responseThread_ = std::thread([this] { responseWorker_.Run(); });
     watchdogThread_ = std::thread([this] { WatchdogLoop(); });
   }
 
   void StopThreads() {
-    {
-      std::lock_guard<std::mutex> lock(submitMutex_);
-      running_.store(false, std::memory_order_release);
+    if (!BeginWorkerStop()) {
+      return;
     }
     submitCv_.notify_all();
     {
@@ -1512,36 +1661,18 @@ struct RpcClient::Impl {
     if (watchdogThread_.joinable()) {
       watchdogThread_.join();
     }
+    FinishWorkerStop();
   }
 
   void Shutdown() {
-    if (clientClosed_.load(std::memory_order_acquire) &&
-        LifecycleState() == ClientLifecycleState::Closed) {
+    if (!BeginShutdown()) {
       return;
     }
     EnterTerminalClosed();
-    {
-      std::lock_guard<std::mutex> lock(recoveryPolicyMutex_);
-      recoveryPolicy_ = {};
-    }
-    recoveryCoordinator_.ClearRecoveryEventCallback();
-    sessionController_.ClearDeathCallback();
-    {
-      std::lock_guard<std::mutex> lock(sessionReadyMutex_);
-      sessionReadyCallback_ = {};
-    }
+    ClearCallbacks();
     StopThreads();
-    FailAllPending(StatusCode::ClientClosed);
-    std::deque<PendingSubmit> queued;
-    {
-      std::lock_guard<std::mutex> lock(submitMutex_);
-      queued.swap(submitQueue_);
-    }
-    for (auto& submit : queued) {
-      RpcReply reply;
-      reply.status = StatusCode::ClientClosed;
-      ResolveState(submit.future, std::move(reply));
-    }
+    FailOutstandingWork(StatusCode::ClientClosed);
+    FinishShutdown();
   }
 
   // Submission primitives shared by InvokeAsync and SubmitWorker.
@@ -1557,7 +1688,7 @@ struct RpcClient::Impl {
         MakeScopeExit([this] { submitterWaitingForCredit_.store(false, std::memory_order_release); });
 
     pollfd pollFd{fd, POLLIN, 0};
-    while (running_.load(std::memory_order_acquire)) {
+    while (WorkersRunning()) {
       const int64_t remainingMs = RemainingTimeoutMs(deadline);
       if (remainingMs <= 0) {
         HILOGW("RpcClient::WaitForRequestCredit timed out waiting for request credit");
@@ -1572,16 +1703,16 @@ struct RpcClient::Impl {
       }
       return waitResult;
     }
-    HILOGW("RpcClient::WaitForRequestCredit aborted because client stopped");
+    HILOGW("RpcClient::WaitForRequestCredit aborted because workers stopped");
     return PollEventFdResult::Failed;
   }
 
   StatusCode WaitForRecovery(std::chrono::steady_clock::time_point deadline) {
-    return recoveryCoordinator_.WaitForRecovery(deadline, running_, clientClosed_);
+    return recoveryCoordinator_.WaitForRecovery(deadline, workerState_, apiState_);
   }
 
   StatusCode WaitForRecoveryRetry(std::chrono::steady_clock::time_point deadline) {
-    return recoveryCoordinator_.WaitForRecoveryRetry(deadline, running_, clientClosed_);
+    return recoveryCoordinator_.WaitForRecoveryRetry(deadline, workerState_, apiState_);
   }
 
   StatusCode TryPushRequest(const PendingSubmit& submit) {
@@ -1661,7 +1792,7 @@ struct RpcClient::Impl {
   }
 
   void MaybeRunIdlePolicy() {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     const RecoveryPolicy policy = LoadRecoveryPolicy();
@@ -1715,7 +1846,7 @@ struct RpcClient::Impl {
   }
 
   void MaybeRunHealthCheck() {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     std::shared_ptr<IBootstrapChannel> bootstrap = sessionController_.LoadBootstrap();
@@ -1766,19 +1897,19 @@ struct RpcClient::Impl {
   }
 
   void WatchdogLoop() {
-    while (running_.load(std::memory_order_acquire)) {
+    while (WorkersRunning()) {
       MaybeRunPendingTimeouts();
       MaybeRunHealthCheck();
       MaybeRunIdlePolicy();
       std::unique_lock<std::mutex> lock(watchdogMutex_);
       watchdogCv_.wait_for(lock, std::min(kHealthCheckPeriod, kIdlePollPeriod), [this] {
-        return !running_.load(std::memory_order_acquire);
+        return !WorkersRunning();
       });
     }
   }
 
   void HandleEngineDeath(uint64_t sessionId) {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     const uint64_t current = CurrentSessionId();
@@ -1792,7 +1923,7 @@ struct RpcClient::Impl {
   }
 
   void RequestExternalRecovery(ExternalRecoveryRequest request) {
-    if (clientClosed_.load(std::memory_order_acquire)) {
+    if (!IsApiOpen()) {
       return;
     }
     const uint64_t current = CurrentSessionId();
@@ -1812,50 +1943,16 @@ struct RpcClient::Impl {
 
   // Public-operation entrypoints and runtime introspection.
   RpcFuture InvokeAsync(RpcCall call) {
-    const auto rejectInvoke = [this](RpcCall&& rejectedCall, StatusCode status) {
-      auto state = std::make_shared<RpcFuture::State>();
-      const uint64_t requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
-      PendingInfo info;
-      info.opcode = rejectedCall.opcode;
-      info.priority = rejectedCall.priority;
-      info.admissionTimeoutMs = rejectedCall.admissionTimeoutMs;
-      info.queueTimeoutMs = rejectedCall.queueTimeoutMs;
-      info.execTimeoutMs = rejectedCall.execTimeoutMs;
-      info.requestId = requestId;
-      info.sessionId = CurrentSessionId();
-      if (status != StatusCode::ClientClosed) {
-        HILOGE("RpcClient::InvokeAsync rejected because client not running opcode=%{public}u status=%{public}d",
-               rejectedCall.opcode, static_cast<int>(status));
-        ApplyFailureRecoveryDecision(info, status, FailureStage::Admission);
-      }
-      RpcReply reply;
-      reply.status = status;
-      ResolveState(state, std::move(reply));
-      return RpcFuture(state);
-    };
-
     auto futureState = std::make_shared<RpcFuture::State>();
-    bool queued = false;
     {
       std::lock_guard<std::mutex> lock(submitMutex_);
-      if (!running_.load(std::memory_order_acquire) ||
-          clientClosed_.load(std::memory_order_acquire)) {
-        const StatusCode status = clientClosed_.load(std::memory_order_acquire)
-                                      ? StatusCode::ClientClosed
-                                      : StatusCode::PeerDisconnected;
-        return rejectInvoke(std::move(call), status);
+      const StatusCode status = AdmissionStatusForInvoke();
+      if (status != StatusCode::Ok) {
+        return RejectInvoke(std::move(call), status);
       }
-
-      PendingSubmit submit;
-      submit.requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
-      submit.call = std::move(call);
-      submit.future = futureState;
-      submitQueue_.push_back(std::move(submit));
-      queued = true;
+      EnqueueSubmitLocked(std::move(call), futureState);
     }
-    if (queued) {
-      submitCv_.notify_one();
-    }
+    submitCv_.notify_one();
     return RpcFuture(futureState);
   }
 
@@ -1882,8 +1979,7 @@ struct RpcClient::Impl {
   }
 
   RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const {
-    return recoveryCoordinator_.GetSnapshot(
-        CurrentSessionId(), lastClosedSessionId_.load(std::memory_order_acquire));
+    return recoveryCoordinator_.GetSnapshot(CurrentSessionId(), LastClosedSessionId());
   }
 
   StatusCode InvokeWithRecovery(const std::function<StatusCode()>& invoke,
@@ -1965,11 +2061,11 @@ void RpcClient::RequestExternalRecovery(ExternalRecoveryRequest request) {
 }
 
 StatusCode RpcClient::Init() {
-  if (impl_->clientClosed_.load(std::memory_order_acquire)) {
+  if (impl_->ApiRejectionStatus() != StatusCode::Ok) {
     HILOGE("RpcClient::Init failed: client already closed");
     return StatusCode::ClientClosed;
   }
-  if (impl_->running_.load(std::memory_order_acquire)) {
+  if (impl_->WorkersRunning()) {
     HILOGW("RpcClient::Init called while already running");
     return impl_->EnsureLiveSession();
   }

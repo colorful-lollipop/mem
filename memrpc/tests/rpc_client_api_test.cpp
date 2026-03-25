@@ -23,6 +23,7 @@ class FakeBootstrapChannel : public MemRpc::IBootstrapChannel {
   MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override {
     handles = MemRpc::MakeDefaultBootstrapHandles();
     handles.protocolVersion = MemRpc::PROTOCOL_VERSION;
+    handles.sessionId = 1;
     return MemRpc::StatusCode::Ok;
   }
 
@@ -285,4 +286,31 @@ TEST(RpcClientApiTest, ShutdownMakesClientPermanentlyTerminal) {
   EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
   EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
   EXPECT_TRUE(snapshot.terminalManualShutdown);
+}
+
+TEST(RpcClientApiTest, ShutdownAfterInitStillRejectsInvokeAsyncImmediately) {
+  auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+  MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
+  ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+  CloseHandles(unusedHandles);
+
+  MemRpc::RpcServer server;
+  server.SetBootstrapHandles(bootstrap->serverHandles());
+  server.RegisterHandler(kTestOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+    reply->status = MemRpc::StatusCode::Ok;
+  });
+  ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+  MemRpc::RpcClient client(bootstrap);
+
+  ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+  client.Shutdown();
+
+  MemRpc::RpcReply reply;
+  auto future = client.InvokeAsync(MemRpc::RpcCall{});
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
+  EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
+
+  server.Stop();
 }
