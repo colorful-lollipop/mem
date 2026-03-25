@@ -57,14 +57,6 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
     return policy;
 }
 
-uint32_t BuildMinRecoveryWaitMs(const VesClientOptions& options)
-{
-    if (options.recoveryPolicy.onFailure || options.recoveryPolicy.onEngineDeath) {
-        return 0;
-    }
-    return DEFAULT_RESTART_DELAY_MS;
-}
-
 VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptions)
 {
     return [connectOptions]() -> OHOS::sptr<IVirusProtectionExecutor> {
@@ -164,7 +156,6 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    const uint32_t minRecoveryWaitMs = BuildMinRecoveryWaitMs(options_);
     return client_.InvokeWithRecovery(
         [&]() {
             std::vector<uint8_t> payload;
@@ -217,7 +208,7 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
             }
             return MemRpc::StatusCode::Ok;
         },
-        minRecoveryWaitMs,
+        0,
         100);
 }
 
