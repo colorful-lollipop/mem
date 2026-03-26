@@ -576,9 +576,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             RecoveryEventReport report;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                ApplyCooldownWindowChangeLocked(cooldownWindowChange, cooldownUntilMs);
+                const ClientLifecycleState previousState =
+                    ApplyTransitionLocked(state, cooldownWindowChange, cooldownUntilMs);
                 callback = recoveryEventCallback_;
-                report = BuildTransitionReportLocked(state, cooldownDelayMs, currentSessionId);
+                report = BuildTransitionReportLocked(previousState, state, cooldownDelayMs, currentSessionId);
             }
             DispatchRecoveryEvent(callback, report);
         }
@@ -678,18 +679,23 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             Complete,
         };
 
-        void ApplyCooldownWindowChangeLocked(CooldownWindowChange change, uint64_t cooldownUntilMs)
+        [[nodiscard]] ClientLifecycleState ApplyTransitionLocked(ClientLifecycleState nextState,
+                                                                 CooldownWindowChange cooldownWindowChange,
+                                                                 uint64_t cooldownUntilMs)
         {
-            switch (change) {
+            const ClientLifecycleState previousState = lifecycleState_;
+            switch (cooldownWindowChange) {
                 case CooldownWindowChange::Keep:
-                    return;
+                    break;
                 case CooldownWindowChange::Clear:
                     cooldownUntilMs_ = 0;
-                    return;
+                    break;
                 case CooldownWindowChange::Set:
                     cooldownUntilMs_ = cooldownUntilMs;
-                    return;
+                    break;
             }
+            lifecycleState_ = nextState;
+            return previousState;
         }
 
         StatusCode WorkerStoppedStatus(RecoveryWaitMode mode,
@@ -702,12 +708,29 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                      : StatusCode::ClientClosed;
         }
 
+        [[nodiscard]] StatusCode RecoveryStateWaitResultLocked() const
+        {
+            switch (lifecycleState_) {
+                case ClientLifecycleState::Active:
+                case ClientLifecycleState::Cooldown:
+                case ClientLifecycleState::Recovering:
+                    return StatusCode::Ok;
+                case ClientLifecycleState::Closed:
+                    return StatusCode::ClientClosed;
+                case ClientLifecycleState::NoSession:
+                case ClientLifecycleState::IdleClosed:
+                case ClientLifecycleState::Uninitialized:
+                    return StatusCode::PeerDisconnected;
+            }
+            return StatusCode::PeerDisconnected;
+        }
+
         RecoveryWaitStep WaitForCooldownStepLocked(std::unique_lock<std::mutex>& lock,
                                                    std::chrono::steady_clock::time_point deadline,
                                                    StatusCode& status)
         {
             if (lifecycleState_ != ClientLifecycleState::Cooldown) {
-                status = StatusCode::Ok;
+                status = RecoveryStateWaitResultLocked();
                 return RecoveryWaitStep::Complete;
             }
 
@@ -732,7 +755,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 return lifecycleState_ != ClientLifecycleState::Cooldown;
             });
             if (stateChanged) {
-                status = StatusCode::Ok;
+                status = RecoveryStateWaitResultLocked();
                 return RecoveryWaitStep::Complete;
             }
             return RecoveryWaitStep::ContinueWaiting;
@@ -743,7 +766,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                                                 StatusCode& status)
         {
             if (lifecycleState_ != ClientLifecycleState::Recovering) {
-                status = StatusCode::Ok;
+                status = RecoveryStateWaitResultLocked();
                 return RecoveryWaitStep::Complete;
             }
 
@@ -767,7 +790,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             static_cast<void>(recoveryStateCv_.wait_for(lock, waitFor, [this] {
                 return lifecycleState_ != ClientLifecycleState::Recovering;
             }));
-            status = StatusCode::Ok;
+            status = lifecycleState_ == ClientLifecycleState::Recovering ? StatusCode::Ok
+                                                                         : RecoveryStateWaitResultLocked();
             return RecoveryWaitStep::Complete;
         }
 
@@ -800,13 +824,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
         [[nodiscard]] RecoveryEventReport BuildTransitionReportLocked(
+            ClientLifecycleState previousState,
             ClientLifecycleState nextState,
             uint32_t cooldownDelayMs,
             uint64_t currentSessionId)
         {
             RecoveryEventReport report;
-            report.previousState = lifecycleState_;
-            lifecycleState_ = nextState;
+            report.previousState = previousState;
             report.state = nextState;
             report.recoveryPending = HasPendingRecoveryLocked();
             report.cooldownDelayMs = cooldownDelayMs;
