@@ -113,51 +113,48 @@ MemRpc::StatusCode InvokeInlineApi(const VesInvokeExecutionContext& context,
     return MemRpc::WaitAndDecode<Reply>(context.client->InvokeAsync(std::move(call)), reply);
 }
 
-class VesFallbackInvoker {
-public:
-    template <typename Reply>
-    MemRpc::StatusCode Invoke(const VesInvokeExecutionContext& context,
-                              const VesInvokeRequestView& request,
-                              Reply* reply) const
-    {
-        if (context.control == nullptr) {
-            HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", request.opcode);
-            return MemRpc::StatusCode::PeerDisconnected;
-        }
-        if (request.payload == nullptr) {
-            return MemRpc::StatusCode::InvalidArgument;
-        }
-
-        VesAnyCallRequest anyRequest;
-        anyRequest.opcode = static_cast<uint16_t>(request.opcode);
-        anyRequest.priority = static_cast<uint16_t>(request.priority);
-        anyRequest.timeoutMs = request.execTimeoutMs;
-        anyRequest.payload = *request.payload;
-
-        VesAnyCallReply anyReply;
-        const MemRpc::StatusCode status = context.control->AnyCall(anyRequest, anyReply);
-        if (status != MemRpc::StatusCode::Ok) {
-            HILOGE("VesClient::InvokeApi AnyCall failed opcode=%{public}u status=%{public}d",
-                   request.opcode,
-                   static_cast<int>(status));
-            return status;
-        }
-        if (anyReply.status != MemRpc::StatusCode::Ok) {
-            HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
-                   request.opcode,
-                   static_cast<int>(anyReply.status),
-                   anyReply.errorCode);
-            return anyReply.status;
-        }
-        if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {
-            HILOGE("VesClient::InvokeApi decode failed opcode=%{public}u payload_size=%{public}zu",
-                   request.opcode,
-                   anyReply.payload.size());
-            return MemRpc::StatusCode::ProtocolMismatch;
-        }
-        return MemRpc::StatusCode::Ok;
+template <typename Reply>
+MemRpc::StatusCode InvokeAnyCallApi(const VesInvokeExecutionContext& context,
+                                    const VesInvokeRequestView& request,
+                                    Reply* reply)
+{
+    if (context.control == nullptr) {
+        HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", request.opcode);
+        return MemRpc::StatusCode::PeerDisconnected;
     }
-};
+    if (request.payload == nullptr) {
+        return MemRpc::StatusCode::InvalidArgument;
+    }
+
+    VesAnyCallRequest anyRequest;
+    anyRequest.opcode = static_cast<uint16_t>(request.opcode);
+    anyRequest.priority = static_cast<uint16_t>(request.priority);
+    anyRequest.timeoutMs = request.execTimeoutMs;
+    anyRequest.payload = *request.payload;
+
+    VesAnyCallReply anyReply;
+    const MemRpc::StatusCode status = context.control->AnyCall(anyRequest, anyReply);
+    if (status != MemRpc::StatusCode::Ok) {
+        HILOGE("VesClient::InvokeApi AnyCall failed opcode=%{public}u status=%{public}d",
+               request.opcode,
+               static_cast<int>(status));
+        return status;
+    }
+    if (anyReply.status != MemRpc::StatusCode::Ok) {
+        HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
+               request.opcode,
+               static_cast<int>(anyReply.status),
+               anyReply.errorCode);
+        return anyReply.status;
+    }
+    if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {
+        HILOGE("VesClient::InvokeApi decode failed opcode=%{public}u payload_size=%{public}zu",
+               request.opcode,
+               anyReply.payload.size());
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    return MemRpc::StatusCode::Ok;
+}
 
 enum class VesInvokeRoute : uint8_t {
     InlineMemRpc = 0,
@@ -178,7 +175,6 @@ template <typename Reply>
 MemRpc::StatusCode ExecuteInvokeRoute(VesInvokeRoute route,
                                       const VesInvokeExecutionContext& context,
                                       const VesInvokeRequestView& request,
-                                      const VesFallbackInvoker& fallbackInvoker,
                                       Reply* reply)
 {
     if (context.client == nullptr || request.payload == nullptr) {
@@ -189,7 +185,7 @@ MemRpc::StatusCode ExecuteInvokeRoute(VesInvokeRoute route,
         case VesInvokeRoute::InlineMemRpc:
             return InvokeInlineApi(context, request, reply);
         case VesInvokeRoute::AnyCall:
-            return fallbackInvoker.Invoke(context, request, reply);
+            return InvokeAnyCallApi(context, request, reply);
         default:
             return MemRpc::StatusCode::InvalidArgument;
     }
@@ -282,7 +278,6 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         route = VesInvokeRoute::AnyCall;
     }
 
-    const VesFallbackInvoker fallbackInvoker;
     const VesInvokeRequestView invokeRequest{
         opcode,
         priority,
@@ -294,7 +289,7 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
             &client_,
             CurrentControl(),
         };
-        return ExecuteInvokeRoute(route, context, invokeRequest, fallbackInvoker, reply);
+        return ExecuteInvokeRoute(route, context, invokeRequest, reply);
     });
 }
 
