@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
-#include "memrpc/client/sa_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/typed_future.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/codec.h"
@@ -53,12 +53,12 @@ namespace {
 
 TEST(TypedFutureTest, WaitDecodesReply)
 {
-    auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->ServerHandles());
+    server.SetBootstrapHandles(bootstrap->serverHandles());
     server.RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
         reply->status = MemRpc::StatusCode::Ok;
         reply->payload = call.payload;
@@ -81,12 +81,12 @@ TEST(TypedFutureTest, WaitDecodesReply)
 
 TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch)
 {
-    auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->ServerHandles());
+    server.SetBootstrapHandles(bootstrap->serverHandles());
     // Return garbage payload that won't decode as TestMsg.
     server.RegisterHandler(kBadOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
         reply->status = MemRpc::StatusCode::Ok;
@@ -111,12 +111,12 @@ TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch)
 
 TEST(TypedFutureTest, IsReadyDelegates)
 {
-    auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->ServerHandles());
+    server.SetBootstrapHandles(bootstrap->serverHandles());
     server.RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
         reply->status = MemRpc::StatusCode::Ok;
         reply->payload = call.payload;

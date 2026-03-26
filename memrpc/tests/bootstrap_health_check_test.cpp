@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include "memrpc/client/dev_bootstrap.h"
-#include "memrpc/client/sa_bootstrap.h"
 #include "memrpc/core/bootstrap.h"
 
 namespace {
@@ -42,14 +41,6 @@ TEST(BootstrapHealthCheckTest, DevBootstrapReportsUnsupported)
 {
     MemRpc::DevBootstrapChannel bootstrap;
     const auto result = bootstrap.CheckHealth(456);
-    EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Unsupported);
-    EXPECT_EQ(result.sessionId, 0u);
-}
-
-TEST(BootstrapHealthCheckTest, SaBootstrapReportsUnsupported)
-{
-    MemRpc::SaBootstrapChannel bootstrap;
-    const auto result = bootstrap.CheckHealth(789);
     EXPECT_EQ(result.status, MemRpc::ChannelHealthStatus::Unsupported);
     EXPECT_EQ(result.sessionId, 0u);
 }

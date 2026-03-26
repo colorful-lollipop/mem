@@ -26,9 +26,9 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 - **Application** (`virus_executor_service/include/{client,service,transport,testkit,ves}/`, `virus_executor_service/src/{app,client,service,transport,testkit,ves}/`): Mainline Virus Executor Service app with `ves` protocol, bootstrap/registry integration, and `testkit` RPCs
 - **Tests** (`memrpc/tests/`, `virus_executor_service/tests/{unit,integration,stress,dt,fuzz}/`): Framework tests plus app-owned unit/integration/stress/DT/fuzz coverage
 
-**Key abstractions:**
+- **Key abstractions:**
 
-- `IBootstrapChannel` — platform abstraction for process creation and shared memory setup. Implementations: `DevBootstrapChannel` (fork-based, Linux dev) and `SaBootstrapChannel` (HarmonyOS SA)
+- `IBootstrapChannel` — platform abstraction for process creation and shared memory setup. Framework tests use `DevBootstrapChannel` for fork-based Linux workflows, while the Virus Executor Service runtime exercises `VesBootstrapChannel` through its control proxy.
 - `Session` — manages shared memory layout, ring buffers, slot pools, and eventfd channels
 - `RpcClient` / `RpcFuture` — parent-side async/sync call API
 - `RpcServer` / `RpcHandler` — child-side request dispatch and handler registration

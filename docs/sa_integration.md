@@ -12,9 +12,9 @@ SA 相关逻辑只应出现在 bootstrap 层。
 
 ## 当前仓库里的 SA 现状
 
-当前仓库里的 `memrpc::SaBootstrapChannel` 不是正式鸿蒙实现，而是一个开发态的模拟 SA 适配层。
+这个仓库不再包含 `memrpc::SaBootstrapChannel`；本地开发和测试路径由 `DevBootstrapChannel` 提供，真正的 Virus Executor Service runtime 通过 `VesBootstrapChannel` 控制面 proxy 暴露对应接口。
 
-它的作用是：
+历史上模拟 SA 的意图可以归纳为：
 
 - 把接口形状提前固定下来
 - 在 Linux 下复用现有 POSIX 共享内存和 `eventfd` 通道

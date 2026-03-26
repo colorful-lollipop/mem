@@ -30,7 +30,6 @@ if (NOT TARGET memrpc_core)
       ${MEMRPC_MODULE_ROOT}/src/client/rpc_client.cpp
       ${MEMRPC_MODULE_ROOT}/src/server/rpc_server.cpp
       ${MEMRPC_MODULE_ROOT}/src/bootstrap/dev_bootstrap.cpp
-      ${MEMRPC_MODULE_ROOT}/src/bootstrap/sa_bootstrap.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_reader.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_writer.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/log.cpp

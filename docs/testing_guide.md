@@ -114,7 +114,6 @@ tools/push_gate.sh --deep
 
 - `memrpc_session_test`
 - `memrpc_bootstrap_health_check_test`
-- `memrpc_sa_bootstrap_stub_test`
 
 主要覆盖：
 
@@ -127,7 +126,6 @@ tools/push_gate.sh --deep
 - `memrpc/src/core/session.cpp`
 - `memrpc/include/memrpc/core/bootstrap.h`
 - `memrpc/src/bootstrap/dev_bootstrap.cpp`
-- `memrpc/src/bootstrap/sa_bootstrap.cpp`
 
 ### 4.3 client/server 核心调用链
 

@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
-#include "memrpc/client/sa_bootstrap.h"
+#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/task_executor.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -100,12 +100,12 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms)
 
 TEST(RpcServerExecutorTest, CustomExecutorGatesDrain)
 {
-    auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unused_handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->ServerHandles());
+    server.SetBootstrapHandles(bootstrap->serverHandles());
 
     auto executor = std::make_shared<TestExecutor>(0);
     MemRpc::ServerOptions options;
@@ -140,12 +140,12 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain)
 
 TEST(RpcServerExecutorTest, RuntimeStatsTrackActiveRequestExecution)
 {
-    auto bootstrap = std::make_shared<MemRpc::SaBootstrapChannel>();
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
     MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->ServerHandles());
+    server.SetBootstrapHandles(bootstrap->serverHandles());
 
     std::mutex mutex;
     std::condition_variable cv;

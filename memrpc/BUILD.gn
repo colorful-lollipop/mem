@@ -26,7 +26,6 @@ config("memrpc_test_config") {
 source_set("memrpc_core") {
   sources = [
     "src/bootstrap/dev_bootstrap.cpp",
-    "src/bootstrap/sa_bootstrap.cpp",
     "src/client/rpc_client.cpp",
     "src/core/byte_reader.cpp",
     "src/core/byte_writer.cpp",
@@ -71,7 +70,6 @@ group("tests") {
       ":memrpc_rpc_payload_limits_test",
       ":memrpc_rpc_server_api_test",
       ":memrpc_rpc_server_executor_test",
-      ":memrpc_sa_bootstrap_stub_test",
       ":memrpc_session_test",
       ":memrpc_smoke_test",
       ":memrpc_typed_future_test",
@@ -169,12 +167,6 @@ if (memrpc_enable_tests) {
 
   repo_gtest("memrpc_rpc_server_api_test") {
     sources = [ "tests/rpc_server_api_test.cpp" ]
-    deps = [ ":memrpc" ]
-    configs = [ ":memrpc_test_config" ]
-  }
-
-  repo_gtest("memrpc_sa_bootstrap_stub_test") {
-    sources = [ "tests/sa_bootstrap_stub_test.cpp" ]
     deps = [ ":memrpc" ]
     configs = [ ":memrpc_test_config" ]
   }
