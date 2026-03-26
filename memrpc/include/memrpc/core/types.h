@@ -72,12 +72,6 @@ struct RpcEvent {
 
 using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
-enum class ReplayHint : uint8_t {
-    Unknown = 0,
-    SafeToReplay = 1,
-    MaybeExecuted = 2,
-};
-
 enum class RpcRuntimeState : uint8_t {
     Unknown = 0,
     Free,

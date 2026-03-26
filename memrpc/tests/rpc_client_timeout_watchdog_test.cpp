@@ -134,15 +134,11 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler)
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
     std::atomic<bool> got_failure{false};
-    FailureStage captured_stage = FailureStage::Admission;
     StatusCode captured_status = StatusCode::Ok;
-    ReplayHint captured_hint = ReplayHint::Unknown;
     RecoveryPolicy policy;
     policy.onFailure = [&](const RpcFailure& failure) {
         got_failure.store(true);
-        captured_stage = failure.stage;
         captured_status = failure.status;
-        captured_hint = failure.replayHint;
         return RecoveryDecision{RecoveryAction::Ignore, 0};
     };
     client.SetRecoveryPolicy(std::move(policy));
@@ -156,9 +152,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler)
     const StatusCode wait_status = future.Wait(&reply);
     EXPECT_EQ(wait_status, StatusCode::ExecTimeout);
     EXPECT_TRUE(got_failure.load());
-    EXPECT_EQ(captured_stage, FailureStage::Timeout);
     EXPECT_EQ(captured_status, StatusCode::ExecTimeout);
-    EXPECT_EQ(captured_hint, ReplayHint::MaybeExecuted);
 
     client.Shutdown();
     server.Stop();
@@ -290,13 +284,11 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutWhenStuckInQueue)
     // Second request: will sit in queue since the worker is busy.
     std::atomic<bool> got_failure{false};
     StatusCode captured_status = StatusCode::Ok;
-    ReplayHint captured_hint = ReplayHint::Unknown;
     RecoveryPolicy policy2;
     policy2.onFailure = [&](const RpcFailure& failure) {
-        if (failure.stage == FailureStage::Timeout) {
+        if (failure.status == StatusCode::ExecTimeout) {
             got_failure.store(true);
             captured_status = failure.status;
-            captured_hint = failure.replayHint;
         }
         return RecoveryDecision{RecoveryAction::Ignore, 0};
     };
@@ -312,7 +304,6 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutWhenStuckInQueue)
     EXPECT_EQ(wait_status, StatusCode::ExecTimeout);
     EXPECT_TRUE(got_failure.load());
     EXPECT_EQ(captured_status, StatusCode::ExecTimeout);
-    EXPECT_EQ(captured_hint, ReplayHint::MaybeExecuted);
 
     client.Shutdown();
     server.Stop();

@@ -68,13 +68,6 @@ private:
     friend class RpcClient;
 };
 
-enum class FailureStage : uint8_t {
-    Admission = 0,
-    Response = 1,
-    Session = 2,
-    Timeout = 3,
-};
-
 struct RpcFailure {
     StatusCode status = StatusCode::Ok;
     Opcode opcode = OPCODE_INVALID;
@@ -83,8 +76,6 @@ struct RpcFailure {
     uint64_t requestId = 0;
     uint64_t sessionId = 0;
     uint32_t monotonicMs = 0;
-    FailureStage stage = FailureStage::Admission;
-    ReplayHint replayHint = ReplayHint::Unknown;
     RpcRuntimeState lastRuntimeState = RpcRuntimeState::Unknown;
 };
 
@@ -126,11 +117,10 @@ enum class ClientLifecycleState : uint8_t {
 enum class RecoveryTrigger : uint8_t {
     Unknown = 0,
     ManualShutdown = 1,
-    ExecTimeout = 2,
-    EngineDeath = 3,
-    ExternalHealthSignal = 4,
-    IdlePolicy = 5,
-    DemandReconnect = 6,
+    EngineDeath = 2,
+    ExternalHealthSignal = 3,
+    IdlePolicy = 4,
+    DemandReconnect = 5,
 };
 
 struct RecoveryRuntimeSnapshot {
@@ -138,7 +128,6 @@ struct RecoveryRuntimeSnapshot {
     RecoveryTrigger lastTrigger = RecoveryTrigger::Unknown;
     RecoveryAction lastRecoveryAction = RecoveryAction::Ignore;
     bool recoveryPending = false;
-    bool terminalManualShutdown = false;
     uint32_t cooldownRemainingMs = 0;
     uint64_t currentSessionId = 0;
     uint64_t lastOpenedSessionId = 0;
@@ -150,7 +139,6 @@ struct RecoveryEventReport {
     ClientLifecycleState state = ClientLifecycleState::Uninitialized;
     RecoveryTrigger trigger = RecoveryTrigger::Unknown;
     RecoveryAction action = RecoveryAction::Ignore;
-    bool terminalManualShutdown = false;
     bool recoveryPending = false;
     uint32_t cooldownDelayMs = 0;
     uint32_t cooldownRemainingMs = 0;

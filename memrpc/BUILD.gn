@@ -61,7 +61,6 @@ group("tests") {
       ":memrpc_framework_split_headers_test",
       ":memrpc_log_test",
       ":memrpc_protocol_layout_test",
-      ":memrpc_replay_classifier_test",
       ":memrpc_rpc_client_api_test",
       ":memrpc_rpc_client_external_recovery_test",
       ":memrpc_rpc_client_idle_callback_test",
@@ -176,12 +175,6 @@ if (memrpc_enable_tests) {
 
   repo_gtest("memrpc_sa_bootstrap_stub_test") {
     sources = [ "tests/sa_bootstrap_stub_test.cpp" ]
-    deps = [ ":memrpc" ]
-    configs = [ ":memrpc_test_config" ]
-  }
-
-  repo_gtest("memrpc_replay_classifier_test") {
-    sources = [ "tests/replay_classifier_test.cpp" ]
     deps = [ ":memrpc" ]
     configs = [ ":memrpc_test_config" ]
   }

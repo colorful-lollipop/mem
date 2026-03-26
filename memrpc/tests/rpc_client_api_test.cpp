@@ -182,7 +182,6 @@ TEST(RpcClientApiTest, ShutdownMakesClientPermanentlyTerminal)
     const MemRpc::RecoveryRuntimeSnapshot snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
-    EXPECT_TRUE(snapshot.terminalManualShutdown);
 }
 
 TEST(RpcClientApiTest, ShutdownAfterInitStillRejectsInvokeAsyncImmediately)

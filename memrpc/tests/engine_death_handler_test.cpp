@@ -214,7 +214,6 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean)
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
-    EXPECT_TRUE(snapshot.terminalManualShutdown);
 }
 
 TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpires)

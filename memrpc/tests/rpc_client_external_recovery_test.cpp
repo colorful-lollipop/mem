@@ -353,7 +353,6 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ManualShutdown);
-    EXPECT_TRUE(snapshot.terminalManualShutdown);
     EXPECT_EQ(bootstrap->openCount(), 1);
 
     RpcCall call;

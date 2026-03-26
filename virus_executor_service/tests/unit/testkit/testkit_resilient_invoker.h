@@ -16,7 +16,6 @@ struct FailedCallRecord {
     MemRpc::Opcode opcode = MemRpc::OPCODE_INVALID;
     std::vector<uint8_t> payload;
     MemRpc::StatusCode failureStatus = MemRpc::StatusCode::PeerDisconnected;
-    MemRpc::ReplayHint replayHint = MemRpc::ReplayHint::Unknown;
     MemRpc::RecoveryRuntimeSnapshot runtimeSnapshot;
     MemRpc::RecoveryEventReport recoveryEvent;
     bool hasRecoveryEvent = false;

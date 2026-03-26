@@ -451,7 +451,6 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
     ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     const auto postRecoverySnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
-    EXPECT_FALSE(postRecoverySnapshot.terminalManualShutdown);
 
     client->Shutdown();
     server.Stop();
@@ -615,7 +614,6 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     EXPECT_LT(elapsed.count(), 1000);
     const auto activeSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
-    EXPECT_FALSE(activeSnapshot.terminalManualShutdown);
 
     reopenThread.join();
     client->Shutdown();
@@ -642,7 +640,6 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
     const auto snapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
-    EXPECT_TRUE(snapshot.terminalManualShutdown);
 
     ScanTask task{"/data/after_shutdown.apk"};
     ScanFileReply reply;

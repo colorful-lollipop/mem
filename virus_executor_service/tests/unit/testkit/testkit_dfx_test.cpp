@@ -158,7 +158,6 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures)
         EXPECT_EQ(failedCall.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
         EXPECT_TRUE(failedCall.hasRecoveryEvent);
         EXPECT_EQ(failedCall.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
-        EXPECT_EQ(failedCall.replayHint, MemRpc::ReplayHint::MaybeExecuted);
     }
 
     invoker.Shutdown();

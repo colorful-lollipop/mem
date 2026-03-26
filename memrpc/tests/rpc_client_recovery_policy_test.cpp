@@ -55,7 +55,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryRuntimeSnapshotDefaults)
     EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::Unknown);
     EXPECT_EQ(snapshot.lastRecoveryAction, MemRpc::RecoveryAction::Ignore);
     EXPECT_FALSE(snapshot.recoveryPending);
-    EXPECT_FALSE(snapshot.terminalManualShutdown);
     EXPECT_EQ(snapshot.cooldownRemainingMs, 0u);
     EXPECT_EQ(snapshot.currentSessionId, 0u);
     EXPECT_EQ(snapshot.lastOpenedSessionId, 0u);
@@ -69,7 +68,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)
     EXPECT_EQ(report.state, MemRpc::ClientLifecycleState::Uninitialized);
     EXPECT_EQ(report.trigger, MemRpc::RecoveryTrigger::Unknown);
     EXPECT_EQ(report.action, MemRpc::RecoveryAction::Ignore);
-    EXPECT_FALSE(report.terminalManualShutdown);
     EXPECT_FALSE(report.recoveryPending);
     EXPECT_EQ(report.cooldownDelayMs, 0u);
     EXPECT_EQ(report.cooldownRemainingMs, 0u);

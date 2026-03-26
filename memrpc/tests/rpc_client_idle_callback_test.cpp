@@ -192,7 +192,6 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     const auto idleClosedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(idleClosedSnapshot.lifecycleState, ClientLifecycleState::IdleClosed);
     EXPECT_EQ(idleClosedSnapshot.lastTrigger, RecoveryTrigger::IdlePolicy);
-    EXPECT_FALSE(idleClosedSnapshot.terminalManualShutdown);
 
     RpcCall call;
     call.opcode = kTestEchoOpcode;
