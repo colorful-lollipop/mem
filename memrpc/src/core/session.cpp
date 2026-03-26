@@ -132,6 +132,16 @@ bool ProcessIsAlive(uint32_t pid_value)
     return errno != ESRCH;
 }
 
+BootstrapHandles TakeBootstrapHandles(BootstrapHandles* handles)
+{
+    if (handles == nullptr) {
+        return MakeDefaultBootstrapHandles();
+    }
+    BootstrapHandles adopted = *handles;
+    *handles = MakeDefaultBootstrapHandles();
+    return adopted;
+}
+
 template <typename EntryType>
 StatusCode PushRingEntry(Session::RingAccess access, const EntryType& entry)
 {
@@ -177,6 +187,8 @@ bool PopRingEntry(Session::RingAccess access, EntryType* entry)
 
 }  // namespace
 
+void CloseHandles(BootstrapHandles* handles);
+
 Session::Session() = default;
 
 Session::~Session()
@@ -186,7 +198,20 @@ Session::~Session()
 
 StatusCode Session::MapAndValidateHeader(int shmFd)
 {
+    struct stat fileStat {};
+    if (fstat(shmFd, &fileStat) != 0) {
+        HILOGE("Session::MapAndValidateHeader fstat failed: shmFd=%{public}d errno=%{public}d", shmFd, errno);
+        return StatusCode::EngineInternalError;
+    }
+    if (fileStat.st_size < static_cast<off_t>(sizeof(SharedMemoryHeader))) {
+        HILOGE("Session::MapAndValidateHeader failed: shm object too small size=%{public}lld header=%{public}zu",
+               static_cast<long long>(fileStat.st_size),
+               sizeof(SharedMemoryHeader));
+        return StatusCode::ProtocolMismatch;
+    }
+
     initialMappedSize_ = sizeof(SharedMemoryHeader);
+    mappedSize_ = 0;
     mappedRegion_ = mmap(nullptr, initialMappedSize_, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (mappedRegion_ == MAP_FAILED) {
         HILOGE("Session::MapAndValidateHeader mmap failed: shmFd=%{public}d errno=%{public}d", shmFd, errno);
@@ -232,6 +257,9 @@ StatusCode Session::RemapWithActualLayout(int shmFd)
     }
     Layout actual_layout = ComputeLayout(config);
     munmap(mappedRegion_, initialMappedSize_);
+    mappedRegion_ = nullptr;
+    header_ = nullptr;
+    initialMappedSize_ = 0;
 
     mappedRegion_ = mmap(nullptr, actual_layout.totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (mappedRegion_ == MAP_FAILED) {
@@ -241,9 +269,14 @@ StatusCode Session::RemapWithActualLayout(int shmFd)
                errno);
         mappedRegion_ = nullptr;
         header_ = nullptr;
+        mappedSize_ = 0;
         return StatusCode::EngineInternalError;
     }
 
+    layout_ = actual_layout;
+    maxRequestBytes_ = config.maxRequestBytes;
+    maxResponseBytes_ = config.maxResponseBytes;
+    responseRingSize_ = config.responseRingSize;
     mappedSize_ = actual_layout.totalSize;
     header_ = static_cast<SharedMemoryHeader*>(mappedRegion_);
     return StatusCode::Ok;
@@ -278,27 +311,31 @@ StatusCode Session::TryAcquireClientAttachment()
     return StatusCode::Ok;
 }
 
-StatusCode Session::Attach(const BootstrapHandles& handles, AttachRole role)
+StatusCode Session::Attach(BootstrapHandles* handles, AttachRole role)
 {
     Reset();
-    if (handles.shmFd < 0) {
-        HILOGE("Session::Attach failed: invalid shmFd=%{public}d", handles.shmFd);
+    BootstrapHandles adoptedHandles = TakeBootstrapHandles(handles);
+    if (adoptedHandles.shmFd < 0) {
+        HILOGE("Session::Attach failed: invalid shmFd=%{public}d", adoptedHandles.shmFd);
+        CloseHandles(&adoptedHandles);
         return StatusCode::InvalidArgument;
     }
 
-    StatusCode status = MapAndValidateHeader(handles.shmFd);
+    StatusCode status = MapAndValidateHeader(adoptedHandles.shmFd);
     if (status != StatusCode::Ok) {
         HILOGE("Session::Attach failed during MapAndValidateHeader: status=%{public}d", static_cast<int>(status));
+        CloseHandles(&adoptedHandles);
         return status;
     }
 
-    status = RemapWithActualLayout(handles.shmFd);
+    status = RemapWithActualLayout(adoptedHandles.shmFd);
     if (status != StatusCode::Ok) {
         HILOGE("Session::Attach failed during RemapWithActualLayout: status=%{public}d", static_cast<int>(status));
+        CloseHandles(&adoptedHandles);
         return status;
     }
 
-    handles_ = handles;
+    handles_ = adoptedHandles;
     attachRole_ = role;
     ownsClientAttachment_ = false;
     if (role == AttachRole::Client) {
@@ -343,13 +380,21 @@ void Session::Reset()
 {
     ReleaseClientAttachment(header_, ownsClientAttachment_);
     if (mappedRegion_ != nullptr) {
-        munmap(mappedRegion_, mappedSize_);
+        const std::size_t mappedSize = CurrentMappedSize();
+        if (mappedSize != 0) {
+            munmap(mappedRegion_, mappedSize);
+        }
     }
     CloseHandles(&handles_);
     handles_ = MakeDefaultBootstrapHandles();
     mappedSize_ = 0;
+    initialMappedSize_ = 0;
     mappedRegion_ = nullptr;
     header_ = nullptr;
+    layout_ = {};
+    maxRequestBytes_ = 0;
+    maxResponseBytes_ = 0;
+    responseRingSize_ = 0;
     attachRole_ = AttachRole::Server;
     ownsClientAttachment_ = false;
 }
@@ -364,9 +409,19 @@ const SharedMemoryHeader* Session::Header() const
     return header_;
 }
 
-SharedMemoryHeader* Session::mutableHeader()
+uint32_t Session::MaxRequestBytes() const
 {
-    return header_;
+    return maxRequestBytes_;
+}
+
+uint32_t Session::MaxResponseBytes() const
+{
+    return maxResponseBytes_;
+}
+
+uint32_t Session::ResponseRingSize() const
+{
+    return responseRingSize_;
 }
 
 const BootstrapHandles& Session::Handles() const
@@ -414,22 +469,21 @@ Session::RingAccess Session::ResolveRing(QueueKind queue)
     if (header_ == nullptr || mappedRegion_ == nullptr) {
         return {};
     }
-    LayoutConfig config{header_->highRingSize,
-                        header_->normalRingSize,
-                        header_->responseRingSize,
-                        header_->maxRequestBytes,
-                        header_->maxResponseBytes};
-    Layout layout = ComputeLayout(config);
     auto* base = static_cast<std::byte*>(mappedRegion_);
     switch (queue) {
         case QueueKind::HighRequest:
-            return {&header_->highRing, base + layout.highRingOffset};
+            return {&header_->highRing, base + layout_.highRingOffset};
         case QueueKind::NormalRequest:
-            return {&header_->normalRing, base + layout.normalRingOffset};
+            return {&header_->normalRing, base + layout_.normalRingOffset};
         case QueueKind::Response:
-            return {&header_->responseRing, base + layout.responseRingOffset};
+            return {&header_->responseRing, base + layout_.responseRingOffset};
     }
     return {};
+}
+
+std::size_t Session::CurrentMappedSize() const
+{
+    return mappedSize_ != 0 ? mappedSize_ : initialMappedSize_;
 }
 
 }  // namespace MemRpc

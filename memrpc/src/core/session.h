@@ -40,14 +40,17 @@ public:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
-    StatusCode Attach(const BootstrapHandles& handles, AttachRole role = AttachRole::Client);
+    // Attach 会接管 handles 中的 fd 所有权；无论成功还是失败，返回时 handles 都会被清空。
+    StatusCode Attach(BootstrapHandles* handles, AttachRole role = AttachRole::Client);
     void Reset();
 
     [[nodiscard]] bool Valid() const;
     [[nodiscard]] const SharedMemoryHeader* Header() const;
-    SharedMemoryHeader* mutableHeader();
     [[nodiscard]] const BootstrapHandles& Handles() const;
     [[nodiscard]] SessionState State() const;
+    [[nodiscard]] uint32_t MaxRequestBytes() const;
+    [[nodiscard]] uint32_t MaxResponseBytes() const;
+    [[nodiscard]] uint32_t ResponseRingSize() const;
     void SetState(SessionState state);
 
     // Push/Pop 接口封装 ring + eventfd 对应的共享内存协议细节。
@@ -62,11 +65,16 @@ private:
     StatusCode MapAndValidateHeader(int shmFd);
     StatusCode RemapWithActualLayout(int shmFd);
     StatusCode TryAcquireClientAttachment();
+    [[nodiscard]] std::size_t CurrentMappedSize() const;
     std::size_t mappedSize_ = 0;
     std::size_t initialMappedSize_ = 0;
     void* mappedRegion_ = nullptr;
     BootstrapHandles handles_ = MakeDefaultBootstrapHandles();
     SharedMemoryHeader* header_ = nullptr;
+    Layout layout_{};
+    uint32_t maxRequestBytes_ = 0;
+    uint32_t maxResponseBytes_ = 0;
+    uint32_t responseRingSize_ = 0;
     AttachRole attachRole_ = AttachRole::Server;
     bool ownsClientAttachment_ = false;
 };

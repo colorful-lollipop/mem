@@ -408,14 +408,14 @@ struct RpcServer::Impl {
             return false;
         }
 
-        if (reply->payload.size() > session.Header()->maxResponseBytes ||
+        if (reply->payload.size() > session.MaxResponseBytes() ||
             reply->payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
             HILOGE(
                 "RpcServer::WriteResponse payload too large request_id=%{public}llu payload_size=%{public}zu "
                 "max=%{public}u inline_max=%{public}u",
                 static_cast<unsigned long long>(requestEntry.requestId),
                 reply->payload.size(),
-                session.Header()->maxResponseBytes,
+                session.MaxResponseBytes(),
                 ResponseRingEntry::INLINE_PAYLOAD_BYTES);
             reply->status = StatusCode::PayloadTooLarge;
             reply->payload.clear();
@@ -485,13 +485,13 @@ struct RpcServer::Impl {
             HILOGE("PublishEvent failed, session is not ready");
             return StatusCode::EngineInternalError;
         }
-        if (event.payload.size() > session.Header()->maxResponseBytes ||
+        if (event.payload.size() > session.MaxResponseBytes() ||
             event.payload.size() > ResponseRingEntry::INLINE_PAYLOAD_BYTES) {
             HILOGE(
                 "RpcServer::PublishEvent failed: payload too large size=%{public}zu max=%{public}u "
                 "inline_max=%{public}u",
                 event.payload.size(),
-                session.Header()->maxResponseBytes,
+                session.MaxResponseBytes(),
                 ResponseRingEntry::INLINE_PAYLOAD_BYTES);
             return StatusCode::PayloadTooLarge;
         }
@@ -531,14 +531,14 @@ struct RpcServer::Impl {
                    static_cast<unsigned long long>(requestEntry.requestId));
             return;
         }
-        if (requestEntry.payloadSize > session.Header()->maxRequestBytes ||
+        if (requestEntry.payloadSize > session.MaxRequestBytes() ||
             requestEntry.payloadSize > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
             HILOGE(
                 "RpcServer::ProcessEntry payload too large request_id=%{public}llu payload_size=%{public}u "
                 "max=%{public}u inline_max=%{public}u",
                 static_cast<unsigned long long>(requestEntry.requestId),
                 requestEntry.payloadSize,
-                session.Header()->maxRequestBytes,
+                session.MaxRequestBytes(),
                 RequestRingEntry::INLINE_PAYLOAD_BYTES);
             RpcServerReply reply;
             reply.status = StatusCode::PayloadTooLarge;
@@ -710,7 +710,7 @@ StatusCode RpcServer::Start()
         return StatusCode::Ok;
     }
 
-    const StatusCode attachStatus = impl_->session.Attach(impl_->handles, Session::AttachRole::Server);
+    const StatusCode attachStatus = impl_->session.Attach(&impl_->handles, Session::AttachRole::Server);
     if (attachStatus != StatusCode::Ok) {
         HILOGE("RpcServer::Start failed: session attach status=%{public}d", static_cast<int>(attachStatus));
         impl_->running.store(false);
@@ -724,7 +724,7 @@ StatusCode RpcServer::Start()
                               ? impl_->options.normalExecutor
                               : std::make_shared<ThreadPoolExecutor>(impl_->options.normalWorkerThreads);
     impl_->completionQueueCapacity = impl_->options.completionQueueCapacity == 0
-                                       ? impl_->session.Header()->responseRingSize
+                                       ? impl_->session.ResponseRingSize()
                                        : impl_->options.completionQueueCapacity;
 
     impl_->responseWriterRunning.store(true);

@@ -369,7 +369,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
             const uint64_t sessionId = handles.sessionId;
             std::lock_guard<std::mutex> lock(sessionMutex_);
-            const StatusCode attachStatus = session_.Attach(handles, Session::AttachRole::Client);
+            const StatusCode attachStatus = session_.Attach(&handles, Session::AttachRole::Client);
             if (attachStatus != StatusCode::Ok) {
                 HILOGE("RpcClient::OpenSession failed: session attach status=%{public}d session_id=%{public}llu",
                        static_cast<int>(attachStatus),
@@ -1818,12 +1818,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                    submit.call.opcode);
             return StatusCode::PeerDisconnected;
         }
-        if (submit.call.payload.size() > session.Header()->maxRequestBytes ||
+        if (submit.call.payload.size() > session.MaxRequestBytes() ||
             submit.call.payload.size() > RequestRingEntry::INLINE_PAYLOAD_BYTES) {
             HILOGE("RpcClient::TryPushRequest failed: payload too large size=%{public}zu max=%{public}u "
                    "inline_max=%{public}u",
                    submit.call.payload.size(),
-                   session.Header()->maxRequestBytes,
+                   session.MaxRequestBytes(),
                    RequestRingEntry::INLINE_PAYLOAD_BYTES);
             return StatusCode::PayloadTooLarge;
         }
