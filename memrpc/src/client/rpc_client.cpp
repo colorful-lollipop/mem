@@ -24,6 +24,7 @@ namespace MemRpc {
 namespace {
 
 // File-local policy and timing helpers shared by the internal client components.
+constexpr auto kPendingTimeoutPollPeriod = std::chrono::milliseconds(100);
 constexpr auto kHealthCheckPeriod = std::chrono::milliseconds(100);
 constexpr auto kIdlePollPeriod = std::chrono::milliseconds(100);
 constexpr auto kRecoveryRetryPollPeriod = std::chrono::milliseconds(20);
@@ -982,12 +983,11 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                     continue;
                 }
 
-                RefreshPolledSession(&activePollFd, &activePollSessionId, resetActivePollFd);
-                if (activePollFd < 0) {
+                if (!PrepareToWaitForResponses(&activePollFd, &activePollSessionId, resetActivePollFd)) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
                     continue;
                 }
-                WaitForResponses(activePollFd, activePollSessionId, resetActivePollFd);
+                WaitForResponseSignal(activePollFd, activePollSessionId, resetActivePollFd);
             }
         }
 
@@ -1024,9 +1024,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return nextPollFd;
         }
 
-        void RefreshPolledSession(int* activePollFd,
-                                  uint64_t* activePollSessionId,
-                                  const std::function<void()>& resetActivePollFd)
+        void SyncActivePollSession(int* activePollFd,
+                                   uint64_t* activePollSessionId,
+                                   const std::function<void()>& resetActivePollFd)
         {
             const auto snapshot = owner_->LoadSessionSnapshot();
             const uint64_t currentSessionId = snapshot->sessionId;
@@ -1048,9 +1048,19 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             }
         }
 
-        void WaitForResponses(int activePollFd,
-                              uint64_t activePollSessionId,
-                              const std::function<void()>& resetActivePollFd)
+        bool PrepareToWaitForResponses(int* activePollFd,
+                                       uint64_t* activePollSessionId,
+                                       const std::function<void()>& resetActivePollFd)
+        {
+            // Draining may finish on one session while recovery has already swapped in another.
+            // Re-sync the duplicated poll fd before blocking so the wait always tracks the live session.
+            SyncActivePollSession(activePollFd, activePollSessionId, resetActivePollFd);
+            return *activePollFd >= 0;
+        }
+
+        void WaitForResponseSignal(int activePollFd,
+                                   uint64_t activePollSessionId,
+                                   const std::function<void()>& resetActivePollFd)
         {
             pollfd pollFd{activePollFd, POLLIN, 0};
             const auto waitResult = PollEventFd(&pollFd, 100);
@@ -1200,6 +1210,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     std::atomic<uint64_t> nextRequestId_{1};
     std::atomic<uint64_t> lastActivityMs_{0};
     std::atomic<uint64_t> lastClosedSessionId_{0};
+    std::atomic<uint64_t> lastHandledEngineDeathSessionId_{0};
     std::atomic<bool> hasOpenedSession_{false};
 
     // Shared state snapshots and callback plumbing.
@@ -1426,6 +1437,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     void FinalizeSessionOpen(uint64_t sessionId)
     {
         const auto openState = recoveryState_.ConsumeSessionOpen(sessionId);
+        lastHandledEngineDeathSessionId_.store(0, std::memory_order_release);
         hasOpenedSession_.store(true, std::memory_order_release);
         TransitionLifecycle(ClientLifecycleState::Active,
                             openState.trigger,
@@ -1464,6 +1476,28 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
         const uint64_t currentSessionId = CurrentSessionId();
         return currentSessionId != 0 && observedSessionId != currentSessionId;
+    }
+
+    uint64_t ResolveObservedSessionId(uint64_t observedSessionId) const
+    {
+        if (observedSessionId != 0) {
+            return observedSessionId;
+        }
+        const uint64_t currentSessionId = CurrentSessionId();
+        if (currentSessionId != 0) {
+            return currentSessionId;
+        }
+        return LastClosedSessionId();
+    }
+
+    bool TryBeginEngineDeathHandling(uint64_t deadSessionId)
+    {
+        if (deadSessionId == 0) {
+            return true;
+        }
+        const uint64_t previousSessionId =
+            lastHandledEngineDeathSessionId_.exchange(deadSessionId, std::memory_order_acq_rel);
+        return previousSessionId != deadSessionId;
     }
 
     void ClearRecoveryWindow()
@@ -1527,10 +1561,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         const RpcFailure failure = BuildFailureReport(info, status, stage);
         const RecoveryDecision decision = policy.onFailure(failure);
-        ApplyRecoveryDecision(decision, RecoveryTriggerForStatus(status), false);
+        ApplyRecoveryDecision(decision, RecoveryTriggerForStatus(status));
     }
 
-    void ApplyRecoveryDecision(const RecoveryDecision& decision, RecoveryTrigger trigger, bool fromEngineDeath)
+    void ApplyRecoveryDecision(const RecoveryDecision& decision, RecoveryTrigger trigger)
     {
         if (!IsApiOpen()) {
             return;
@@ -1544,7 +1578,26 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             case RecoveryAction::ManualShutdown:
                 return;
             case RecoveryAction::Restart:
-                ScheduleRecovery(trigger, SessionOpenReason::RestartRecovery, decision.delayMs, fromEngineDeath);
+                ScheduleRecovery(trigger, SessionOpenReason::RestartRecovery, decision.delayMs);
+                return;
+        }
+    }
+
+    void ApplyRecoveryDecisionAfterEngineDeath(const RecoveryDecision& decision, RecoveryTrigger trigger)
+    {
+        if (!IsApiOpen()) {
+            return;
+        }
+        switch (decision.action) {
+            case RecoveryAction::Ignore:
+                return;
+            case RecoveryAction::IdleClose:
+                EnterIdleClosed();
+                return;
+            case RecoveryAction::ManualShutdown:
+                return;
+            case RecoveryAction::Restart:
+                ScheduleRecoveryAfterEngineDeath(trigger, SessionOpenReason::RestartRecovery, decision.delayMs);
                 return;
         }
     }
@@ -1672,16 +1725,24 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         recoveryState_.EnterTerminalClosed(CurrentSessionId(), LastClosedSessionId());
     }
 
-    void ScheduleRecovery(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs, bool fromEngineDeath)
+    void ScheduleRecovery(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs)
     {
         if (!IsApiOpen()) {
             return;
         }
         recoveryState_.StartRecovery(trigger, openReason, delayMs, CurrentSessionId(), LastClosedSessionId());
         CloseLiveSession();
-        if (!fromEngineDeath) {
-            FailAllPending(StatusCode::PeerDisconnected);
+        FailAllPending(StatusCode::PeerDisconnected);
+        MaybeReconnectImmediately(delayMs);
+    }
+
+    void ScheduleRecoveryAfterEngineDeath(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs)
+    {
+        if (!IsApiOpen()) {
+            return;
         }
+        recoveryState_.StartRecovery(trigger, openReason, delayMs, CurrentSessionId(), LastClosedSessionId());
+        CloseLiveSession();
         MaybeReconnectImmediately(delayMs);
     }
 
@@ -1922,7 +1983,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     void ApplyIdleRecoveryDecision(const RecoveryPolicy& policy, uint64_t idleMs)
     {
         const RecoveryDecision decision = policy.onIdle(idleMs);
-        ApplyRecoveryDecision(decision, RecoveryTrigger::IdlePolicy, false);
+        ApplyRecoveryDecision(decision, RecoveryTrigger::IdlePolicy);
     }
 
     void MaybeRunIdlePolicy()
@@ -2004,8 +2065,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     EngineDeathReport BuildEngineDeathReport(uint64_t observedSessionId) const
     {
         EngineDeathReport report;
-        const uint64_t currentSessionId = CurrentSessionId();
-        report.deadSessionId = observedSessionId == 0 ? currentSessionId : observedSessionId;
+        report.deadSessionId = ResolveObservedSessionId(observedSessionId);
         return report;
     }
 
@@ -2026,7 +2086,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             EnterDisconnected(RecoveryTrigger::EngineDeath);
             return;
         }
-        ApplyRecoveryDecision(decision, RecoveryTrigger::EngineDeath, true);
+        ApplyRecoveryDecisionAfterEngineDeath(decision, RecoveryTrigger::EngineDeath);
     }
 
     void HandleEngineDeathDetection(uint64_t sessionId)
@@ -2040,12 +2100,28 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void WatchdogLoop()
     {
+        auto nextPendingTimeoutScan = std::chrono::steady_clock::now();
+        auto nextHealthCheck = nextPendingTimeoutScan;
+        auto nextIdlePoll = nextPendingTimeoutScan;
+
         while (true) {
-            MaybeRunPendingTimeouts();
-            MaybeRunHealthCheck();
-            MaybeRunIdlePolicy();
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= nextPendingTimeoutScan) {
+                MaybeRunPendingTimeouts();
+                nextPendingTimeoutScan = std::chrono::steady_clock::now() + kPendingTimeoutPollPeriod;
+            }
+            if (now >= nextHealthCheck) {
+                MaybeRunHealthCheck();
+                nextHealthCheck = std::chrono::steady_clock::now() + kHealthCheckPeriod;
+            }
+            if (now >= nextIdlePoll) {
+                MaybeRunIdlePolicy();
+                nextIdlePoll = std::chrono::steady_clock::now() + kIdlePollPeriod;
+            }
+
             std::unique_lock<std::mutex> lock(watchdogMutex_);
-            watchdogCv_.wait_for(lock, std::min(kHealthCheckPeriod, kIdlePollPeriod), [this] {
+            const auto nextWakeAt = std::min(nextPendingTimeoutScan, std::min(nextHealthCheck, nextIdlePoll));
+            watchdogCv_.wait_until(lock, nextWakeAt, [this] {
                 return watchdogStopRequested_;
             });
             if (watchdogStopRequested_) {
@@ -2059,14 +2135,20 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!IsApiOpen()) {
             return;
         }
+        const uint64_t deadSessionId = ResolveObservedSessionId(sessionId);
         const uint64_t current = CurrentSessionId();
-        if (IsStaleRecoverySignal(sessionId)) {
+        if (IsStaleRecoverySignal(deadSessionId)) {
             HILOGW("RpcClient::HandleEngineDeath ignored stale session_id=%{public}llu current_session_id=%{public}llu",
-                   static_cast<unsigned long long>(sessionId),
+                   static_cast<unsigned long long>(deadSessionId),
                    static_cast<unsigned long long>(current));
             return;
         }
-        HandleEngineDeathDetection(sessionId);
+        if (!TryBeginEngineDeathHandling(deadSessionId)) {
+            HILOGW("RpcClient::HandleEngineDeath ignored duplicate session_id=%{public}llu",
+                   static_cast<unsigned long long>(deadSessionId));
+            return;
+        }
+        HandleEngineDeathDetection(deadSessionId);
     }
 
     void RequestExternalRecovery(ExternalRecoveryRequest request)
@@ -2087,10 +2169,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                static_cast<int>(request.signal),
                static_cast<unsigned long long>(request.sessionId),
                request.delayMs);
-        ScheduleRecovery(RecoveryTrigger::ExternalHealthSignal,
-                         SessionOpenReason::ExternalRecovery,
-                         request.delayMs,
-                         false);
+        ScheduleRecovery(
+            RecoveryTrigger::ExternalHealthSignal, SessionOpenReason::ExternalRecovery, request.delayMs);
     }
 
     // Public-operation entrypoints and runtime introspection.

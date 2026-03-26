@@ -365,3 +365,50 @@ TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect)
     client.Shutdown();
     server.Stop();
 }
+
+TEST(EngineDeathHandlerTest, DuplicateEngineDeathSignalIsIgnoredForSameSession)
+{
+    constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(204);
+
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+    MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+    CloseHandles(unusedHandles);
+
+    MemRpc::RpcServer server;
+    server.SetBootstrapHandles(bootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+        reply->status = MemRpc::StatusCode::Ok;
+    });
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcClient client(bootstrap);
+    std::atomic<int> engineDeathCalls{0};
+    MemRpc::RecoveryPolicy policy;
+    policy.onEngineDeath = [&](const MemRpc::EngineDeathReport&) {
+        engineDeathCalls.fetch_add(1, std::memory_order_relaxed);
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+    };
+    client.SetRecoveryPolicy(std::move(policy));
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcCall call;
+    call.opcode = kEchoOpcode;
+    MemRpc::RpcReply reply;
+    ASSERT_EQ(client.InvokeAsync(call).Wait(&reply), MemRpc::StatusCode::Ok);
+
+    const uint64_t deadSessionId = client.GetRecoveryRuntimeSnapshot().currentSessionId;
+    ASSERT_NE(deadSessionId, 0u);
+
+    bootstrap->SimulateEngineDeathForTest(deadSessionId);
+    bootstrap->SimulateEngineDeathForTest(deadSessionId);
+
+    EXPECT_EQ(engineDeathCalls.load(std::memory_order_relaxed), 1);
+    const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Disconnected);
+    EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+    EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
+
+    client.Shutdown();
+    server.Stop();
+}
