@@ -307,6 +307,52 @@ TEST(SessionTest, AllowsNextClientAttachAfterReset)
     EXPECT_EQ(second_session.Attach(second_handles), MemRpc::StatusCode::Ok);
 }
 
+TEST(SessionTest, CloseSessionDropsCurrentBootstrapSession)
+{
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    const uint64_t firstSessionId = handles.sessionId;
+    EXPECT_GT(firstSessionId, 0u);
+
+    MemRpc::BootstrapHandles liveServerHandles = bootstrap->serverHandles();
+    EXPECT_EQ(liveServerHandles.sessionId, firstSessionId);
+    CloseHandles(handles);
+    CloseHandles(liveServerHandles);
+
+    EXPECT_EQ(bootstrap->CloseSession(), MemRpc::StatusCode::Ok);
+
+    const MemRpc::BootstrapHandles closedServerHandles = bootstrap->serverHandles();
+    EXPECT_EQ(closedServerHandles.sessionId, 0u);
+    EXPECT_EQ(closedServerHandles.shmFd, -1);
+    EXPECT_EQ(closedServerHandles.highReqEventFd, -1);
+    EXPECT_EQ(closedServerHandles.normalReqEventFd, -1);
+    EXPECT_EQ(closedServerHandles.respEventFd, -1);
+    EXPECT_EQ(closedServerHandles.reqCreditEventFd, -1);
+    EXPECT_EQ(closedServerHandles.respCreditEventFd, -1);
+}
+
+TEST(SessionTest, OpenSessionAfterCloseSessionCreatesFreshSession)
+{
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+
+    MemRpc::BootstrapHandles firstHandles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(firstHandles), MemRpc::StatusCode::Ok);
+    const uint64_t firstSessionId = firstHandles.sessionId;
+    EXPECT_GT(firstSessionId, 0u);
+    CloseHandles(firstHandles);
+
+    ASSERT_EQ(bootstrap->CloseSession(), MemRpc::StatusCode::Ok);
+
+    MemRpc::BootstrapHandles secondHandles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(secondHandles), MemRpc::StatusCode::Ok);
+    EXPECT_GT(secondHandles.sessionId, 0u);
+    EXPECT_NE(secondHandles.sessionId, firstSessionId);
+    CloseHandles(secondHandles);
+}
+
 TEST(SessionTest, SharedMemoryNameCannotBeReopenedAfterSessionCreation)
 {
     MemRpc::DevBootstrapConfig config;

@@ -57,7 +57,7 @@ public:
 
     // 建立 session：若资源未创建则惰性创建，返回 dup 后的句柄集合。幂等。
     virtual StatusCode OpenSession(BootstrapHandles& handles) = 0;
-    // 关闭 session：通知 bootstrap 层客户端断开。不销毁 server 侧资源。
+    // 关闭当前 session：释放 bootstrap 持有的当前会话绑定，后续 OpenSession() 应返回新的会话入口。
     virtual StatusCode CloseSession() = 0;
     // 通用健康检查：bootstrap 可将业务协议翻译成通用健康结果。
     virtual ChannelHealthResult CheckHealth(uint64_t expectedSessionId)

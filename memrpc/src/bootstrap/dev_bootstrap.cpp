@@ -278,6 +278,8 @@ StatusCode DevBootstrapChannel::OpenSession(BootstrapHandles& handles)
 
 StatusCode DevBootstrapChannel::CloseSession()
 {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->ResetHandles();
     return StatusCode::Ok;
 }
 
