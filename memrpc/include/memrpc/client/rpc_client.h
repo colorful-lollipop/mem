@@ -73,7 +73,7 @@ struct RpcFailure {
     uint32_t execTimeoutMs = 0;
     uint64_t requestId = 0;
     uint64_t sessionId = 0;
-    uint32_t monotonicMs = 0;
+    uint64_t monotonicMs = 0;
     RpcRuntimeState lastRuntimeState = RpcRuntimeState::Unknown;
 };
 

@@ -31,6 +31,31 @@ using MemRpc::EchoReply;
 using MemRpc::EchoRequest;
 using VirusExecutorService::testkit::TestkitService;
 
+template <typename Request, typename Reply>
+Mem::StatusCode InvokeTypedSync(Mem::RpcClient* client,
+                                Mem::Opcode opcode,
+                                const Request& request,
+                                Reply* reply,
+                                Mem::Priority priority = Mem::Priority::Normal,
+                                uint32_t execTimeoutMs = 30000)
+{
+    if (client == nullptr) {
+        return Mem::StatusCode::InvalidArgument;
+    }
+
+    std::vector<uint8_t> payload;
+    if (!Mem::EncodeMessage<Request>(request, &payload)) {
+        return Mem::WaitAndDecode<Reply>(Mem::RpcFuture{}, reply);
+    }
+
+    Mem::RpcCall call;
+    call.opcode = opcode;
+    call.priority = priority;
+    call.execTimeoutMs = execTimeoutMs;
+    call.payload = std::move(payload);
+    return Mem::WaitAndDecode<Reply>(client->InvokeAsync(std::move(call)), reply);
+}
+
 void CloseHandles(Mem::BootstrapHandles& handles)
 {
     if (handles.shmFd >= 0)
@@ -181,7 +206,7 @@ bool RunStress(const StressConfig& config)
     }
 
     SharedState state;
-    state.lastOkMs.store(Mem::MonotonicNowMs64());
+    state.lastOkMs.store(Mem::MonotonicNowMs());
 
     const auto start = std::chrono::steady_clock::now();
     const auto warmupEnd = start + std::chrono::seconds(config.warmupSec);
@@ -192,7 +217,7 @@ bool RunStress(const StressConfig& config)
 
     for (int i = 0; i < config.threads; ++i) {
         workers.emplace_back([&, i]() {
-            const uint64_t workerSeedBase = config.seed != 0 ? config.seed : Mem::MonotonicNowMs64();
+            const uint64_t workerSeedBase = config.seed != 0 ? config.seed : Mem::MonotonicNowMs();
             std::mt19937_64 rng(workerSeedBase + static_cast<uint64_t>(i));
             while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
                 const uint64_t elapsedMs = static_cast<uint64_t>(
@@ -208,29 +233,29 @@ bool RunStress(const StressConfig& config)
                     std::string text(size, 'x');
                     EchoRequest request{text};
                     EchoReply reply;
-                    status = Mem::InvokeTypedSync(&client,
-                                                  static_cast<Mem::Opcode>(TestkitOpcode::Echo),
-                                                  request,
-                                                  &reply,
-                                                  Mem::TypedInvokeOptions{priority});
+                    status = InvokeTypedSync(&client,
+                                             static_cast<Mem::Opcode>(TestkitOpcode::Echo),
+                                             request,
+                                             &reply,
+                                             priority);
                 } else if (kind == RpcKind::Add) {
                     AddRequest request{static_cast<int32_t>(rng()), static_cast<int32_t>(rng())};
                     AddReply reply;
-                    status = Mem::InvokeTypedSync(&client,
-                                                  static_cast<Mem::Opcode>(TestkitOpcode::Add),
-                                                  request,
-                                                  &reply,
-                                                  Mem::TypedInvokeOptions{priority});
+                    status = InvokeTypedSync(&client,
+                                             static_cast<Mem::Opcode>(TestkitOpcode::Add),
+                                             request,
+                                             &reply,
+                                             priority);
                 } else {
                     const uint64_t maxSleepMs = static_cast<uint64_t>(std::max(1, config.maxSleepMs));
                     const uint32_t delayMs = static_cast<uint32_t>(rng() % maxSleepMs);
                     SleepRequest request{delayMs};
                     SleepReply reply;
-                    status = Mem::InvokeTypedSync(&client,
-                                                  static_cast<Mem::Opcode>(TestkitOpcode::Sleep),
-                                                  request,
-                                                  &reply,
-                                                  Mem::TypedInvokeOptions{priority});
+                    status = InvokeTypedSync(&client,
+                                             static_cast<Mem::Opcode>(TestkitOpcode::Sleep),
+                                             request,
+                                             &reply,
+                                             priority);
                 }
 
                 if (status != Mem::StatusCode::Ok) {
@@ -241,7 +266,7 @@ bool RunStress(const StressConfig& config)
 
                 if (std::chrono::steady_clock::now() >= warmupEnd) {
                     state.okCount.fetch_add(1);
-                    state.lastOkMs.store(Mem::MonotonicNowMs64());
+                    state.lastOkMs.store(Mem::MonotonicNowMs());
                 }
 
                 if (!InBurstWindow(elapsedMs, config)) {
@@ -257,7 +282,7 @@ bool RunStress(const StressConfig& config)
 
     std::thread monitor([&]() {
         while (!state.stop.load() && std::chrono::steady_clock::now() < end) {
-            const uint64_t nowMs = Mem::MonotonicNowMs64();
+            const uint64_t nowMs = Mem::MonotonicNowMs();
             const uint64_t lastOk = state.lastOkMs.load();
             if (nowMs > lastOk && (nowMs - lastOk) / 1000 > static_cast<uint64_t>(config.noProgressTimeoutSec)) {
                 RecordError(&state, "no progress within timeout");

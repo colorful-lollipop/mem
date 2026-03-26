@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -28,8 +29,10 @@ namespace MemRpc {
 
 namespace {
 
-constexpr auto RESPONSE_RETRY_BUDGET = std::chrono::milliseconds(50);
-constexpr auto EVENT_RETRY_BUDGET = std::chrono::milliseconds(10);
+using namespace std::chrono_literals;
+
+constexpr auto RESPONSE_RETRY_BUDGET = 50ms;
+constexpr auto EVENT_RETRY_BUDGET = 10ms;
 
 class ThreadPoolExecutor final : public TaskExecutor {
 public:
@@ -167,7 +170,7 @@ struct RpcServer::Impl {
     std::thread dispatcherThread;
     std::atomic<bool> running{false};
     std::unordered_map<uint16_t, RpcHandler> handlers;
-    std::unordered_map<uint64_t, uint32_t> activeExecutions;
+    std::unordered_map<uint64_t, uint64_t> activeExecutions;
 
     void MarkExecutionStarted(uint64_t requestId)
     {
@@ -762,15 +765,17 @@ RpcServerRuntimeStats RpcServer::GetRuntimeStats() const
         std::lock_guard<std::mutex> lock(impl_->executionMutex);
         stats.activeRequestExecutions = static_cast<uint32_t>(impl_->activeExecutions.size());
         if (!impl_->activeExecutions.empty()) {
-            const uint32_t nowMs = MonotonicNowMs();
+            const uint64_t nowMs = MonotonicNowMs();
             auto it = impl_->activeExecutions.begin();
-            uint32_t oldestStartMs = it->second;
+            uint64_t oldestStartMs = it->second;
             for (; it != impl_->activeExecutions.end(); ++it) {
                 const auto& [requestId, startMonoMs] = *it;
                 (void)requestId;
                 oldestStartMs = std::min(oldestStartMs, startMonoMs);
             }
-            stats.oldestExecutionAgeMs = nowMs - oldestStartMs;
+            const uint64_t ageMs = nowMs - oldestStartMs;
+            stats.oldestExecutionAgeMs =
+                static_cast<uint32_t>(std::min<uint64_t>(ageMs, std::numeric_limits<uint32_t>::max()));
         }
     }
     stats.waitingForResponseCredit = impl_->responseWriterWaitingForCredit.load(std::memory_order_acquire);

@@ -51,7 +51,7 @@ bool ShouldRetryRecoveryStatus(StatusCode status, const RecoveryRuntimeSnapshot&
 
 std::chrono::milliseconds CooldownRemaining(uint64_t cooldownUntilMs)
 {
-    const uint64_t nowMs = MonotonicNowMs64();
+    const uint64_t nowMs = MonotonicNowMs();
     if (cooldownUntilMs <= nowMs) {
         return std::chrono::milliseconds::zero();
     }
@@ -586,7 +586,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void StartRecovery(uint32_t delayMs, uint64_t currentSessionId)
         {
-            const uint64_t cooldownUntilMs = MonotonicNowMs64() + delayMs;
+            const uint64_t cooldownUntilMs = MonotonicNowMs() + delayMs;
             TransitionLifecycle(delayMs == 0 ? ClientLifecycleState::Recovering : ClientLifecycleState::Cooldown,
                                 delayMs,
                                 currentSessionId,
@@ -620,7 +620,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         [[nodiscard]] bool CooldownActive() const
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            return MonotonicNowMs64() < cooldownUntilMs_;
+            return MonotonicNowMs() < cooldownUntilMs_;
         }
 
         [[nodiscard]] std::chrono::milliseconds CooldownRemaining() const
@@ -734,7 +734,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 return RecoveryWaitStep::Complete;
             }
 
-            const uint64_t nowMs = MonotonicNowMs64();
+            const uint64_t nowMs = MonotonicNowMs();
             if (nowMs >= cooldownUntilMs_) {
                 status = StatusCode::Ok;
                 return RecoveryWaitStep::Complete;
@@ -836,7 +836,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             report.cooldownDelayMs = cooldownDelayMs;
             report.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
             report.sessionId = currentSessionId;
-            report.monotonicMs = MonotonicNowMs64();
+            report.monotonicMs = MonotonicNowMs();
             return report;
         }
 
@@ -1430,7 +1430,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void TouchActivity()
     {
-        lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
+        lastActivityMs_.store(MonotonicNowMs(), std::memory_order_release);
     }
 
     std::shared_ptr<const SessionSnapshot> LoadSessionSnapshot() const
@@ -1935,7 +1935,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (sessionId == 0) {
             return;
         }
-        const uint64_t nowMs = MonotonicNowMs64();
+        const uint64_t nowMs = MonotonicNowMs();
         const uint64_t idleMs = nowMs - lastActivityMs_.load(std::memory_order_acquire);
         ApplyIdleRecoveryDecision(policy, idleMs);
     }
@@ -2233,7 +2233,7 @@ StatusCode RpcClient::Init()
         HILOGW("RpcClient::Init called while already running");
         return impl_->EnsureLiveSession();
     }
-    impl_->lastActivityMs_.store(MonotonicNowMs64(), std::memory_order_release);
+    impl_->lastActivityMs_.store(MonotonicNowMs(), std::memory_order_release);
     impl_->PrepareForInitOpen();
     impl_->StartThreads();
     const StatusCode status = impl_->EnsureLiveSession();

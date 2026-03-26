@@ -107,7 +107,6 @@ struct RpcServerCall {
 
 struct RpcServerReply {
     StatusCode status = StatusCode::Ok;
-    ScanVerdict verdict = ScanVerdict::Unknown;
     int32_t errorCode = 0;
     std::vector<uint8_t> payload;
 };

@@ -10,7 +10,6 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/typed_future.h"
-#include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -23,6 +22,26 @@ constexpr MemRpc::Opcode kBadOpcode = 2u;
 struct TestMsg {
     int32_t value = 0;
 };
+
+template <typename Request, typename Reply>
+MemRpc::TypedFuture<Reply> InvokeTypedAsyncForTest(MemRpc::RpcClient* client,
+                                                   MemRpc::Opcode opcode,
+                                                   const Request& request)
+{
+    if (client == nullptr) {
+        return {};
+    }
+
+    std::vector<uint8_t> payload;
+    if (!MemRpc::EncodeMessage<Request>(request, &payload)) {
+        return {};
+    }
+
+    MemRpc::RpcCall call;
+    call.opcode = opcode;
+    call.payload = std::move(payload);
+    return MemRpc::TypedFuture<Reply>(client->InvokeAsync(std::move(call)));
+}
 
 }  // namespace
 
@@ -69,7 +88,7 @@ TEST(TypedFutureTest, WaitDecodesReply)
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     TestMsg request{42};
-    auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
+    auto future = InvokeTypedAsyncForTest<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
     TestMsg reply;
     EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
@@ -127,7 +146,7 @@ TEST(TypedFutureTest, IsReadyDelegates)
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     TestMsg request{7};
-    auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
+    auto future = InvokeTypedAsyncForTest<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
     // Wait for completion, then check IsReady.
     TestMsg reply;

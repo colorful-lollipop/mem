@@ -2,29 +2,10 @@
 
 #include "memrpc/core/types.h"
 
-TEST(TypesTest, ScanOptionsDefaultsToNormalPriority)
+TEST(TypesTest, PriorityEnumValuesAreStable)
 {
-    const MemRpc::ScanOptions options;
-    EXPECT_EQ(options.priority, MemRpc::Priority::Normal);
-    EXPECT_EQ(options.execTimeoutMs, 30000U);
-}
-
-TEST(TypesTest, ScanResultDefaultsAreStable)
-{
-    const MemRpc::ScanResult result;
-    EXPECT_EQ(result.status, MemRpc::StatusCode::Ok);
-    EXPECT_EQ(result.verdict, MemRpc::ScanVerdict::Unknown);
-    EXPECT_EQ(result.errorCode, 0);
-    EXPECT_TRUE(result.message.empty());
-}
-
-TEST(TypesTest, ScanBehaviorResultDefaultsAreStable)
-{
-    const MemRpc::ScanBehaviorResult result;
-    EXPECT_EQ(result.status, MemRpc::StatusCode::Ok);
-    EXPECT_EQ(result.verdict, MemRpc::ScanVerdict::Unknown);
-    EXPECT_EQ(result.errorCode, 0);
-    EXPECT_TRUE(result.message.empty());
+    EXPECT_EQ(static_cast<int>(MemRpc::Priority::Normal), 0);
+    EXPECT_EQ(static_cast<int>(MemRpc::Priority::High), 1);
 }
 
 TEST(TypesTest, StatusEnumValuesAreStable)

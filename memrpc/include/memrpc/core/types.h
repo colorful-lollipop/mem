@@ -13,26 +13,6 @@ enum class Priority : uint8_t {
     High = 1,
 };
 
-struct ScanOptions {
-    // priority 决定请求进入高优或普通请求队列。
-    Priority priority = Priority::Normal;
-    // exec_timeout_ms 是 handler 实际执行阶段允许消耗的最长时间。
-    uint32_t execTimeoutMs = 30000;
-    uint32_t flags = 0;
-};
-
-struct ScanBehaviorRequest {
-    std::string behaviorText;
-    ScanOptions options;
-};
-
-enum class ScanVerdict : uint8_t {
-    Clean = 0,
-    Infected = 1,
-    Unknown = 2,
-    Error = 3,
-};
-
 enum class StatusCode : uint8_t {
     Ok = 0,
     QueueFull,
@@ -46,20 +26,6 @@ enum class StatusCode : uint8_t {
     CooldownActive,
     ClientClosed,
     PayloadTooLarge,
-};
-
-struct ScanResult {
-    StatusCode status = StatusCode::Ok;
-    ScanVerdict verdict = ScanVerdict::Unknown;
-    int32_t errorCode = 0;
-    std::string message;
-};
-
-struct ScanBehaviorResult {
-    StatusCode status = StatusCode::Ok;
-    ScanVerdict verdict = ScanVerdict::Unknown;
-    int32_t errorCode = 0;
-    std::string message;
 };
 
 struct RpcEvent {

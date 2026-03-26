@@ -225,26 +225,18 @@
 
 看 [`memrpc/include/memrpc/client/typed_invoker.h`](/root/code/demo/mem/memrpc/include/memrpc/client/typed_invoker.h)。
 
-这份头文件特别适合拿来理解“typed API 到底是怎么套在底层 RPC 上的”。
+这份头文件现在只保留了最薄的一层 typed decode 辅助。
 
-建议依次看：
+建议先看：
 
-- `InvokeTyped()`
 - `WaitAndDecode()`
-- `InvokeTypedAsync()`
-- `InvokeTypedSync()`
 
-它们分别把下面几步拆开了：
+它负责最后两步：
 
-- request encode
-- 构造 `RpcCall`
-- 调用 `RpcClient`
 - 等待 future
 - decode reply
 
-这也是为什么业务侧代码通常不需要直接接触 `std::vector<uint8_t>`：
-
-- typed 层已经把“业务对象 <-> payload”这段样板逻辑统一了
+而 request encode、`RpcCall` 构造和 transport 选择，现在更推荐收敛在具体业务 facade 里。
 
 ## 7. `VesClient` 的推荐阅读顺序
 
@@ -414,7 +406,7 @@
 2. `VesClient::InvokeApi()`
 3. `client_.RetryUntilRecoverySettles()`
 4. `MemRpc::EncodeMessage<ScanTask>()`
-5. 小包时进入 `MemRpc::InvokeTypedSync()` / `RpcClient::InvokeAsync()`
+5. 小包时进入 `RpcClient::InvokeAsync()`，随后由 `MemRpc::WaitAndDecode()` 完成 typed reply decode
 6. 服务端 `RpcServer` 消费请求
 7. `VesEngineService::ScanFile()` 执行业务逻辑
 8. 响应写回 response ring

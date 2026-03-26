@@ -57,15 +57,10 @@ template <typename F>
     return ScopeExit<std::decay_t<F>>(std::forward<F>(fn));
 }
 
-[[nodiscard]] inline uint64_t MonotonicNowMs64()
+[[nodiscard]] inline uint64_t MonotonicNowMs()
 {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
-}
-
-[[nodiscard]] inline uint32_t MonotonicNowMs()
-{
-    return static_cast<uint32_t>(MonotonicNowMs64() & 0xffffffffU);
 }
 
 inline void CpuRelax();

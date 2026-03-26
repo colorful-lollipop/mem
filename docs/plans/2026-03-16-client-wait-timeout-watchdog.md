@@ -107,7 +107,7 @@ struct PendingRequest {
 Definitions:
 
 - `waitDeadline`: `now + execTimeoutMs` when `execTimeoutMs > 0`, otherwise `time_point::max()`
-- `admittedMonoMs`: optional debug field for observability and assertions; record `MonotonicNowMs64()` at successful publish time
+- `admittedMonoMs`: optional debug field for observability and assertions; record `MonotonicNowMs()` at successful publish time
 
 ### Watchdog Behavior
 
