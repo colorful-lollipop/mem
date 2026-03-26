@@ -63,6 +63,60 @@ std::chrono::milliseconds CooldownRemaining(uint64_t cooldownUntilMs)
     return std::chrono::milliseconds{cooldownUntilMs - nowMs};
 }
 
+class UniqueFd final {
+public:
+    UniqueFd() = default;
+
+    explicit UniqueFd(int fd)
+        : fd_(fd)
+    {
+    }
+
+    ~UniqueFd()
+    {
+        Reset();
+    }
+
+    UniqueFd(const UniqueFd&) = delete;
+    UniqueFd& operator=(const UniqueFd&) = delete;
+
+    UniqueFd(UniqueFd&& other) noexcept
+        : fd_(other.Release())
+    {
+    }
+
+    UniqueFd& operator=(UniqueFd&& other) noexcept
+    {
+        if (this != &other) {
+            Reset(other.Release());
+        }
+        return *this;
+    }
+
+    [[nodiscard]] int Get() const
+    {
+        return fd_;
+    }
+
+    [[nodiscard]] int Release()
+    {
+        const int releasedFd = fd_;
+        fd_ = -1;
+        return releasedFd;
+    }
+
+    void Reset(int fd = -1)
+    {
+        if (fd_ >= 0) {
+            (void)close(fd_);
+        }
+        fd_ = fd;
+    }
+
+private:
+    int fd_ = -1;
+};
+
 }  // namespace
 
 struct RpcFuture::State {
@@ -112,9 +166,6 @@ StatusCode RpcFuture::Wait(RpcReply* reply) &&
 struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     struct SessionSnapshot {
         uint64_t sessionId = 0;
-        int reqCreditEventFd = -1;
-        int respEventFd = -1;
-        int respCreditEventFd = -1;
         bool alive = false;
     };
 
@@ -226,7 +277,14 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     class ClientSessionTransport {
     public:
         struct DeathCallbackLease {};
-        struct SessionWaitHandle {
+        struct SessionWaitHandleUpdate {
+            enum class Action : uint8_t {
+                KeepCurrent,
+                ClearCurrent,
+                ReplaceCurrent,
+            };
+
+            Action action = Action::KeepCurrent;
             uint64_t sessionId = 0;
             int fd = -1;
         };
@@ -284,25 +342,18 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return LoadSnapshot()->alive;
         }
 
-        SessionWaitHandle DuplicateRequestCreditWaitHandle() const
+        SessionWaitHandleUpdate DuplicateRequestCreditWaitHandle(uint64_t activeSessionId) const
         {
-            SessionWaitHandle waitHandle;
-            std::lock_guard<std::mutex> lock(sessionMutex_);
-            if (!session_.Valid()) {
-                return waitHandle;
-            }
-            const auto snapshot = LoadSnapshot();
-            waitHandle.sessionId = snapshot->sessionId;
-            const int requestCreditFd = session_.Handles().reqCreditEventFd;
-            if (requestCreditFd < 0) {
-                return waitHandle;
-            }
-            waitHandle.fd = dup(requestCreditFd);
-            if (waitHandle.fd < 0) {
-                HILOGE("RpcClient::DuplicateRequestCreditWaitHandle dup failed: reqCreditEventFd=%{public}d",
-                       requestCreditFd);
-            }
-            return waitHandle;
+            return DuplicateSessionWaitHandle(activeSessionId,
+                                              [](const Session& session) { return session.Handles().reqCreditEventFd; },
+                                              "RpcClient::DuplicateRequestCreditWaitHandle");
+        }
+
+        SessionWaitHandleUpdate DuplicateResponseWaitHandle(uint64_t activeSessionId) const
+        {
+            return DuplicateSessionWaitHandle(activeSessionId,
+                                              [](const Session& session) { return session.Handles().respEventFd; },
+                                              "RpcClient::DuplicateResponseWaitHandle");
         }
 
         StatusCode OpenSession()
@@ -333,9 +384,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             session_.SetState(Session::SessionState::Alive);
             SessionSnapshot snapshot;
             snapshot.sessionId = sessionId;
-            snapshot.reqCreditEventFd = handles.reqCreditEventFd;
-            snapshot.respEventFd = handles.respEventFd;
-            snapshot.respCreditEventFd = handles.respCreditEventFd;
             snapshot.alive = true;
             PublishSnapshotLocked(snapshot);
             return StatusCode::Ok;
@@ -376,6 +424,51 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
     private:
+        template <typename FdSelector>
+        SessionWaitHandleUpdate DuplicateSessionWaitHandle(uint64_t activeSessionId,
+                                                           FdSelector&& selectFd,
+                                                           const char* logContext) const
+        {
+            SessionWaitHandleUpdate waitHandle;
+            const uint64_t snapshotSessionId = LoadSnapshot()->sessionId;
+            if (snapshotSessionId == activeSessionId) {
+                waitHandle.action = SessionWaitHandleUpdate::Action::KeepCurrent;
+                waitHandle.sessionId = snapshotSessionId;
+                return waitHandle;
+            }
+            std::lock_guard<std::mutex> lock(sessionMutex_);
+            waitHandle.sessionId = LoadSnapshot()->sessionId;
+            if (waitHandle.sessionId == activeSessionId) {
+                waitHandle.action = SessionWaitHandleUpdate::Action::KeepCurrent;
+                return waitHandle;
+            }
+            if (!session_.Valid()) {
+                waitHandle.action = SessionWaitHandleUpdate::Action::ClearCurrent;
+                HILOGI("%{public}s clearing stale wait fd: active_session=%{public}llu current_session=%{public}llu",
+                       logContext,
+                       static_cast<unsigned long long>(activeSessionId),
+                       static_cast<unsigned long long>(waitHandle.sessionId));
+                return waitHandle;
+            }
+            const int sourceFd = std::forward<FdSelector>(selectFd)(session_);
+            if (sourceFd < 0) {
+                waitHandle.action = SessionWaitHandleUpdate::Action::ClearCurrent;
+                return waitHandle;
+            }
+            waitHandle.fd = dup(sourceFd);
+            if (waitHandle.fd < 0) {
+                HILOGE("%{public}s dup failed: fd=%{public}d", logContext, sourceFd);
+                waitHandle.action = SessionWaitHandleUpdate::Action::ClearCurrent;
+                return waitHandle;
+            }
+            waitHandle.action = SessionWaitHandleUpdate::Action::ReplaceCurrent;
+            HILOGI("%{public}s refreshed wait fd: active_session=%{public}llu current_session=%{public}llu",
+                   logContext,
+                   static_cast<unsigned long long>(activeSessionId),
+                   static_cast<unsigned long long>(waitHandle.sessionId));
+            return waitHandle;
+        }
+
         void InstallDeathCallbackLocked(const std::function<void(uint64_t)>& deathCallback)
         {
             if (bootstrap_ == nullptr) {
@@ -762,6 +855,60 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
     private:
+        void ResetActiveRequestCreditWait()
+        {
+            activeRequestCreditWaitFd_.Reset();
+            activeRequestCreditSessionId_ = 0;
+        }
+
+        void SyncActiveRequestCreditWait()
+        {
+            const auto waitHandleUpdate =
+                owner_->sessionTransport_.DuplicateRequestCreditWaitHandle(activeRequestCreditSessionId_);
+            if (waitHandleUpdate.action == ClientSessionTransport::SessionWaitHandleUpdate::Action::KeepCurrent) {
+                return;
+            }
+            ResetActiveRequestCreditWait();
+            if (waitHandleUpdate.action == ClientSessionTransport::SessionWaitHandleUpdate::Action::ReplaceCurrent) {
+                activeRequestCreditWaitFd_.Reset(waitHandleUpdate.fd);
+                activeRequestCreditSessionId_ = waitHandleUpdate.sessionId;
+            }
+        }
+
+        PollEventFdResult WaitForRequestCredit()
+        {
+            SyncActiveRequestCreditWait();
+            if (activeRequestCreditWaitFd_.Get() < 0) {
+                return owner_->CurrentSessionId() == 0 ? PollEventFdResult::Retry : PollEventFdResult::Failed;
+            }
+
+            owner_->submitterWaitingForCredit_.store(true, std::memory_order_release);
+            [[maybe_unused]] const auto clearWaiting = MakeScopeExit([this] {
+                owner_->submitterWaitingForCredit_.store(false, std::memory_order_release);
+            });
+
+            pollfd pollFd{activeRequestCreditWaitFd_.Get(), POLLIN, 0};
+            while (owner_->WorkersShouldRun()) {
+                const auto waitResult = PollEventFd(&pollFd, 100);
+                if (waitResult == PollEventFdResult::Retry || waitResult == PollEventFdResult::Timeout) {
+                    if (owner_->CurrentSessionId() != activeRequestCreditSessionId_) {
+                        return PollEventFdResult::Retry;
+                    }
+                    continue;
+                }
+                if (waitResult == PollEventFdResult::Failed) {
+                    if (owner_->CurrentSessionId() != activeRequestCreditSessionId_) {
+                        return PollEventFdResult::Retry;
+                    }
+                    HILOGE("RpcClient::WaitForRequestCredit poll failed fd=%{public}d",
+                           activeRequestCreditWaitFd_.Get());
+                }
+                return waitResult;
+            }
+            HILOGW("RpcClient::WaitForRequestCredit aborted because workers stopped");
+            return PollEventFdResult::Failed;
+        }
+
         StatusCode WaitUntilSessionReadyForSubmit()
         {
                 while (owner_->WorkersShouldRun()) {
@@ -813,7 +960,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 return pushStatus;
             }
             if (pushStatus == StatusCode::QueueFull) {
-                const auto waitResult = owner_->WaitForRequestCredit();
+                const auto waitResult = WaitForRequestCredit();
                 if (waitResult == PollEventFdResult::Ready || waitResult == PollEventFdResult::Retry) {
                     return pushStatus;
                 }
@@ -864,6 +1011,8 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
         Impl* owner_;
+        UniqueFd activeRequestCreditWaitFd_;
+        uint64_t activeRequestCreditSessionId_ = 0;
     };
 
     class ResponseWorker {
@@ -875,7 +1024,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void Run()
         {
-            int activePollFd = -1;
+            UniqueFd activePollFd;
             uint64_t activePollSessionId = 0;
             const auto resetActivePollFd = [&]() { ResetActivePollFd(&activePollFd, &activePollSessionId); };
             const auto closeActivePollFd = MakeScopeExit([&]() { resetActivePollFd(); });
@@ -889,75 +1038,40 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                     std::this_thread::sleep_for(20ms);
                     continue;
                 }
-                WaitForResponseSignal(activePollFd, activePollSessionId, resetActivePollFd);
+                WaitForResponseSignal(activePollFd.Get(), activePollSessionId, resetActivePollFd);
             }
         }
 
     private:
-        static void ResetActivePollFd(int* activePollFd, uint64_t* activePollSessionId)
+        static void ResetActivePollFd(UniqueFd* activePollFd, uint64_t* activePollSessionId)
         {
-            if (*activePollFd >= 0) {
-                (void)close(*activePollFd);
-                *activePollFd = -1;
-            }
+            activePollFd->Reset();
             *activePollSessionId = 0;
         }
 
-        int DupResponseFdForSession(uint64_t activePollSessionId, bool* sessionChanged) const
-        {
-            int nextPollFd = -1;
-            owner_->sessionTransport_.WithSessionLocked([&](Session& session) {
-                if (!session.Valid()) {
-                    return;
-                }
-                const uint64_t lockedSessionId = owner_->LoadSessionSnapshot()->sessionId;
-                if (lockedSessionId == activePollSessionId) {
-                    return;
-                }
-                *sessionChanged = true;
-                const int responseFd = session.Handles().respEventFd;
-                if (responseFd >= 0) {
-                    nextPollFd = dup(responseFd);
-                    if (nextPollFd < 0) {
-                        HILOGE("RpcClient::ResponseLoop dup failed: responseFd=%{public}d", responseFd);
-                    }
-                }
-            });
-            return nextPollFd;
-        }
-
-        void SyncActivePollSession(int* activePollFd,
+        void SyncActivePollSession(UniqueFd* activePollFd,
                                    uint64_t* activePollSessionId,
                                    const std::function<void()>& resetActivePollFd)
         {
-            const auto snapshot = owner_->LoadSessionSnapshot();
-            const uint64_t currentSessionId = snapshot->sessionId;
-            int nextPollFd = -1;
-            bool sessionChanged = false;
-            if (currentSessionId != *activePollSessionId) {
-                nextPollFd = DupResponseFdForSession(*activePollSessionId, &sessionChanged);
-            } else if (currentSessionId == 0 && *activePollSessionId != 0) {
-                sessionChanged = true;
-            }
-
-            if (!sessionChanged) {
+            const auto waitHandleUpdate = owner_->sessionTransport_.DuplicateResponseWaitHandle(*activePollSessionId);
+            if (waitHandleUpdate.action == ClientSessionTransport::SessionWaitHandleUpdate::Action::KeepCurrent) {
                 return;
             }
             resetActivePollFd();
-            if (nextPollFd >= 0) {
-                *activePollFd = nextPollFd;
-                *activePollSessionId = snapshot->sessionId;
+            if (waitHandleUpdate.action == ClientSessionTransport::SessionWaitHandleUpdate::Action::ReplaceCurrent) {
+                activePollFd->Reset(waitHandleUpdate.fd);
+                *activePollSessionId = waitHandleUpdate.sessionId;
             }
         }
 
-        bool PrepareToWaitForResponses(int* activePollFd,
+        bool PrepareToWaitForResponses(UniqueFd* activePollFd,
                                        uint64_t* activePollSessionId,
                                        const std::function<void()>& resetActivePollFd)
         {
             // Draining may finish on one session while recovery has already swapped in another.
             // Re-sync the duplicated poll fd before blocking so the wait always tracks the live session.
             SyncActivePollSession(activePollFd, activePollSessionId, resetActivePollFd);
-            return *activePollFd >= 0;
+            return activePollFd->Get() >= 0;
         }
 
         void WaitForResponseSignal(int activePollFd,
@@ -1697,13 +1811,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             watchdogCv_.notify_all();
         }
         NotifyRecoveryWaiters();
-        const auto snapshot = sessionTransport_.LoadSnapshot();
-        if (snapshot->reqCreditEventFd >= 0) {
-            (void)SignalEventFd(snapshot->reqCreditEventFd);
-        }
-        if (snapshot->respEventFd >= 0) {
-            (void)SignalEventFd(snapshot->respEventFd);
-        }
         if (submitThread_.joinable()) {
             submitThread_.join();
         }
@@ -1725,41 +1832,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         StopThreads();
         FailOutstandingWork(StatusCode::ClientClosed);
         FinishShutdown();
-    }
-
-    // Submission primitives shared by InvokeAsync and SubmitWorker.
-    PollEventFdResult WaitForRequestCredit()
-    {
-        const auto waitHandle = sessionTransport_.DuplicateRequestCreditWaitHandle();
-        if (waitHandle.fd < 0) {
-            HILOGE("RpcClient::WaitForRequestCredit failed: invalid reqCreditEventFd=%{public}d", waitHandle.fd);
-            return PollEventFdResult::Failed;
-        }
-        const auto closeWaitFd = MakeScopeExit([fd = waitHandle.fd] { (void)close(fd); });
-
-        submitterWaitingForCredit_.store(true, std::memory_order_release);
-        [[maybe_unused]] const auto clearWaiting =
-            MakeScopeExit([this] { submitterWaitingForCredit_.store(false, std::memory_order_release); });
-
-        pollfd pollFd{waitHandle.fd, POLLIN, 0};
-        while (WorkersShouldRun()) {
-            const auto waitResult = PollEventFd(&pollFd, 100);
-            if (waitResult == PollEventFdResult::Retry || waitResult == PollEventFdResult::Timeout) {
-                if (CurrentSessionId() != waitHandle.sessionId) {
-                    return PollEventFdResult::Retry;
-                }
-                continue;
-            }
-            if (waitResult == PollEventFdResult::Failed) {
-                if (CurrentSessionId() != waitHandle.sessionId) {
-                    return PollEventFdResult::Retry;
-                }
-                HILOGE("RpcClient::WaitForRequestCredit poll failed fd=%{public}d", waitHandle.fd);
-            }
-            return waitResult;
-        }
-        HILOGW("RpcClient::WaitForRequestCredit aborted because workers stopped");
-        return PollEventFdResult::Failed;
     }
 
     // Recovery wait helpers bridge the two internal control dimensions:
