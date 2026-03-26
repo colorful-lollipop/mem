@@ -47,9 +47,7 @@ void UnloadEngineAndLogSnapshot(VirusExecutorService::VesClient& client)
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
     const auto snapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(client);
-    HILOGI("last_trigger=%{public}d lifecycle=%{public}d",
-           static_cast<int>(snapshot.lastTrigger),
-           static_cast<int>(snapshot.lifecycleState));
+    HILOGI("lifecycle=%{public}d", static_cast<int>(snapshot.lifecycleState));
 }
 
 bool RunSecondSession()
@@ -86,8 +84,7 @@ int RunClientDemo()
     HILOGI("=== Done ===");
     const auto finalSnapshot = VirusExecutorService::internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(
         *client);
-    HILOGI("last_trigger=%{public}d lifecycle=%{public}d second_session_succeeded=%{public}s",
-           static_cast<int>(finalSnapshot.lastTrigger),
+    HILOGI("lifecycle=%{public}d second_session_succeeded=%{public}s",
            static_cast<int>(finalSnapshot.lifecycleState),
            secondSessionSucceeded ? "true" : "false");
     return secondSessionSucceeded ? 0 : 1;

@@ -41,8 +41,10 @@ public:
         VirusExecutorService::internal::VesClientRecoveryAccess::SetRecoveryEventCallback(
             client,
             [this](const MemRpc::RecoveryEventReport& report) {
-                if (report.trigger == MemRpc::RecoveryTrigger::EngineDeath ||
-                    report.trigger == MemRpc::RecoveryTrigger::ExternalHealthSignal) {
+                if (report.state == MemRpc::ClientLifecycleState::Cooldown ||
+                    report.state == MemRpc::ClientLifecycleState::NoSession ||
+                    (report.state == MemRpc::ClientLifecycleState::Recovering &&
+                     report.previousState == MemRpc::ClientLifecycleState::Active)) {
                     sawFaultRecovery_.store(true, std::memory_order_release);
                 }
             });

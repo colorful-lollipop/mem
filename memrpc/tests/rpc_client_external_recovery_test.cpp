@@ -174,8 +174,12 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     client.RequestExternalRecovery(
         {ExternalRecoverySignal::ChannelHealthUnhealthy, rawBootstrap->serverHandles().sessionId, 0});
 
-    const auto recoveringSnapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_EQ(recoveringSnapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+    const auto recoverySnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_TRUE(recoverySnapshot.lifecycleState == ClientLifecycleState::Recovering ||
+                recoverySnapshot.lifecycleState == ClientLifecycleState::Active);
+    if (recoverySnapshot.lifecycleState == ClientLifecycleState::Recovering) {
+        EXPECT_TRUE(recoverySnapshot.recoveryPending);
+    }
 
     ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; }, std::chrono::milliseconds(500)));
     ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; }, std::chrono::milliseconds(500)));
@@ -198,12 +202,9 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
         recoveredActiveEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.trigger, RecoveryTrigger::Unknown);
     EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
-    EXPECT_EQ(recoveringEvent.trigger, RecoveryTrigger::ExternalHealthSignal);
     EXPECT_EQ(recoveredActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(recoveredActiveEvent.trigger, RecoveryTrigger::ExternalHealthSignal);
     EXPECT_EQ(recoveredActiveEvent.previousSessionId, initialActiveEvent.sessionId);
     EXPECT_NE(recoveredActiveEvent.sessionId, 0u);
 
@@ -276,7 +277,6 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
     EXPECT_LE(stats.cooldownRemainingMs, 200u);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Cooldown);
-    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(snapshot.recoveryPending);
 
     client.Shutdown();
@@ -311,7 +311,7 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToNoSession)
         std::chrono::milliseconds(500)));
 
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::NoSession);
     EXPECT_FALSE(snapshot.recoveryPending);
     EXPECT_EQ(snapshot.currentSessionId, 0u);
     EXPECT_EQ(bootstrap->openCount(), 2);
@@ -353,7 +353,6 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
     EXPECT_EQ(stats.cooldownRemainingMs, 0u);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Closed);
-    EXPECT_EQ(snapshot.lastTrigger, RecoveryTrigger::ManualShutdown);
     EXPECT_EQ(bootstrap->openCount(), 1);
 
     RpcCall call;

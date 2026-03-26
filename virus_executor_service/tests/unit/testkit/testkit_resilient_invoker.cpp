@@ -8,13 +8,8 @@ namespace {
 
 ReplayDecision DefaultReplayDecision(const FailedCallRecord& record)
 {
-    if (record.runtimeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Closed) {
-        return ReplayDecision::Skip;
-    }
-    if (record.hasRecoveryEvent && record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::ManualShutdown) {
-        return ReplayDecision::Skip;
-    }
-    if (record.hasRecoveryEvent && record.recoveryEvent.trigger == MemRpc::RecoveryTrigger::IdlePolicy) {
+    if (record.runtimeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Closed ||
+        record.runtimeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::IdleClosed) {
         return ReplayDecision::Skip;
     }
     return ReplayDecision::Replay;

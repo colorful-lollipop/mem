@@ -112,19 +112,8 @@ enum class ClientLifecycleState : uint8_t {
     Closed = 6,
 };
 
-enum class RecoveryTrigger : uint8_t {
-    Unknown = 0,
-    ManualShutdown = 1,
-    EngineDeath = 2,
-    ExternalHealthSignal = 3,
-    IdlePolicy = 4,
-    DemandReconnect = 5,
-};
-
 struct RecoveryRuntimeSnapshot {
     ClientLifecycleState lifecycleState = ClientLifecycleState::Uninitialized;
-    RecoveryTrigger lastTrigger = RecoveryTrigger::Unknown;
-    RecoveryAction lastRecoveryAction = RecoveryAction::Ignore;
     bool recoveryPending = false;
     uint32_t cooldownRemainingMs = 0;
     uint64_t currentSessionId = 0;
@@ -135,8 +124,6 @@ struct RecoveryRuntimeSnapshot {
 struct RecoveryEventReport {
     ClientLifecycleState previousState = ClientLifecycleState::Uninitialized;
     ClientLifecycleState state = ClientLifecycleState::Uninitialized;
-    RecoveryTrigger trigger = RecoveryTrigger::Unknown;
-    RecoveryAction action = RecoveryAction::Ignore;
     bool recoveryPending = false;
     uint32_t cooldownDelayMs = 0;
     uint32_t cooldownRemainingMs = 0;

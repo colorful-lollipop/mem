@@ -162,7 +162,6 @@ TEST(RpcClientShutdownRaceTest, CopiedOldBootstrapDeathCallbackIsIgnoredAfterRep
 
     const auto after = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(after.lifecycleState, before.lifecycleState);
-    EXPECT_EQ(after.lastTrigger, before.lastTrigger);
     EXPECT_EQ(after.currentSessionId, before.currentSessionId);
 
     client.Shutdown();
@@ -184,7 +183,6 @@ TEST(RpcClientShutdownRaceTest, CopiedBootstrapDeathCallbackIsIgnoredAfterShutdo
 
     const auto after = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(after.lifecycleState, before.lifecycleState);
-    EXPECT_EQ(after.lastTrigger, before.lastTrigger);
     EXPECT_EQ(after.currentSessionId, before.currentSessionId);
 }
 
@@ -223,7 +221,6 @@ TEST(RpcClientShutdownRaceTest, ConcurrentStaleBootstrapDeathCallbacksAreIgnored
 
         const auto after = client.GetRecoveryRuntimeSnapshot();
         EXPECT_EQ(after.lifecycleState, before.lifecycleState);
-        EXPECT_EQ(after.lastTrigger, before.lastTrigger);
         EXPECT_EQ(after.currentSessionId, before.currentSessionId);
 
         client.Shutdown();
@@ -264,7 +261,6 @@ TEST(RpcClientShutdownRaceTest, ConcurrentCopiedBootstrapDeathCallbacksAreIgnore
 
         const auto after = client.GetRecoveryRuntimeSnapshot();
         EXPECT_EQ(after.lifecycleState, before.lifecycleState);
-        EXPECT_EQ(after.lastTrigger, before.lastTrigger);
         EXPECT_EQ(after.currentSessionId, before.currentSessionId);
     }
 }

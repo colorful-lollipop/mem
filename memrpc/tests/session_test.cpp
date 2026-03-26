@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <csignal>
+#include <cerrno>
+#include <fcntl.h>
 
 #include "core/session.h"
 #include "memrpc/client/dev_bootstrap.h"
@@ -303,6 +305,23 @@ TEST(SessionTest, AllowsNextClientAttachAfterReset)
 
     MemRpc::Session second_session;
     EXPECT_EQ(second_session.Attach(second_handles), MemRpc::StatusCode::Ok);
+}
+
+TEST(SessionTest, SharedMemoryNameCannotBeReopenedAfterSessionCreation)
+{
+    MemRpc::DevBootstrapConfig config;
+    config.shmName = "/memrpc-session-test-reopen-guard";
+
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
+
+    errno = 0;
+    const int reopened_fd = shm_open(config.shmName.c_str(), O_RDWR, 0);
+    EXPECT_EQ(reopened_fd, -1);
+    EXPECT_EQ(errno, ENOENT);
+
+    CloseHandles(handles);
 }
 
 TEST(SessionTest, RequestEntriesExposeInlinePayloadStorage)

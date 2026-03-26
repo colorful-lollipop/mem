@@ -156,9 +156,9 @@ TEST(TestkitDfxTest, CrashDuringBatchTracksAllFailures)
 
     for (const auto& failedCall : failed) {
         EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
-        EXPECT_EQ(failedCall.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_NE(failedCall.runtimeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
         EXPECT_TRUE(failedCall.hasRecoveryEvent);
-        EXPECT_EQ(failedCall.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_NE(failedCall.recoveryEvent.state, MemRpc::ClientLifecycleState::Active);
     }
 
     invoker.Shutdown();
@@ -176,7 +176,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsAddCallsAfterCrash)
 
     auto replayNonFault = [](const FailedCallRecord& record) {
         EXPECT_TRUE(record.hasRecoveryEvent);
-        EXPECT_EQ(record.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_NE(record.runtimeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
         return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest) ? ReplayDecision::Skip
                                                                                          : ReplayDecision::Replay;
     };
@@ -254,7 +254,7 @@ TEST(TestkitDfxTest, ReplayPolicyResubmitsInFlightCallsAfterCrash)
     ASSERT_GT(child, 0);
 
     auto replayNonFault = [](const FailedCallRecord& record) {
-        EXPECT_EQ(record.recoveryEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_NE(record.recoveryEvent.state, MemRpc::ClientLifecycleState::Active);
         return record.opcode == static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest) ? ReplayDecision::Skip
                                                                                          : ReplayDecision::Replay;
     };
@@ -523,7 +523,7 @@ TEST(TestkitDfxTest, BatchPartialCompletionTracking)
     }
     for (const auto& failedCall : failed) {
         EXPECT_EQ(failedCall.failureStatus, kExpectedEngineDeathStatus);
-        EXPECT_EQ(failedCall.runtimeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
+        EXPECT_NE(failedCall.runtimeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     }
 
     invoker.Shutdown();

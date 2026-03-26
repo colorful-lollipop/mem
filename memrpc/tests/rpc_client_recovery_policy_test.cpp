@@ -40,20 +40,16 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryDecisionDefaults)
     EXPECT_EQ(decision.delayMs, 0u);
 }
 
-TEST(RpcClientRecoveryPolicyTest, LifecycleAndTriggerEnumsExposeUnifiedModel)
+TEST(RpcClientRecoveryPolicyTest, LifecycleEnumsExposeUnifiedModel)
 {
     EXPECT_NE(MemRpc::ClientLifecycleState::Uninitialized, MemRpc::ClientLifecycleState::Active);
     EXPECT_NE(MemRpc::ClientLifecycleState::IdleClosed, MemRpc::ClientLifecycleState::Closed);
-    EXPECT_NE(MemRpc::RecoveryTrigger::ManualShutdown, MemRpc::RecoveryTrigger::IdlePolicy);
-    EXPECT_NE(MemRpc::RecoveryTrigger::EngineDeath, MemRpc::RecoveryTrigger::DemandReconnect);
 }
 
 TEST(RpcClientRecoveryPolicyTest, RecoveryRuntimeSnapshotDefaults)
 {
     MemRpc::RecoveryRuntimeSnapshot snapshot;
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Uninitialized);
-    EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::Unknown);
-    EXPECT_EQ(snapshot.lastRecoveryAction, MemRpc::RecoveryAction::Ignore);
     EXPECT_FALSE(snapshot.recoveryPending);
     EXPECT_EQ(snapshot.cooldownRemainingMs, 0u);
     EXPECT_EQ(snapshot.currentSessionId, 0u);
@@ -66,8 +62,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)
     MemRpc::RecoveryEventReport report;
     EXPECT_EQ(report.previousState, MemRpc::ClientLifecycleState::Uninitialized);
     EXPECT_EQ(report.state, MemRpc::ClientLifecycleState::Uninitialized);
-    EXPECT_EQ(report.trigger, MemRpc::RecoveryTrigger::Unknown);
-    EXPECT_EQ(report.action, MemRpc::RecoveryAction::Ignore);
     EXPECT_FALSE(report.recoveryPending);
     EXPECT_EQ(report.cooldownDelayMs, 0u);
     EXPECT_EQ(report.cooldownRemainingMs, 0u);

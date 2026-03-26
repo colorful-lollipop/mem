@@ -214,7 +214,6 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean)
     EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 2000);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
-    EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
 }
 
 TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpires)
@@ -262,7 +261,6 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
 
     const auto cooldownSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
-    EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
 
     MemRpc::RpcServer restarted_server;
@@ -286,7 +284,6 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
     EXPECT_EQ(std::move(recovered_future).Wait(&recovered_reply), MemRpc::StatusCode::Ok);
     const auto recoveredSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(recoveredSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
 
     const auto eventDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
     while (std::chrono::steady_clock::now() < eventDeadline) {
@@ -312,13 +309,10 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
         recoveredActiveEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.trigger, MemRpc::RecoveryTrigger::Unknown);
     EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(cooldownEvent.state, MemRpc::ClientLifecycleState::Cooldown);
-    EXPECT_EQ(cooldownEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_EQ(cooldownEvent.cooldownDelayMs, 200u);
     EXPECT_EQ(recoveredActiveEvent.state, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(recoveredActiveEvent.trigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_EQ(recoveredActiveEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
@@ -358,7 +352,6 @@ TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect)
 
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
-    EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_FALSE(disconnectedSnapshot.recoveryPending);
     EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
 
@@ -406,7 +399,6 @@ TEST(EngineDeathHandlerTest, DuplicateEngineDeathSignalIsIgnoredForSameSession)
     EXPECT_EQ(engineDeathCalls.load(std::memory_order_relaxed), 1);
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
-    EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
 
     client.Shutdown();

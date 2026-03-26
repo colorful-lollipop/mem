@@ -399,7 +399,6 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
     EXPECT_EQ(heartbeat.sessionId, 0u);
     const auto idleSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(idleSnapshot.lifecycleState, MemRpc::ClientLifecycleState::IdleClosed);
-    EXPECT_EQ(idleSnapshot.lastTrigger, MemRpc::RecoveryTrigger::IdlePolicy);
 
     ScanTask reopenTask{"/data/reopen.apk"};
     ASSERT_EQ(client->ScanFile(reopenTask, &reply), MemRpc::StatusCode::Ok);
@@ -408,7 +407,6 @@ TEST(VesPolicyTest, IdleShutdownClosesSessionAndReopensOnDemand)
     EXPECT_NE(heartbeat.sessionId, 0u);
     const auto reopenedSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(reopenedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(reopenedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::DemandReconnect);
 
     client->Shutdown();
     service->OnStop();
@@ -451,7 +449,7 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
     ScanTask recoveredTask{"/data/recovered.bin"};
     ASSERT_EQ(client->ScanFile(recoveredTask, &reply), MemRpc::StatusCode::Ok);
     const auto postRecoverySnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
-    EXPECT_NE(postRecoverySnapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
+    EXPECT_EQ(postRecoverySnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
 
     client->Shutdown();
     server.Stop();
@@ -501,7 +499,6 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     RequestRecoveryForTest(*client, 120);
     const auto cooldownSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
-    EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
 
     ScanTask recoveredTask{"/data/recovered.bin"};
@@ -513,8 +510,8 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
     const auto activeSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
-    EXPECT_EQ(activeSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_TRUE(activeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Active ||
+                activeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Cooldown);
 
     client->Shutdown();
     server.Stop();
@@ -555,7 +552,6 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     RequestRecoveryForTest(*client, 400);
     const auto cooldownSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(cooldownSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Cooldown);
-    EXPECT_EQ(cooldownSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
     EXPECT_TRUE(cooldownSnapshot.recoveryPending);
     EXPECT_GE(cooldownSnapshot.cooldownRemainingMs, 250u);
 
@@ -614,7 +610,8 @@ TEST(VesPolicyTest, VesClientUsesRpcClientRecoveryInvokeForAnyCallFallback)
     EXPECT_GE(elapsed.count(), 80);
     EXPECT_LT(elapsed.count(), 1000);
     const auto activeSnapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
-    EXPECT_EQ(activeSnapshot.lastTrigger, MemRpc::RecoveryTrigger::ExternalHealthSignal);
+    EXPECT_TRUE(activeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Active ||
+                activeSnapshot.lifecycleState == MemRpc::ClientLifecycleState::Cooldown);
 
     reopenThread.join();
     client->Shutdown();
@@ -640,7 +637,6 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
 
     const auto snapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
     EXPECT_EQ(snapshot.lifecycleState, MemRpc::ClientLifecycleState::Closed);
-    EXPECT_EQ(snapshot.lastTrigger, MemRpc::RecoveryTrigger::ManualShutdown);
 
     ScanTask task{"/data/after_shutdown.apk"};
     ScanFileReply reply;

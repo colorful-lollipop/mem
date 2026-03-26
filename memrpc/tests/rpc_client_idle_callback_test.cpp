@@ -192,7 +192,6 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     EXPECT_GE(bootstrap->closeCount(), 1);
     const auto idleClosedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(idleClosedSnapshot.lifecycleState, ClientLifecycleState::IdleClosed);
-    EXPECT_EQ(idleClosedSnapshot.lastTrigger, RecoveryTrigger::IdlePolicy);
 
     RpcCall call;
     call.opcode = kTestEchoOpcode;
@@ -202,7 +201,6 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     EXPECT_GE(bootstrap->openCount(), 2);
     const auto reopenedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(reopenedSnapshot.lifecycleState, ClientLifecycleState::Active);
-    EXPECT_EQ(reopenedSnapshot.lastTrigger, RecoveryTrigger::DemandReconnect);
 
     const auto reopen_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
     while (std::chrono::steady_clock::now() < reopen_deadline) {
@@ -230,14 +228,10 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
         reopenedEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.trigger, RecoveryTrigger::Unknown);
     EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(idleClosedEvent.state, ClientLifecycleState::IdleClosed);
-    EXPECT_EQ(idleClosedEvent.trigger, RecoveryTrigger::IdlePolicy);
     EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
-    EXPECT_EQ(recoveringEvent.trigger, RecoveryTrigger::DemandReconnect);
     EXPECT_EQ(reopenedEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(reopenedEvent.trigger, RecoveryTrigger::DemandReconnect);
     EXPECT_EQ(reopenedEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
