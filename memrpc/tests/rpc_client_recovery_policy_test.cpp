@@ -53,7 +53,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryRuntimeSnapshotDefaults)
     EXPECT_FALSE(snapshot.recoveryPending);
     EXPECT_EQ(snapshot.cooldownRemainingMs, 0u);
     EXPECT_EQ(snapshot.currentSessionId, 0u);
-    EXPECT_EQ(snapshot.lastOpenedSessionId, 0u);
 }
 
 TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)

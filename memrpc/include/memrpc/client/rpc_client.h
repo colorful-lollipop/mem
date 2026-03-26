@@ -117,7 +117,6 @@ struct RecoveryRuntimeSnapshot {
     bool recoveryPending = false;
     uint32_t cooldownRemainingMs = 0;
     uint64_t currentSessionId = 0;
-    uint64_t lastOpenedSessionId = 0;
 };
 
 struct RecoveryEventReport {
