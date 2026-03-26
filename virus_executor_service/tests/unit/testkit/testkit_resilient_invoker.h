@@ -33,7 +33,6 @@ public:
 
     struct TrackedFuture {
         uint64_t sequenceId = 0;
-        MemRpc::RpcFuture future;
     };
 
     std::vector<TrackedFuture> SubmitBatch(const std::vector<MemRpc::RpcCall>& calls);

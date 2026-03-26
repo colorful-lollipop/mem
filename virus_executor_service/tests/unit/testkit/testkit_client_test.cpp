@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <chrono>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -95,7 +96,7 @@ TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip)
     echoRequest.text = "ping";
     auto future = asyncClient.EchoAsync(echoRequest);
     EchoReply echoReply;
-    ASSERT_EQ(future.Wait(&echoReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(std::move(future).Wait(&echoReply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(echoReply.text, "ping");
 
     asyncClient.Shutdown();
@@ -139,7 +140,7 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog)
               MemRpc::StatusCode::Ok);
 
     SleepReply slowReply;
-    EXPECT_EQ(slowFuture.Wait(&slowReply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(slowFuture).Wait(&slowReply), MemRpc::StatusCode::Ok);
 
     asyncClient.Shutdown();
     server.Stop();
@@ -186,9 +187,9 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply sleepReply;
-    EXPECT_EQ(sleepFuture.Wait(&sleepReply), kExpectedEngineDeathStatus);
+    EXPECT_EQ(std::move(sleepFuture).Wait(&sleepReply), kExpectedEngineDeathStatus);
     MemRpc::RpcReply crashReply;
-    EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus);
+    EXPECT_EQ(std::move(crashFuture).Wait(&crashReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -210,7 +211,7 @@ TEST(TestkitClientTest, ProcessExitDuringHandlingFailsPendingAndRecoversAfterRes
     echoCall.payload = echoPayload;
 
     MemRpc::RpcReply echoRpcReply;
-    ASSERT_EQ(client.InvokeAsync(echoCall).WaitAndTake(&echoRpcReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(echoCall).Wait(&echoRpcReply), MemRpc::StatusCode::Ok);
     EchoReply echoReply;
     ASSERT_TRUE(MemRpc::DecodeMessage(echoRpcReply.payload, &echoReply));
     EXPECT_EQ(echoReply.text, "after-restart");

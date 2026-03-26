@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
@@ -477,7 +478,7 @@ TEST(VesHeartbeatTest, HeartbeatShowsInFlight)
     EXPECT_NE(reply.flags & VES_HEARTBEAT_FLAG_BUSY, 0u);
 
     MemRpc::RpcReply rpcReply;
-    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&rpcReply), MemRpc::StatusCode::Ok);
     client.Shutdown();
     stub->OnStop();
 }
@@ -652,7 +653,7 @@ TEST(VesHeartbeatTest, LongRunningHeartbeatIsDegraded)
     EXPECT_GE(reply.lastTaskAgeMs, 100u);
 
     MemRpc::RpcReply rpcReply;
-    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&rpcReply), MemRpc::StatusCode::Ok);
     client.Shutdown();
     stub->OnStop();
 }

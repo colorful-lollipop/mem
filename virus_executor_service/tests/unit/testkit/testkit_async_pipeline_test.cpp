@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -142,7 +143,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput)
             }
             for (auto& future : futures) {
                 EchoReply reply;
-                future.Wait(&reply);
+                std::move(future).Wait(&reply);
             }
         }
 
@@ -160,7 +161,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput)
             std::vector<int> failedStatuses;
             for (auto& future : futures) {
                 EchoReply reply;
-                const auto status = future.Wait(&reply);
+                const auto status = std::move(future).Wait(&reply);
                 if (status != MemRpc::StatusCode::Ok) {
                     allOk = false;
                     failedStatuses.push_back(static_cast<int>(status));

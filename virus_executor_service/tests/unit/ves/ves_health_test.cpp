@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
@@ -139,7 +140,7 @@ TEST(VesHealthTest, SessionServiceRuntimeStatsTrackActiveRequests)
     registrar.Release();
 
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     ASSERT_TRUE(WaitFor(
         [&]() {

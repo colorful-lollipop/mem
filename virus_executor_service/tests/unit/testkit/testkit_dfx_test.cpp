@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
@@ -371,7 +372,7 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered)
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply hangReply;
-    EXPECT_EQ(hangFuture.Wait(&hangReply), kExpectedEngineDeathStatus);
+    EXPECT_EQ(std::move(hangFuture).Wait(&hangReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -381,7 +382,7 @@ TEST(TestkitDfxTest, HangingChildKilledAndRecovered)
 
     const auto addCall = MakeAddCall(10, 20);
     MemRpc::RpcReply addReply;
-    ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(addCall).Wait(&addReply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 30);
@@ -419,7 +420,7 @@ TEST(TestkitDfxTest, OomKilledChildRecovery)
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply oomReply;
-    EXPECT_EQ(oomFuture.Wait(&oomReply), kExpectedEngineDeathStatus);
+    EXPECT_EQ(std::move(oomFuture).Wait(&oomReply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -429,7 +430,7 @@ TEST(TestkitDfxTest, OomKilledChildRecovery)
 
     const auto addCall = MakeAddCall(7, 8);
     MemRpc::RpcReply addReply;
-    ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(addCall).Wait(&addReply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 15);
@@ -467,7 +468,7 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery)
     bootstrap->SimulateEngineDeathForTest();
 
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), kExpectedEngineDeathStatus);
+    EXPECT_EQ(std::move(future).Wait(&reply), kExpectedEngineDeathStatus);
 
     MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok);
@@ -477,7 +478,7 @@ TEST(TestkitDfxTest, StackOverflowChildRecovery)
 
     const auto addCall = MakeAddCall(3, 4);
     MemRpc::RpcReply addReply;
-    ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(addCall).Wait(&addReply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 7);
@@ -545,7 +546,7 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries)
 
         const auto addCall = MakeAddCall(cycle, 10);
         MemRpc::RpcReply addReply;
-        ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok) << "cycle " << cycle;
+        ASSERT_EQ(client.InvokeAsync(addCall).Wait(&addReply), MemRpc::StatusCode::Ok) << "cycle " << cycle;
         AddReply decoded;
         ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
         EXPECT_EQ(decoded.sum, cycle + 10);
@@ -555,7 +556,7 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries)
         bootstrap->SimulateEngineDeathForTest();
 
         MemRpc::RpcReply crashReply;
-        EXPECT_EQ(crashFuture.Wait(&crashReply), kExpectedEngineDeathStatus) << "cycle " << cycle;
+        EXPECT_EQ(std::move(crashFuture).Wait(&crashReply), kExpectedEngineDeathStatus) << "cycle " << cycle;
 
         MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
         ASSERT_EQ(bootstrap->OpenSession(handles), MemRpc::StatusCode::Ok) << "cycle " << cycle;
@@ -567,7 +568,7 @@ TEST(TestkitDfxTest, MultipleConsecutiveCrashesAndRecoveries)
 
     const auto addCall = MakeAddCall(99, 1);
     MemRpc::RpcReply addReply;
-    ASSERT_EQ(client.InvokeAsync(addCall).WaitAndTake(&addReply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(client.InvokeAsync(addCall).Wait(&addReply), MemRpc::StatusCode::Ok);
     AddReply decoded;
     ASSERT_TRUE(MemRpc::DecodeMessage(addReply.payload, &decoded));
     EXPECT_EQ(decoded.sum, 100);

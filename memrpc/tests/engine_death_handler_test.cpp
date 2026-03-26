@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -86,7 +87,7 @@ TEST(EngineDeathHandlerTest, NoHandlerBackwardCompat)
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     ASSERT_TRUE(future.IsReady());
     MemRpc::RpcReply reply;
-    EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_NE(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     client.Shutdown();
 }
@@ -108,7 +109,7 @@ TEST(EngineDeathHandlerTest, AbandonFailsAll)
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     ASSERT_TRUE(future.IsReady());
     MemRpc::RpcReply reply;
-    EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_NE(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     client.Shutdown();
 }
@@ -130,7 +131,7 @@ TEST(EngineDeathHandlerTest, RestartHandlerCallable)
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     ASSERT_TRUE(future.IsReady());
     MemRpc::RpcReply reply;
-    future.Wait(&reply);
+    std::move(future).Wait(&reply);
 
     client.Shutdown();
 }
@@ -204,7 +205,7 @@ TEST(EngineDeathHandlerTest, ShutdownIsClean)
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     ASSERT_TRUE(future.IsReady());
     MemRpc::RpcReply reply;
-    future.Wait(&reply);
+    std::move(future).Wait(&reply);
 
     // Shutdown should complete quickly even if restart was requested with delay.
     const auto start = std::chrono::steady_clock::now();
@@ -254,7 +255,7 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
     call.opcode = kEchoOpcode;
     auto ready_future = client.InvokeAsync(call);
     MemRpc::RpcReply ready_reply;
-    ASSERT_EQ(ready_future.Wait(&ready_reply), MemRpc::StatusCode::Ok);
+    ASSERT_EQ(std::move(ready_future).Wait(&ready_reply), MemRpc::StatusCode::Ok);
 
     bootstrap->SimulateEngineDeathForTest();
     server.Stop();
@@ -276,13 +277,13 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
 
     auto blocked_future = client.InvokeAsync(call);
     MemRpc::RpcReply blocked_reply;
-    EXPECT_EQ(blocked_future.Wait(&blocked_reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(blocked_future).Wait(&blocked_reply), MemRpc::StatusCode::Ok);
     reopen_thread.join();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     auto recovered_future = client.InvokeAsync(call);
     MemRpc::RpcReply recovered_reply;
-    EXPECT_EQ(recovered_future.Wait(&recovered_reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(recovered_future).Wait(&recovered_reply), MemRpc::StatusCode::Ok);
     const auto recoveredSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(recoveredSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
     EXPECT_EQ(recoveredSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
@@ -356,7 +357,7 @@ TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect)
     bootstrap->SimulateEngineDeathForTest();
 
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Disconnected);
+    EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
     EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_FALSE(disconnectedSnapshot.recoveryPending);
     EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
@@ -404,7 +405,7 @@ TEST(EngineDeathHandlerTest, DuplicateEngineDeathSignalIsIgnoredForSameSession)
 
     EXPECT_EQ(engineDeathCalls.load(std::memory_order_relaxed), 1);
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
-    EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Disconnected);
+    EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
     EXPECT_EQ(disconnectedSnapshot.lastTrigger, MemRpc::RecoveryTrigger::EngineDeath);
     EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
 

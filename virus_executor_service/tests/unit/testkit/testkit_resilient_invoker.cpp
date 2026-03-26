@@ -50,7 +50,6 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::SubmitB
 
         TrackedFuture trackedFuture;
         trackedFuture.sequenceId = activeCall.sequenceId;
-        trackedFuture.future = activeCall.future;
         tracked.push_back(std::move(trackedFuture));
 
         activeCalls_.push_back(std::move(activeCall));
@@ -66,7 +65,7 @@ void ResilientBatchInvoker::CollectResults(std::vector<MemRpc::RpcReply>* comple
 
     for (auto& activeCall : activeCalls_) {
         MemRpc::RpcReply reply;
-        const auto status = activeCall.future.WaitAndTake(&reply);
+        const auto status = std::move(activeCall.future).Wait(&reply);
         if (status == MemRpc::StatusCode::Ok) {
             completedReplies->push_back(std::move(reply));
         } else {
@@ -113,7 +112,6 @@ std::vector<ResilientBatchInvoker::TrackedFuture> ResilientBatchInvoker::ReplayF
 
         TrackedFuture trackedFuture;
         trackedFuture.sequenceId = activeCall.sequenceId;
-        trackedFuture.future = activeCall.future;
         replayed.push_back(std::move(trackedFuture));
 
         activeCalls_.push_back(std::move(activeCall));

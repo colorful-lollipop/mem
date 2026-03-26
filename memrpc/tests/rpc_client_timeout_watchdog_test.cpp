@@ -5,6 +5,7 @@
 #include <chrono>
 #include <functional>
 #include <thread>
+#include <utility>
 
 #include "core/session.h"
 #include "memrpc/client/dev_bootstrap.h"
@@ -149,7 +150,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutForSlowHandler)
     auto future = client.InvokeAsync(call);
 
     RpcReply reply;
-    const StatusCode wait_status = future.Wait(&reply);
+    const StatusCode wait_status = std::move(future).Wait(&reply);
     EXPECT_EQ(wait_status, StatusCode::ExecTimeout);
     EXPECT_TRUE(got_failure.load());
     EXPECT_EQ(captured_status, StatusCode::ExecTimeout);
@@ -189,7 +190,7 @@ TEST(RpcClientTimeoutWatchdogTest, ClientWaitTimeoutUnblocksWaiterBeforeSlowRepl
     auto future = client.InvokeAsync(call);
 
     RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), StatusCode::ExecTimeout);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::ExecTimeout);
     const auto elapsedMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 
@@ -231,7 +232,7 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
     auto firstFuture = client.InvokeAsync(first);
 
     RpcReply firstReply;
-    EXPECT_EQ(firstFuture.Wait(&firstReply), StatusCode::ExecTimeout);
+    EXPECT_EQ(std::move(firstFuture).Wait(&firstReply), StatusCode::ExecTimeout);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
@@ -241,7 +242,7 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
     auto secondFuture = client.InvokeAsync(second);
 
     RpcReply secondReply;
-    EXPECT_EQ(secondFuture.Wait(&secondReply), StatusCode::Ok);
+    EXPECT_EQ(std::move(secondFuture).Wait(&secondReply), StatusCode::Ok);
     EXPECT_EQ(secondReply.errorCode, 2);
 
     client.Shutdown();
@@ -300,7 +301,7 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutWhenStuckInQueue)
     auto queued_future = client.InvokeAsync(queued_call);
 
     RpcReply reply;
-    const StatusCode wait_status = queued_future.Wait(&reply);
+    const StatusCode wait_status = std::move(queued_future).Wait(&reply);
     EXPECT_EQ(wait_status, StatusCode::ExecTimeout);
     EXPECT_TRUE(got_failure.load());
     EXPECT_EQ(captured_status, StatusCode::ExecTimeout);
@@ -337,7 +338,7 @@ TEST(RpcClientTimeoutWatchdogTest, UnsupportedHealthCheckDoesNotRestartSession)
     call.opcode = kTestEchoOpcode;
     auto future = client.InvokeAsync(call);
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     client.Shutdown();
     server.Stop();
@@ -380,7 +381,7 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart)
         call.opcode = kTestEchoOpcode;
         auto future = client.InvokeAsync(call);
         MemRpc::RpcReply reply;
-        EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+        EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
         client.Shutdown();
         server.Stop();
@@ -413,7 +414,7 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout)
     auto future = client.InvokeAsync(call);
 
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ExecTimeout);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::ExecTimeout);
 
     client.Shutdown();
     server.Stop();

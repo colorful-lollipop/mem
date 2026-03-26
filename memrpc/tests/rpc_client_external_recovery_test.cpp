@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -210,7 +211,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     call.opcode = kEchoOpcode;
     auto future = client.InvokeAsync(call);
     RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
 
     client.Shutdown();
     server.Stop();
@@ -240,12 +241,12 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
     call.opcode = kEchoOpcode;
     auto blockedFuture = client.InvokeAsync(call);
     RpcReply blockedReply;
-    EXPECT_EQ(blockedFuture.Wait(&blockedReply), StatusCode::Ok);
+    EXPECT_EQ(std::move(blockedFuture).Wait(&blockedReply), StatusCode::Ok);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     auto recoveredFuture = client.InvokeAsync(call);
     RpcReply recoveredReply;
-    EXPECT_EQ(recoveredFuture.Wait(&recoveredReply), StatusCode::Ok);
+    EXPECT_EQ(std::move(recoveredFuture).Wait(&recoveredReply), StatusCode::Ok);
 
     client.Shutdown();
     server.Stop();
@@ -282,7 +283,7 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
     server.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected)
+TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToNoSession)
 {
     auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
     BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
@@ -305,7 +306,7 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected)
     ASSERT_TRUE(WaitFor(
         [&]() {
             const auto snapshot = client.GetRecoveryRuntimeSnapshot();
-            return snapshot.lifecycleState == ClientLifecycleState::Disconnected;
+            return snapshot.lifecycleState == ClientLifecycleState::NoSession;
         },
         std::chrono::milliseconds(500)));
 
@@ -320,7 +321,7 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToDisconnected)
     call.opcode = kEchoOpcode;
     auto future = client.InvokeAsync(call);
     RpcReply reply;
-    EXPECT_EQ(future.WaitFor(&reply, std::chrono::milliseconds(200)), StatusCode::PeerDisconnected);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::PeerDisconnected);
 
     client.Shutdown();
     server.Stop();
@@ -359,7 +360,7 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
     call.opcode = kEchoOpcode;
     auto future = client.InvokeAsync(call);
     RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), StatusCode::ClientClosed);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::ClientClosed);
     EXPECT_EQ(bootstrap->openCount(), 1);
 
     server.Stop();
@@ -391,7 +392,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
     const auto start = std::chrono::steady_clock::now();
     auto future = client.InvokeAsync(call);
     RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     EXPECT_GE(elapsed.count(), 180);

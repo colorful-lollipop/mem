@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
@@ -130,7 +131,7 @@ TEST(RpcServerExecutorTest, CustomExecutorGatesDrain)
 
     executor->SetMaxInflight(1);
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.payload, call.payload);
 
     client.Shutdown();
@@ -190,7 +191,7 @@ TEST(RpcServerExecutorTest, RuntimeStatsTrackActiveRequestExecution)
     cv.notify_all();
 
     MemRpc::RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     ASSERT_TRUE(WaitForCondition(
         [&] {

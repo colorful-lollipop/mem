@@ -45,19 +45,17 @@ public:
     RpcFuture();
     ~RpcFuture();
 
-    RpcFuture(const RpcFuture&) = default;
-    RpcFuture& operator=(const RpcFuture&) = default;
+    RpcFuture(const RpcFuture&) = delete;
+    RpcFuture& operator=(const RpcFuture&) = delete;
     RpcFuture(RpcFuture&&) noexcept = default;
     RpcFuture& operator=(RpcFuture&&) noexcept = default;
 
     // IsReady 只表示 reply 已经落地，不区分成功或失败。
     [[nodiscard]] bool IsReady() const;
-    // Wait 会阻塞到 reply 就绪，并返回 reply.status。
-    StatusCode Wait(RpcReply* reply);
-    // WaitAndTake 会阻塞到 reply 就绪，并把内部 reply move 给调用方。
-    StatusCode WaitAndTake(RpcReply* reply);
-    // WaitFor 在给定 deadline 内等待 reply；仅用于同步兼容路径。
-    StatusCode WaitFor(RpcReply* reply, std::chrono::milliseconds timeout);
+    // Wait 会阻塞到 reply 就绪，并消费内部 reply。
+    StatusCode Wait(RpcReply* reply) &&;
+    StatusCode Wait(RpcReply* reply) & = delete;
+    StatusCode Wait(RpcReply* reply) const& = delete;
 
 private:
     struct State;
@@ -107,7 +105,7 @@ struct RecoveryDecision {
 enum class ClientLifecycleState : uint8_t {
     Uninitialized = 0,
     Active = 1,
-    Disconnected = 2,
+    NoSession = 2,
     Cooldown = 3,
     IdleClosed = 4,
     Recovering = 5,

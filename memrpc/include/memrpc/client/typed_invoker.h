@@ -37,13 +37,13 @@ RpcFuture InvokeTyped(RpcClient* client,
 
 // Wait on a future and decode the reply payload.
 template <typename Rep>
-StatusCode WaitAndDecode(RpcFuture future, Rep* reply)
+StatusCode WaitAndDecode(RpcFuture&& future, Rep* reply)
 {
     if (reply == nullptr) {
         return StatusCode::InvalidArgument;
     }
     RpcReply rpcReply;
-    const StatusCode status = future.WaitAndTake(&rpcReply);
+    const StatusCode status = std::move(future).Wait(&rpcReply);
     if (status != StatusCode::Ok) {
         return status;
     }
@@ -51,7 +51,7 @@ StatusCode WaitAndDecode(RpcFuture future, Rep* reply)
 }
 
 // Encode request and invoke asynchronously, returning a TypedFuture<Rep> that
-// performs owning decode at consumption time (Wait/WaitFor).
+// performs owning decode at consumption time (Wait).
 template <typename Req, typename Rep>
 TypedFuture<Rep> InvokeTypedAsync(RpcClient* client,
                                   Opcode opcode,
@@ -70,8 +70,8 @@ StatusCode InvokeTypedSync(RpcClient* client,
                            Rep* reply,
                            TypedInvokeOptions options = {})
 {
-    return WaitAndDecode<Rep>(InvokeTyped<Req>(client, opcode, request, options.priority, options.execTimeoutMs),
-                              reply);
+    return WaitAndDecode<Rep>(
+        InvokeTyped<Req>(client, opcode, request, options.priority, options.execTimeoutMs), reply);
 }
 
 }  // namespace MemRpc

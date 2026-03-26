@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -148,7 +149,7 @@ TEST(RpcClientIdleCallbackTest, ActivityResetsIdleTimer)
         call.opcode = kTestEchoOpcode;
         auto future = client.InvokeAsync(call);
         RpcReply reply;
-        future.Wait(&reply);
+        std::move(future).Wait(&reply);
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
@@ -197,7 +198,7 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     call.opcode = kTestEchoOpcode;
     auto future = client.InvokeAsync(call);
     RpcReply reply;
-    EXPECT_EQ(future.Wait(&reply), StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
     EXPECT_GE(bootstrap->openCount(), 2);
     const auto reopenedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(reopenedSnapshot.lifecycleState, ClientLifecycleState::Active);

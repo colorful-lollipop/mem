@@ -10,6 +10,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -128,7 +129,7 @@ TEST(DtStabilityTest, ShortRandomLoadStaysHealthy)
 
                 auto future = client.InvokeAsync(call);
                 MemRpc::RpcReply reply;
-                MemRpc::StatusCode status = future.Wait(&reply);
+                MemRpc::StatusCode status = std::move(future).Wait(&reply);
                 if (status != MemRpc::StatusCode::Ok) {
                     first_error.store(status);
                     return;

@@ -48,7 +48,7 @@ bool ShouldRetryRecoveryStatus(StatusCode status, const RecoveryRuntimeSnapshot&
                snapshot.lifecycleState == ClientLifecycleState::Recovering;
     }
     if (status == StatusCode::PeerDisconnected) {
-        return snapshot.recoveryPending || snapshot.lifecycleState == ClientLifecycleState::Recovering ||
+        return snapshot.lifecycleState == ClientLifecycleState::Recovering ||
                snapshot.lifecycleState == ClientLifecycleState::Cooldown;
     }
     return false;
@@ -90,9 +90,10 @@ bool RpcFuture::IsReady() const
     return state_->ready;
 }
 
-StatusCode RpcFuture::Wait(RpcReply* reply)
+StatusCode RpcFuture::Wait(RpcReply* reply) &&
 {
-    if (!state_) {
+    std::shared_ptr<State> state = std::move(state_);
+    if (!state) {
         HILOGE("RpcFuture::Wait failed: state is null");
         if (reply != nullptr) {
             *reply = RpcReply{};
@@ -100,56 +101,12 @@ StatusCode RpcFuture::Wait(RpcReply* reply)
         }
         return StatusCode::PeerDisconnected;
     }
-    std::unique_lock<std::mutex> lock(state_->mutex);
-    state_->cv.wait(lock, [this] { return state_->ready; });
+    std::unique_lock<std::mutex> lock(state->mutex);
+    state->cv.wait(lock, [&state] { return state->ready; });
     if (reply != nullptr) {
-        *reply = state_->reply;
+        *reply = std::move(state->reply);
     }
-    return state_->reply.status;
-}
-
-StatusCode RpcFuture::WaitAndTake(RpcReply* reply)
-{
-    if (!state_) {
-        HILOGE("RpcFuture::WaitAndTake failed: state is null");
-        if (reply != nullptr) {
-            *reply = RpcReply{};
-            reply->status = StatusCode::PeerDisconnected;
-        }
-        return StatusCode::PeerDisconnected;
-    }
-    std::unique_lock<std::mutex> lock(state_->mutex);
-    state_->cv.wait(lock, [this] { return state_->ready; });
-    if (reply != nullptr) {
-        *reply = std::move(state_->reply);
-    }
-    return reply != nullptr ? reply->status : state_->reply.status;
-}
-
-StatusCode RpcFuture::WaitFor(RpcReply* reply, std::chrono::milliseconds timeout)
-{
-    if (!state_) {
-        HILOGE("RpcFuture::WaitFor failed: state is null timeout_ms=%{public}lld",
-               static_cast<long long>(timeout.count()));
-        if (reply != nullptr) {
-            *reply = RpcReply{};
-            reply->status = StatusCode::PeerDisconnected;
-        }
-        return StatusCode::PeerDisconnected;
-    }
-    std::unique_lock<std::mutex> lock(state_->mutex);
-    if (!state_->cv.wait_for(lock, timeout, [this] { return state_->ready; })) {
-        HILOGW("RpcFuture::WaitFor timed out timeout_ms=%{public}lld", static_cast<long long>(timeout.count()));
-        if (reply != nullptr) {
-            *reply = RpcReply{};
-            reply->status = StatusCode::QueueTimeout;
-        }
-        return StatusCode::QueueTimeout;
-    }
-    if (reply != nullptr) {
-        *reply = state_->reply;
-    }
-    return state_->reply.status;
+    return reply != nullptr ? reply->status : state->reply.status;
 }
 
 struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
@@ -179,7 +136,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         std::shared_ptr<RpcFuture::State> future;
         PendingInfo info;
         std::chrono::steady_clock::time_point waitDeadline = std::chrono::steady_clock::time_point::max();
-        uint64_t admittedMonoMs = 0;
     };
 
     class ClientRequestStore {
@@ -270,6 +226,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     class ClientSessionTransport {
     public:
         struct DeathCallbackLease {};
+        struct SessionWaitHandle {
+            uint64_t sessionId = 0;
+            int fd = -1;
+        };
 
         explicit ClientSessionTransport(std::shared_ptr<IBootstrapChannel> bootstrap)
             : bootstrap_(std::move(bootstrap))
@@ -322,6 +282,27 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         bool HasLiveSession() const
         {
             return LoadSnapshot()->alive;
+        }
+
+        SessionWaitHandle DuplicateRequestCreditWaitHandle() const
+        {
+            SessionWaitHandle waitHandle;
+            std::lock_guard<std::mutex> lock(sessionMutex_);
+            if (!session_.Valid()) {
+                return waitHandle;
+            }
+            const auto snapshot = LoadSnapshot();
+            waitHandle.sessionId = snapshot->sessionId;
+            const int requestCreditFd = session_.Handles().reqCreditEventFd;
+            if (requestCreditFd < 0) {
+                return waitHandle;
+            }
+            waitHandle.fd = dup(requestCreditFd);
+            if (waitHandle.fd < 0) {
+                HILOGE("RpcClient::DuplicateRequestCreditWaitHandle dup failed: reqCreditEventFd=%{public}d",
+                       requestCreditFd);
+            }
+            return waitHandle;
         }
 
         StatusCode OpenSession()
@@ -466,7 +447,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             nextSessionOpenDelayMs_ = 0;
             lastRecoveryTrigger_ = RecoveryTrigger::Unknown;
             lastRecoveryAction_ = RecoveryAction::Ignore;
-            recoveryPending_ = false;
             cooldownUntilMs_ = 0;
             lifecycleState_ = ClientLifecycleState::Uninitialized;
         }
@@ -481,15 +461,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             nextSessionOpenTrigger_ = RecoveryTrigger::DemandReconnect;
             nextSessionOpenDelayMs_ = 0;
             lastOpenedSessionId_ = sessionId;
-            recoveryPending_ = false;
             cooldownUntilMs_ = 0;
             return state;
         }
 
-        void ClearRecoveryWindow()
+        void ClearCooldownWindow()
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            recoveryPending_ = false;
             cooldownUntilMs_ = 0;
         }
 
@@ -519,7 +497,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 report.state = state;
                 report.trigger = trigger != RecoveryTrigger::Unknown ? trigger : lastRecoveryTrigger_;
                 report.action = action;
-                report.recoveryPending = recoveryPending_;
+                report.recoveryPending = HasPendingRecoveryLocked();
                 report.cooldownDelayMs = cooldownDelayMs;
                 report.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
                 report.sessionId = sessionIds.currentSessionId;
@@ -540,7 +518,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 std::lock_guard<std::mutex> lock(mutex_);
                 nextSessionOpenTrigger_ = trigger;
                 nextSessionOpenDelayMs_ = delayMs;
-                recoveryPending_ = true;
                 cooldownUntilMs_ = MonotonicNowMs64() + delayMs;
             }
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
@@ -558,7 +535,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 std::lock_guard<std::mutex> lock(mutex_);
                 nextSessionOpenTrigger_ = RecoveryTrigger::DemandReconnect;
                 nextSessionOpenDelayMs_ = 0;
-                recoveryPending_ = true;
             }
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
             TransitionLifecycle(ClientLifecycleState::Recovering,
@@ -570,10 +546,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void EnterRecovering(RecoveryAction action, uint64_t currentSessionId, uint64_t lastClosedSessionId)
         {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                recoveryPending_ = true;
-            }
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
             TransitionLifecycle(ClientLifecycleState::Recovering,
                                 RecoveryTrigger::Unknown,
@@ -582,11 +554,11 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                                 sessionIds);
         }
 
-        void EnterDisconnected(RecoveryTrigger trigger, uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void EnterNoSession(RecoveryTrigger trigger, uint64_t currentSessionId, uint64_t lastClosedSessionId)
         {
-            ClearRecoveryWindow();
+            ClearCooldownWindow();
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
-            TransitionLifecycle(ClientLifecycleState::Disconnected,
+            TransitionLifecycle(ClientLifecycleState::NoSession,
                                 trigger,
                                 RecoveryAction::Ignore,
                                 0,
@@ -596,7 +568,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void EnterIdleClosed(uint64_t currentSessionId, uint64_t lastClosedSessionId)
         {
-            ClearRecoveryWindow();
+            ClearCooldownWindow();
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
             TransitionLifecycle(ClientLifecycleState::IdleClosed,
                                 RecoveryTrigger::IdlePolicy,
@@ -608,7 +580,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void EnterTerminalClosed(uint64_t currentSessionId, uint64_t lastClosedSessionId)
         {
-            ClearRecoveryWindow();
+            ClearCooldownWindow();
             const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
             TransitionLifecycle(ClientLifecycleState::Closed,
                                 RecoveryTrigger::ManualShutdown,
@@ -633,7 +605,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         [[nodiscard]] bool RecoveryPending() const
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            return recoveryPending_;
+            return HasPendingRecoveryLocked();
         }
 
         [[nodiscard]] RecoveryTrigger PendingSessionOpenTrigger() const
@@ -698,7 +670,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                 if (clientControlState.load(std::memory_order_acquire) != ApiLifecycleState::Open) {
                     return StatusCode::ClientClosed;
                 }
-                if (!recoveryPending_) {
+                if (!HasPendingRecoveryLocked()) {
                     return StatusCode::PeerDisconnected;
                 }
                 const auto now = std::chrono::steady_clock::now();
@@ -730,7 +702,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             snapshot.lifecycleState = lifecycleState_;
             snapshot.lastTrigger = lastRecoveryTrigger_;
             snapshot.lastRecoveryAction = lastRecoveryAction_;
-            snapshot.recoveryPending = recoveryPending_;
+            snapshot.recoveryPending = HasPendingRecoveryLocked();
             snapshot.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
             snapshot.currentSessionId = currentSessionId;
             snapshot.lastOpenedSessionId = lastOpenedSessionId_;
@@ -739,6 +711,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
 
     private:
+        [[nodiscard]] bool HasPendingRecoveryLocked() const
+        {
+            return lifecycleState_ == ClientLifecycleState::Recovering ||
+                   lifecycleState_ == ClientLifecycleState::Cooldown;
+        }
+
         std::chrono::milliseconds CooldownRemainingLocked() const
         {
             return ::MemRpc::CooldownRemaining(cooldownUntilMs_);
@@ -747,7 +725,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         mutable std::mutex mutex_;
         std::condition_variable cv_;
         RecoveryEventCallback recoveryEventCallback_;
-        bool recoveryPending_ = false;
         ClientLifecycleState lifecycleState_ = ClientLifecycleState::Uninitialized;
         uint64_t cooldownUntilMs_ = 0;
         // The next successful open publishes this trigger into the Active transition.
@@ -1416,9 +1393,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         return previousSessionId != deadSessionId;
     }
 
-    void ClearRecoveryWindow()
+    void ClearCooldownWindow()
     {
-        recoveryState_.ClearRecoveryWindow();
+        recoveryState_.ClearCooldownWindow();
     }
 
     void NotifyRecoveryWaiters()
@@ -1561,7 +1538,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         const uint64_t previousSessionId = LastClosedSessionId();
         const RecoveryAction lastAction = recoveryState_.LastRecoveryAction();
         if (lifecycleState == ClientLifecycleState::IdleClosed ||
-            lifecycleState == ClientLifecycleState::Disconnected) {
+            lifecycleState == ClientLifecycleState::NoSession) {
             recoveryState_.EnterDemandReconnect(RecoveryAction::Ignore, currentSessionId, previousSessionId);
             return;
         }
@@ -1575,13 +1552,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     {
         const RecoveryTrigger failureTrigger = PendingSessionOpenTrigger();
         const ClientLifecycleState lifecycleState = LifecycleState();
-        if (RecoveryPending() || lifecycleState == ClientLifecycleState::Recovering ||
-            lifecycleState == ClientLifecycleState::Cooldown) {
+        if (lifecycleState == ClientLifecycleState::Recovering || lifecycleState == ClientLifecycleState::Cooldown) {
             HILOGW("RpcClient::EnsureLiveSession abandoning recovery after open failure: status=%{public}d "
                    "trigger=%{public}d",
                    static_cast<int>(status),
                    static_cast<int>(failureTrigger));
-            EnterDisconnectedWithoutLiveSession(failureTrigger);
+            EnterNoSessionWithoutLiveSession(failureTrigger);
         }
         HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
                static_cast<int>(status),
@@ -1620,7 +1596,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!IsApiOpen()) {
             return;
         }
-        ClearRecoveryWindow();
+        ClearCooldownWindow();
         CloseLiveSession();
         recoveryState_.EnterIdleClosed(CurrentSessionId(), LastClosedSessionId());
     }
@@ -1628,12 +1604,12 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     // This transition only updates recovery state. Callers must already know
     // there is no live session, either because recovery open failed before one
     // existed or because the session was already closed earlier in the path.
-    void EnterDisconnectedWithoutLiveSession(RecoveryTrigger trigger)
+    void EnterNoSessionWithoutLiveSession(RecoveryTrigger trigger)
     {
         if (!IsApiOpen()) {
             return;
         }
-        recoveryState_.EnterDisconnected(trigger, CurrentSessionId(), LastClosedSessionId());
+        recoveryState_.EnterNoSession(trigger, CurrentSessionId(), LastClosedSessionId());
     }
 
     void CloseSessionAndEnterTerminalClosed()
@@ -1754,24 +1730,31 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     // Submission primitives shared by InvokeAsync and SubmitWorker.
     PollEventFdResult WaitForRequestCredit()
     {
-        const int fd = LoadSessionSnapshot()->reqCreditEventFd;
-        if (fd < 0) {
-            HILOGE("RpcClient::WaitForRequestCredit failed: invalid reqCreditEventFd=%{public}d", fd);
+        const auto waitHandle = sessionTransport_.DuplicateRequestCreditWaitHandle();
+        if (waitHandle.fd < 0) {
+            HILOGE("RpcClient::WaitForRequestCredit failed: invalid reqCreditEventFd=%{public}d", waitHandle.fd);
             return PollEventFdResult::Failed;
         }
+        const auto closeWaitFd = MakeScopeExit([fd = waitHandle.fd] { (void)close(fd); });
 
         submitterWaitingForCredit_.store(true, std::memory_order_release);
         [[maybe_unused]] const auto clearWaiting =
             MakeScopeExit([this] { submitterWaitingForCredit_.store(false, std::memory_order_release); });
 
-        pollfd pollFd{fd, POLLIN, 0};
+        pollfd pollFd{waitHandle.fd, POLLIN, 0};
         while (WorkersShouldRun()) {
             const auto waitResult = PollEventFd(&pollFd, 100);
             if (waitResult == PollEventFdResult::Retry || waitResult == PollEventFdResult::Timeout) {
+                if (CurrentSessionId() != waitHandle.sessionId) {
+                    return PollEventFdResult::Retry;
+                }
                 continue;
             }
             if (waitResult == PollEventFdResult::Failed) {
-                HILOGE("RpcClient::WaitForRequestCredit poll failed fd=%{public}d", fd);
+                if (CurrentSessionId() != waitHandle.sessionId) {
+                    return PollEventFdResult::Retry;
+                }
+                HILOGE("RpcClient::WaitForRequestCredit poll failed fd=%{public}d", waitHandle.fd);
             }
             return waitResult;
         }
@@ -1833,7 +1816,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         pending.info = MakePendingInfo(submit);
         pending.info.sessionId = CurrentSessionId();
         pending.waitDeadline = MakePendingWaitDeadline(submit.call.execTimeoutMs);
-        pending.admittedMonoMs = MonotonicNowMs64();
         return pending;
     }
 
@@ -1986,7 +1968,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!policy.onEngineDeath) {
             HILOGE("RpcClient::HandleEngineDeath has no recovery policy session_id=%{public}llu",
                    static_cast<unsigned long long>(report.deadSessionId));
-            EnterDisconnectedWithoutLiveSession(RecoveryTrigger::EngineDeath);
+            EnterNoSessionWithoutLiveSession(RecoveryTrigger::EngineDeath);
             return;
         }
 
@@ -1994,7 +1976,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (decision.action == RecoveryAction::Ignore) {
             HILOGW("RpcClient::HandleEngineDeath policy ignored recovery dead_session_id=%{public}llu",
                    static_cast<unsigned long long>(report.deadSessionId));
-            EnterDisconnectedWithoutLiveSession(RecoveryTrigger::EngineDeath);
+            EnterNoSessionWithoutLiveSession(RecoveryTrigger::EngineDeath);
             return;
         }
         ApplyRecoveryDecision(
@@ -2005,7 +1987,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     {
         const EngineDeathReport report = BuildEngineDeathReport(sessionId);
         CloseLiveSession();
-        ClearRecoveryWindow();
+        ClearCooldownWindow();
         ResolveAllPending(StatusCode::CrashedDuringExecution);
         ApplyEngineDeathRecoveryDecision(report);
     }
@@ -2160,7 +2142,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             StatusCode waitStatus = StatusCode::PeerDisconnected;
             if (snapshot.lifecycleState == ClientLifecycleState::Cooldown) {
                 waitStatus = WaitForRecovery(deadline);
-            } else if (snapshot.recoveryPending || snapshot.lifecycleState == ClientLifecycleState::Recovering) {
+            } else if (snapshot.lifecycleState == ClientLifecycleState::Recovering) {
                 waitStatus = WaitForRecoveryRetry(deadline);
             }
             if (waitStatus != StatusCode::Ok) {

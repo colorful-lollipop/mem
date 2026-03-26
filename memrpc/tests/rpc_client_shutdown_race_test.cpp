@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
@@ -75,7 +76,7 @@ TEST(RpcClientShutdownRaceTest, InvokeAsyncFailureThenShutdownRemainsFast)
         ASSERT_TRUE(future.IsReady());
 
         MemRpc::RpcReply reply;
-        EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+        EXPECT_NE(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
         const auto start = std::chrono::steady_clock::now();
         client.Shutdown();

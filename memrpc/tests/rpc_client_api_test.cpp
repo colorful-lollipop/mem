@@ -85,7 +85,7 @@ TEST(RpcClientApiTest, PublicHeaderComposes)
 
     auto future = client.InvokeAsync(call);
     EXPECT_TRUE(future.IsReady());
-    EXPECT_NE(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_NE(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 }
 // NOLINTEND(readability-function-cognitive-complexity)
 
@@ -101,7 +101,7 @@ TEST(RpcClientApiTest, PublicHeaderSupportsMoveAwareCallAndReplyApis)
     MemRpc::RpcReply reply;
     auto future = client.InvokeAsync(std::move(call));
     EXPECT_TRUE(future.IsReady());
-    EXPECT_NE(future.WaitAndTake(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_NE(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 }
 
 TEST(RpcClientApiTest, InvokeAsyncBeforeInitReturnsClientClosed)
@@ -112,7 +112,7 @@ TEST(RpcClientApiTest, InvokeAsyncBeforeInitReturnsClientClosed)
     MemRpc::RpcReply reply;
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     EXPECT_TRUE(future.IsReady());
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::ClientClosed);
     EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
 }
 
@@ -156,7 +156,7 @@ TEST(RpcClientApiTest, PreInitInvokeDoesNotTriggerRecoveryPolicy)
 
     auto future = client.InvokeAsync(call);
     MemRpc::RpcReply reply;
-    const MemRpc::StatusCode status = future.Wait(&reply);
+    const MemRpc::StatusCode status = std::move(future).Wait(&reply);
 
     std::lock_guard<std::mutex> lock(mutex);
     EXPECT_EQ(status, MemRpc::StatusCode::ClientClosed);
@@ -176,7 +176,7 @@ TEST(RpcClientApiTest, ShutdownMakesClientPermanentlyTerminal)
     MemRpc::RpcReply reply;
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     EXPECT_TRUE(future.IsReady());
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::ClientClosed);
     EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
 
     const MemRpc::RecoveryRuntimeSnapshot snapshot = client.GetRecoveryRuntimeSnapshot();
@@ -206,7 +206,7 @@ TEST(RpcClientApiTest, ShutdownAfterInitStillRejectsInvokeAsyncImmediately)
     MemRpc::RpcReply reply;
     auto future = client.InvokeAsync(MemRpc::RpcCall{});
     EXPECT_TRUE(future.IsReady());
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::ClientClosed);
     EXPECT_EQ(reply.status, MemRpc::StatusCode::ClientClosed);
 
     server.Stop();

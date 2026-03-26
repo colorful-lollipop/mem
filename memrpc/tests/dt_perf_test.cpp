@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -183,7 +184,7 @@ TEST(DtPerfTest, ShortPerfBaseline)
             call.payload.assign(payload_size, static_cast<uint8_t>('x'));
             auto future = client.InvokeAsync(call);
             MemRpc::RpcReply reply;
-            (void)future.Wait(&reply);
+            (void)std::move(future).Wait(&reply);
         }
 
         std::atomic<uint64_t> ops{0};
@@ -201,7 +202,7 @@ TEST(DtPerfTest, ShortPerfBaseline)
                     call.payload.assign(payload_size, static_cast<uint8_t>('a' + (i % 8)));
                     auto future = client.InvokeAsync(call);
                     MemRpc::RpcReply reply;
-                    if (future.Wait(&reply) == MemRpc::StatusCode::Ok) {
+                    if (std::move(future).Wait(&reply) == MemRpc::StatusCode::Ok) {
                         ++ops;
                     }
                 }
@@ -221,7 +222,7 @@ TEST(DtPerfTest, ShortPerfBaseline)
             const auto t0 = std::chrono::steady_clock::now();
             auto future = client.InvokeAsync(call);
             MemRpc::RpcReply reply;
-            MemRpc::StatusCode status = future.Wait(&reply);
+            MemRpc::StatusCode status = std::move(future).Wait(&reply);
             const auto t1 = std::chrono::steady_clock::now();
             ASSERT_EQ(status, MemRpc::StatusCode::Ok);
             const double us =

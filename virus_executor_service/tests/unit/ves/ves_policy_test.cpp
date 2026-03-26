@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <unordered_map>
 
 #define private public
@@ -327,7 +328,7 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure)
 
     auto future = client.InvokeAsync(call);
     MemRpc::RpcReply reply;
-    auto status = future.Wait(&reply);
+    auto status = std::move(future).Wait(&reply);
 
     EXPECT_EQ(status, MemRpc::StatusCode::ExecTimeout);
     EXPECT_TRUE(failureCalled.load());

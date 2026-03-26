@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "memrpc/client/rpc_client.h"
 #include "service/virus_executor_service.h"
@@ -86,7 +87,7 @@ TEST(VesRecoveryReasonTest, BusyMapsToBusyReason)
     EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::Busy));
 
     MemRpc::RpcReply rpcReply;
-    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&rpcReply), MemRpc::StatusCode::Ok);
     client.Shutdown();
     service->OnStop();
 }
@@ -118,7 +119,7 @@ TEST(VesRecoveryReasonTest, LongRunningMapsToLongRunningReason)
     EXPECT_EQ(reply.reasonCode, static_cast<uint32_t>(VesHeartbeatReasonCode::LongRunning));
 
     MemRpc::RpcReply rpcReply;
-    EXPECT_EQ(future.Wait(&rpcReply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&rpcReply), MemRpc::StatusCode::Ok);
     client.Shutdown();
     service->OnStop();
 }

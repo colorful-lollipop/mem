@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/rpc_client.h"
@@ -71,7 +72,7 @@ TEST(TypedFutureTest, WaitDecodesReply)
     auto future = MemRpc::InvokeTypedAsync<TestMsg, TestMsg>(&client, kEchoOpcode, request);
 
     TestMsg reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
     EXPECT_EQ(reply.value, 42);
 
     client.Shutdown();
@@ -102,7 +103,7 @@ TEST(TypedFutureTest, DecodeFailureReturnsProtocolMismatch)
     MemRpc::TypedFuture<TestMsg> future(client.InvokeAsync(call));
 
     TestMsg reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::ProtocolMismatch);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::ProtocolMismatch);
 
     client.Shutdown();
     server.Stop();
@@ -130,7 +131,7 @@ TEST(TypedFutureTest, IsReadyDelegates)
 
     // Wait for completion, then check IsReady.
     TestMsg reply;
-    EXPECT_EQ(future.Wait(&reply), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
     client.Shutdown();
     server.Stop();

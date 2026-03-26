@@ -5,9 +5,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "memrpc/client/dev_bootstrap.h"
@@ -19,6 +21,18 @@ namespace {
 constexpr MemRpc::Opcode kFaultInjectionOpcode = 301U;
 constexpr uint32_t kFaultEventDomain = 7U;
 constexpr uint32_t kFaultEventType = 11U;
+
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return predicate();
+}
 
 void CloseFd(int* fd)
 {
@@ -130,7 +144,8 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
 
     RpcReply reply;
     auto future = client.InvokeAsync(call);
-    EXPECT_EQ(future.WaitFor(&reply, std::chrono::seconds(1)), StatusCode::Ok);
+    ASSERT_TRUE(WaitFor([&]() { return future.IsReady(); }, std::chrono::seconds(1)));
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
     EXPECT_EQ(reply.payload, call.payload);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -159,14 +174,14 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureLeavesBlockedAdmiss
     auto second_future = client.InvokeAsync(call);
 
     RpcReply second_reply;
-    EXPECT_EQ(second_future.WaitFor(&second_reply, std::chrono::seconds(1)), StatusCode::QueueTimeout);
+    EXPECT_FALSE(WaitFor([&]() { return second_future.IsReady(); }, std::chrono::seconds(1)));
 
     client.Shutdown();
 
-    EXPECT_EQ(second_future.Wait(&second_reply), StatusCode::ClientClosed);
+    EXPECT_EQ(std::move(second_future).Wait(&second_reply), StatusCode::ClientClosed);
 
     RpcReply first_reply;
-    EXPECT_NE(first_future.WaitFor(&first_reply, std::chrono::milliseconds(500)), StatusCode::Ok);
+    EXPECT_NE(std::move(first_future).Wait(&first_reply), StatusCode::Ok);
 }
 
 TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling)
@@ -193,7 +208,8 @@ TEST(RpcEventFdFaultInjectionTest, ServerResponseSignalFailureFallsBackToPolling
 
     RpcReply reply;
     auto future = client.InvokeAsync(call);
-    EXPECT_EQ(future.WaitFor(&reply, std::chrono::seconds(1)), StatusCode::Ok);
+    ASSERT_TRUE(WaitFor([&]() { return future.IsReady(); }, std::chrono::seconds(1)));
+    EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
     EXPECT_EQ(reply.payload, call.payload);
 
     client.Shutdown();
