@@ -202,10 +202,8 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
         recoveredActiveEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
     EXPECT_EQ(recoveredActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(recoveredActiveEvent.previousSessionId, initialActiveEvent.sessionId);
     EXPECT_NE(recoveredActiveEvent.sessionId, 0u);
 
     RpcCall call;

@@ -309,11 +309,9 @@ TEST(EngineDeathHandlerTest, RestartDelayBlocksDemandReconnectUntilCooldownExpir
         recoveredActiveEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(cooldownEvent.state, MemRpc::ClientLifecycleState::Cooldown);
     EXPECT_EQ(cooldownEvent.cooldownDelayMs, 200u);
     EXPECT_EQ(recoveredActiveEvent.state, MemRpc::ClientLifecycleState::Active);
-    EXPECT_EQ(recoveredActiveEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
     restarted_server.Stop();

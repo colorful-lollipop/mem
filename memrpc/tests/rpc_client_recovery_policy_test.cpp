@@ -54,7 +54,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryRuntimeSnapshotDefaults)
     EXPECT_EQ(snapshot.cooldownRemainingMs, 0u);
     EXPECT_EQ(snapshot.currentSessionId, 0u);
     EXPECT_EQ(snapshot.lastOpenedSessionId, 0u);
-    EXPECT_EQ(snapshot.lastClosedSessionId, 0u);
 }
 
 TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)
@@ -66,7 +65,6 @@ TEST(RpcClientRecoveryPolicyTest, RecoveryEventReportDefaults)
     EXPECT_EQ(report.cooldownDelayMs, 0u);
     EXPECT_EQ(report.cooldownRemainingMs, 0u);
     EXPECT_EQ(report.sessionId, 0u);
-    EXPECT_EQ(report.previousSessionId, 0u);
     EXPECT_EQ(report.monotonicMs, 0u);
 }
 

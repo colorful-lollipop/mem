@@ -228,11 +228,9 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
         reopenedEvent = recoveryEvents.back();
     }
     EXPECT_EQ(initialActiveEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(initialActiveEvent.previousSessionId, 0u);
     EXPECT_EQ(idleClosedEvent.state, ClientLifecycleState::IdleClosed);
     EXPECT_EQ(recoveringEvent.state, ClientLifecycleState::Recovering);
     EXPECT_EQ(reopenedEvent.state, ClientLifecycleState::Active);
-    EXPECT_EQ(reopenedEvent.previousSessionId, initialActiveEvent.sessionId);
 
     client.Shutdown();
     server.Stop();

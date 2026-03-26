@@ -525,7 +525,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         void PrepareForInitOpen()
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            nextSessionOpenDelayMs_ = 0;
             cooldownUntilMs_ = 0;
             lifecycleState_ = ClientLifecycleState::Uninitialized;
         }
@@ -538,28 +537,24 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         struct SessionLifecycleIds {
             uint64_t currentSessionId = 0;
-            uint64_t lastClosedSessionId = 0;
         };
 
         void BeginSessionOpen(ClientLifecycleState lifecycleState, const SessionLifecycleIds& sessionIds)
         {
             if (lifecycleState != ClientLifecycleState::Recovering &&
                 lifecycleState != ClientLifecycleState::Uninitialized) {
-                EnterRecovering(sessionIds.currentSessionId, sessionIds.lastClosedSessionId);
+                EnterRecovering(sessionIds.currentSessionId);
             }
         }
 
         void FinalizeSessionOpen(uint64_t sessionId, const SessionLifecycleIds& sessionIds)
         {
-            uint32_t scheduledDelayMs = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                scheduledDelayMs = nextSessionOpenDelayMs_;
-                nextSessionOpenDelayMs_ = 0;
                 lastOpenedSessionId_ = sessionId;
                 cooldownUntilMs_ = 0;
             }
-            TransitionLifecycle(ClientLifecycleState::Active, scheduledDelayMs, sessionIds);
+            TransitionLifecycle(ClientLifecycleState::Active, 0, sessionIds);
             NotifyWaiters();
         }
 
@@ -573,7 +568,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             if (lifecycleState == ClientLifecycleState::Recovering || lifecycleState == ClientLifecycleState::Cooldown) {
                 HILOGW("RpcClient::EnsureLiveSession abandoning recovery after open failure: status=%{public}d",
                        static_cast<int>(status));
-                EnterNoSession(sessionIds.currentSessionId, sessionIds.lastClosedSessionId);
+                EnterNoSession(sessionIds.currentSessionId);
             }
             HILOGE("RpcClient::EnsureLiveSession failed to open session: status=%{public}d lifecycle=%{public}d",
                    static_cast<int>(status),
@@ -585,78 +580,61 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                                  const SessionLifecycleIds& sessionIds)
         {
             RecoveryEventCallback callback;
-            RecoveryEventReport report;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                const ClientLifecycleState previousState = lifecycleState_;
-                lifecycleState_ = state;
                 callback = recoveryEventCallback_;
-                report.previousState = previousState;
-                report.state = state;
-                report.recoveryPending = HasPendingRecoveryLocked();
-                report.cooldownDelayMs = cooldownDelayMs;
-                report.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
-                report.sessionId = sessionIds.currentSessionId;
-                report.previousSessionId = sessionIds.lastClosedSessionId;
-                report.monotonicMs = MonotonicNowMs64();
-            }
-            if (callback) {
-                callback(report);
+                DispatchRecoveryEvent(callback, BuildTransitionReportLocked(state, cooldownDelayMs, sessionIds));
             }
         }
 
-        void StartRecovery(uint32_t delayMs, uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void StartRecovery(uint32_t delayMs, uint64_t currentSessionId)
         {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                nextSessionOpenDelayMs_ = delayMs;
                 cooldownUntilMs_ = MonotonicNowMs64() + delayMs;
             }
-            const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
+            const SessionLifecycleIds sessionIds{currentSessionId};
             TransitionLifecycle(delayMs == 0 ? ClientLifecycleState::Recovering : ClientLifecycleState::Cooldown,
                                 delayMs,
                                 sessionIds);
             NotifyWaiters();
         }
 
-        void EnterRecovering(uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void EnterRecovering(uint64_t currentSessionId)
         {
-            const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
+            const SessionLifecycleIds sessionIds{currentSessionId};
             TransitionLifecycle(ClientLifecycleState::Recovering, 0, sessionIds);
         }
 
-        void EnterNoSession(uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void EnterNoSession(uint64_t currentSessionId)
         {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 cooldownUntilMs_ = 0;
-                nextSessionOpenDelayMs_ = 0;
             }
-            const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
+            const SessionLifecycleIds sessionIds{currentSessionId};
             TransitionLifecycle(ClientLifecycleState::NoSession, 0, sessionIds);
             NotifyWaiters();
         }
 
-        void EnterIdleClosed(uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void EnterIdleClosed(uint64_t currentSessionId)
         {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 cooldownUntilMs_ = 0;
-                nextSessionOpenDelayMs_ = 0;
             }
-            const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
+            const SessionLifecycleIds sessionIds{currentSessionId};
             TransitionLifecycle(ClientLifecycleState::IdleClosed, 0, sessionIds);
             NotifyWaiters();
         }
 
-        void EnterTerminalClosed(uint64_t currentSessionId, uint64_t lastClosedSessionId)
+        void EnterTerminalClosed(uint64_t currentSessionId)
         {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 cooldownUntilMs_ = 0;
-                nextSessionOpenDelayMs_ = 0;
             }
-            const SessionLifecycleIds sessionIds{currentSessionId, lastClosedSessionId};
+            const SessionLifecycleIds sessionIds{currentSessionId};
             TransitionLifecycle(ClientLifecycleState::Closed, 0, sessionIds);
             NotifyWaiters();
         }
@@ -701,7 +679,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return WaitForRecoveryState(deadline, workersRunning, clientControlState, RecoveryWaitMode::RetryTick);
         }
 
-        RecoveryRuntimeSnapshot GetSnapshot(uint64_t currentSessionId, uint64_t lastClosedSessionId) const
+        RecoveryRuntimeSnapshot GetSnapshot(uint64_t currentSessionId) const
         {
             std::lock_guard<std::mutex> lock(mutex_);
             RecoveryRuntimeSnapshot snapshot;
@@ -710,7 +688,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             snapshot.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
             snapshot.currentSessionId = currentSessionId;
             snapshot.lastOpenedSessionId = lastOpenedSessionId_;
-            snapshot.lastClosedSessionId = lastClosedSessionId;
             return snapshot;
         }
 
@@ -819,6 +796,30 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                    lifecycleState_ == ClientLifecycleState::Cooldown;
         }
 
+        [[nodiscard]] RecoveryEventReport BuildTransitionReportLocked(
+            ClientLifecycleState nextState,
+            uint32_t cooldownDelayMs,
+            const SessionLifecycleIds& sessionIds)
+        {
+            RecoveryEventReport report;
+            report.previousState = lifecycleState_;
+            lifecycleState_ = nextState;
+            report.state = nextState;
+            report.recoveryPending = HasPendingRecoveryLocked();
+            report.cooldownDelayMs = cooldownDelayMs;
+            report.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemainingLocked().count());
+            report.sessionId = sessionIds.currentSessionId;
+            report.monotonicMs = MonotonicNowMs64();
+            return report;
+        }
+
+        static void DispatchRecoveryEvent(const RecoveryEventCallback& callback, const RecoveryEventReport& report)
+        {
+            if (callback) {
+                callback(report);
+            }
+        }
+
         std::chrono::milliseconds CooldownRemainingLocked() const
         {
             return ::MemRpc::CooldownRemaining(cooldownUntilMs_);
@@ -829,8 +830,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         RecoveryEventCallback recoveryEventCallback_;
         ClientLifecycleState lifecycleState_ = ClientLifecycleState::Uninitialized;
         uint64_t cooldownUntilMs_ = 0;
-        // Carries the most recently scheduled recovery delay into the next Active transition report.
-        uint32_t nextSessionOpenDelayMs_ = 0;
         uint64_t lastOpenedSessionId_ = 0;
     };
 
@@ -1230,7 +1229,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     std::atomic<bool> submitterWaitingForCredit_{false};
     std::atomic<uint64_t> nextRequestId_{1};
     std::atomic<uint64_t> lastActivityMs_{0};
-    std::atomic<uint64_t> lastClosedSessionId_{0};
     std::atomic<uint64_t> lastHandledEngineDeathSessionId_{0};
 
     // Shared state snapshots and callback plumbing.
@@ -1441,7 +1439,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     void FinalizeSessionOpen(uint64_t sessionId)
     {
         lastHandledEngineDeathSessionId_.store(0, std::memory_order_release);
-        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId(), LastClosedSessionId()};
+        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId()};
         recoveryState_.FinalizeSessionOpen(sessionId, sessionIds);
     }
 
@@ -1482,11 +1480,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (observedSessionId != 0) {
             return observedSessionId;
         }
-        const uint64_t currentSessionId = CurrentSessionId();
-        if (currentSessionId != 0) {
-            return currentSessionId;
-        }
-        return LastClosedSessionId();
+        return CurrentSessionId();
     }
 
     bool TryBeginEngineDeathHandling(uint64_t deadSessionId)
@@ -1631,14 +1625,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     }
 
     // Lifecycle and session orchestration.
-    uint64_t LastClosedSessionId() const
-    {
-        return lastClosedSessionId_.load(std::memory_order_acquire);
-    }
-
     void HandleSessionOpenFailure(StatusCode status)
     {
-        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId(), LastClosedSessionId()};
+        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId()};
         recoveryState_.HandleSessionOpenFailure(status, sessionIds);
     }
 
@@ -1663,10 +1652,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void CloseLiveSession()
     {
-        const uint64_t closedSessionId = sessionTransport_.CloseLiveSession();
-        if (closedSessionId != 0) {
-            lastClosedSessionId_.store(closedSessionId, std::memory_order_release);
-        }
+        (void)sessionTransport_.CloseLiveSession();
     }
 
     void CloseSessionAndEnterIdleClosed()
@@ -1676,7 +1662,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
         ClearCooldownWindow();
         CloseLiveSession();
-        recoveryState_.EnterIdleClosed(CurrentSessionId(), LastClosedSessionId());
+        recoveryState_.EnterIdleClosed(CurrentSessionId());
     }
 
     // This transition only updates recovery state. Callers must already know
@@ -1687,13 +1673,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!IsApiOpen()) {
             return;
         }
-        recoveryState_.EnterNoSession(CurrentSessionId(), LastClosedSessionId());
+        recoveryState_.EnterNoSession(CurrentSessionId());
     }
 
     void CloseSessionAndEnterTerminalClosed()
     {
         CloseLiveSession();
-        recoveryState_.EnterTerminalClosed(CurrentSessionId(), LastClosedSessionId());
+        recoveryState_.EnterTerminalClosed(CurrentSessionId());
     }
 
     void ScheduleRecovery(uint32_t delayMs, PendingRequestRecoveryAction pendingAction)
@@ -1701,7 +1687,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (!IsApiOpen()) {
             return;
         }
-        recoveryState_.StartRecovery(delayMs, CurrentSessionId(), LastClosedSessionId());
+        recoveryState_.StartRecovery(delayMs, CurrentSessionId());
         CloseLiveSession();
         HandlePendingRequestsForRecovery(pendingAction);
         MaybeReconnectImmediately(delayMs);
@@ -1736,7 +1722,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         if (sessionTransport_.HasLiveSession()) {
             return StatusCode::Ok;
         }
-        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId(), LastClosedSessionId()};
+        const ClientRecoveryState::SessionLifecycleIds sessionIds{CurrentSessionId()};
         recoveryState_.BeginSessionOpen(LifecycleState(), sessionIds);
         const StatusCode status = OpenSession();
         if (status != StatusCode::Ok) {
@@ -2137,7 +2123,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const
     {
-        return recoveryState_.GetSnapshot(CurrentSessionId(), LastClosedSessionId());
+        return recoveryState_.GetSnapshot(CurrentSessionId());
     }
 
     StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke)

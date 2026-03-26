@@ -118,7 +118,6 @@ struct RecoveryRuntimeSnapshot {
     uint32_t cooldownRemainingMs = 0;
     uint64_t currentSessionId = 0;
     uint64_t lastOpenedSessionId = 0;
-    uint64_t lastClosedSessionId = 0;
 };
 
 struct RecoveryEventReport {
@@ -128,7 +127,6 @@ struct RecoveryEventReport {
     uint32_t cooldownDelayMs = 0;
     uint32_t cooldownRemainingMs = 0;
     uint64_t sessionId = 0;
-    uint64_t previousSessionId = 0;
     uint64_t monotonicMs = 0;
 };
 
