@@ -1376,7 +1376,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
     void FailOutstandingWork(StatusCode status)
     {
-        FailAllPending(status);
+        FailAllPendingWithRecoveryPolicy(status);
         FailQueuedSubmissions(status);
     }
 
@@ -1561,10 +1561,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         const RpcFailure failure = BuildFailureReport(info, status, stage);
         const RecoveryDecision decision = policy.onFailure(failure);
-        ApplyRecoveryDecision(decision, RecoveryTriggerForStatus(status));
+        ApplyPolicyRecoveryDecision(decision, RecoveryTriggerForStatus(status));
     }
 
-    void ApplyRecoveryDecision(const RecoveryDecision& decision, RecoveryTrigger trigger)
+    void ApplyPolicyRecoveryDecision(const RecoveryDecision& decision, RecoveryTrigger trigger)
     {
         if (!IsApiOpen()) {
             return;
@@ -1578,7 +1578,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             case RecoveryAction::ManualShutdown:
                 return;
             case RecoveryAction::Restart:
-                ScheduleRecovery(trigger, SessionOpenReason::RestartRecovery, decision.delayMs);
+                SchedulePolicyRecovery(trigger, SessionOpenReason::RestartRecovery, decision.delayMs);
                 return;
         }
     }
@@ -1613,17 +1613,21 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         ResolveState(future, std::move(reply));
     }
 
-    void FailAllPending(StatusCode status)
+    void ResolveAllPending(StatusCode status)
     {
         std::vector<PendingRequest> toFail = requestStore_.TakeAll();
         for (auto& pending : toFail) {
-            if (status == StatusCode::CrashedDuringExecution) {
-                RpcReply reply;
-                reply.status = status;
-                ResolveState(pending.future, std::move(reply));
-            } else {
-                FailAndResolve(pending.info, status, FailureStageForStatus(status), pending.future);
-            }
+            RpcReply reply;
+            reply.status = status;
+            ResolveState(pending.future, std::move(reply));
+        }
+    }
+
+    void FailAllPendingWithRecoveryPolicy(StatusCode status)
+    {
+        std::vector<PendingRequest> toFail = requestStore_.TakeAll();
+        for (auto& pending : toFail) {
+            FailAndResolve(pending.info, status, FailureStageForStatus(status), pending.future);
         }
     }
 
@@ -1725,14 +1729,25 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         recoveryState_.EnterTerminalClosed(CurrentSessionId(), LastClosedSessionId());
     }
 
-    void ScheduleRecovery(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs)
+    void SchedulePolicyRecovery(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs)
     {
         if (!IsApiOpen()) {
             return;
         }
         recoveryState_.StartRecovery(trigger, openReason, delayMs, CurrentSessionId(), LastClosedSessionId());
         CloseLiveSession();
-        FailAllPending(StatusCode::PeerDisconnected);
+        FailAllPendingWithRecoveryPolicy(StatusCode::PeerDisconnected);
+        MaybeReconnectImmediately(delayMs);
+    }
+
+    void ScheduleExternalHealthRecovery(RecoveryTrigger trigger, SessionOpenReason openReason, uint32_t delayMs)
+    {
+        if (!IsApiOpen()) {
+            return;
+        }
+        recoveryState_.StartRecovery(trigger, openReason, delayMs, CurrentSessionId(), LastClosedSessionId());
+        CloseLiveSession();
+        ResolveAllPending(StatusCode::PeerDisconnected);
         MaybeReconnectImmediately(delayMs);
     }
 
@@ -1983,7 +1998,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     void ApplyIdleRecoveryDecision(const RecoveryPolicy& policy, uint64_t idleMs)
     {
         const RecoveryDecision decision = policy.onIdle(idleMs);
-        ApplyRecoveryDecision(decision, RecoveryTrigger::IdlePolicy);
+        ApplyPolicyRecoveryDecision(decision, RecoveryTrigger::IdlePolicy);
     }
 
     void MaybeRunIdlePolicy()
@@ -2094,7 +2109,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         const EngineDeathReport report = BuildEngineDeathReport(sessionId);
         CloseLiveSession();
         ClearRecoveryWindow();
-        FailAllPending(StatusCode::CrashedDuringExecution);
+        ResolveAllPending(StatusCode::CrashedDuringExecution);
         ApplyEngineDeathRecoveryDecision(report);
     }
 
@@ -2169,7 +2184,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                static_cast<int>(request.signal),
                static_cast<unsigned long long>(request.sessionId),
                request.delayMs);
-        ScheduleRecovery(
+        ScheduleExternalHealthRecovery(
             RecoveryTrigger::ExternalHealthSignal, SessionOpenReason::ExternalRecovery, request.delayMs);
     }
 
