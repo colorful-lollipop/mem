@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -61,6 +62,18 @@ void CloseHandles(MemRpc::BootstrapHandles& h)
         close(h.reqCreditEventFd);
     if (h.respCreditEventFd >= 0)
         close(h.respCreditEventFd);
+}
+
+bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return predicate();
 }
 
 }  // namespace
@@ -348,6 +361,13 @@ TEST(EngineDeathHandlerTest, IgnoreLeavesClientDisconnectedUntilDemandReconnect)
 
     bootstrap->SimulateEngineDeathForTest();
 
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            return snapshot.lifecycleState == MemRpc::ClientLifecycleState::NoSession &&
+                   snapshot.currentSessionId == 0u && !snapshot.recoveryPending;
+        },
+        std::chrono::milliseconds(500)));
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
     EXPECT_FALSE(disconnectedSnapshot.recoveryPending);
@@ -394,10 +414,76 @@ TEST(EngineDeathHandlerTest, DuplicateEngineDeathSignalIsIgnoredForSameSession)
     bootstrap->SimulateEngineDeathForTest(deadSessionId);
     bootstrap->SimulateEngineDeathForTest(deadSessionId);
 
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            return engineDeathCalls.load(std::memory_order_relaxed) == 1 &&
+                   snapshot.lifecycleState == MemRpc::ClientLifecycleState::NoSession &&
+                   snapshot.currentSessionId == 0u;
+        },
+        std::chrono::milliseconds(500)));
     EXPECT_EQ(engineDeathCalls.load(std::memory_order_relaxed), 1);
     const auto disconnectedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(disconnectedSnapshot.lifecycleState, MemRpc::ClientLifecycleState::NoSession);
     EXPECT_EQ(disconnectedSnapshot.currentSessionId, 0u);
+
+    client.Shutdown();
+    server.Stop();
+}
+
+TEST(EngineDeathHandlerTest, StaleOldSessionEngineDeathDoesNotTearDownRecoveredSession)
+{
+    constexpr MemRpc::Opcode kEchoOpcode = static_cast<MemRpc::Opcode>(205);
+
+    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+    MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+    CloseHandles(unusedHandles);
+
+    MemRpc::RpcServer server;
+    server.SetBootstrapHandles(bootstrap->serverHandles());
+    server.RegisterHandler(kEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+        reply->status = MemRpc::StatusCode::Ok;
+    });
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcClient client(bootstrap);
+    std::atomic<int> engineDeathCalls{0};
+    MemRpc::RecoveryPolicy policy;
+    policy.onEngineDeath = [&](const MemRpc::EngineDeathReport&) {
+        engineDeathCalls.fetch_add(1, std::memory_order_relaxed);
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+    };
+    client.SetRecoveryPolicy(std::move(policy));
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcCall call;
+    call.opcode = kEchoOpcode;
+    MemRpc::RpcReply reply;
+    ASSERT_EQ(client.InvokeAsync(call).Wait(&reply), MemRpc::StatusCode::Ok);
+
+    const uint64_t firstSessionId = client.GetRecoveryRuntimeSnapshot().currentSessionId;
+    ASSERT_NE(firstSessionId, 0u);
+
+    bootstrap->SimulateEngineDeathForTest(firstSessionId);
+
+    uint64_t recoveredSessionId = 0;
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            recoveredSessionId = snapshot.currentSessionId;
+            return snapshot.lifecycleState == MemRpc::ClientLifecycleState::Active && recoveredSessionId != 0u &&
+                   recoveredSessionId != firstSessionId;
+        },
+        std::chrono::milliseconds(500)));
+
+    bootstrap->SimulateEngineDeathForTest(firstSessionId);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const auto finalSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(engineDeathCalls.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(finalSnapshot.lifecycleState, MemRpc::ClientLifecycleState::Active);
+    EXPECT_EQ(finalSnapshot.currentSessionId, recoveredSessionId);
 
     client.Shutdown();
     server.Stop();

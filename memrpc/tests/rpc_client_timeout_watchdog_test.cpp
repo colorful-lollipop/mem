@@ -111,6 +111,16 @@ void CloseHandles(MemRpc::BootstrapHandles& h)
     }
 }
 
+void StartEchoServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap, MemRpc::RpcServer* server)
+{
+    server->SetBootstrapHandles(bootstrap->serverHandles());
+    server->RegisterHandler(kTestEchoOpcode,
+                            [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                                reply->status = MemRpc::StatusCode::Ok;
+                            });
+    ASSERT_EQ(server->Start(), MemRpc::StatusCode::Ok);
+}
+
 }  // namespace
 
 namespace MemRpc {
@@ -360,11 +370,7 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart)
         CloseHandles(unusedHandles);
 
         MemRpc::RpcServer server;
-        server.SetBootstrapHandles(rawBootstrap->serverHandles());
-        server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
-            reply->status = MemRpc::StatusCode::Ok;
-        });
-        ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+        StartEchoServer(rawBootstrap, &server);
 
         auto bootstrap = std::make_shared<HealthAwareBootstrapChannel>(rawBootstrap);
         bootstrap->SetHealthStatus(MemRpc::ChannelHealthStatus::Healthy);
@@ -374,8 +380,11 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart)
 
         bootstrap->SetHealthStatus(signal);
         ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; }, std::chrono::milliseconds(500)));
+        server.Stop();
         bootstrap->SetHealthStatus(MemRpc::ChannelHealthStatus::Healthy);
         ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; }, std::chrono::milliseconds(500)));
+        MemRpc::RpcServer restartedServer;
+        StartEchoServer(rawBootstrap, &restartedServer);
 
         MemRpc::RpcCall call;
         call.opcode = kTestEchoOpcode;
@@ -384,7 +393,7 @@ TEST(RpcClientTimeoutWatchdogTest, HealthFailuresTriggerWatchdogRestart)
         EXPECT_EQ(std::move(future).Wait(&reply), MemRpc::StatusCode::Ok);
 
         client.Shutdown();
-        server.Stop();
+        restartedServer.Stop();
     }
 }
 

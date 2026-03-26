@@ -77,6 +77,16 @@ void CloseHandles(MemRpc::BootstrapHandles& h)
     }
 }
 
+void StartEchoServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap, MemRpc::RpcServer* server)
+{
+    server->SetBootstrapHandles(bootstrap->serverHandles());
+    server->RegisterHandler(kTestEchoOpcode,
+                            [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                                reply->status = MemRpc::StatusCode::Ok;
+                            });
+    ASSERT_EQ(server->Start(), MemRpc::StatusCode::Ok);
+}
+
 }  // namespace
 
 namespace MemRpc {
@@ -89,10 +99,7 @@ TEST(RpcClientIdleCallbackTest, FiresWhileIdle)
     CloseHandles(unused_handles);
 
     RpcServer server;
-    server.SetBootstrapHandles(bootstrap->serverHandles());
-    server.RegisterHandler(kTestEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(bootstrap, &server);
 
     RpcClient client(bootstrap);
     std::atomic<int> idle_hits{0};
@@ -167,10 +174,7 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     CloseHandles(unused_handles);
 
     RpcServer server;
-    server.SetBootstrapHandles(raw_bootstrap->serverHandles());
-    server.RegisterHandler(kTestEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(raw_bootstrap, &server);
 
     auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
     RpcClient client(bootstrap);
@@ -192,6 +196,13 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     EXPECT_GE(bootstrap->closeCount(), 1);
     const auto idleClosedSnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(idleClosedSnapshot.lifecycleState, ClientLifecycleState::IdleClosed);
+    server.Stop();
+
+    BootstrapHandles prewarmHandles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(raw_bootstrap->OpenSession(prewarmHandles), StatusCode::Ok);
+    CloseHandles(prewarmHandles);
+    RpcServer restartedServer;
+    StartEchoServer(raw_bootstrap, &restartedServer);
 
     RpcCall call;
     call.opcode = kTestEchoOpcode;
@@ -233,7 +244,7 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     EXPECT_EQ(reopenedEvent.state, ClientLifecycleState::Active);
 
     client.Shutdown();
-    server.Stop();
+    restartedServer.Stop();
 }
 
 }  // namespace MemRpc

@@ -50,6 +50,16 @@ bool WaitFor(const std::function<bool()>& predicate, std::chrono::milliseconds t
     return predicate();
 }
 
+void StartEchoServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap, MemRpc::RpcServer* server)
+{
+    server->SetBootstrapHandles(bootstrap->serverHandles());
+    server->RegisterHandler(kEchoOpcode,
+                            [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
+                                reply->status = MemRpc::StatusCode::Ok;
+                            });
+    ASSERT_EQ(server->Start(), MemRpc::StatusCode::Ok);
+}
+
 class CountingBootstrapChannel final : public MemRpc::IBootstrapChannel {
 public:
     explicit CountingBootstrapChannel(std::shared_ptr<MemRpc::DevBootstrapChannel> delegate)
@@ -148,10 +158,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
     RpcClient client(bootstrap);
@@ -183,6 +190,9 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
 
     ASSERT_TRUE(WaitFor([&]() { return bootstrap->closeCount() >= 1; }, std::chrono::milliseconds(500)));
     ASSERT_TRUE(WaitFor([&]() { return bootstrap->openCount() >= 2; }, std::chrono::milliseconds(500)));
+    server.Stop();
+    RpcServer restartedServer;
+    StartEchoServer(rawBootstrap, &restartedServer);
     ASSERT_TRUE(WaitFor(
         [&]() {
             std::lock_guard<std::mutex> lock(recoveryEventMutex);
@@ -213,7 +223,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     EXPECT_EQ(std::move(future).Wait(&reply), StatusCode::Ok);
 
     client.Shutdown();
-    server.Stop();
+    restartedServer.Stop();
 }
 
 TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGate)
@@ -224,10 +234,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
     RpcClient client(bootstrap);
@@ -235,6 +242,16 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
 
     const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
     client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    server.Stop();
+
+    RpcServer restartedServer;
+    std::thread reopenThread([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        BootstrapHandles prewarmHandles = MakeDefaultBootstrapHandles();
+        ASSERT_EQ(rawBootstrap->OpenSession(prewarmHandles), StatusCode::Ok);
+        CloseHandles(prewarmHandles);
+        StartEchoServer(rawBootstrap, &restartedServer);
+    });
 
     RpcCall call;
     call.opcode = kEchoOpcode;
@@ -246,9 +263,10 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
     auto recoveredFuture = client.InvokeAsync(call);
     RpcReply recoveredReply;
     EXPECT_EQ(std::move(recoveredFuture).Wait(&recoveredReply), StatusCode::Ok);
+    reopenThread.join();
 
     client.Shutdown();
-    server.Stop();
+    restartedServer.Stop();
 }
 
 TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
@@ -259,10 +277,7 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     RpcClient client(rawBootstrap);
     ASSERT_EQ(client.Init(), StatusCode::Ok);
@@ -270,6 +285,12 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
     client.RequestExternalRecovery(
         {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
 
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            return snapshot.lifecycleState == ClientLifecycleState::Cooldown && snapshot.recoveryPending;
+        },
+        std::chrono::milliseconds(500)));
     const RpcClientRuntimeStats stats = client.GetRuntimeStats();
     EXPECT_GT(stats.cooldownRemainingMs, 0u);
     EXPECT_LE(stats.cooldownRemainingMs, 200u);
@@ -289,10 +310,7 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToNoSession)
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     auto bootstrap = std::make_shared<FailAfterFirstOpenBootstrapChannel>(rawBootstrap);
     RpcClient client(bootstrap);
@@ -333,10 +351,7 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     auto bootstrap = std::make_shared<CountingBootstrapChannel>(rawBootstrap);
     RpcClient client(bootstrap);
@@ -382,6 +397,16 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
 
     const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
     client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    server.Stop();
+
+    RpcServer restartedServer;
+    std::thread reopenThread([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        BootstrapHandles prewarmHandles = MakeDefaultBootstrapHandles();
+        ASSERT_EQ(rawBootstrap->OpenSession(prewarmHandles), StatusCode::Ok);
+        CloseHandles(prewarmHandles);
+        StartEchoServer(rawBootstrap, &restartedServer);
+    });
 
     RpcCall call;
     call.opcode = kEchoOpcode;
@@ -394,9 +419,10 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     EXPECT_GE(elapsed.count(), 180);
     EXPECT_LT(elapsed.count(), 1000);
+    reopenThread.join();
 
     client.Shutdown();
-    server.Stop();
+    restartedServer.Stop();
 }
 
 TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternalCooldown)
@@ -407,16 +433,23 @@ TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternal
     CloseHandles(unusedHandles);
 
     RpcServer server;
-    server.SetBootstrapHandles(rawBootstrap->serverHandles());
-    server.RegisterHandler(kEchoOpcode,
-                           [](const RpcServerCall&, RpcServerReply* reply) { reply->status = StatusCode::Ok; });
-    ASSERT_EQ(server.Start(), StatusCode::Ok);
+    StartEchoServer(rawBootstrap, &server);
 
     RpcClient client(rawBootstrap);
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
     client.RequestExternalRecovery(
         {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 150});
+    server.Stop();
+
+    RpcServer restartedServer;
+    std::thread reopenThread([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        BootstrapHandles prewarmHandles = MakeDefaultBootstrapHandles();
+        ASSERT_EQ(rawBootstrap->OpenSession(prewarmHandles), StatusCode::Ok);
+        CloseHandles(prewarmHandles);
+        StartEchoServer(rawBootstrap, &restartedServer);
+    });
 
     RpcCall call;
     call.opcode = kEchoOpcode;
@@ -431,9 +464,10 @@ TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternal
     EXPECT_EQ(reply.status, StatusCode::Ok);
     EXPECT_GE(elapsed.count(), 90);
     EXPECT_LT(elapsed.count(), 1000);
+    reopenThread.join();
 
     client.Shutdown();
-    server.Stop();
+    restartedServer.Stop();
 }
 
 }  // namespace MemRpc
