@@ -319,7 +319,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         uint64_t LoadSessionIdSnapshot() const
         {
-            return snapshot_.load(std::memory_order_acquire);
+            return snapshot_.load(std::memory_order_relaxed);
         }
 
         uint64_t CurrentSessionId() const
@@ -509,7 +509,10 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void PublishSessionIdLocked(uint64_t sessionId)
         {
-            snapshot_.store(sessionId, std::memory_order_release);
+            // The snapshot is only a session-generation token. session_ itself stays
+            // behind sessionMutex_, so readers do not rely on this atomic to publish
+            // any other state.
+            snapshot_.store(sessionId, std::memory_order_relaxed);
         }
 
         mutable std::mutex bootstrapMutex_;

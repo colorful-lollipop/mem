@@ -411,6 +411,16 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       COMMAND virus_executor_service_crash_recovery_test)
   set_tests_properties(virus_executor_service_crash_recovery_test PROPERTIES LABELS "dt")
 
+  add_executable(virus_executor_service_shutdown_lifecycle_test
+      tests/dt/ves_shutdown_lifecycle_test.cpp)
+  target_link_libraries(virus_executor_service_shutdown_lifecycle_test PRIVATE
+      virus_executor_service_lib
+      GTest::gtest_main
+  )
+  add_test(NAME virus_executor_service_shutdown_lifecycle_test
+      COMMAND virus_executor_service_shutdown_lifecycle_test)
+  set_tests_properties(virus_executor_service_shutdown_lifecycle_test PROPERTIES LABELS "dt")
+
   add_test(NAME virus_executor_service_supervisor_integration_test
       COMMAND virus_executor_service_supervisor
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -454,6 +464,7 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
 
   set_tests_properties(
       virus_executor_service_crash_recovery_test
+      virus_executor_service_shutdown_lifecycle_test
       virus_executor_service_testkit_dt_stability_test
       virus_executor_service_testkit_dt_perf_test
       PROPERTIES TIMEOUT ${VIRUS_EXECUTOR_SERVICE_DT_TEST_TIMEOUT_SEC})
@@ -480,7 +491,8 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
       virus_executor_service_sample_rules_test
       virus_executor_service_health_test
       virus_executor_service_policy_test
-      virus_executor_service_crash_recovery_test)
+      virus_executor_service_crash_recovery_test
+      virus_executor_service_shutdown_lifecycle_test)
   foreach(target IN LISTS virus_executor_service_warning_relaxed_targets)
     memrpc_relax_warnings_for_target(${target})
   endforeach()
@@ -511,7 +523,8 @@ if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
         virus_executor_service_sample_rules_test
         virus_executor_service_health_test
         virus_executor_service_policy_test
-        virus_executor_service_crash_recovery_test)
+        virus_executor_service_crash_recovery_test
+        virus_executor_service_shutdown_lifecycle_test)
     foreach(target IN LISTS virus_executor_service_tidy_excluded_targets)
       ves_maybe_disable_clang_tidy(${target})
     endforeach()

@@ -93,6 +93,9 @@ EngineSessionService::~EngineSessionService()
 MemRpc::StatusCode EngineSessionService::EnsureInitialized()
 {
     std::lock_guard<std::mutex> lock(initMutex_);
+    if (closing_) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
     if (initialized_) {
         return MemRpc::StatusCode::Ok;
     }
@@ -124,6 +127,9 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized()
     const MemRpc::StatusCode start_status = rpcServer_->Start();
     if (start_status != MemRpc::StatusCode::Ok) {
         HILOGE("RpcServer start failed");
+        rpcServer_.reset();
+        bootstrap_.reset();
+        anyCallHandlers_.clear();
         return start_status;
     }
 
@@ -188,15 +194,17 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
 {
     std::thread eventPublisherThread;
     std::shared_ptr<MemRpc::RpcServer> rpcServer;
+    std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap;
     {
         std::lock_guard<std::mutex> lock(initMutex_);
-        if (!initialized_) {
+        if (closing_ || !initialized_) {
             return MemRpc::StatusCode::Ok;
         }
+        closing_ = true;
         eventPublisherRunning_.store(false, std::memory_order_release);
         eventPublisherThread = std::move(eventPublisherThread_);
         rpcServer = std::move(rpcServer_);
-        bootstrap_.reset();
+        bootstrap = std::move(bootstrap_);
         initialized_ = false;
         sessionId_.store(0, std::memory_order_release);
     }
@@ -206,6 +214,11 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
     }
     if (rpcServer) {
         rpcServer->Stop();
+    }
+    bootstrap.reset();
+    {
+        std::lock_guard<std::mutex> lock(initMutex_);
+        closing_ = false;
     }
     HILOGI("EngineSessionService closed");
     return MemRpc::StatusCode::Ok;

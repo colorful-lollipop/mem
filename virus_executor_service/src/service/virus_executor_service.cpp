@@ -73,6 +73,9 @@ bool VirusExecutorService::Publish(VirusExecutorService* service)
 MemRpc::StatusCode VirusExecutorService::OpenSession(const VesOpenSessionRequest& request,
                                                      MemRpc::BootstrapHandles& handles)
 {
+    if (stopping_.load(std::memory_order_acquire)) {
+        return MemRpc::StatusCode::PeerDisconnected;
+    }
     const MemRpc::StatusCode configStatus = service_.ConfigureEngines(request);
     if (configStatus != MemRpc::StatusCode::Ok) {
         return configStatus;
@@ -142,6 +145,10 @@ MemRpc::StatusCode VirusExecutorService::Heartbeat(VesHeartbeatReply& heartbeat)
 MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& request, VesAnyCallReply& vesReply)
 {
     vesReply = VesAnyCallReply{};
+    if (stopping_.load(std::memory_order_acquire)) {
+        vesReply.status = MemRpc::StatusCode::PeerDisconnected;
+        return MemRpc::StatusCode::Ok;
+    }
     if (!service_.initialized()) {
         vesReply.status = MemRpc::StatusCode::PeerDisconnected;
         return MemRpc::StatusCode::Ok;
@@ -188,17 +195,17 @@ void VirusExecutorService::OnStart()
 void VirusExecutorService::OnStop()
 {
     HILOGI("OnStop");
-    stopping_.store(true);
+    stopping_.store(true, std::memory_order_release);
     std::shared_ptr<EngineSessionService> sessionService;
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
         sessionService = std::move(session_service_);
-        service_.SetEventPublisher({});
-        service_.ResetEngines();
     }
     if (sessionService) {
         sessionService->CloseSession();
     }
+    service_.SetEventPublisher({});
+    service_.ResetEngines();
     OHOS::SystemAbility::OnStop();
 }
 

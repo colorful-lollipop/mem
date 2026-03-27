@@ -54,6 +54,7 @@ private:
     std::shared_ptr<MemRpc::RpcServer> rpcServer_;
     mutable std::mutex initMutex_;
     bool initialized_ = false;
+    bool closing_ = false;
     std::atomic<uint64_t> sessionId_{0};
     std::atomic<bool> eventPublisherRunning_{false};
     std::thread eventPublisherThread_;
