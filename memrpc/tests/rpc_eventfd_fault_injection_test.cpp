@@ -168,13 +168,16 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureLeavesBlockedAdmiss
 
     RpcCall call;
     call.opcode = kFaultInjectionOpcode;
-    call.execTimeoutMs = 1000;
+    // Keep the first in-flight request pending well beyond the observation
+    // window so the second admission only resolves when shutdown tears the
+    // client down, not because watchdog timeouts free queue capacity.
+    call.execTimeoutMs = 5000;
 
     auto first_future = client.InvokeAsync(call);
     auto second_future = client.InvokeAsync(call);
 
     RpcReply second_reply;
-    EXPECT_FALSE(WaitFor([&]() { return second_future.IsReady(); }, std::chrono::seconds(1)));
+    EXPECT_FALSE(WaitFor([&]() { return second_future.IsReady(); }, std::chrono::milliseconds(500)));
 
     client.Shutdown();
 

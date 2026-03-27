@@ -241,41 +241,39 @@ std::vector<PerfCaseResult> RunThroughputSuite(const PerfConfig& config)
     const int threadCount = std::max(1, config.threads);
     const std::vector<RpcKind> kinds = {RpcKind::Echo, RpcKind::Add, RpcKind::Sleep};
 
-    auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
-    if (bootstrap->OpenSession(handles) != MemRpc::StatusCode::Ok) {
-        for (const auto kind : kinds) {
-            results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "bootstrap start failed"});
-        }
-        return results;
-    }
-    CloseHandles(handles);
-
-    MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->serverHandles());
-    MemRpc::ServerOptions options;
-    options.highWorkerThreads = static_cast<uint32_t>(threadCount);
-    options.normalWorkerThreads = static_cast<uint32_t>(threadCount);
-    server.SetOptions(options);
-    TestkitService service;
-    RegisterHandlersToServer(&service, &server);
-    if (server.Start() != MemRpc::StatusCode::Ok) {
-        for (const auto kind : kinds) {
-            results.push_back({MakeBaselineKey(kind, threadCount), 0.0, "server start failed"});
-        }
-        return results;
-    }
-
     for (const auto kind : kinds) {
         PerfCaseResult result;
         result.key = MakeBaselineKey(kind, threadCount);
+
+        auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
+        MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+        if (bootstrap->OpenSession(handles) != MemRpc::StatusCode::Ok) {
+            result.error = "bootstrap start failed";
+            results.push_back(result);
+            continue;
+        }
+        CloseHandles(handles);
+
+        MemRpc::RpcServer server;
+        server.SetBootstrapHandles(bootstrap->serverHandles());
+        MemRpc::ServerOptions options;
+        options.highWorkerThreads = static_cast<uint32_t>(threadCount);
+        options.normalWorkerThreads = static_cast<uint32_t>(threadCount);
+        server.SetOptions(options);
+        TestkitService service;
+        RegisterHandlersToServer(&service, &server);
+        if (server.Start() != MemRpc::StatusCode::Ok) {
+            result.error = "server start failed";
+            results.push_back(result);
+            continue;
+        }
+
         if (!MeasureOpsPerSecond(config, kind, bootstrap, &result.opsPerSec, &result.error) && result.error.empty()) {
             result.error = "measurement failed";
         }
+        server.Stop();
         results.push_back(result);
     }
-
-    server.Stop();
     return results;
 }
 

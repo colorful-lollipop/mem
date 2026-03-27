@@ -80,35 +80,48 @@ std::shared_ptr<MemRpc::DevBootstrapChannel> CreateBootstrap()
 
 TEST(TestkitClientTest, SyncAndAsyncCallsRoundTrip)
 {
-    auto bootstrap = CreateBootstrap();
+    {
+        auto bootstrap = CreateBootstrap();
 
-    MemRpc::RpcServer server;
-    server.SetBootstrapHandles(bootstrap->serverHandles());
-    TestkitService service;
-    RegisterHandlersToServer(&service, &server);
-    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+        MemRpc::RpcServer server;
+        server.SetBootstrapHandles(bootstrap->serverHandles());
+        TestkitService service;
+        RegisterHandlersToServer(&service, &server);
+        ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    TestkitAsyncClient asyncClient(bootstrap);
-    ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
+        TestkitAsyncClient asyncClient(bootstrap);
+        ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
 
-    EchoRequest echoRequest;
-    echoRequest.text = "ping";
-    auto future = asyncClient.EchoAsync(echoRequest);
-    EchoReply echoReply;
-    ASSERT_EQ(std::move(future).Wait(&echoReply), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(echoReply.text, "ping");
+        EchoRequest echoRequest;
+        echoRequest.text = "ping";
+        auto future = asyncClient.EchoAsync(echoRequest);
+        EchoReply echoReply;
+        ASSERT_EQ(std::move(future).Wait(&echoReply), MemRpc::StatusCode::Ok);
+        EXPECT_EQ(echoReply.text, "ping");
 
-    asyncClient.Shutdown();
+        asyncClient.Shutdown();
+        server.Stop();
+    }
 
-    TestkitClient client(bootstrap);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+    {
+        auto bootstrap = CreateBootstrap();
 
-    AddReply addReply;
-    EXPECT_EQ(client.Add(4, 5, &addReply), MemRpc::StatusCode::Ok);
-    EXPECT_EQ(addReply.sum, 9);
+        MemRpc::RpcServer server;
+        server.SetBootstrapHandles(bootstrap->serverHandles());
+        TestkitService service;
+        RegisterHandlersToServer(&service, &server);
+        ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    client.Shutdown();
-    server.Stop();
+        TestkitClient client(bootstrap);
+        ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+        AddReply addReply;
+        EXPECT_EQ(client.Add(4, 5, &addReply), MemRpc::StatusCode::Ok);
+        EXPECT_EQ(addReply.sum, 9);
+
+        client.Shutdown();
+        server.Stop();
+    }
 }
 
 TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog)

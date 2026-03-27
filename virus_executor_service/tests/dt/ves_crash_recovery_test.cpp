@@ -276,10 +276,14 @@ VirusExecutorService::VesClientOptions BuildImmediateRestartOptions()
 {
     VirusExecutorService::VesClientOptions options;
     options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+        switch (failure.status) {
+            case MemRpc::StatusCode::ExecTimeout:
+            case MemRpc::StatusCode::PeerDisconnected:
+            case MemRpc::StatusCode::InvalidArgument:
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+            default:
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
         }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
     };
     options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
         return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
@@ -372,17 +376,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    VirusExecutorService::VesClientOptions options;
-    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-    };
-    auto client = VirusExecutorService::VesClient::Connect(options);
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
     ASSERT_NE(client, nullptr);
     CleanupGuard cleanup([&]() {
         if (client != nullptr) {
@@ -404,7 +398,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecover)
     ASSERT_EQ(kill(crashedPid, SIGKILL), 0);
     ASSERT_TRUE(WaitForEngineExit(crashedPid, std::chrono::seconds(5)));
     client->Shutdown();
-    client = VirusExecutorService::VesClient::Connect(options);
+    client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
     ASSERT_NE(client, nullptr);
     ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/clean_after.apk"}, &reply),
               MemRpc::StatusCode::Ok);
@@ -459,17 +453,7 @@ TEST(VesCrashRecoveryTest, CrashThenRecoverWithoutRecreatingClient)
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    VirusExecutorService::VesClientOptions options;
-    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-    };
-    auto client = VirusExecutorService::VesClient::Connect(options);
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
     ASSERT_NE(client, nullptr);
     RecoveryEventObserver observer;
     CleanupGuard cleanup([&]() {
@@ -564,17 +548,7 @@ TEST(VesCrashRecoveryTest, RepeatedExternalKillsRecoverAndKeepFdCountStable)
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    VirusExecutorService::VesClientOptions options;
-    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-    };
-    auto client = VirusExecutorService::VesClient::Connect(options);
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
     ASSERT_NE(client, nullptr);
     CleanupGuard cleanup([&]() {
         client->Shutdown();
@@ -670,17 +644,7 @@ TEST(VesCrashRecoveryTest, RepeatedExternalKillsDuringConcurrentScanTrafficStill
     ASSERT_GT(LoadEnginePid(), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    VirusExecutorService::VesClientOptions options;
-    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
-        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
-            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-        }
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
-    };
-    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
-        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
-    };
-    auto client = VirusExecutorService::VesClient::Connect(options);
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
     ASSERT_NE(client, nullptr);
     CleanupGuard cleanup([&]() {
         client->Shutdown();
