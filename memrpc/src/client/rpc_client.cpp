@@ -317,19 +317,19 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return bootstrap_;
         }
 
-        std::shared_ptr<const uint64_t> LoadSessionIdSnapshot() const
+        uint64_t LoadSessionIdSnapshot() const
         {
-            return std::atomic_load_explicit(&snapshot_, std::memory_order_acquire);
+            return snapshot_.load(std::memory_order_acquire);
         }
 
         uint64_t CurrentSessionId() const
         {
-            return *LoadSessionIdSnapshot();
+            return LoadSessionIdSnapshot();
         }
 
         bool HasLiveSession() const
         {
-            return *LoadSessionIdSnapshot() != 0;
+            return LoadSessionIdSnapshot() != 0;
         }
 
         SessionWaitHandleUpdate DuplicateRequestCreditWaitHandle(uint64_t activeSessionId) const
@@ -382,7 +382,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             uint64_t closedSessionId = 0;
             {
                 std::lock_guard<std::mutex> lock(sessionMutex_);
-                closedSessionId = *LoadSessionIdSnapshot();
+                closedSessionId = LoadSessionIdSnapshot();
                 PublishSessionIdLocked(0);
                 session_.Reset();
             }
@@ -402,7 +402,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             bool shouldCloseBootstrap = false;
             {
                 std::lock_guard<std::mutex> lock(sessionMutex_);
-                const uint64_t currentSessionId = *LoadSessionIdSnapshot();
+                const uint64_t currentSessionId = LoadSessionIdSnapshot();
                 if (currentSessionId != expectedSessionId) {
                     return;
                 }
@@ -444,14 +444,14 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                                                            const char* logContext) const
         {
             SessionWaitHandleUpdate waitHandle;
-            const uint64_t snapshotSessionId = *LoadSessionIdSnapshot();
+            const uint64_t snapshotSessionId = LoadSessionIdSnapshot();
             if (snapshotSessionId == activeSessionId && snapshotSessionId != 0) {
                 waitHandle.action = SessionWaitHandleUpdate::Action::KeepCurrent;
                 waitHandle.sessionId = snapshotSessionId;
                 return waitHandle;
             }
             std::lock_guard<std::mutex> lock(sessionMutex_);
-            waitHandle.sessionId = *LoadSessionIdSnapshot();
+            waitHandle.sessionId = LoadSessionIdSnapshot();
             if (waitHandle.sessionId == activeSessionId && waitHandle.sessionId != 0) {
                 waitHandle.action = SessionWaitHandleUpdate::Action::KeepCurrent;
                 return waitHandle;
@@ -509,8 +509,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void PublishSessionIdLocked(uint64_t sessionId)
         {
-            std::shared_ptr<const uint64_t> nextSnapshot = std::make_shared<uint64_t>(sessionId);
-            std::atomic_store_explicit(&snapshot_, std::move(nextSnapshot), std::memory_order_release);
+            snapshot_.store(sessionId, std::memory_order_release);
         }
 
         mutable std::mutex bootstrapMutex_;
@@ -518,7 +517,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         std::shared_ptr<DeathCallbackLease> deathCallbackLease_;
         Session session_;
         mutable std::mutex sessionMutex_;
-        std::shared_ptr<const uint64_t> snapshot_ = std::make_shared<uint64_t>(0);
+        std::atomic<uint64_t> snapshot_{0};
     };
 
     class ClientRecoveryState {
