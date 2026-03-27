@@ -434,13 +434,13 @@ Session::SessionState Session::State() const
     if (header_ == nullptr) {
         return SessionState::Broken;
     }
-    return static_cast<SessionState>(header_->sessionState);
+    return static_cast<SessionState>(header_->sessionState.load(std::memory_order_acquire));
 }
 
 void Session::SetState(SessionState state)
 {
     if (header_ != nullptr) {
-        header_->sessionState = static_cast<uint32_t>(state);
+        header_->sessionState.store(static_cast<uint32_t>(state), std::memory_order_release);
     }
 }
 

@@ -31,6 +31,13 @@ bool ThreadSanitizerEnabled()
 
 constexpr MemRpc::StatusCode kExpectedEngineDeathStatus = MemRpc::StatusCode::CrashedDuringExecution;
 
+[[noreturn]] void WaitForever()
+{
+    for (;;) {
+        pause();
+    }
+}
+
 void CloseHandles(MemRpc::BootstrapHandles& handles)
 {
     if (handles.shmFd >= 0)
@@ -58,8 +65,7 @@ void RunTestkitServerProcess(MemRpc::BootstrapHandles handles)
     if (server.Start() != MemRpc::StatusCode::Ok) {
         _exit(2);
     }
-    server.Run();
-    _exit(0);
+    WaitForever();
 }
 
 pid_t ForkServer(const std::shared_ptr<MemRpc::DevBootstrapChannel>& bootstrap)

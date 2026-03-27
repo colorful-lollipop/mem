@@ -63,7 +63,7 @@ struct SharedMemoryHeader {
     uint32_t magic = SHARED_MEMORY_MAGIC;
     uint32_t protocolVersion = PROTOCOL_VERSION;
     uint64_t sessionId = 0;
-    uint32_t sessionState = 0;
+    std::atomic<uint32_t> sessionState{0};
     uint32_t clientAttached = 0;
     uint32_t activeClientPid = 0;
     uint32_t highRingSize = DEFAULT_HIGH_RING_SIZE;

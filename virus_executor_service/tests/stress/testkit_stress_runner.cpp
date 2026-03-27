@@ -95,6 +95,13 @@ void WritePidFile(pid_t childPid)
     output << "child_pid=" << static_cast<long long>(childPid) << "\n";
 }
 
+[[noreturn]] void WaitForever()
+{
+    for (;;) {
+        pause();
+    }
+}
+
 void RunChild(Mem::BootstrapHandles handles, uint32_t threads)
 {
     Mem::RpcServer server;
@@ -110,7 +117,7 @@ void RunChild(Mem::BootstrapHandles handles, uint32_t threads)
         HILOGE("testkit stress server start failed");
         std::_Exit(1);
     }
-    server.Run();
+    WaitForever();
 }
 
 enum class RpcKind { Echo, Add, Sleep };

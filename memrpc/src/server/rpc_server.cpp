@@ -761,18 +761,6 @@ StatusCode RpcServer::Start()
     return StatusCode::Ok;
 }
 
-void RpcServer::Run()
-{
-    const StatusCode status = Start();
-    if (status != StatusCode::Ok) {
-        HILOGE("RpcServer::Run aborted: Start status=%{public}d", static_cast<int>(status));
-        return;
-    }
-    while (impl_->running.load(std::memory_order_acquire)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
 RpcServerRuntimeStats RpcServer::GetRuntimeStats() const
 {
     RpcServerRuntimeStats stats;

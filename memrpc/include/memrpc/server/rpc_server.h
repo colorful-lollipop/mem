@@ -53,8 +53,6 @@ public:
     [[nodiscard]] StatusCode PublishEvent(const RpcEvent& event);
     // Start 负责 attach session、拉起 worker 池和请求分发线程。
     [[nodiscard]] StatusCode Start();
-    // Run 用于 demo/守护式场景，内部会保持 server 存活直到 Stop。
-    void Run();
     [[nodiscard]] RpcServerRuntimeStats GetRuntimeStats() const;
     void Stop();
 
