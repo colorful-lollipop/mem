@@ -18,6 +18,8 @@ namespace MemRpc {
 constexpr short kPollFailureEvents = POLLERR | POLLHUP | POLLNVAL;
 
 enum class PollEventFdResult : uint8_t { Ready, Timeout, Retry, Failed };
+enum class EventFdReadResult : uint8_t { Consumed, Retry, Empty, Failed };
+enum class EventFdWriteResult : uint8_t { Wrote, Retry, Failed };
 
 template <typename F>
 class ScopeExit final {
@@ -108,42 +110,57 @@ template <typename Cursor>
     return remaining > 0 ? remaining : 0;
 }
 
+[[nodiscard]] inline EventFdReadResult ReadEventFdOnce(int fd)
+{
+    uint64_t counter = 0;
+    const ssize_t readBytes = read(fd, &counter, sizeof(counter));
+    if (readBytes == sizeof(counter)) return EventFdReadResult::Consumed;
+    if (readBytes < 0 && errno == EINTR) return EventFdReadResult::Retry;
+    if (readBytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return EventFdReadResult::Empty;
+    return EventFdReadResult::Failed;
+}
+
 [[nodiscard]] inline bool DrainEventFd(int fd)
 {
     bool drained = false;
     while (true) {
-        uint64_t counter = 0;
-        const ssize_t read_bytes = read(fd, &counter, sizeof(counter));
-        if (read_bytes == sizeof(counter)) {
-            drained = true;
-            continue;
-        }
-        if (read_bytes < 0 && errno == EINTR) {
-            continue;
-        }
-        if (read_bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            return drained;
-        }
-        return false;
+        const auto result = ReadEventFdOnce(fd);
+        if (result == EventFdReadResult::Consumed) { drained = true; continue; }
+        if (result == EventFdReadResult::Retry) { continue; }
+        return result == EventFdReadResult::Empty ? drained : false;
     }
+}
+
+[[nodiscard]] inline EventFdWriteResult WriteEventFdOnce(int fd)
+{
+    constexpr uint64_t signalValue = 1;
+    const ssize_t writeBytes = write(fd, &signalValue, sizeof(signalValue));
+    if (writeBytes == sizeof(signalValue)) return EventFdWriteResult::Wrote;
+    return writeBytes < 0 && errno == EINTR ? EventFdWriteResult::Retry : EventFdWriteResult::Failed;
 }
 
 [[nodiscard]] inline bool SignalEventFd(int fd)
 {
-    if (fd < 0) {
-        return false;
-    }
-    constexpr uint64_t signalValue = 1;
+    if (fd < 0) return false;
     while (true) {
-        const ssize_t write_bytes = write(fd, &signalValue, sizeof(signalValue));
-        if (write_bytes == sizeof(signalValue)) {
-            return true;
-        }
-        if (write_bytes < 0 && errno == EINTR) {
-            continue;
-        }
-        return false;
+        const auto result = WriteEventFdOnce(fd);
+        if (result == EventFdWriteResult::Wrote) return true;
+        if (result == EventFdWriteResult::Failed) return false;
     }
+}
+
+[[nodiscard]] inline PollEventFdResult ClassifyPollCallResult(int pollResult)
+{
+    if (pollResult == 0) return PollEventFdResult::Timeout;
+    if (pollResult < 0) return errno == EINTR ? PollEventFdResult::Retry : PollEventFdResult::Failed;
+    return PollEventFdResult::Ready;
+}
+
+[[nodiscard]] inline PollEventFdResult HandlePolledEvent(const pollfd& fd)
+{
+    if ((fd.revents & kPollFailureEvents) != 0) return PollEventFdResult::Failed;
+    if ((fd.revents & POLLIN) == 0) return PollEventFdResult::Retry;
+    return DrainEventFd(fd.fd) ? PollEventFdResult::Ready : PollEventFdResult::Retry;
 }
 
 [[nodiscard]] inline PollEventFdResult PollEventFd(pollfd* fd, int timeout_ms)
@@ -152,20 +169,8 @@ template <typename Cursor>
         return PollEventFdResult::Failed;
     }
     fd->revents = 0;
-    const int poll_result = poll(fd, 1, timeout_ms);
-    if (poll_result == 0) {
-        return PollEventFdResult::Timeout;
-    }
-    if (poll_result < 0) {
-        return errno == EINTR ? PollEventFdResult::Retry : PollEventFdResult::Failed;
-    }
-    if ((fd->revents & kPollFailureEvents) != 0) {
-        return PollEventFdResult::Failed;
-    }
-    if ((fd->revents & POLLIN) == 0) {
-        return PollEventFdResult::Retry;
-    }
-    return DrainEventFd(fd->fd) ? PollEventFdResult::Ready : PollEventFdResult::Retry;
+    const auto pollResult = ClassifyPollCallResult(poll(fd, 1, timeout_ms));
+    return pollResult == PollEventFdResult::Ready ? HandlePolledEvent(*fd) : pollResult;
 }
 
 inline void CpuRelax()
