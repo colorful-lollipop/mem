@@ -111,8 +111,4 @@ using RpcHandler = std::function<void(const RpcServerCall&, RpcReply*)>;
 
 }  // namespace MemRpc
 
-namespace OHOS::Security::VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace OHOS::Security::VirusProtectionService
-
 #endif  // MEMRPC_SERVER_HANDLER_H_

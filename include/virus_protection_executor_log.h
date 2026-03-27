@@ -36,12 +36,4 @@ inline void LogWrite(LogLevel level, const char* file, int line, const char* for
 
 #define HILOGE(...) ::MemRpc::LogWrite(::MemRpc::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
 
-namespace OHOS {
-namespace Security {
-namespace VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace VirusProtectionService
-}  // namespace Security
-}  // namespace OHOS
-
 #endif  // VIRUS_PROTECTION_SERVICE_LOG_H_

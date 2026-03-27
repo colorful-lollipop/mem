@@ -40,8 +40,4 @@ using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
 }  // namespace MemRpc
 
-namespace OHOS::Security::VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace OHOS::Security::VirusProtectionService
-
 #endif  // MEMRPC_CORE_TYPES_H_

@@ -35,7 +35,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 
 **Shared memory layout:** Header → dual request rings (high-priority 64 entries + normal 256 entries) → response ring (256 entries) → request slot pool (128 × 4KB) → response slot pool. Five eventfd channels handle notifications (high req, normal req, response, req credit, resp credit).
 
-**Namespace conventions:** Framework code lives under `memrpc::`. Application code uses `OHOS::Security::VirusProtectionService::` with `namespace MemRpc = ::memrpc;` alias.
+**Namespace conventions:** Framework code lives under `::MemRpc`. Application code uses `OHOS::Security::VirusProtectionService::`.
 
 ## Coding Conventions
 

@@ -36,8 +36,4 @@ private:
 
 }  // namespace MemRpc
 
-namespace OHOS::Security::VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace OHOS::Security::VirusProtectionService
-
 #endif  // MEMRPC_SERVER_SHARED_MEMORY_SESSION_HOST_H_

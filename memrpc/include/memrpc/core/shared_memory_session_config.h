@@ -19,8 +19,4 @@ struct SharedMemorySessionConfig {
 
 }  // namespace MemRpc
 
-namespace OHOS::Security::VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace OHOS::Security::VirusProtectionService
-
 #endif  // MEMRPC_CORE_SHARED_MEMORY_SESSION_CONFIG_H_

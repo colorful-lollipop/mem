@@ -28,8 +28,4 @@ private:
 
 }  // namespace MemRpc
 
-namespace OHOS::Security::VirusProtectionService {
-namespace MemRpc = ::MemRpc;
-}  // namespace OHOS::Security::VirusProtectionService
-
 #endif  // MEMRPC_TEST_SUPPORT_DEV_BOOTSTRAP_H_
