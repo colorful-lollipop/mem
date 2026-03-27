@@ -9,7 +9,6 @@
 #include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
-#include "memrpc/server/typed_handler.h"
 #include "transport/ves_control_stub.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
@@ -39,6 +38,39 @@ void CloseHandles(MemRpc::BootstrapHandles& handles)
     }
 }
 
+void RegisterScanHandler(MemRpc::RpcServer* server, std::atomic<int>* memrpcCount)
+{
+    if (server == nullptr) {
+        return;
+    }
+
+    server->RegisterHandler(static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+                            [memrpcCount](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                                if (reply == nullptr) {
+                                    return;
+                                }
+
+                                ScanTask request;
+                                if (!MemRpc::DecodeMessage<ScanTask>(call.payload, &request)) {
+                                    reply->status = MemRpc::StatusCode::ProtocolMismatch;
+                                    return;
+                                }
+
+                                ScanFileReply scanReply;
+                                scanReply.code = 0;
+                                scanReply.threatLevel = request.path.find("fallback") != std::string::npos ? 2 : 1;
+                                if (!MemRpc::EncodeMessage(scanReply, &reply->payload)) {
+                                    reply->status = MemRpc::StatusCode::EngineInternalError;
+                                    reply->payload.clear();
+                                    return;
+                                }
+
+                                if (memrpcCount != nullptr) {
+                                    memrpcCount->fetch_add(1);
+                                }
+                            });
+}
+
 class FakeClientControl final : public VesControlStub {
 public:
     FakeClientControl()
@@ -49,16 +81,7 @@ public:
         CloseHandles(warmup);
 
         server_ = std::make_unique<MemRpc::RpcServer>(bootstrap_->serverHandles());
-        MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
-            server_.get(),
-            static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-            [this](const ScanTask& request) {
-                memrpcCount_.fetch_add(1);
-                ScanFileReply reply;
-                reply.code = 0;
-                reply.threatLevel = request.path.find("fallback") != std::string::npos ? 2 : 1;
-                return reply;
-            });
+        RegisterScanHandler(server_.get(), &memrpcCount_);
         EXPECT_EQ(server_->Start(), MemRpc::StatusCode::Ok);
     }
 

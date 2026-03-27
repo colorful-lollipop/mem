@@ -20,7 +20,6 @@
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
-#include "memrpc/server/typed_handler.h"
 #include "service/virus_executor_service.h"
 #include "system_ability.h"
 #include "transport/ves_control_stub.h"
@@ -119,6 +118,32 @@ void RequestRecoveryForTest(VesClient& client, uint32_t delayMs)
         0,
         delayMs,
     });
+}
+
+void RegisterScanHandler(MemRpc::RpcServer* server, std::function<ScanFileReply(const ScanTask&)> handler)
+{
+    if (server == nullptr) {
+        return;
+    }
+
+    server->RegisterHandler(static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
+                            [handler = std::move(handler)](const MemRpc::RpcServerCall& call,
+                                                           MemRpc::RpcServerReply* reply) {
+                                if (reply == nullptr) {
+                                    return;
+                                }
+
+                                ScanTask request;
+                                if (!MemRpc::DecodeMessage<ScanTask>(call.payload, &request)) {
+                                    reply->status = MemRpc::StatusCode::ProtocolMismatch;
+                                    return;
+                                }
+
+                                if (!MemRpc::EncodeMessage(handler(request), &reply->payload)) {
+                                    reply->status = MemRpc::StatusCode::EngineInternalError;
+                                    reply->payload.clear();
+                                }
+                            });
 }
 
 class FakeReloadControl final : public VesControlStub {
@@ -289,18 +314,15 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure)
     ASSERT_EQ(bootstrap->OpenSession(unused), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server(bootstrap->serverHandles());
-    MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
-        &server,
-        static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-        [](const ScanTask& req) {
-            // Force exec timeout by sleeping longer than client timeout.
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            ScanFileReply reply;
-            reply.code = 0;
-            reply.threatLevel = 0;
-            (void)req;
-            return reply;
-        });
+    RegisterScanHandler(&server, [](const ScanTask& req) {
+        // Force exec timeout by sleeping longer than client timeout.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        ScanFileReply reply;
+        reply.code = 0;
+        reply.threatLevel = 0;
+        (void)req;
+        return reply;
+    });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
     std::atomic<bool> failureCalled{false};
@@ -423,14 +445,12 @@ TEST(VesPolicyTest, VesClientRecoversFromHeartbeatFailureWithoutClientLoop)
     ASSERT_TRUE(service->Publish(service.get()));
     auto startServerForCurrentSession = [&]() {
         auto nextServer = std::make_unique<MemRpc::RpcServer>(service->serverHandles());
-        MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(nextServer.get(),
-                                                              static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-                                                              [](const ScanTask&) {
-                                                                  ScanFileReply reply;
-                                                                  reply.code = 0;
-                                                                  reply.threatLevel = 0;
-                                                                  return reply;
-                                                              });
+        RegisterScanHandler(nextServer.get(), [](const ScanTask&) {
+            ScanFileReply reply;
+            reply.code = 0;
+            reply.threatLevel = 0;
+            return reply;
+        });
         EXPECT_EQ(nextServer->Start(), MemRpc::StatusCode::Ok);
         return nextServer;
     };
@@ -486,15 +506,12 @@ TEST(VesPolicyTest, VesClientScanFileRetriesAcrossRestartCooldown)
     ASSERT_TRUE(service->Publish(service.get()));
 
     auto registerScanHandler = [](MemRpc::RpcServer* server) {
-        MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
-            server,
-            static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-            [](const ScanTask& request) {
-                ScanFileReply reply;
-                reply.code = 0;
-                reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
-                return reply;
-            });
+        RegisterScanHandler(server, [](const ScanTask& request) {
+            ScanFileReply reply;
+            reply.code = 0;
+            reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
+            return reply;
+        });
     };
     auto startServerForCurrentSession = [&]() {
         auto nextServer = std::make_unique<MemRpc::RpcServer>(service->serverHandles());
@@ -571,15 +588,12 @@ TEST(VesPolicyTest, VesClientScanFileHonorsRequestedRecoveryDelayBeyondConfigure
     ASSERT_TRUE(service->Publish(service.get()));
     auto startServerForCurrentSession = [&]() {
         auto nextServer = std::make_unique<MemRpc::RpcServer>(service->serverHandles());
-        MemRpc::RegisterTypedHandler<ScanTask, ScanFileReply>(
-            nextServer.get(),
-            static_cast<MemRpc::Opcode>(VesOpcode::ScanFile),
-            [](const ScanTask& request) {
-                ScanFileReply reply;
-                reply.code = 0;
-                reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
-                return reply;
-            });
+        RegisterScanHandler(nextServer.get(), [](const ScanTask& request) {
+            ScanFileReply reply;
+            reply.code = 0;
+            reply.threatLevel = request.path.find("recovered") != std::string::npos ? 1 : 0;
+            return reply;
+        });
         EXPECT_EQ(nextServer->Start(), MemRpc::StatusCode::Ok);
         return nextServer;
     };
