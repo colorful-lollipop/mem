@@ -12,7 +12,6 @@ TEST(RpcServerApiTest, PublicHeaderComposes)
 {
     MemRpc::RpcServer server;
     MemRpc::ServerOptions options;
-    options.executionHeartbeatIntervalMs = 9;
     options.highWorkerThreads = 2;
     options.normalWorkerThreads = 3;
     options.completionQueueCapacity = 4;

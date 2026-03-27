@@ -372,12 +372,12 @@ struct RpcServer::Impl {
         return call;
     }
 
-    RpcServerReply InvokeHandlerWithTimeout(const RequestRingEntry& requestEntry)
+    RpcServerReply InvokeHandler(const RequestRingEntry& requestEntry)
     {
         RpcServerReply reply;
         const auto it = handlers.find(requestEntry.opcode);
         if (it == handlers.end()) {
-            HILOGE("RpcServer::InvokeHandlerWithTimeout missing handler opcode=%{public}u request_id=%{public}llu",
+            HILOGE("RpcServer::InvokeHandler missing handler opcode=%{public}u request_id=%{public}llu",
                    requestEntry.opcode,
                    static_cast<unsigned long long>(requestEntry.requestId));
             reply.status = StatusCode::InvalidArgument;
@@ -385,21 +385,7 @@ struct RpcServer::Impl {
         }
 
         RpcServerCall call = BuildServerCall(requestEntry);
-        const auto start = std::chrono::steady_clock::now();
         it->second(call, &reply);
-        const auto elapsedMs =
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        if (requestEntry.execTimeoutMs > 0 && elapsedMs > static_cast<long long>(requestEntry.execTimeoutMs)) {
-            HILOGE(
-                "RpcServer::InvokeHandlerWithTimeout exec timeout request_id=%{public}llu opcode=%{public}u "
-                "elapsed_ms=%{public}lld limit_ms=%{public}u",
-                static_cast<unsigned long long>(requestEntry.requestId),
-                requestEntry.opcode,
-                elapsedMs,
-                requestEntry.execTimeoutMs);
-            reply.status = StatusCode::ExecTimeout;
-            reply.payload.clear();
-        }
         return reply;
     }
 
@@ -551,7 +537,7 @@ struct RpcServer::Impl {
         MarkExecutionStarted(requestEntry.requestId);
         const auto clearExecution =
             MakeScopeExit([this, requestId = requestEntry.requestId] { MarkExecutionFinished(requestId); });
-        RpcServerReply reply = InvokeHandlerWithTimeout(requestEntry);
+        RpcServerReply reply = InvokeHandler(requestEntry);
         const StatusCode status = WriteResponse(requestEntry, std::move(reply));
         if (status != StatusCode::Ok) {
             HILOGE("RpcServer::ProcessEntry failed to write response request_id=%{public}llu status=%{public}d",

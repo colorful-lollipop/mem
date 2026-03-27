@@ -405,7 +405,6 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout)
     CloseHandles(unusedHandles);
 
     MemRpc::ServerOptions options;
-    options.executionHeartbeatIntervalMs = 10;
     MemRpc::RpcServer server({}, options);
     server.SetBootstrapHandles(bootstrap->serverHandles());
     server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
