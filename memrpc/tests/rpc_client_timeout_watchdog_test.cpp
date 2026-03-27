@@ -272,7 +272,9 @@ TEST(RpcClientTimeoutWatchdogTest, TriggersExecTimeoutWhenStuckInQueue)
     std::atomic<bool> server_started{false};
     server.RegisterHandler(kTestEchoOpcode, [&](const RpcServerCall&, RpcServerReply* reply) {
         server_started.store(true);
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        // 只需要让第二个请求在队列里卡过它自己的 exec timeout，
+        // 不应该和 RpcServer::Stop 的 5s 超时窗口撞边。
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         reply->status = StatusCode::Ok;
     });
     ASSERT_EQ(server.Start(), StatusCode::Ok);
@@ -409,7 +411,8 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout)
     MemRpc::RpcServer server({}, options);
     server.SetBootstrapHandles(bootstrap->serverHandles());
     server.RegisterHandler(kTestEchoOpcode, [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply* reply) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        // 给 watchdog 的 100ms 扫描周期留出充足裕量，避免边界抖动。
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
         reply->status = MemRpc::StatusCode::Ok;
     });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
@@ -419,7 +422,7 @@ TEST(RpcClientTimeoutWatchdogTest, LongRunningExecutionStillEndsAsExecTimeout)
 
     MemRpc::RpcCall call;
     call.opcode = kTestEchoOpcode;
-    call.execTimeoutMs = 120;
+    call.execTimeoutMs = 100;
     auto future = client.InvokeAsync(call);
 
     MemRpc::RpcReply reply;
