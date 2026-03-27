@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_async_client.h"
 #include "testkit/testkit_client.h"

@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/server/rpc_server.h"

@@ -9,7 +9,7 @@ function(memrpc_add_test target source)
     memrpc_disable_clang_tidy_for_target(${target})
   endif()
   memrpc_relax_warnings_for_target(${target})
-  target_link_libraries(${target} PRIVATE memrpc GTest::gtest_main)
+  target_link_libraries(${target} PRIVATE memrpc memrpc_test_support GTest::gtest_main)
   target_include_directories(${target} PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${MEMRPC_MODULE_ROOT}/src

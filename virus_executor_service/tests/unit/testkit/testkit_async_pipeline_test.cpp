@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_async_client.h"
 #include "testkit/testkit_client.h"
@@ -78,7 +78,7 @@ TEST(TestkitAsyncPipelineTest, BatchSizeThroughput)
     const int durationMs = GetEnvInt("MEMRPC_PERF_durationMs", defaultDurationMs);
     const int warmupMs = GetEnvInt("MEMRPC_PERF_WARMUP_MS", defaultWarmupMs);
 
-    const MemRpc::DevBootstrapConfig bootstrapConfig;
+    const MemRpc::SharedMemorySessionConfig bootstrapConfig;
     double syncOpsPerSec = 0;
     {
         auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(bootstrapConfig);

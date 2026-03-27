@@ -29,8 +29,7 @@ if (NOT TARGET memrpc_core)
   add_library(memrpc_core
       ${MEMRPC_MODULE_ROOT}/src/client/rpc_client.cpp
       ${MEMRPC_MODULE_ROOT}/src/server/rpc_server.cpp
-      ${MEMRPC_MODULE_ROOT}/src/bootstrap/dev_bootstrap.cpp
-      ${MEMRPC_MODULE_ROOT}/src/bootstrap/dev_session_host.cpp
+      ${MEMRPC_MODULE_ROOT}/src/bootstrap/shared_memory_session_host.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_reader.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/byte_writer.cpp
       ${MEMRPC_MODULE_ROOT}/src/core/log.cpp
@@ -49,6 +48,22 @@ endif()
 
 if (NOT TARGET memrpc)
   add_library(memrpc ALIAS memrpc_core)
+endif()
+
+if (NOT TARGET memrpc_test_support)
+  add_library(memrpc_test_support
+      ${MEMRPC_MODULE_ROOT}/tests/support/dev_bootstrap.cpp
+  )
+  target_include_directories(memrpc_test_support PUBLIC
+      ${MEMRPC_MODULE_ROOT}/include
+      ${MEMRPC_MODULE_ROOT}/tests/support/include
+  )
+  target_include_directories(memrpc_test_support PRIVATE
+      ${MEMRPC_MODULE_ROOT}/src
+      ${MEMRPC_ROOT}/include
+  )
+  target_compile_features(memrpc_test_support PUBLIC cxx_std_17)
+  target_link_libraries(memrpc_test_support PUBLIC memrpc_core)
 endif()
 
 add_library(ohos_sa_mock
@@ -171,6 +186,7 @@ option(VIRUS_EXECUTOR_SERVICE_ENABLE_FUZZ "Build virus_executor_service fuzz tar
 if (VIRUS_EXECUTOR_SERVICE_ENABLE_TESTS)
   enable_testing()
   find_package(GTest REQUIRED)
+  target_link_libraries(virus_executor_service_lib INTERFACE memrpc_test_support)
 
   add_executable(virus_executor_service_session_service_test
       tests/unit/ves/ves_session_service_test.cpp)

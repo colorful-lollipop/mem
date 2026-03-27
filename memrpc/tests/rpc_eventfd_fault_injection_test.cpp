@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -63,7 +63,7 @@ struct ClientFaultConfig {
 
 class FaultInjectingBootstrap final : public MemRpc::IBootstrapChannel {
 public:
-    explicit FaultInjectingBootstrap(MemRpc::DevBootstrapConfig config = {}, ClientFaultConfig faults = {})
+    explicit FaultInjectingBootstrap(MemRpc::SharedMemorySessionConfig config = {}, ClientFaultConfig faults = {})
         : inner_(std::make_shared<MemRpc::DevBootstrapChannel>(std::move(config))),
           faults_(faults)
     {
@@ -124,7 +124,7 @@ namespace MemRpc {
 
 TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
 {
-    auto bootstrap = std::make_shared<FaultInjectingBootstrap>(DevBootstrapConfig{}, ClientFaultConfig{true, false});
+    auto bootstrap = std::make_shared<FaultInjectingBootstrap>(SharedMemorySessionConfig{}, ClientFaultConfig{true, false});
     BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
     ASSERT_EQ(bootstrap->OpenSession(unused_handles), StatusCode::Ok);
     CloseHandles(&unused_handles);
@@ -157,7 +157,7 @@ TEST(RpcEventFdFaultInjectionTest, ClientRequestSignalFailureFallsBackToPolling)
 
 TEST(RpcEventFdFaultInjectionTest, ClientRequestCreditFailureLeavesBlockedAdmissionPendingUntilShutdown)
 {
-    DevBootstrapConfig config;
+    SharedMemorySessionConfig config;
     config.highRingSize = 1;
     config.normalRingSize = 1;
     config.responseRingSize = 2;

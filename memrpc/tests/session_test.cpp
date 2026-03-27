@@ -10,7 +10,7 @@
 #include <string>
 
 #include "core/session.h"
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 
 namespace {
 
@@ -147,7 +147,7 @@ TEST(SessionTest, AttachRejectsTruncatedSharedMemoryBeforeHeaderAccess)
 
 TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 2;
     config.normalRingSize = 2;
     config.responseRingSize = 2;
@@ -189,7 +189,7 @@ TEST(SessionTest, RequestRingsWrapAroundWithoutLosingCapacity)
 
 TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 2;
     config.normalRingSize = 2;
     config.responseRingSize = 2;
@@ -231,7 +231,7 @@ TEST(SessionTest, ResponseRingWrapsAroundWithoutLosingCapacity)
 
 TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES + 1;
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
@@ -241,7 +241,7 @@ TEST(SessionTest, ResponsePayloadLimitCannotExceedInlineQueueCapacity)
 
 TEST(SessionTest, RequestPayloadLimitCannotExceedInlineQueueCapacity)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.maxRequestBytes = MemRpc::DEFAULT_MAX_REQUEST_BYTES + 1;
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
@@ -251,7 +251,7 @@ TEST(SessionTest, RequestPayloadLimitCannotExceedInlineQueueCapacity)
 
 TEST(SessionTest, ResponsePayloadLimitCanBeSmallerThanDefault)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.maxResponseBytes = MemRpc::DEFAULT_MAX_RESPONSE_BYTES - 1;
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
@@ -290,7 +290,7 @@ TEST(SessionTest, AttachRejectsOversizedPayloadLimitsInHeader)
 
 TEST(SessionTest, PushRequestReturnsQueueFullWhenRingIsAtCapacity)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 1;
     config.normalRingSize = 1;
     config.responseRingSize = 1;
@@ -419,7 +419,7 @@ TEST(SessionTest, OpenSessionAfterCloseSessionCreatesFreshSession)
 
 TEST(SessionTest, SharedMemoryNameCannotBeReopenedAfterSessionCreation)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.shmName = "/memrpc-session-test-reopen-guard";
 
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>(config);
@@ -483,7 +483,7 @@ TEST(SessionTest, AttachPreservesCreditEventFds)
 
 TEST(SessionTest, CachedLayoutAndPayloadLimitsSurviveHeaderMutation)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 2;
     config.normalRingSize = 2;
     config.responseRingSize = 2;

@@ -82,7 +82,7 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized()
     }
 
     if (!sessionHost_) {
-        sessionHost_ = std::make_shared<MemRpc::DevSessionHost>();
+        sessionHost_ = std::make_shared<MemRpc::SharedMemorySessionHost>();
     }
 
     const MemRpc::StatusCode ensureStatus = sessionHost_->EnsureSession();

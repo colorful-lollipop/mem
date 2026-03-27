@@ -1,16 +1,16 @@
-#ifndef MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
-#define MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
+#ifndef MEMRPC_TEST_SUPPORT_DEV_BOOTSTRAP_H_
+#define MEMRPC_TEST_SUPPORT_DEV_BOOTSTRAP_H_
 
 #include <memory>
 
 #include "memrpc/core/bootstrap.h"
-#include "memrpc/core/dev_bootstrap_config.h"
+#include "memrpc/core/shared_memory_session_config.h"
 
 namespace MemRpc {
 
 class DevBootstrapChannel : public IBootstrapChannel {
 public:
-    explicit DevBootstrapChannel(DevBootstrapConfig config = {});
+    explicit DevBootstrapChannel(SharedMemorySessionConfig config = {});
     ~DevBootstrapChannel() override;
 
     StatusCode OpenSession(BootstrapHandles& handles) override;
@@ -32,4 +32,4 @@ namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
 }  // namespace OHOS::Security::VirusProtectionService
 
-#endif  // MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
+#endif  // MEMRPC_TEST_SUPPORT_DEV_BOOTSTRAP_H_

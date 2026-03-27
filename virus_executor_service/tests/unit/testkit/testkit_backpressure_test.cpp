@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_client.h"
 #include "testkit/testkit_service.h"
@@ -47,7 +47,7 @@ bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs)
 
 TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 8;
     config.normalRingSize = 8;
     config.responseRingSize = 8;
@@ -109,7 +109,7 @@ TEST(TestkitBackpressureTest, RequestQueuePressureAndRecovery)
 
 TEST(TestkitBackpressureTest, CreditFlowReleasesBlockedSubmitter)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     config.highRingSize = 4;
     config.normalRingSize = 4;
     config.responseRingSize = 4;

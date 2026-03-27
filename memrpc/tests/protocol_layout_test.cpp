@@ -3,7 +3,7 @@
 #include <cstddef>
 
 #include "core/shm_layout.h"
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/core/protocol.h"
 
 TEST(ProtocolLayoutTest, ConstantsAndEntrySizesAreStable)
@@ -28,7 +28,7 @@ TEST(ProtocolLayoutTest, InlinePayloadLimitsStayWithinEntryBudget)
 
 TEST(ProtocolLayoutTest, DemoBootstrapDefaultsAreSizedForSmallSessions)
 {
-    MemRpc::DevBootstrapConfig config;
+    MemRpc::SharedMemorySessionConfig config;
     EXPECT_EQ(config.highRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize);
     EXPECT_EQ(config.normalRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize);
     EXPECT_EQ(config.responseRingSize, MemRpc::DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize);

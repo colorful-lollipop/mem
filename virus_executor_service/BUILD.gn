@@ -72,6 +72,7 @@ source_set("virus_executor_service_service") {
 group("virus_executor_service_lib") {
   public_configs = [ ":ves_public_config" ]
   public_deps = [
+    "//memrpc:memrpc_test_support",
     ":virus_executor_service_client_lib",
     ":virus_executor_service_service",
     ":virus_executor_service_testkit",

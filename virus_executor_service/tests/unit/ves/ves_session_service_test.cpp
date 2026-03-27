@@ -18,8 +18,8 @@ using VirusExecutorService::VesEngineService;
 namespace {
 class TrackingSessionHost final : public MemRpc::IServerSessionHost {
 public:
-    explicit TrackingSessionHost(MemRpc::DevBootstrapConfig config = {})
-        : inner_(std::make_shared<MemRpc::DevSessionHost>(std::move(config)))
+    explicit TrackingSessionHost(MemRpc::SharedMemorySessionConfig config = {})
+        : inner_(std::make_shared<MemRpc::SharedMemorySessionHost>(std::move(config)))
     {
     }
 
@@ -68,7 +68,7 @@ public:
     }
 
 private:
-    std::shared_ptr<MemRpc::DevSessionHost> inner_;
+    std::shared_ptr<MemRpc::SharedMemorySessionHost> inner_;
     mutable std::atomic<int> ensureCount_{0};
     mutable std::atomic<int> openCount_{0};
     mutable std::atomic<int> closeCount_{0};

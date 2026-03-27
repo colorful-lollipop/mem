@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/runtime_utils.h"
 #include "memrpc/server/rpc_server.h"
@@ -172,7 +172,7 @@ void RecordError(SharedState* state, const std::string& message)
 
 bool RunStress(const StressConfig& config)
 {
-    Mem::DevBootstrapConfig bootstrapConfig;
+    Mem::SharedMemorySessionConfig bootstrapConfig;
     bootstrapConfig.maxRequestBytes = config.maxRequestBytes;
     bootstrapConfig.maxResponseBytes = config.maxResponseBytes;
 

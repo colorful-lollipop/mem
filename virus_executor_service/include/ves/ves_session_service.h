@@ -11,7 +11,7 @@
 
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
-#include "memrpc/server/dev_session_host.h"
+#include "memrpc/server/shared_memory_session_host.h"
 #include "memrpc/server/rpc_server.h"
 #include "service/rpc_handler_registrar.h"
 

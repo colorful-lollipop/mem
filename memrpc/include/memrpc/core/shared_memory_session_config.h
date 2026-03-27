@@ -1,5 +1,5 @@
-#ifndef MEMRPC_CORE_DEV_BOOTSTRAP_CONFIG_H_
-#define MEMRPC_CORE_DEV_BOOTSTRAP_CONFIG_H_
+#ifndef MEMRPC_CORE_SHARED_MEMORY_SESSION_CONFIG_H_
+#define MEMRPC_CORE_SHARED_MEMORY_SESSION_CONFIG_H_
 
 #include <cstdint>
 #include <string>
@@ -8,7 +8,7 @@
 
 namespace MemRpc {
 
-struct DevBootstrapConfig {
+struct SharedMemorySessionConfig {
     uint32_t highRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize;
     uint32_t normalRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize;
     uint32_t responseRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize;
@@ -23,4 +23,4 @@ namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
 }  // namespace OHOS::Security::VirusProtectionService
 
-#endif  // MEMRPC_CORE_DEV_BOOTSTRAP_CONFIG_H_
+#endif  // MEMRPC_CORE_SHARED_MEMORY_SESSION_CONFIG_H_

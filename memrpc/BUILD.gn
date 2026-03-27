@@ -23,10 +23,13 @@ config("memrpc_test_config") {
   ]
 }
 
+config("memrpc_test_support_public_config") {
+  include_dirs = [ "tests/support/include" ]
+}
+
 source_set("memrpc_core") {
   sources = [
-    "src/bootstrap/dev_bootstrap.cpp",
-    "src/bootstrap/dev_session_host.cpp",
+    "src/bootstrap/shared_memory_session_host.cpp",
     "src/client/rpc_client.cpp",
     "src/core/byte_reader.cpp",
     "src/core/byte_writer.cpp",
@@ -44,8 +47,27 @@ source_set("memrpc_core") {
   ]
 }
 
-group("memrpc") {
+source_set("memrpc_test_support") {
+  sources = [ "tests/support/dev_bootstrap.cpp" ]
+
+  public_configs = [
+    ":memrpc_public_config",
+    ":memrpc_test_support_public_config",
+  ]
+  configs += [ ":memrpc_private_config" ]
   public_deps = [ ":memrpc_core" ]
+  all_dependent_configs = [
+    ":memrpc_runtime_config",
+    "//gn/config:librt",
+    "//gn/config:posix_threads",
+  ]
+}
+
+group("memrpc") {
+  public_deps = [
+    ":memrpc_core",
+    ":memrpc_test_support",
+  ]
 }
 
 group("tests") {

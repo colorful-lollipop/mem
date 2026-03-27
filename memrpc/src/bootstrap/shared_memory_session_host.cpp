@@ -1,4 +1,4 @@
-#include "memrpc/server/dev_session_host.h"
+#include "memrpc/server/shared_memory_session_host.h"
 
 #include <fcntl.h>
 #include <sys/eventfd.h>
@@ -89,9 +89,9 @@ bool InitMutex(pthread_mutex_t* mutex)
 
 }  // namespace
 
-struct DevSessionHost::Impl {
+struct SharedMemorySessionHost::Impl {
     mutable std::mutex mutex;
-    DevBootstrapConfig config;
+    SharedMemorySessionConfig config;
     BootstrapHandles handles = MakeDefaultBootstrapHandles();
     bool initialized = false;
 
@@ -251,21 +251,21 @@ struct DevSessionHost::Impl {
     }
 };
 
-DevSessionHost::DevSessionHost(DevBootstrapConfig config)
+SharedMemorySessionHost::SharedMemorySessionHost(SharedMemorySessionConfig config)
     : impl_(std::make_shared<Impl>())
 {
     impl_->config = std::move(config);
 }
 
-DevSessionHost::~DevSessionHost() = default;
+SharedMemorySessionHost::~SharedMemorySessionHost() = default;
 
-StatusCode DevSessionHost::EnsureSession()
+StatusCode SharedMemorySessionHost::EnsureSession()
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->EnsureInitialized();
 }
 
-StatusCode DevSessionHost::OpenSession(BootstrapHandles& handles)
+StatusCode SharedMemorySessionHost::OpenSession(BootstrapHandles& handles)
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     const StatusCode initStatus = impl_->EnsureInitialized();
@@ -280,14 +280,14 @@ StatusCode DevSessionHost::OpenSession(BootstrapHandles& handles)
     return StatusCode::Ok;
 }
 
-StatusCode DevSessionHost::CloseSession()
+StatusCode SharedMemorySessionHost::CloseSession()
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->ResetHandles();
     return StatusCode::Ok;
 }
 
-BootstrapHandles DevSessionHost::serverHandles() const
+BootstrapHandles SharedMemorySessionHost::serverHandles() const
 {
     BootstrapHandles handles = MakeDefaultBootstrapHandles();
     std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -300,7 +300,7 @@ BootstrapHandles DevSessionHost::serverHandles() const
     return handles;
 }
 
-uint64_t DevSessionHost::sessionId() const
+uint64_t SharedMemorySessionHost::sessionId() const
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->handles.sessionId;

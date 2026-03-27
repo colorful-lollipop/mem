@@ -6,7 +6,7 @@
 #include <string>
 
 #include "client/ves_client.h"
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"
 #include "transport/ves_control_stub.h"

@@ -1,21 +1,21 @@
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 
 #include <mutex>
 
-#include "memrpc/server/dev_session_host.h"
+#include "memrpc/server/shared_memory_session_host.h"
 
 namespace MemRpc {
 
 struct DevBootstrapChannel::Impl {
     mutable std::mutex mutex;
-    std::shared_ptr<DevSessionHost> sessionHost;
+    std::shared_ptr<SharedMemorySessionHost> sessionHost;
     EngineDeathCallback death_callback;
 };
 
-DevBootstrapChannel::DevBootstrapChannel(DevBootstrapConfig config)
+DevBootstrapChannel::DevBootstrapChannel(SharedMemorySessionConfig config)
     : impl_(std::make_shared<Impl>())
 {
-    impl_->sessionHost = std::make_shared<DevSessionHost>(std::move(config));
+    impl_->sessionHost = std::make_shared<SharedMemorySessionHost>(std::move(config));
 }
 
 DevBootstrapChannel::~DevBootstrapChannel() = default;

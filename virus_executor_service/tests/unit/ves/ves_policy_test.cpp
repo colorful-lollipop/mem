@@ -16,7 +16,7 @@
 #include "client/internal/ves_client_recovery_access.h"
 #include "isam_backend.h"
 #include "iservice_registry.h"
-#include "memrpc/client/dev_bootstrap.h"
+#include "memrpc/test_support/dev_bootstrap.h"
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/server/rpc_server.h"

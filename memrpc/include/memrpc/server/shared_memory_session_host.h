@@ -1,10 +1,10 @@
-#ifndef MEMRPC_SERVER_DEV_SESSION_HOST_H_
-#define MEMRPC_SERVER_DEV_SESSION_HOST_H_
+#ifndef MEMRPC_SERVER_SHARED_MEMORY_SESSION_HOST_H_
+#define MEMRPC_SERVER_SHARED_MEMORY_SESSION_HOST_H_
 
 #include <memory>
 
 #include "memrpc/core/bootstrap.h"
-#include "memrpc/core/dev_bootstrap_config.h"
+#include "memrpc/core/shared_memory_session_config.h"
 
 namespace MemRpc {
 
@@ -18,10 +18,10 @@ public:
     [[nodiscard]] virtual BootstrapHandles serverHandles() const = 0;
 };
 
-class DevSessionHost final : public IServerSessionHost {
+class SharedMemorySessionHost final : public IServerSessionHost {
 public:
-    explicit DevSessionHost(DevBootstrapConfig config = {});
-    ~DevSessionHost() override;
+    explicit SharedMemorySessionHost(SharedMemorySessionConfig config = {});
+    ~SharedMemorySessionHost() override;
 
     StatusCode EnsureSession() override;
     StatusCode OpenSession(BootstrapHandles& handles) override;
@@ -40,4 +40,4 @@ namespace OHOS::Security::VirusProtectionService {
 namespace MemRpc = ::MemRpc;
 }  // namespace OHOS::Security::VirusProtectionService
 
-#endif  // MEMRPC_SERVER_DEV_SESSION_HOST_H_
+#endif  // MEMRPC_SERVER_SHARED_MEMORY_SESSION_HOST_H_
