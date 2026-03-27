@@ -12,8 +12,8 @@
 #include <thread>
 #include <vector>
 
+#include "memrpc/client/rpc_client.h"
 #include "memrpc/test_support/dev_bootstrap.h"
-#include "memrpc/client/typed_invoker.h"
 #include "memrpc/core/runtime_utils.h"
 #include "memrpc/server/rpc_server.h"
 #include "testkit/testkit_codec.h"

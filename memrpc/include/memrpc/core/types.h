@@ -38,6 +38,12 @@ struct RpcEvent {
 
 using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
+struct RpcReply {
+    // status 是框架层结果；业务错误需要放进应用层 payload。
+    StatusCode status = StatusCode::Ok;
+    std::vector<uint8_t> payload;
+};
+
 }  // namespace MemRpc
 
 #endif  // MEMRPC_CORE_TYPES_H_

@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "memrpc/core/bootstrap.h"
+#include "memrpc/core/codec.h"
 #include "memrpc/core/protocol.h"
 #include "memrpc/core/rpc_types.h"
-#include "memrpc/core/types.h"
 
 namespace MemRpc {
 
@@ -48,6 +48,21 @@ private:
 
     friend class RpcClient;
 };
+
+// Wait on a future and decode the reply payload.
+template <typename Rep>
+StatusCode WaitAndDecode(RpcFuture&& future, Rep* reply)
+{
+    if (reply == nullptr) {
+        return StatusCode::InvalidArgument;
+    }
+    RpcReply rpcReply;
+    const StatusCode status = std::move(future).Wait(&rpcReply);
+    if (status != StatusCode::Ok) {
+        return status;
+    }
+    return DecodeMessage<Rep>(rpcReply.payload, reply) ? rpcReply.status : StatusCode::ProtocolMismatch;
+}
 
 struct RpcFailure {
     StatusCode status = StatusCode::Ok;

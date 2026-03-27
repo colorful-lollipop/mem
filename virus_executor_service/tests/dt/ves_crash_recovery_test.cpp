@@ -20,7 +20,7 @@
 #include "client/ves_client.h"
 #include "client/internal/ves_client_recovery_access.h"
 #include "iservice_registry.h"
-#include "memrpc/client/typed_invoker.h"
+#include "memrpc/client/rpc_client.h"
 #include "memrpc/core/codec.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"

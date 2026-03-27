@@ -10,7 +10,6 @@
 
 #include "memrpc/core/protocol.h"
 #include "memrpc/core/rpc_types.h"
-#include "memrpc/core/types.h"
 
 namespace MemRpc {
 

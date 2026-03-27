@@ -7,7 +7,6 @@
 
 #include "iremote_broker.h"
 #include "iservice_registry.h"
-#include "memrpc/client/typed_invoker.h"
 #include "transport/ves_control_interface.h"
 #include "ves/ves_codec.h"
 #include "ves/ves_protocol.h"
