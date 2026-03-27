@@ -178,8 +178,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryReusesRestartFlow)
     client.SetRecoveryPolicy(std::move(policy));
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-    client.RequestExternalRecovery(
-        {ExternalRecoverySignal::ChannelHealthUnhealthy, rawBootstrap->serverHandles().sessionId, 0});
+    client.RequestExternalRecovery({rawBootstrap->serverHandles().sessionId, 0});
 
     const auto recoverySnapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_TRUE(recoverySnapshot.lifecycleState == ClientLifecycleState::Recovering ||
@@ -241,7 +240,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
     const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
-    client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    client.RequestExternalRecovery({sessionId, 200});
     server.Stop();
 
     RpcServer restartedServer;
@@ -269,7 +268,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryWaitsAcrossCooldownGa
     restartedServer.Stop();
 }
 
-TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
+TEST(RpcClientExternalRecoveryTest, RecoverySnapshotExposesCooldownRemaining)
 {
     auto rawBootstrap = std::make_shared<DevBootstrapChannel>();
     BootstrapHandles unusedHandles = MakeDefaultBootstrapHandles();
@@ -282,8 +281,7 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
     RpcClient client(rawBootstrap);
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-    client.RequestExternalRecovery(
-        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
+    client.RequestExternalRecovery({rawBootstrap->serverHandles().sessionId, 200});
 
     ASSERT_TRUE(WaitFor(
         [&]() {
@@ -291,12 +289,11 @@ TEST(RpcClientExternalRecoveryTest, RuntimeStatsExposeCooldownRemaining)
             return snapshot.lifecycleState == ClientLifecycleState::Cooldown && snapshot.recoveryPending;
         },
         std::chrono::milliseconds(500)));
-    const RpcClientRuntimeStats stats = client.GetRuntimeStats();
-    EXPECT_GT(stats.cooldownRemainingMs, 0u);
-    EXPECT_LE(stats.cooldownRemainingMs, 200u);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Cooldown);
     EXPECT_TRUE(snapshot.recoveryPending);
+    EXPECT_GT(snapshot.cooldownRemainingMs, 0u);
+    EXPECT_LE(snapshot.cooldownRemainingMs, 200u);
 
     client.Shutdown();
     server.Stop();
@@ -316,8 +313,7 @@ TEST(RpcClientExternalRecoveryTest, FailedRecoveryOpenTransitionsToNoSession)
     RpcClient client(bootstrap);
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-    client.RequestExternalRecovery(
-        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 0});
+    client.RequestExternalRecovery({rawBootstrap->serverHandles().sessionId, 0});
 
     ASSERT_TRUE(WaitFor(
         [&]() {
@@ -358,14 +354,12 @@ TEST(RpcClientExternalRecoveryTest, ShutdownDisablesLaterRecoverySignals)
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
     client.Shutdown();
-    client.RequestExternalRecovery(
-        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 200});
+    client.RequestExternalRecovery({rawBootstrap->serverHandles().sessionId, 200});
 
-    const RpcClientRuntimeStats stats = client.GetRuntimeStats();
-    EXPECT_FALSE(stats.recoveryPending);
-    EXPECT_EQ(stats.cooldownRemainingMs, 0u);
     const auto snapshot = client.GetRecoveryRuntimeSnapshot();
     EXPECT_EQ(snapshot.lifecycleState, ClientLifecycleState::Closed);
+    EXPECT_FALSE(snapshot.recoveryPending);
+    EXPECT_EQ(snapshot.cooldownRemainingMs, 0u);
     EXPECT_EQ(bootstrap->openCount(), 1);
 
     RpcCall call;
@@ -396,7 +390,7 @@ TEST(RpcClientExternalRecoveryTest, RequestExternalRecoveryCanWaitInternallyAcro
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
     const uint64_t sessionId = rawBootstrap->serverHandles().sessionId;
-    client.RequestExternalRecovery({ExternalRecoverySignal::ChannelHealthTimeout, sessionId, 200});
+    client.RequestExternalRecovery({sessionId, 200});
     server.Stop();
 
     RpcServer restartedServer;
@@ -438,8 +432,7 @@ TEST(RpcClientExternalRecoveryTest, RetryUntilRecoverySettlesWaitsAcrossExternal
     RpcClient client(rawBootstrap);
     ASSERT_EQ(client.Init(), StatusCode::Ok);
 
-    client.RequestExternalRecovery(
-        {ExternalRecoverySignal::ChannelHealthTimeout, rawBootstrap->serverHandles().sessionId, 150});
+    client.RequestExternalRecovery({rawBootstrap->serverHandles().sessionId, 150});
     server.Stop();
 
     RpcServer restartedServer;

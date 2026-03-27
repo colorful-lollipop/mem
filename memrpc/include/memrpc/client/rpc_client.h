@@ -29,17 +29,6 @@ struct RpcReply {
     std::vector<uint8_t> payload;
 };
 
-struct RpcClientRuntimeStats {
-    uint32_t queuedSubmissions = 0;
-    uint32_t pendingCalls = 0;
-    uint32_t highRequestRingPending = 0;
-    uint32_t normalRequestRingPending = 0;
-    uint32_t responseRingPending = 0;
-    bool waitingForRequestCredit = false;
-    bool recoveryPending = false;
-    uint32_t cooldownRemainingMs = 0;
-};
-
 class RpcFuture {
 public:
     RpcFuture();
@@ -140,15 +129,7 @@ struct RecoveryPolicy {
 
 using RecoveryEventCallback = std::function<void(const RecoveryEventReport&)>;
 
-enum class ExternalRecoverySignal : uint8_t {
-    ChannelHealthTimeout = 0,
-    ChannelHealthMalformed = 1,
-    ChannelHealthUnhealthy = 2,
-    ChannelHealthSessionMismatch = 3,
-};
-
 struct ExternalRecoveryRequest {
-    ExternalRecoverySignal signal = ExternalRecoverySignal::ChannelHealthTimeout;
     uint64_t sessionId = 0;
     uint32_t delayMs = 0;
 };
@@ -177,7 +158,6 @@ public:
     // 它不会透明重放已经成功发布到旧 session 的 pending 请求；仅用于对
     // CooldownActive / PeerDisconnected 这类“尚未稳定进入可用 session”的调用做包装。
     StatusCode RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke);
-    [[nodiscard]] RpcClientRuntimeStats GetRuntimeStats() const;
     [[nodiscard]] RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const;
     void Shutdown();
 

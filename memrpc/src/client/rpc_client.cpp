@@ -1658,9 +1658,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                    static_cast<unsigned long long>(observedSessionId));
             return;
         }
-        HILOGW("RpcClient::RequestExternalRecovery requested: signal=%{public}d session_id=%{public}llu "
-               "delay_ms=%{public}u",
-               static_cast<int>(request.signal),
+        HILOGW("RpcClient::RequestExternalRecovery requested: session_id=%{public}llu delay_ms=%{public}u",
                static_cast<unsigned long long>(request.sessionId),
                request.delayMs);
         ScheduleRecoveryLocked(observedSessionId, request.delayMs, PendingRequestRecoveryAction::ResolvePeerDisconnected);
@@ -2088,35 +2086,31 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         HandleIdleRecovery(observedSessionId, idleMs);
     }
 
-    std::optional<ExternalRecoverySignal> ToExternalRecoverySignal(ChannelHealthStatus status) const
+    bool ShouldRequestRecoveryForHealthStatus(ChannelHealthStatus status) const
     {
         switch (status) {
             case ChannelHealthStatus::Timeout:
-                return ExternalRecoverySignal::ChannelHealthTimeout;
             case ChannelHealthStatus::Malformed:
-                return ExternalRecoverySignal::ChannelHealthMalformed;
             case ChannelHealthStatus::Unhealthy:
-                return ExternalRecoverySignal::ChannelHealthUnhealthy;
             case ChannelHealthStatus::SessionMismatch:
-                return ExternalRecoverySignal::ChannelHealthSessionMismatch;
+                return true;
             case ChannelHealthStatus::Healthy:
             case ChannelHealthStatus::Unsupported:
-                return std::nullopt;
+                return false;
         }
-        return std::nullopt;
+        return false;
     }
 
     void RequestHealthCheckRecovery(ChannelHealthStatus status, uint64_t observedSessionId)
     {
-        const std::optional<ExternalRecoverySignal> signal = ToExternalRecoverySignal(status);
-        if (!signal.has_value()) {
+        if (!ShouldRequestRecoveryForHealthStatus(status)) {
             return;
         }
 
         HILOGE("RpcClient::MaybeRunHealthCheck status=%{public}d session_id=%{public}llu",
                static_cast<int>(status),
                static_cast<unsigned long long>(observedSessionId));
-        HandleExternalRecovery(observedSessionId, {*signal, observedSessionId, 0});
+        HandleExternalRecovery(observedSessionId, {observedSessionId, 0});
     }
 
     void MaybeRunHealthCheck()
@@ -2191,29 +2185,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         }
         submitCv_.notify_one();
         return RpcFuture(futureState);
-    }
-
-    RpcClientRuntimeStats GetRuntimeStats() const
-    {
-        RpcClientRuntimeStats stats;
-        {
-            std::lock_guard<std::mutex> lock(submitMutex_);
-            stats.queuedSubmissions = static_cast<uint32_t>(submitQueue_.size());
-        }
-        stats.pendingCalls = requestStore_.Size();
-        {
-            sessionTransport_.WithSessionLocked([&](const Session& session) {
-                if (session.Header() != nullptr) {
-                    stats.highRequestRingPending = RingCount(session.Header()->highRing);
-                    stats.normalRequestRingPending = RingCount(session.Header()->normalRing);
-                    stats.responseRingPending = RingCount(session.Header()->responseRing);
-                }
-            });
-        }
-        stats.waitingForRequestCredit = submitterWaitingForCredit_.load(std::memory_order_acquire);
-        stats.recoveryPending = RecoveryPending();
-        stats.cooldownRemainingMs = static_cast<uint32_t>(CooldownRemaining().count());
-        return stats;
     }
 
     RecoveryRuntimeSnapshot GetRecoveryRuntimeSnapshot() const
@@ -2341,11 +2312,6 @@ RpcFuture RpcClient::InvokeAsync(RpcCall&& call)
 StatusCode RpcClient::RetryUntilRecoverySettles(const std::function<StatusCode()>& invoke)
 {
     return impl_->RetryUntilRecoverySettles(invoke);
-}
-
-RpcClientRuntimeStats RpcClient::GetRuntimeStats() const
-{
-    return impl_->GetRuntimeStats();
 }
 
 RecoveryRuntimeSnapshot RpcClient::GetRecoveryRuntimeSnapshot() const

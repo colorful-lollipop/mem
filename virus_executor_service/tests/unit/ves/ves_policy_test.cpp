@@ -116,7 +116,6 @@ void UseInMemorySamBackend()
 void RequestRecoveryForTest(VesClient& client, uint32_t delayMs)
 {
     client.client_.RequestExternalRecovery({
-        MemRpc::ExternalRecoverySignal::ChannelHealthTimeout,
         0,
         delayMs,
     });
