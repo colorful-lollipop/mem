@@ -16,6 +16,65 @@ using VirusExecutorService::EngineSessionService;
 using VirusExecutorService::VesEngineService;
 
 namespace {
+class TrackingSessionHost final : public MemRpc::IServerSessionHost {
+public:
+    explicit TrackingSessionHost(MemRpc::DevBootstrapConfig config = {})
+        : inner_(std::make_shared<MemRpc::DevSessionHost>(std::move(config)))
+    {
+    }
+
+    MemRpc::StatusCode EnsureSession() override
+    {
+        ++ensureCount_;
+        return inner_->EnsureSession();
+    }
+
+    MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override
+    {
+        ++openCount_;
+        return inner_->OpenSession(handles);
+    }
+
+    MemRpc::StatusCode CloseSession() override
+    {
+        ++closeCount_;
+        return inner_->CloseSession();
+    }
+
+    [[nodiscard]] MemRpc::BootstrapHandles serverHandles() const override
+    {
+        ++serverHandlesCount_;
+        return inner_->serverHandles();
+    }
+
+    [[nodiscard]] int ensureCount() const
+    {
+        return ensureCount_.load();
+    }
+
+    [[nodiscard]] int openCount() const
+    {
+        return openCount_.load();
+    }
+
+    [[nodiscard]] int closeCount() const
+    {
+        return closeCount_.load();
+    }
+
+    [[nodiscard]] int serverHandlesCount() const
+    {
+        return serverHandlesCount_.load();
+    }
+
+private:
+    std::shared_ptr<MemRpc::DevSessionHost> inner_;
+    mutable std::atomic<int> ensureCount_{0};
+    mutable std::atomic<int> openCount_{0};
+    mutable std::atomic<int> closeCount_{0};
+    mutable std::atomic<int> serverHandlesCount_{0};
+};
+
 void CloseHandles(MemRpc::BootstrapHandles* handles)
 {
     if (handles == nullptr) {
@@ -61,6 +120,23 @@ TEST(VesSessionServiceTest, OpenSessionLeavesRegistrarStateUntouched)
     EXPECT_FALSE(service.initialized());
 
     CloseHandles(&handles);
+}
+
+TEST(VesSessionServiceTest, OpenSessionUsesInjectedServerSessionHost)
+{
+    VesEngineService service;
+    auto sessionHost = std::make_shared<TrackingSessionHost>();
+    EngineSessionService sessionService({&service}, sessionHost);
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
+    EXPECT_GE(sessionHost->ensureCount(), 1);
+    EXPECT_GE(sessionHost->serverHandlesCount(), 1);
+    EXPECT_GE(sessionHost->openCount(), 1);
+
+    CloseHandles(&handles);
+    EXPECT_EQ(sessionService.CloseSession(), MemRpc::StatusCode::Ok);
+    EXPECT_GE(sessionHost->closeCount(), 1);
 }
 
 TEST(VesSessionServiceTest, InvokeAnyCallUsesRegisteredTypedHandlers)

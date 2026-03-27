@@ -2,21 +2,11 @@
 #define MEMRPC_CLIENT_DEV_BOOTSTRAP_H_
 
 #include <memory>
-#include <string>
 
 #include "memrpc/core/bootstrap.h"
-#include "memrpc/core/protocol.h"
+#include "memrpc/core/dev_bootstrap_config.h"
 
 namespace MemRpc {
-
-struct DevBootstrapConfig {
-    uint32_t highRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize;
-    uint32_t normalRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize;
-    uint32_t responseRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize;
-    uint32_t maxRequestBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxRequestBytes;
-    uint32_t maxResponseBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxResponseBytes;
-    std::string shmName;
-};
 
 class DevBootstrapChannel : public IBootstrapChannel {
 public:

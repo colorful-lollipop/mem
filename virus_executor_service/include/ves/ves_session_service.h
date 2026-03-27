@@ -9,9 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "memrpc/client/dev_bootstrap.h"
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
+#include "memrpc/server/dev_session_host.h"
 #include "memrpc/server/rpc_server.h"
 #include "service/rpc_handler_registrar.h"
 
@@ -32,7 +32,8 @@ public:
 
 class EngineSessionService final : public VesSessionProvider, public VesEventPublisher {
 public:
-    explicit EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars = {});
+    explicit EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars = {},
+                                  std::shared_ptr<MemRpc::IServerSessionHost> sessionHost = nullptr);
     ~EngineSessionService() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
@@ -50,7 +51,7 @@ private:
 
     std::vector<RpcHandlerRegistrar*> registrars_;
     std::unordered_map<uint16_t, MemRpc::RpcHandler> anyCallHandlers_;
-    std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap_;
+    std::shared_ptr<MemRpc::IServerSessionHost> sessionHost_;
     std::shared_ptr<MemRpc::RpcServer> rpcServer_;
     mutable std::mutex initMutex_;
     bool initialized_ = false;

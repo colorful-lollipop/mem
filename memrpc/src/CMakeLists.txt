@@ -2,6 +2,7 @@ add_library(memrpc_core
   client/rpc_client.cpp
   server/rpc_server.cpp
   bootstrap/dev_bootstrap.cpp
+  bootstrap/dev_session_host.cpp
   core/byte_reader.cpp
   core/byte_writer.cpp
   core/log.cpp

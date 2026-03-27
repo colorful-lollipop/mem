@@ -446,21 +446,39 @@ void Session::SetState(SessionState state)
 
 StatusCode Session::PushRequest(QueueKind queue, const RequestRingEntry& entry)
 {
+    if (State() != SessionState::Alive) {
+        HILOGW("Session::PushRequest rejected: session state=%{public}u",
+               static_cast<uint32_t>(State()));
+        return StatusCode::PeerDisconnected;
+    }
     return PushRingEntry<RequestRingEntry>(ResolveRing(queue), entry);
 }
 
 bool Session::PopRequest(QueueKind queue, RequestRingEntry* entry)
 {
+    if (State() != SessionState::Alive) {
+        HILOGW("Session::PopRequest rejected: session state=%{public}u", static_cast<uint32_t>(State()));
+        return false;
+    }
     return PopRingEntry<RequestRingEntry>(ResolveRing(queue), entry);
 }
 
 StatusCode Session::PushResponse(const ResponseRingEntry& entry)
 {
+    if (State() != SessionState::Alive) {
+        HILOGW("Session::PushResponse rejected: session state=%{public}u",
+               static_cast<uint32_t>(State()));
+        return StatusCode::PeerDisconnected;
+    }
     return PushRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 
 bool Session::PopResponse(ResponseRingEntry* entry)
 {
+    if (State() != SessionState::Alive) {
+        HILOGW("Session::PopResponse rejected: session state=%{public}u", static_cast<uint32_t>(State()));
+        return false;
+    }
     return PopRingEntry<ResponseRingEntry>(ResolveRing(QueueKind::Response), entry);
 }
 

@@ -1,6 +1,5 @@
 #include "ves/ves_session_service.h"
 
-#include <unistd.h>
 #include <random>
 #include <string>
 #include <utility>
@@ -56,32 +55,14 @@ MemRpc::StatusCode InvokeAnyCallHandler(const std::unordered_map<uint16_t, MemRp
     return reply->status;
 }
 
-void CloseHandles(MemRpc::BootstrapHandles* handles)
-{
-    if (handles == nullptr)
-        return;
-    int* fds[] = {
-        &handles->shmFd,
-        &handles->highReqEventFd,
-        &handles->normalReqEventFd,
-        &handles->respEventFd,
-        &handles->reqCreditEventFd,
-        &handles->respCreditEventFd,
-    };
-    for (int* fd : fds) {
-        if (fd != nullptr && *fd >= 0) {
-            close(*fd);
-            *fd = -1;
-        }
-    }
-}
-
 constexpr auto EVENT_PUBLISH_PERIOD_MIN = std::chrono::milliseconds(80);
 constexpr auto EVENT_PUBLISH_PERIOD_MAX = std::chrono::milliseconds(180);
 }  // namespace
 
-EngineSessionService::EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars)
-    : registrars_(std::move(registrars))
+EngineSessionService::EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars,
+                                           std::shared_ptr<MemRpc::IServerSessionHost> sessionHost)
+    : registrars_(std::move(registrars)),
+      sessionHost_(std::move(sessionHost))
 {
 }
 
@@ -100,20 +81,17 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized()
         return MemRpc::StatusCode::Ok;
     }
 
-    if (!bootstrap_) {
-        bootstrap_ = std::make_shared<MemRpc::DevBootstrapChannel>();
+    if (!sessionHost_) {
+        sessionHost_ = std::make_shared<MemRpc::DevSessionHost>();
     }
 
-    MemRpc::BootstrapHandles throwaway = MemRpc::MakeDefaultBootstrapHandles();
-    const MemRpc::StatusCode open_status = bootstrap_->OpenSession(throwaway);
-    if (open_status != MemRpc::StatusCode::Ok) {
-        HILOGE("bootstrap OpenSession failed");
-        CloseHandles(&throwaway);
-        return open_status;
+    const MemRpc::StatusCode ensureStatus = sessionHost_->EnsureSession();
+    if (ensureStatus != MemRpc::StatusCode::Ok) {
+        HILOGE("session host EnsureSession failed");
+        return ensureStatus;
     }
-    CloseHandles(&throwaway);
 
-    const MemRpc::BootstrapHandles serverHandles = bootstrap_->serverHandles();
+    const MemRpc::BootstrapHandles serverHandles = sessionHost_->serverHandles();
     rpcServer_ = std::make_shared<MemRpc::RpcServer>(serverHandles);
     anyCallHandlers_.clear();
     RpcServerHandlerSink rpcServerSink(rpcServer_.get());
@@ -128,7 +106,7 @@ MemRpc::StatusCode EngineSessionService::EnsureInitialized()
     if (start_status != MemRpc::StatusCode::Ok) {
         HILOGE("RpcServer start failed");
         rpcServer_.reset();
-        bootstrap_.reset();
+        sessionHost_.reset();
         anyCallHandlers_.clear();
         return start_status;
     }
@@ -156,10 +134,10 @@ MemRpc::StatusCode EngineSessionService::OpenSession(MemRpc::BootstrapHandles& h
     MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
     {
         std::lock_guard<std::mutex> lock(initMutex_);
-        if (bootstrap_ == nullptr) {
+        if (sessionHost_ == nullptr) {
             return MemRpc::StatusCode::InvalidArgument;
         }
-        status = bootstrap_->OpenSession(handles);
+        status = sessionHost_->OpenSession(handles);
         if (status == MemRpc::StatusCode::Ok) {
             sessionId_.store(handles.sessionId, std::memory_order_release);
             StartEventPublisherLocked();
@@ -194,7 +172,7 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
 {
     std::thread eventPublisherThread;
     std::shared_ptr<MemRpc::RpcServer> rpcServer;
-    std::shared_ptr<MemRpc::DevBootstrapChannel> bootstrap;
+    std::shared_ptr<MemRpc::IServerSessionHost> sessionHost;
     {
         std::lock_guard<std::mutex> lock(initMutex_);
         if (closing_ || !initialized_) {
@@ -204,7 +182,7 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
         eventPublisherRunning_.store(false, std::memory_order_release);
         eventPublisherThread = std::move(eventPublisherThread_);
         rpcServer = std::move(rpcServer_);
-        bootstrap = std::move(bootstrap_);
+        sessionHost = std::move(sessionHost_);
         initialized_ = false;
         sessionId_.store(0, std::memory_order_release);
     }
@@ -215,7 +193,9 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
     if (rpcServer) {
         rpcServer->Stop();
     }
-    bootstrap.reset();
+    if (sessionHost) {
+        (void)sessionHost->CloseSession();
+    }
     {
         std::lock_guard<std::mutex> lock(initMutex_);
         closing_ = false;

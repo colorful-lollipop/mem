@@ -7,7 +7,9 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
+#include <future>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -33,6 +35,7 @@ using namespace std::chrono_literals;
 
 constexpr auto RESPONSE_RETRY_BUDGET = 50ms;
 constexpr auto EVENT_RETRY_BUDGET = 10ms;
+constexpr auto STOP_TIMEOUT = 5s;
 
 class ThreadPoolExecutor final : public TaskExecutor {
 public:
@@ -498,6 +501,10 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
 
     StatusCode PublishEvent(const RpcEvent& event)
     {
+        if (!running.load(std::memory_order_acquire) || session.State() != Session::SessionState::Alive) {
+            HILOGW("RpcServer::PublishEvent rejected: server stopping or session broken");
+            return StatusCode::PeerDisconnected;
+        }
         if (!session.Valid() || session.Handles().respEventFd < 0 || session.Header() == nullptr) {
             HILOGE("PublishEvent failed, session is not ready");
             return StatusCode::EngineInternalError;
@@ -807,28 +814,40 @@ void RpcServer::Stop()
         return;
     }
 
-    impl_->StopResponseWriter();
-    if (impl_->dispatcherThread.joinable()) {
-        if (impl_->session.Handles().highReqEventFd >= 0) {
-            (void)SignalEventFd(impl_->session.Handles().highReqEventFd);
+    impl_->session.SetState(Session::SessionState::Broken);
+    impl_->responseWriterRunning.store(false, std::memory_order_release);
+
+    auto shutdownFuture = std::async(std::launch::async, [impl = impl_] {
+        impl->StopResponseWriter();
+        if (impl->dispatcherThread.joinable()) {
+            if (impl->session.Handles().highReqEventFd >= 0) {
+                (void)SignalEventFd(impl->session.Handles().highReqEventFd);
+            }
+            if (impl->session.Handles().normalReqEventFd >= 0) {
+                (void)SignalEventFd(impl->session.Handles().normalReqEventFd);
+            }
+            impl->dispatcherThread.join();
         }
-        if (impl_->session.Handles().normalReqEventFd >= 0) {
-            (void)SignalEventFd(impl_->session.Handles().normalReqEventFd);
+        auto highExecutor = std::move(impl->highExecutor);
+        auto normalExecutor = std::move(impl->normalExecutor);
+        if (highExecutor) {
+            highExecutor->Stop();
         }
-        impl_->dispatcherThread.join();
+        if (normalExecutor) {
+            normalExecutor->Stop();
+        }
+        highExecutor.reset();
+        normalExecutor.reset();
+        impl->WaitForSubmittedTasks();
+        impl->session.Reset();
+    });
+
+    if (shutdownFuture.wait_for(STOP_TIMEOUT) != std::future_status::ready) {
+        HILOGE("RpcServer::Stop timed out after %{public}lld ms; forcing process exit",
+               static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(STOP_TIMEOUT).count()));
+        std::_Exit(EXIT_FAILURE);
     }
-    auto highExecutor = std::move(impl_->highExecutor);
-    auto normalExecutor = std::move(impl_->normalExecutor);
-    if (highExecutor) {
-        highExecutor->Stop();
-    }
-    if (normalExecutor) {
-        normalExecutor->Stop();
-    }
-    highExecutor.reset();
-    normalExecutor.reset();
-    impl_->WaitForSubmittedTasks();
-    impl_->session.Reset();
+    shutdownFuture.get();
 }
 
 }  // namespace MemRpc

@@ -354,6 +354,13 @@ TEST(RpcServerExecutorTest, StopWaitsForAcceptedTasksWhenExecutorStopReturnsEarl
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     EXPECT_FALSE(stopReturned.load(std::memory_order_acquire));
 
+    MemRpc::RequestRingEntry rejectedRequest{};
+    rejectedRequest.requestId = 2;
+    rejectedRequest.opcode = kTestOpcode;
+    rejectedRequest.execTimeoutMs = 200;
+    EXPECT_EQ(clientSession.PushRequest(MemRpc::QueueKind::NormalRequest, rejectedRequest),
+              MemRpc::StatusCode::PeerDisconnected);
+
     {
         std::lock_guard<std::mutex> lock(mutex);
         allowReply = true;

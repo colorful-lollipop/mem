@@ -26,6 +26,7 @@ config("memrpc_test_config") {
 source_set("memrpc_core") {
   sources = [
     "src/bootstrap/dev_bootstrap.cpp",
+    "src/bootstrap/dev_session_host.cpp",
     "src/client/rpc_client.cpp",
     "src/core/byte_reader.cpp",
     "src/core/byte_writer.cpp",
