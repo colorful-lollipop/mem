@@ -9,7 +9,7 @@
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/codec.h"
 #include "memrpc/core/protocol.h"
-#include "memrpc/core/rpc_types.h"
+#include "memrpc/core/types.h"
 
 namespace MemRpc {
 

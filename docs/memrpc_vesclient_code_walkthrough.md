@@ -20,7 +20,7 @@
 4. [`memrpc/src/client/rpc_client.cpp`](/root/code/demo/mem/memrpc/src/client/rpc_client.cpp)
 5. [`memrpc/include/memrpc/server/rpc_server.h`](/root/code/demo/mem/memrpc/include/memrpc/server/rpc_server.h)
 6. [`memrpc/src/server/rpc_server.cpp`](/root/code/demo/mem/memrpc/src/server/rpc_server.cpp)
-7. [`memrpc/include/memrpc/client/typed_invoker.h`](/root/code/demo/mem/memrpc/include/memrpc/client/typed_invoker.h)
+7. 再回到 [`memrpc/include/memrpc/client/rpc_client.h`](/root/code/demo/mem/memrpc/include/memrpc/client/rpc_client.h) 里的 `WaitAndDecode()`
 
 这个顺序的目的很简单：
 
@@ -221,11 +221,11 @@
 7. `RequestExternalRecovery()`
 8. 生命周期转换和 snapshot/report 生成逻辑
 
-## 6. `typed_invoker.h` 在整个设计里的位置
+## 6. `WaitAndDecode()` 在整个设计里的位置
 
-看 [`memrpc/include/memrpc/client/typed_invoker.h`](/root/code/demo/mem/memrpc/include/memrpc/client/typed_invoker.h)。
+看 [`memrpc/include/memrpc/client/rpc_client.h`](/root/code/demo/mem/memrpc/include/memrpc/client/rpc_client.h)。
 
-这份头文件现在只保留了最薄的一层 typed decode 辅助。
+这段模板现在直接放在 `RpcFuture` 旁边，只保留最薄的一层 typed decode 辅助。
 
 建议先看：
 
