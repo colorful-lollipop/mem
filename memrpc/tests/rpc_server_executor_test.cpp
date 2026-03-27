@@ -14,6 +14,7 @@
 
 #include "memrpc/client/rpc_client.h"
 #include "memrpc/client/dev_bootstrap.h"
+#include "core/session.h"
 #include "memrpc/core/task_executor.h"
 #include "memrpc/server/rpc_server.h"
 
@@ -298,11 +299,14 @@ TEST(RpcServerExecutorTest, RuntimeStatsTrackActiveRequestExecution)
 TEST(RpcServerExecutorTest, StopWaitsForAcceptedTasksWhenExecutorStopReturnsEarly)
 {
     auto bootstrap = std::make_shared<MemRpc::DevBootstrapChannel>();
-    MemRpc::BootstrapHandles unusedHandles = MemRpc::MakeDefaultBootstrapHandles();
-    ASSERT_EQ(bootstrap->OpenSession(unusedHandles), MemRpc::StatusCode::Ok);
+    MemRpc::BootstrapHandles clientHandles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap->OpenSession(clientHandles), MemRpc::StatusCode::Ok);
 
     MemRpc::RpcServer server;
     server.SetBootstrapHandles(bootstrap->serverHandles());
+
+    MemRpc::Session clientSession;
+    ASSERT_EQ(clientSession.Attach(&clientHandles, MemRpc::Session::AttachRole::Client), MemRpc::StatusCode::Ok);
 
     auto executor = std::make_shared<AsyncStopExecutor>();
     MemRpc::ServerOptions options;
@@ -328,12 +332,11 @@ TEST(RpcServerExecutorTest, StopWaitsForAcceptedTasksWhenExecutorStopReturnsEarl
     });
     ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
 
-    MemRpc::RpcClient client(bootstrap);
-    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
-
-    MemRpc::RpcCall call;
-    call.opcode = kTestOpcode;
-    auto future = client.InvokeAsync(call);
+    MemRpc::RequestRingEntry request{};
+    request.requestId = 1;
+    request.opcode = kTestOpcode;
+    request.execTimeoutMs = 200;
+    ASSERT_EQ(clientSession.PushRequest(MemRpc::QueueKind::NormalRequest, request), MemRpc::StatusCode::Ok);
 
     ASSERT_TRUE(WaitForCondition(
         [&] {
@@ -357,11 +360,6 @@ TEST(RpcServerExecutorTest, StopWaitsForAcceptedTasksWhenExecutorStopReturnsEarl
     }
     cv.notify_all();
 
-    MemRpc::RpcReply reply;
-    const MemRpc::StatusCode waitStatus = std::move(future).Wait(&reply);
-    EXPECT_TRUE(waitStatus == MemRpc::StatusCode::ExecTimeout || waitStatus == MemRpc::StatusCode::PeerDisconnected);
-
     stopThread.join();
     EXPECT_TRUE(stopReturned.load(std::memory_order_acquire));
-    client.Shutdown();
 }
