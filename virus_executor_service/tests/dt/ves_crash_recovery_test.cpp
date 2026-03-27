@@ -3,30 +3,44 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstring>
 #include <cstdlib>
 #include <functional>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "client/ves_client.h"
 #include "client/internal/ves_client_recovery_access.h"
 #include "iservice_registry.h"
+#include "memrpc/client/typed_invoker.h"
+#include "memrpc/core/codec.h"
 #include "transport/registry_backend.h"
 #include "transport/registry_server.h"
 #include "transport/ves_control_interface.h"
+#include "ves/ves_codec.h"
+#include "ves/ves_protocol.h"
 #include "ves/ves_types.h"
 
 namespace {
 
 constexpr uint32_t RECOVERY_PROBE_EXEC_TIMEOUT_MS = 500;
+constexpr uint32_t MIXED_TIMEOUT_EXEC_TIMEOUT_MS = 100;
+constexpr uint32_t MIXED_TIMEOUT_SLEEP_MS = 800;
 constexpr int kRepeatedExternalKillCycles = 8;
 constexpr int kAllowedFdGrowth = 2;
 constexpr int kConcurrentScanThreads = 4;
+constexpr int kSingleThreadMixedCleanSamples = 6;
+constexpr int kSingleThreadMixedCrashSamples = 3;
+constexpr int kSingleThreadMixedTimeoutSamples = 3;
+constexpr int kConcurrentUsabilityChaosCycles = 4;
 
 const std::string REGISTRY_SOCKET = "/tmp/virus_executor_service_it_registry_" + std::to_string(getpid()) + ".sock";
 const std::string SERVICE_SOCKET = "/tmp/virus_executor_service_it_service_" + std::to_string(getpid()) + ".sock";
@@ -247,13 +261,68 @@ bool IsExpectedConcurrentScanStatus(MemRpc::StatusCode status)
     }
 }
 
+bool IsExpectedCrashFailureStatus(MemRpc::StatusCode status)
+{
+    switch (status) {
+        case MemRpc::StatusCode::PeerDisconnected:
+        case MemRpc::StatusCode::CrashedDuringExecution:
+            return true;
+        default:
+            return false;
+    }
+}
+
+VirusExecutorService::VesClientOptions BuildImmediateRestartOptions()
+{
+    VirusExecutorService::VesClientOptions options;
+    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
+        if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+            return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+        }
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+    };
+    options.recoveryPolicy.onEngineDeath = [](const MemRpc::EngineDeathReport&) {
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+    };
+    return options;
+}
+
+std::vector<int> BuildShuffledMixedSequence()
+{
+    std::vector<int> sequence;
+    sequence.reserve(kSingleThreadMixedCleanSamples + kSingleThreadMixedCrashSamples + kSingleThreadMixedTimeoutSamples);
+    sequence.insert(sequence.end(), kSingleThreadMixedCleanSamples, 0);
+    sequence.insert(sequence.end(), kSingleThreadMixedCrashSamples, 1);
+    sequence.insert(sequence.end(), kSingleThreadMixedTimeoutSamples, 2);
+    std::mt19937 rng(7);
+    std::shuffle(sequence.begin(), sequence.end(), rng);
+    return sequence;
+}
+
+MemRpc::StatusCode InvokeRawScanFile(VirusExecutorService::VesClient& client,
+                                     const VirusExecutorService::ScanTask& task,
+                                     VirusExecutorService::ScanFileReply* reply,
+                                     MemRpc::Priority priority = MemRpc::Priority::Normal,
+                                     uint32_t execTimeoutMs = 30000)
+{
+    MemRpc::RpcCall call;
+    call.opcode = static_cast<MemRpc::Opcode>(VirusExecutorService::VesOpcode::ScanFile);
+    call.priority = priority;
+    call.execTimeoutMs = execTimeoutMs;
+    if (!MemRpc::EncodeMessage(task, &call.payload)) {
+        return MemRpc::StatusCode::ProtocolMismatch;
+    }
+    return MemRpc::WaitAndDecode<VirusExecutorService::ScanFileReply>(
+        VirusExecutorService::internal::VesClientRecoveryAccess::RawRpcClient(client).InvokeAsync(std::move(call)),
+        reply);
+}
+
 void CleanupSocketFiles()
 {
     unlink(REGISTRY_SOCKET.c_str());
     unlink(SERVICE_SOCKET.c_str());
 }
 
-}  // namespace
 
 TEST(VesCrashRecoveryTest, CrashThenRecover)
 {
@@ -722,3 +791,330 @@ TEST(VesCrashRecoveryTest, RepeatedExternalKillsDuringConcurrentScanTrafficStill
               MemRpc::StatusCode::Ok);
     EXPECT_EQ(finalReply.threatLevel, 0);
 }
+
+TEST(VesCrashRecoveryTest, SingleThreadRandomMixedSamplesReturnExpectedStatuses)
+{
+    CleanupSocketFiles();
+    const std::string enginePath = EnginePathFromSelf();
+    std::atomic<int> loadCount{0};
+
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
+    registry.SetLoadCallback([&](int32_t sa_id) -> bool {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        const pid_t currentPid = LoadEnginePid();
+        if (currentPid > 0) {
+            int status = 0;
+            const pid_t result = waitpid(currentPid, &status, WNOHANG);
+            if (result == 0) {
+                return true;
+            }
+            StoreEnginePid(-1);
+        }
+        const pid_t spawnedPid = SpawnEngine(enginePath);
+        StoreEnginePid(spawnedPid);
+        if (spawnedPid < 0) {
+            return false;
+        }
+        loadCount.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        return true;
+    });
+    registry.SetUnloadCallback([&](int32_t sa_id) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
+    });
+
+    ASSERT_TRUE(registry.Start());
+
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
+
+    {
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        StoreEnginePid(SpawnEngine(enginePath));
+    }
+    ASSERT_GT(LoadEnginePid(), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
+    ASSERT_NE(client, nullptr);
+    CleanupGuard cleanup([&]() {
+        client->Shutdown();
+        registry.Stop();
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
+        CleanupSocketFiles();
+    });
+
+    VirusExecutorService::ScanFileReply reply;
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/mixed_single_thread_warmup.apk"}, &reply),
+              MemRpc::StatusCode::Ok);
+    ASSERT_EQ(reply.threatLevel, 0);
+
+    int cleanSuccessCount = 0;
+    int crashFailureCount = 0;
+    int timeoutFailureCount = 0;
+    const auto sequence = BuildShuffledMixedSequence();
+    for (size_t index = 0; index < sequence.size(); ++index) {
+        const int previousLoadCount = loadCount.load();
+        const std::string recoveryPath = "/data/mixed_single_thread_recovered_" + std::to_string(index) + ".apk";
+        MemRpc::StatusCode status = MemRpc::StatusCode::InvalidArgument;
+        switch (sequence[index]) {
+            case 0: {
+                const std::string path = "/data/mixed_single_thread_clean_" + std::to_string(index) + ".apk";
+                status = client->ScanFile(VirusExecutorService::ScanTask{path}, &reply);
+                ASSERT_EQ(status, MemRpc::StatusCode::Ok) << "index " << index;
+                EXPECT_EQ(reply.threatLevel, 0) << "index " << index;
+                ++cleanSuccessCount;
+                break;
+            }
+            case 1: {
+                const std::string path = "/data/mixed_single_thread_crash_" + std::to_string(index) + "_crash.apk";
+                status = InvokeRawScanFile(*client, VirusExecutorService::ScanTask{path}, &reply, MemRpc::Priority::Normal, 1500);
+                EXPECT_NE(status, MemRpc::StatusCode::Ok) << "index " << index;
+                EXPECT_TRUE(IsExpectedCrashFailureStatus(status))
+                    << "index " << index << " status=" << static_cast<int>(status);
+                ++crashFailureCount;
+                break;
+            }
+            case 2: {
+                const std::string path = "/data/mixed_single_thread_timeout_" + std::to_string(index) + "_sleep" +
+                                         std::to_string(MIXED_TIMEOUT_SLEEP_MS) + ".apk";
+                status = client->ScanFile(VirusExecutorService::ScanTask{path},
+                                          &reply,
+                                          MemRpc::Priority::Normal,
+                                          MIXED_TIMEOUT_EXEC_TIMEOUT_MS);
+                EXPECT_EQ(status, MemRpc::StatusCode::ExecTimeout) << "index " << index;
+                ++timeoutFailureCount;
+                break;
+            }
+            default:
+                FAIL() << "unexpected sequence item";
+        }
+
+        if (sequence[index] != 0) {
+            MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
+            ASSERT_TRUE(WaitForRecoveredScan(client.get(),
+                                             recoveryPath,
+                                             0,
+                                             &reply,
+                                             std::chrono::seconds(5),
+                                             &lastStatus))
+                << "index " << index << " last status=" << static_cast<int>(lastStatus);
+            EXPECT_EQ(reply.threatLevel, 0) << "index " << index;
+            if (sequence[index] == 1) {
+                EXPECT_GE(loadCount.load(), previousLoadCount + 1) << "index " << index;
+            }
+        }
+    }
+
+    EXPECT_EQ(cleanSuccessCount, kSingleThreadMixedCleanSamples);
+    EXPECT_EQ(crashFailureCount, kSingleThreadMixedCrashSamples);
+    EXPECT_EQ(timeoutFailureCount, kSingleThreadMixedTimeoutSamples);
+    EXPECT_GE(loadCount.load(), crashFailureCount);
+
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/mixed_single_thread_final.apk"}, &reply),
+              MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.threatLevel, 0);
+}
+
+TEST(VesCrashRecoveryTest, ConcurrentCleanTrafficStaysUsableDuringCrashAndTimeoutRecovery)
+{
+    CleanupSocketFiles();
+    const std::string enginePath = EnginePathFromSelf();
+    std::atomic<int> loadCount{0};
+
+    VirusExecutorService::RegistryServer registry(REGISTRY_SOCKET);
+    registry.SetLoadCallback([&](int32_t sa_id) -> bool {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        const pid_t currentPid = LoadEnginePid();
+        if (currentPid > 0) {
+            int status = 0;
+            const pid_t result = waitpid(currentPid, &status, WNOHANG);
+            if (result == 0) {
+                return true;
+            }
+            StoreEnginePid(-1);
+        }
+        const pid_t spawnedPid = SpawnEngine(enginePath);
+        StoreEnginePid(spawnedPid);
+        if (spawnedPid < 0) {
+            return false;
+        }
+        loadCount.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        return true;
+    });
+    registry.SetUnloadCallback([&](int32_t sa_id) {
+        if (sa_id != VirusExecutorService::VIRUS_PROTECTION_EXECUTOR_SA_ID) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
+    });
+
+    ASSERT_TRUE(registry.Start());
+
+    auto backend = std::make_shared<VirusExecutorService::RegistryBackend>(REGISTRY_SOCKET);
+    OHOS::SystemAbilityManagerClient::GetInstance().SetBackend(backend);
+
+    {
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        StoreEnginePid(SpawnEngine(enginePath));
+    }
+    ASSERT_GT(LoadEnginePid(), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto client = VirusExecutorService::VesClient::Connect(BuildImmediateRestartOptions());
+    ASSERT_NE(client, nullptr);
+    CleanupGuard cleanup([&]() {
+        client->Shutdown();
+        registry.Stop();
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        KillAndWait(LoadEnginePid());
+        StoreEnginePid(-1);
+        CleanupSocketFiles();
+    });
+
+    VirusExecutorService::ScanFileReply reply;
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/concurrent_usability_warmup.apk"}, &reply),
+              MemRpc::StatusCode::Ok);
+    ASSERT_EQ(reply.threatLevel, 0);
+
+    std::atomic<bool> stopWorkers{false};
+    std::atomic<int> cleanOkCount{0};
+    std::atomic<int> cleanCollateralFailureCount{0};
+    std::atomic<int> cleanUnexpectedCount{0};
+    std::atomic<int> firstUnexpectedStatus{-1};
+    std::atomic<int> timeoutFailureCount{0};
+    std::atomic<int> crashFailureCount{0};
+    std::atomic<int> chaosUnexpectedCount{0};
+
+    std::vector<std::thread> workers;
+    workers.reserve(kConcurrentScanThreads);
+    for (int worker = 0; worker < kConcurrentScanThreads; ++worker) {
+        workers.emplace_back([&, worker]() {
+            int scanIndex = 0;
+            while (!stopWorkers.load(std::memory_order_acquire)) {
+                VirusExecutorService::ScanFileReply workerReply;
+                const std::string path = "/data/concurrent_usability_clean_" + std::to_string(worker) + "_" +
+                                         std::to_string(scanIndex++) + ".apk";
+                const MemRpc::StatusCode status = client->ScanFile(VirusExecutorService::ScanTask{path},
+                                                                   &workerReply,
+                                                                   MemRpc::Priority::Normal,
+                                                                   1500);
+                if (status == MemRpc::StatusCode::Ok) {
+                    if (workerReply.threatLevel != 0) {
+                        ++cleanUnexpectedCount;
+                        int expected = -1;
+                        firstUnexpectedStatus.compare_exchange_strong(expected, 1000 + workerReply.threatLevel);
+                        break;
+                    }
+                    ++cleanOkCount;
+                    continue;
+                }
+                if (IsExpectedConcurrentScanStatus(status)) {
+                    ++cleanCollateralFailureCount;
+                    continue;
+                }
+                ++cleanUnexpectedCount;
+                int expected = -1;
+                firstUnexpectedStatus.compare_exchange_strong(expected, static_cast<int>(status));
+                break;
+            }
+        });
+    }
+
+    ASSERT_TRUE(WaitForCondition([&]() { return cleanOkCount.load(std::memory_order_acquire) >= kConcurrentScanThreads; },
+                                 std::chrono::seconds(3)));
+
+    for (int cycle = 0; cycle < kConcurrentUsabilityChaosCycles; ++cycle) {
+        const int previousCleanOkCount = cleanOkCount.load(std::memory_order_acquire);
+
+        {
+            const std::string path = "/data/concurrent_usability_timeout_" + std::to_string(cycle) + "_sleep" +
+                                     std::to_string(MIXED_TIMEOUT_SLEEP_MS) + ".apk";
+            const MemRpc::StatusCode status = client->ScanFile(VirusExecutorService::ScanTask{path},
+                                                               &reply,
+                                                               MemRpc::Priority::Normal,
+                                                               MIXED_TIMEOUT_EXEC_TIMEOUT_MS);
+            if (status == MemRpc::StatusCode::ExecTimeout) {
+                ++timeoutFailureCount;
+            } else {
+                ++chaosUnexpectedCount;
+                if (firstUnexpectedStatus.load(std::memory_order_acquire) < 0) {
+                    firstUnexpectedStatus.store(static_cast<int>(status), std::memory_order_release);
+                }
+            }
+            MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
+            ASSERT_TRUE(WaitForRecoveredScan(client.get(),
+                                             "/data/concurrent_usability_after_timeout_" + std::to_string(cycle) + ".apk",
+                                             0,
+                                             &reply,
+                                             std::chrono::seconds(5),
+                                             &lastStatus))
+                << "timeout cycle " << cycle << " last status=" << static_cast<int>(lastStatus);
+        }
+
+        {
+            const int previousLoadCount = loadCount.load();
+            const std::string path = "/data/concurrent_usability_crash_" + std::to_string(cycle) + "_crash.apk";
+            const MemRpc::StatusCode status =
+                InvokeRawScanFile(*client, VirusExecutorService::ScanTask{path}, &reply, MemRpc::Priority::Normal, 1500);
+            if (IsExpectedCrashFailureStatus(status)) {
+                ++crashFailureCount;
+            } else {
+                ++chaosUnexpectedCount;
+                if (firstUnexpectedStatus.load(std::memory_order_acquire) < 0) {
+                    firstUnexpectedStatus.store(static_cast<int>(status), std::memory_order_release);
+                }
+            }
+            MemRpc::StatusCode lastStatus = MemRpc::StatusCode::InvalidArgument;
+            ASSERT_TRUE(WaitForRecoveredScan(client.get(),
+                                             "/data/concurrent_usability_recovered_after_fault_" + std::to_string(cycle) +
+                                                 ".apk",
+                                             0,
+                                             &reply,
+                                             std::chrono::seconds(5),
+                                             &lastStatus))
+                << "crash cycle " << cycle << " last status=" << static_cast<int>(lastStatus);
+            EXPECT_GE(loadCount.load(), previousLoadCount + 1) << "crash cycle " << cycle;
+        }
+
+        ASSERT_TRUE(WaitForCondition(
+            [&]() { return cleanOkCount.load(std::memory_order_acquire) > previousCleanOkCount; }, std::chrono::seconds(5)))
+            << "cycle " << cycle;
+    }
+
+    stopWorkers.store(true, std::memory_order_release);
+    for (auto& worker : workers) {
+        worker.join();
+    }
+
+    EXPECT_EQ(cleanUnexpectedCount.load(std::memory_order_acquire), 0)
+        << "first unexpected status=" << firstUnexpectedStatus.load(std::memory_order_acquire);
+    EXPECT_EQ(chaosUnexpectedCount.load(std::memory_order_acquire), 0)
+        << "first unexpected status=" << firstUnexpectedStatus.load(std::memory_order_acquire);
+    EXPECT_EQ(timeoutFailureCount.load(std::memory_order_acquire), kConcurrentUsabilityChaosCycles);
+    EXPECT_EQ(crashFailureCount.load(std::memory_order_acquire), kConcurrentUsabilityChaosCycles);
+    EXPECT_GT(cleanOkCount.load(std::memory_order_acquire), 0);
+    EXPECT_GT(cleanOkCount.load(std::memory_order_acquire), cleanCollateralFailureCount.load(std::memory_order_acquire));
+
+    ASSERT_EQ(client->ScanFile(VirusExecutorService::ScanTask{"/data/concurrent_usability_final.apk"}, &reply),
+              MemRpc::StatusCode::Ok);
+    EXPECT_EQ(reply.threatLevel, 0);
+}
+
+}  // namespace

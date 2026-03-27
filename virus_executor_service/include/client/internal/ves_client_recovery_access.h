@@ -20,6 +20,11 @@ public:
     {
         return client.client_.GetRecoveryRuntimeSnapshot();
     }
+
+    static MemRpc::RpcClient& RawRpcClient(VesClient& client)
+    {
+        return client.client_;
+    }
 };
 
 }  // namespace VirusExecutorService::internal
