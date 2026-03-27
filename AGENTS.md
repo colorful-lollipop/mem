@@ -76,6 +76,7 @@ Keep business-specific compatibility layers out of the framework. Applications s
 - Default build directory is `build_ninja/`. Do not reuse old `build/` directories configured with another generator.
 - This repo's meaningful tests use shared memory, Unix-domain sockets, and child processes. In sandboxed agent environments, `ctest` may fail with `shm_open ... errno=13` or registry start failures unless you request elevated permissions.
 - In Codex-style sandboxes, request escalation before running full or integration-heavy test commands. Typical cases: `tools/build_and_test.sh`, `ctest --test-dir build_ninja ...`, or any `virus_executor_service_*integration*`, `stress`, `dt`, or shared-memory session tests.
+- In Codex-style sandboxes, also request escalation before socket-backed unit tests that start the mock SA transport, including `virus_executor_service_policy_test`, `virus_executor_service_heartbeat_test`, and `virus_executor_service_crash_recovery_test`.
 - In Codex-style sandboxes, request escalation before `tools/ci_sweep.sh` and before any sanitizer or repeated CTest runs. These are intentionally heavier and may fork many child processes.
 
 Use CMake as the source of truth during active development.

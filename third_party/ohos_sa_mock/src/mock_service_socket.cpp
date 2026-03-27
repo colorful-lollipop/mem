@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -41,6 +42,16 @@ bool SendAll(int fd, const void* buffer, size_t size)
     return true;
 }
 
+void LogSocketStartFailure(const char* op, const std::string& path, int err)
+{
+    std::cerr << "[MockServiceSocket] " << op << " failed path=" << path << " errno=" << err << " ("
+              << std::strerror(err) << ")";
+    if (err == EPERM || err == EACCES) {
+        std::cerr << "; sandbox may block Unix-domain sockets here, rerun with elevated permissions";
+    }
+    std::cerr << std::endl;
+}
+
 }  // namespace
 
 MockServiceSocket::~MockServiceSocket()
@@ -59,6 +70,7 @@ bool MockServiceSocket::Start(const std::string& path, MockIpcHandler handler)
 
     int listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listen_fd < 0) {
+        LogSocketStartFailure("socket", path, errno);
         return false;
     }
 
@@ -67,12 +79,16 @@ bool MockServiceSocket::Start(const std::string& path, MockIpcHandler handler)
     std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
 
     if (bind(listen_fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        const int err = errno;
         close(listen_fd);
+        LogSocketStartFailure("bind", path, err);
         return false;
     }
 
     if (listen(listen_fd, 4) < 0) {
+        const int err = errno;
         close(listen_fd);
+        LogSocketStartFailure("listen", path, err);
         return false;
     }
 

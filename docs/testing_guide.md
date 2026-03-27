@@ -73,6 +73,10 @@ tools/push_gate.sh --deep
 因此在 Codex 类沙箱里，完整 `ctest`、DT、stress、integration、sanitizer 路径往往需要提权。  
 这不是测试写得“太重”，而是因为这些功能本来就在验证真实的共享内存和进程交互。
 
+另外，一些看起来只是 unit test 的用例其实也会启动 mock SA 的 Unix-domain socket。典型例子包括
+`virus_executor_service_policy_test`、`virus_executor_service_heartbeat_test`、`virus_executor_service_crash_recovery_test`。
+这类测试在 Codex 类沙箱里也应默认按“需要提权”处理。
+
 ## 4. `memrpc` 测试在验证什么
 
 `memrpc/tests/CMakeLists.txt` 把框架测试组织成一组可单独执行的目标。
@@ -401,6 +405,8 @@ tools/build_and_test.sh --test-regex "memrpc_(rpc_server_api|rpc_server_executor
 ```bash
 tools/build_and_test.sh --test-regex "virus_executor_service_(session_service|heartbeat|health|policy|crash_recovery)"
 ```
+
+如果运行环境是受限 sandbox，这组里带 control/registry/mock-SA 路径的测试通常需要提权后再跑。
 
 如果改了恢复或 control reload，再加：
 

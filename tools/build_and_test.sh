@@ -12,6 +12,9 @@ Notes:
   - Default build directory is isolated as ./build_ninja to avoid generator clashes.
   - In sandboxed AI sessions, shared-memory and registry tests may require elevated
     permissions when running CTest.
+  - Socket-backed unit tests such as virus_executor_service_policy_test,
+    virus_executor_service_heartbeat_test, and virus_executor_service_crash_recovery_test
+    also typically need elevation in sandboxed environments.
 
 Options:
   --build-dir DIR     Build directory (default: ./build_ninja)
