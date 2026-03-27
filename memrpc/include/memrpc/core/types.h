@@ -38,17 +38,6 @@ struct RpcEvent {
 
 using RpcEventCallback = std::function<void(const RpcEvent&)>;
 
-enum class RpcRuntimeState : uint8_t {
-    Unknown = 0,
-    Free,
-    Admitted,
-    Queued,
-    Executing,
-    Responding,
-    Ready,
-    Consumed,
-};
-
 }  // namespace MemRpc
 
 namespace OHOS::Security::VirusProtectionService {

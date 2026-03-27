@@ -164,13 +164,6 @@ TEST(EngineDeathHandlerTest, EngineDeathReportLayout)
 {
     MemRpc::EngineDeathReport report;
     EXPECT_EQ(report.deadSessionId, 0u);
-    EXPECT_EQ(report.safeToReplayCount, 0u);
-    EXPECT_TRUE(report.poisonPillSuspects.empty());
-
-    MemRpc::EngineDeathReport::PoisonPillSuspect suspect;
-    EXPECT_EQ(suspect.requestId, 0u);
-    EXPECT_EQ(suspect.opcode, MemRpc::OPCODE_INVALID);
-    EXPECT_EQ(suspect.lastState, MemRpc::RpcRuntimeState::Unknown);
 }
 
 // Verify RecoveryDecision defaults.

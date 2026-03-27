@@ -17,7 +17,7 @@ TEST(RpcServerApiTest, PublicHeaderComposes)
     options.completionQueueCapacity = 4;
     MemRpc::RpcServerRuntimeStats stats;
     server.SetOptions(options);
-    server.RegisterHandler(kTestOpcode, [](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+    server.RegisterHandler(kTestOpcode, [](const MemRpc::RpcServerCall& call, MemRpc::RpcReply* reply) {
         ASSERT_NE(reply, nullptr);
         reply->status = MemRpc::StatusCode::Ok;
         reply->payload = call.payload;

@@ -647,7 +647,7 @@ git commit -m "feat: validate client wait timeout watchdog"
 - The public comment for `execTimeoutMs` is in [rpc_client.h](/root/code/demo/mem/memrpc/include/memrpc/client/rpc_client.h#L25) and must be updated so future maintainers do not assume server-side execution-only semantics.
 - Existing timeout tests live in [rpc_client_timeout_watchdog_test.cpp](/root/code/demo/mem/memrpc/tests/rpc_client_timeout_watchdog_test.cpp#L101); extend them instead of creating a brand-new file.
 - Do not change shared-memory structures or protocol version for this plan.
-- Do not add guessed `RpcRuntimeState` transitions. The client still does not know queued vs executing reliably.
+- Do not add guessed queued-vs-executing transitions. The client still does not know that boundary reliably.
 
 ## Acceptance Criteria
 

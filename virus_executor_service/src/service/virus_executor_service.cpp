@@ -169,7 +169,7 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
     call.priority = static_cast<MemRpc::Priority>(request.priority);
     call.payload = MemRpc::PayloadView(request.payload.data(), request.payload.size());
 
-    MemRpc::RpcServerReply reply;
+    MemRpc::RpcReply reply;
     vesReply.status = sessionService->InvokeAnyCall(call, &reply);
     vesReply.payload = std::move(reply.payload);
     return MemRpc::StatusCode::Ok;

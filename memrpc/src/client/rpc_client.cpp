@@ -1563,8 +1563,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         failure.execTimeoutMs = info.execTimeoutMs;
         failure.requestId = info.requestId;
         failure.sessionId = info.sessionId;
-        failure.monotonicMs = MonotonicNowMs();
-        failure.lastRuntimeState = RpcRuntimeState::Unknown;
         return failure;
     }
 

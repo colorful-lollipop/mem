@@ -403,9 +403,9 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         return call;
     }
 
-    RpcServerReply InvokeHandler(const RequestRingEntry& requestEntry)
+    RpcReply InvokeHandler(const RequestRingEntry& requestEntry)
     {
-        RpcServerReply reply;
+        RpcReply reply;
         const auto it = handlers.find(requestEntry.opcode);
         if (it == handlers.end()) {
             HILOGE("RpcServer::InvokeHandler missing handler opcode=%{public}u request_id=%{public}llu",
@@ -420,7 +420,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         return reply;
     }
 
-    bool ValidateResponsePayloadSize(const RequestRingEntry& requestEntry, RpcServerReply* reply) const
+    bool ValidateResponsePayloadSize(const RequestRingEntry& requestEntry, RpcReply* reply) const
     {
         if (!session.Valid() || session.Header() == nullptr) {
             HILOGE("RpcServer::WriteResponse failed: invalid session request_id=%{public}llu",
@@ -443,7 +443,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         return true;
     }
 
-    static ResponseRingEntry BuildReplyEntry(const RequestRingEntry& requestEntry, const RpcServerReply& reply)
+    static ResponseRingEntry BuildReplyEntry(const RequestRingEntry& requestEntry, const RpcReply& reply)
     {
         ResponseRingEntry entry;
         entry.requestId = requestEntry.requestId;
@@ -480,7 +480,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         return completion->status;
     }
 
-    StatusCode WriteResponse(const RequestRingEntry& requestEntry, RpcServerReply reply)
+    StatusCode WriteResponse(const RequestRingEntry& requestEntry, RpcReply reply)
     {
         if (!ValidateResponsePayloadSize(requestEntry, &reply)) {
             return StatusCode::PeerDisconnected;
@@ -563,7 +563,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
                 requestEntry.payloadSize,
                 session.MaxRequestBytes(),
                 RequestRingEntry::INLINE_PAYLOAD_BYTES);
-            RpcServerReply reply;
+            RpcReply reply;
             reply.status = StatusCode::PayloadTooLarge;
             (void)WriteResponse(requestEntry, std::move(reply));
             return;
@@ -571,7 +571,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         MarkExecutionStarted(requestEntry.requestId);
         const auto clearExecution =
             MakeScopeExit([this, requestId = requestEntry.requestId] { MarkExecutionFinished(requestId); });
-        RpcServerReply reply = InvokeHandler(requestEntry);
+        RpcReply reply = InvokeHandler(requestEntry);
         const StatusCode status = WriteResponse(requestEntry, std::move(reply));
         if (status != StatusCode::Ok) {
             HILOGE("RpcServer::ProcessEntry failed to write response request_id=%{public}llu status=%{public}d",

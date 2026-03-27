@@ -38,13 +38,13 @@ private:
 
 MemRpc::StatusCode InvokeAnyCallHandler(const std::unordered_map<uint16_t, MemRpc::RpcHandler>& handlers,
                                         const MemRpc::RpcServerCall& call,
-                                        MemRpc::RpcServerReply* reply)
+                                        MemRpc::RpcReply* reply)
 {
     if (reply == nullptr) {
         return MemRpc::StatusCode::InvalidArgument;
     }
 
-    *reply = MemRpc::RpcServerReply{};
+    *reply = MemRpc::RpcReply{};
     const auto it = handlers.find(static_cast<uint16_t>(call.opcode));
     if (it == handlers.end()) {
         reply->status = MemRpc::StatusCode::InvalidArgument;
@@ -159,7 +159,7 @@ MemRpc::StatusCode EngineSessionService::PublishEventBlocking(const MemRpc::RpcE
     return rpcServer->PublishEvent(event);
 }
 
-MemRpc::StatusCode EngineSessionService::InvokeAnyCall(const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply)
+MemRpc::StatusCode EngineSessionService::InvokeAnyCall(const MemRpc::RpcServerCall& call, MemRpc::RpcReply* reply)
 {
     const MemRpc::StatusCode initStatus = EnsureInitialized();
     if (initStatus != MemRpc::StatusCode::Ok) {

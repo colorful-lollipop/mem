@@ -56,7 +56,7 @@ inline void RegisterTypedHandler(RpcHandlerSink* sink, MemRpc::Opcode opcode, Ha
     }
 
     sink->RegisterHandler(opcode,
-                          [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply) {
+                          [h = std::move(handler)](const MemRpc::RpcServerCall& call, MemRpc::RpcReply* reply) {
                               if (reply == nullptr) {
                                   return;
                               }

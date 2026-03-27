@@ -34,17 +34,17 @@ void RegisterFaultInjectionHandlers(RpcHandlerSink* sink)
     }
 
     sink->RegisterHandler(static_cast<MemRpc::Opcode>(TestkitOpcode::CrashForTest),
-                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) { _exit(99); });
+                          [](const MemRpc::RpcServerCall&, MemRpc::RpcReply*) { _exit(99); });
 
     sink->RegisterHandler(static_cast<MemRpc::Opcode>(TestkitOpcode::HangForTest),
-                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+                          [](const MemRpc::RpcServerCall&, MemRpc::RpcReply*) {
                               while (true) {
                                   std::this_thread::sleep_for(std::chrono::hours(1));
                               }
                           });
 
     sink->RegisterHandler(static_cast<MemRpc::Opcode>(TestkitOpcode::OomForTest),
-                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+                          [](const MemRpc::RpcServerCall&, MemRpc::RpcReply*) {
                               std::vector<std::vector<char>> leaks;
                               while (true) {
                                   leaks.emplace_back(64 * 1024 * 1024, 'X');
@@ -52,7 +52,7 @@ void RegisterFaultInjectionHandlers(RpcHandlerSink* sink)
                           });
 
     sink->RegisterHandler(static_cast<MemRpc::Opcode>(TestkitOpcode::StackOverflowForTest),
-                          [](const MemRpc::RpcServerCall&, MemRpc::RpcServerReply*) {
+                          [](const MemRpc::RpcServerCall&, MemRpc::RpcReply*) {
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winfinite-recursion"

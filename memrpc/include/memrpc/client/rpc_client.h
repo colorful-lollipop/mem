@@ -8,6 +8,7 @@
 
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/protocol.h"
+#include "memrpc/core/rpc_types.h"
 #include "memrpc/core/types.h"
 
 namespace MemRpc {
@@ -19,12 +20,6 @@ struct RpcCall {
     // 直到收到最终 reply 为止。超时后返回 ExecTimeout，但不会取消服务端执行；
     // 如果真实 reply 晚到，client 会直接忽略。
     uint32_t execTimeoutMs = 30000;
-    std::vector<uint8_t> payload;
-};
-
-struct RpcReply {
-    // status 是框架层结果；业务错误需要放进应用层 payload。
-    StatusCode status = StatusCode::Ok;
     std::vector<uint8_t> payload;
 };
 
@@ -61,20 +56,10 @@ struct RpcFailure {
     uint32_t execTimeoutMs = 0;
     uint64_t requestId = 0;
     uint64_t sessionId = 0;
-    uint64_t monotonicMs = 0;
-    RpcRuntimeState lastRuntimeState = RpcRuntimeState::Unknown;
 };
 
 struct EngineDeathReport {
     uint64_t deadSessionId = 0;
-    uint32_t safeToReplayCount = 0;
-
-    struct PoisonPillSuspect {
-        uint64_t requestId = 0;
-        Opcode opcode = OPCODE_INVALID;
-        RpcRuntimeState lastState = RpcRuntimeState::Unknown;
-    };
-    std::vector<PoisonPillSuspect> poisonPillSuspects;
 };
 
 enum class RecoveryAction {  // NOLINT(performance-enum-size)

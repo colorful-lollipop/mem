@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "memrpc/core/protocol.h"
+#include "memrpc/core/rpc_types.h"
 #include "memrpc/core/types.h"
 
 namespace MemRpc {
@@ -105,12 +106,8 @@ struct RpcServerCall {
     PayloadView payload;
 };
 
-struct RpcServerReply {
-    StatusCode status = StatusCode::Ok;
-    std::vector<uint8_t> payload;
-};
-
-using RpcHandler = std::function<void(const RpcServerCall&, RpcServerReply*)>;
+using RpcServerReply = RpcReply;  // compatibility alias while server call sites migrate.
+using RpcHandler = std::function<void(const RpcServerCall&, RpcReply*)>;
 
 }  // namespace MemRpc
 

@@ -30,16 +30,7 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
     }
     if (!policy.onEngineDeath) {
         policy.onEngineDeath = [](const MemRpc::EngineDeathReport& report) {
-            HILOGW("engine death: session=%{public}llu, safe_to_replay=%{public}u, poison_pills=%{public}zu",
-                   static_cast<unsigned long long>(report.deadSessionId),
-                   report.safeToReplayCount,
-                   report.poisonPillSuspects.size());
-            for (const auto& suspect : report.poisonPillSuspects) {
-                HILOGW("  poison pill: request_id=%{public}llu, opcode=%{public}u, last_state=%{public}d",
-                       static_cast<unsigned long long>(suspect.requestId),
-                       static_cast<unsigned>(suspect.opcode),
-                       static_cast<int>(suspect.lastState));
-            }
+            HILOGW("engine death: session=%{public}llu", static_cast<unsigned long long>(report.deadSessionId));
             return MemRpc::RecoveryDecision{
                 MemRpc::RecoveryAction::Restart,
                 DEFAULT_RESTART_DELAY_MS,

@@ -39,7 +39,7 @@ public:
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
     MemRpc::StatusCode CloseSession() override;
     MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) override;
-    MemRpc::StatusCode InvokeAnyCall(const MemRpc::RpcServerCall& call, MemRpc::RpcServerReply* reply);
+    MemRpc::StatusCode InvokeAnyCall(const MemRpc::RpcServerCall& call, MemRpc::RpcReply* reply);
 
     [[nodiscard]] uint64_t session_id() const;
     [[nodiscard]] MemRpc::RpcServerRuntimeStats GetRuntimeStats() const;
