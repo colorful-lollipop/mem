@@ -23,9 +23,8 @@ struct RpcCall {
 };
 
 struct RpcReply {
-    // status 是框架层结果；errorCode 由业务 handler 自行定义。
+    // status 是框架层结果；业务错误需要放进应用层 payload。
     StatusCode status = StatusCode::Ok;
-    int32_t errorCode = 0;
     std::vector<uint8_t> payload;
 };
 

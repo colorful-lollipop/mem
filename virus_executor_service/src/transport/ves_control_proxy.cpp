@@ -75,7 +75,6 @@ struct AnyCallRequestHeader {
 
 struct AnyCallReplyHeader {
     uint32_t status = 0;
-    int32_t errorCode = 0;
     uint32_t payloadSize = 0;
 };
 
@@ -210,7 +209,6 @@ MemRpc::StatusCode DecodeAnyCallWire(const std::vector<uint8_t>& payload, uint16
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     reply->status = static_cast<MemRpc::StatusCode>(replyHeader.status);
-    reply->errorCode = replyHeader.errorCode;
     reply->payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)), payload.end());
     return MemRpc::StatusCode::Ok;
 }

@@ -141,10 +141,9 @@ MemRpc::StatusCode InvokeAnyCallApi(const VesInvokeExecutionContext& context,
         return status;
     }
     if (anyReply.status != MemRpc::StatusCode::Ok) {
-        HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d error=%{public}d",
+        HILOGE("VesClient::InvokeApi AnyCall reply failed opcode=%{public}u status=%{public}d",
                request.opcode,
-               static_cast<int>(anyReply.status),
-               anyReply.errorCode);
+               static_cast<int>(anyReply.status));
         return anyReply.status;
     }
     if (!MemRpc::DecodeMessage<Reply>(anyReply.payload, reply)) {

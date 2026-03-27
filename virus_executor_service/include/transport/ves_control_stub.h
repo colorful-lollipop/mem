@@ -27,7 +27,6 @@ struct AnyCallRequestHeader {
 
 struct AnyCallReplyHeader {
     uint32_t status = 0;
-    int32_t errorCode = 0;
     uint32_t payloadSize = 0;
 };
 
@@ -61,7 +60,6 @@ inline void EncodeAnyCallReply(const VesAnyCallReply& reply, std::vector<uint8_t
     }
     AnyCallReplyHeader header{};
     header.status = static_cast<uint32_t>(reply.status);
-    header.errorCode = reply.errorCode;
     header.payloadSize = static_cast<uint32_t>(reply.payload.size());
     out->resize(sizeof(header) + reply.payload.size());
     std::memcpy(out->data(), &header, sizeof(header));

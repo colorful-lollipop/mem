@@ -63,7 +63,6 @@ struct VesAnyCallRequest {
 
 struct VesAnyCallReply {
     MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
-    int32_t errorCode = 0;
     std::vector<uint8_t> payload;
 };
 

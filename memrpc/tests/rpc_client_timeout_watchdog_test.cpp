@@ -229,7 +229,7 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
         }
         reply->status = StatusCode::Ok;
-        reply->errorCode = current;
+        reply->payload = {static_cast<uint8_t>(current)};
     });
     ASSERT_EQ(server.Start(), StatusCode::Ok);
 
@@ -253,7 +253,8 @@ TEST(RpcClientTimeoutWatchdogTest, LateReplyAfterClientWaitTimeoutIsDiscarded)
 
     RpcReply secondReply;
     EXPECT_EQ(std::move(secondFuture).Wait(&secondReply), StatusCode::Ok);
-    EXPECT_EQ(secondReply.errorCode, 2);
+    ASSERT_EQ(secondReply.payload.size(), 1U);
+    EXPECT_EQ(secondReply.payload[0], 2U);
 
     client.Shutdown();
     server.Stop();

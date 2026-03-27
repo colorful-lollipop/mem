@@ -1154,7 +1154,6 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             }
             RpcReply reply;
             reply.status = static_cast<StatusCode>(entry.statusCode);
-            reply.errorCode = entry.errorCode;
             reply.payload.assign(entry.payload.begin(), entry.payload.begin() + entry.resultSize);
             if (reply.status != StatusCode::Ok) {
                 owner_->ApplyFailureRecoveryDecision(pending->info, reply.status);

@@ -449,7 +449,6 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         entry.requestId = requestEntry.requestId;
         entry.messageKind = ResponseMessageKind::Reply;
         entry.statusCode = static_cast<uint32_t>(reply.status);
-        entry.errorCode = reply.errorCode;
         entry.resultSize = static_cast<uint32_t>(reply.payload.size());
         if (!reply.payload.empty()) {
             std::memcpy(entry.payload.data(), reply.payload.data(), reply.payload.size());
