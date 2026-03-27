@@ -9,11 +9,11 @@
 namespace MemRpc {
 
 struct SharedMemorySessionConfig {
-    uint32_t highRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.highRingSize;
-    uint32_t normalRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.normalRingSize;
-    uint32_t responseRingSize = DEFAULT_SHARED_MEMORY_LAYOUT.responseRingSize;
-    uint32_t maxRequestBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxRequestBytes;
-    uint32_t maxResponseBytes = DEFAULT_SHARED_MEMORY_LAYOUT.maxResponseBytes;
+    uint32_t highRingSize = DEFAULT_HIGH_RING_SIZE;
+    uint32_t normalRingSize = DEFAULT_NORMAL_RING_SIZE;
+    uint32_t responseRingSize = DEFAULT_RESPONSE_RING_SIZE;
+    uint32_t maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES;
+    uint32_t maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES;
     std::string shmName;
 };
 

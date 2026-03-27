@@ -65,23 +65,9 @@ struct ResponseRingEntry {
 
 inline constexpr uint32_t DEFAULT_MAX_REQUEST_BYTES = static_cast<uint32_t>(RequestRingEntry::INLINE_PAYLOAD_BYTES);
 inline constexpr uint32_t DEFAULT_MAX_RESPONSE_BYTES = static_cast<uint32_t>(ResponseRingEntry::INLINE_PAYLOAD_BYTES);
-
-struct SharedMemoryLayoutDefaults {
-    uint32_t highRingSize;
-    uint32_t normalRingSize;
-    uint32_t responseRingSize;
-    uint32_t maxRequestBytes;
-    uint32_t maxResponseBytes;
-};
-
-// Single source of truth for default shared-memory sizing.
-inline constexpr SharedMemoryLayoutDefaults DEFAULT_SHARED_MEMORY_LAYOUT{
-    8U,
-    8U,
-    8U,
-    DEFAULT_MAX_REQUEST_BYTES,
-    DEFAULT_MAX_RESPONSE_BYTES,
-};
+inline constexpr uint32_t DEFAULT_HIGH_RING_SIZE = 8U;
+inline constexpr uint32_t DEFAULT_NORMAL_RING_SIZE = 8U;
+inline constexpr uint32_t DEFAULT_RESPONSE_RING_SIZE = 8U;
 
 static_assert(offsetof(RequestRingEntry, payload) == RequestRingEntry::HEADER_BYTES,
               "RequestRingEntry header size constant must match payload offset");
