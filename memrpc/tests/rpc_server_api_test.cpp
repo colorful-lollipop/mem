@@ -31,5 +31,5 @@ TEST(RpcServerApiTest, PublicHeaderComposes)
     EXPECT_EQ(stats.completionBacklog, 0u);
     EXPECT_EQ(stats.activeRequestExecutions, 0u);
     EXPECT_EQ(stats.oldestExecutionAgeMs, 0u);
-    EXPECT_EQ(server.PublishEvent(event), MemRpc::StatusCode::EngineInternalError);
+    EXPECT_EQ(server.PublishEvent(event), MemRpc::StatusCode::PeerDisconnected);
 }
