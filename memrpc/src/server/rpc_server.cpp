@@ -198,7 +198,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
         }
 
         auto self = shared_from_this();
-        return std::shared_ptr<void>(nullptr, [self = std::move(self)](void*) {
+        return {nullptr, [self = std::move(self)](void*) {
             std::lock_guard<std::mutex> lock(self->submittedTaskMutex);
             if (self->pendingSubmittedTasks > 0) {
                 --self->pendingSubmittedTasks;
@@ -206,7 +206,7 @@ struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
             if (self->pendingSubmittedTasks == 0) {
                 self->submittedTaskCv.notify_all();
             }
-        });
+        }};
     }
 
     void WaitForSubmittedTasks()

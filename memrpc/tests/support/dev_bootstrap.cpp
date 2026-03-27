@@ -50,7 +50,7 @@ BootstrapHandles DevBootstrapChannel::serverHandles() const
 void DevBootstrapChannel::SimulateEngineDeathForTest(uint64_t session_id)
 {
     EngineDeathCallback callback;
-    uint64_t dead_session_id = session_id == 0 ? impl_->sessionHost->sessionId() : session_id;
+    uint64_t dead_session_id = 0;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
         dead_session_id = session_id == 0 ? impl_->sessionHost->sessionId() : session_id;
