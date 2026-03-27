@@ -17,7 +17,7 @@
 
 #include "core/session.h"
 #include "memrpc/core/runtime_utils.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace MemRpc {
 

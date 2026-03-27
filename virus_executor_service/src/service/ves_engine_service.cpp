@@ -10,7 +10,7 @@
 #include "ves/ves_sample_rules.h"
 #include "ves/ves_session_service.h"
 #include "ves/ves_types.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace VirusExecutorService {
 

@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "testkit/testkit_protocol.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace VirusExecutorService::testkit {
 

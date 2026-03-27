@@ -45,7 +45,7 @@ MemRPC is a shared-memory + eventfd inter-process RPC framework for Linux/Harmon
 - Framework headers use layered paths: `memrpc/core/*`, `memrpc/client/*`, `memrpc/server/*`
 - Do not include `memrpc/src/*` from app code; memrpc internals stay private to the framework and its internal tests
 - App headers use the flattened prefixes: `client/*`, `service/*`, `transport/*`, `testkit/*`, `ves/*`
-- Logging: use `virus_protection_service_log.h` macros (`HILOGI`, `HILOGW`, `HILOGE`, `HILOGD`). Log only on state changes, failures, or recovery — never in hot paths
+- Logging: use `virus_protection_executor_log.h` macros (`HILOGI`, `HILOGW`, `HILOGE`, `HILOGD`). Log only on state changes, failures, or recovery — never in hot paths
 - Keep business-specific compatibility layers out of the framework
 
 ## Commit Style

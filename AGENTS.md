@@ -104,7 +104,7 @@ New code must follow these rules. Older code may be cleaned up opportunistically
 
 ## Logging
 
-Use `virus_protection_service_log.h` only. Prefer Harmony-style calls such as `HILOGI(...)`, `HILOGW(...)`, and `HILOGE(...)`. Add logs only on important state changes, failures, or recovery paths.
+Use `virus_protection_executor_log.h` only. Prefer Harmony-style calls such as `HILOGI(...)`, `HILOGW(...)`, and `HILOGE(...)`. Add logs only on important state changes, failures, or recovery paths.
 
 ## Testing Guidelines
 

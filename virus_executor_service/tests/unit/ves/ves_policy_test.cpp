@@ -315,8 +315,9 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure)
 
     MemRpc::RpcServer server(bootstrap->serverHandles());
     RegisterScanHandler(&server, [](const ScanTask& req) {
-        // Force exec timeout by sleeping longer than client timeout.
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // Timeout detection is watchdog-driven, so this must outlive both the
+        // request timeout and the next watchdog scan.
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         ScanFileReply reply;
         reply.code = 0;
         reply.threatLevel = 0;
@@ -340,7 +341,7 @@ TEST(VesPolicyTest, ExecTimeoutTriggersOnFailure)
     ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
 
     ScanTask req;
-    req.path = "/data/sleep50.bin";
+    req.path = "/data/sleep200.bin";
 
     MemRpc::RpcCall call;
     call.opcode = static_cast<MemRpc::Opcode>(VesOpcode::ScanFile);

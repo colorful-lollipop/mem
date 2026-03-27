@@ -14,7 +14,7 @@
 #include <random>
 
 #include "core/shm_layout.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace MemRpc {
 

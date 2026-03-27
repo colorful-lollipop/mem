@@ -1,4 +1,4 @@
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 #include <cstdio>
 #include <vector>

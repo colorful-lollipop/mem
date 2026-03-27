@@ -20,7 +20,7 @@
 #include "testkit/testkit_protocol.h"
 #include "testkit/testkit_service.h"
 #include "testkit_stress_config.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace VirusExecutorService::testkit {
 namespace {

@@ -23,7 +23,7 @@
 #include "memrpc/core/runtime_utils.h"
 #include "memrpc/core/task_executor.h"
 #include "memrpc/server/handler.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace MemRpc {
 
@@ -138,7 +138,7 @@ bool IsHighPriority(const RequestRingEntry& entry)
 
 }  // namespace
 
-struct RpcServer::Impl {
+struct RpcServer::Impl : public std::enable_shared_from_this<RpcServer::Impl> {
     struct CompletionState {
         std::mutex mutex;
         std::condition_variable cv;
@@ -171,6 +171,9 @@ struct RpcServer::Impl {
     std::atomic<bool> running{false};
     std::unordered_map<uint16_t, RpcHandler> handlers;
     std::unordered_map<uint64_t, uint64_t> activeExecutions;
+    std::mutex submittedTaskMutex;
+    std::condition_variable submittedTaskCv;
+    uint32_t pendingSubmittedTasks = 0;
 
     void MarkExecutionStarted(uint64_t requestId)
     {
@@ -182,6 +185,31 @@ struct RpcServer::Impl {
     {
         std::lock_guard<std::mutex> lock(executionMutex);
         activeExecutions.erase(requestId);
+    }
+
+    std::shared_ptr<void> MakeSubmittedTaskToken()
+    {
+        {
+            std::lock_guard<std::mutex> lock(submittedTaskMutex);
+            ++pendingSubmittedTasks;
+        }
+
+        auto self = shared_from_this();
+        return std::shared_ptr<void>(nullptr, [self = std::move(self)](void*) {
+            std::lock_guard<std::mutex> lock(self->submittedTaskMutex);
+            if (self->pendingSubmittedTasks > 0) {
+                --self->pendingSubmittedTasks;
+            }
+            if (self->pendingSubmittedTasks == 0) {
+                self->submittedTaskCv.notify_all();
+            }
+        });
+    }
+
+    void WaitForSubmittedTasks()
+    {
+        std::unique_lock<std::mutex> lock(submittedTaskMutex);
+        submittedTaskCv.wait(lock, [this] { return pendingSubmittedTasks == 0; });
     }
 
     PollEventFdResult WaitForResponseCredit(std::chrono::steady_clock::time_point deadline)
@@ -563,7 +591,11 @@ struct RpcServer::Impl {
             }
             drained = true;
             const RequestRingEntry captured = entry;
-            if (!executor->TrySubmit([this, captured] { ProcessEntry(captured); })) {
+            std::shared_ptr<void> submittedTask = MakeSubmittedTaskToken();
+            auto self = shared_from_this();
+            if (!executor->TrySubmit([self = std::move(self), captured, submittedTask = std::move(submittedTask)] {
+                    self->ProcessEntry(captured);
+                })) {
                 HILOGE("RpcServer::DrainQueue failed to submit task request_id=%{public}llu opcode=%{public}u",
                        static_cast<unsigned long long>(captured.requestId),
                        captured.opcode);
@@ -648,12 +680,12 @@ struct RpcServer::Impl {
 };
 
 RpcServer::RpcServer()
-    : impl_(std::make_unique<Impl>())
+    : impl_(std::make_shared<Impl>())
 {
 }
 
 RpcServer::RpcServer(BootstrapHandles handles, ServerOptions options)
-    : impl_(std::make_unique<Impl>())
+    : impl_(std::make_shared<Impl>())
 {
     impl_->handles = handles;
     impl_->options = std::move(options);
@@ -717,8 +749,9 @@ StatusCode RpcServer::Start()
                                        : impl_->options.completionQueueCapacity;
 
     impl_->responseWriterRunning.store(true);
-    impl_->responseWriterThread = std::thread([impl = impl_.get()] { impl->ResponseWriterLoop(); });
-    impl_->dispatcherThread = std::thread([impl = impl_.get()] { impl->DispatcherLoop(); });
+    auto impl = impl_;
+    impl_->responseWriterThread = std::thread([impl] { impl->ResponseWriterLoop(); });
+    impl_->dispatcherThread = std::thread([impl] { impl->DispatcherLoop(); });
     return StatusCode::Ok;
 }
 
@@ -784,14 +817,17 @@ void RpcServer::Stop()
         }
         impl_->dispatcherThread.join();
     }
-    if (impl_->highExecutor) {
-        impl_->highExecutor->Stop();
-        impl_->highExecutor.reset();
+    auto highExecutor = std::move(impl_->highExecutor);
+    auto normalExecutor = std::move(impl_->normalExecutor);
+    if (highExecutor) {
+        highExecutor->Stop();
     }
-    if (impl_->normalExecutor) {
-        impl_->normalExecutor->Stop();
-        impl_->normalExecutor.reset();
+    if (normalExecutor) {
+        normalExecutor->Stop();
     }
+    highExecutor.reset();
+    normalExecutor.reset();
+    impl_->WaitForSubmittedTasks();
     impl_->session.Reset();
 }
 

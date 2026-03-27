@@ -2,6 +2,7 @@
 #define MEMRPC_SERVER_RPC_SERVER_H_
 
 #include <memory>
+#include <utility>
 
 #include "memrpc/core/bootstrap.h"
 #include "memrpc/core/types.h"
@@ -59,7 +60,7 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace MemRpc

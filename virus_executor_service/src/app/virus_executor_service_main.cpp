@@ -5,7 +5,7 @@
 #include "iservice_registry.h"
 #include "service/virus_executor_service.h"
 #include "transport/registry_backend.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace {
 

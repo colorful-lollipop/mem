@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 TEST(LogTest, NormalizeHilogVisibilityMarkers)
 {

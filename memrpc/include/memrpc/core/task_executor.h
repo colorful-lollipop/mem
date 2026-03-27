@@ -15,6 +15,7 @@ public:
     // HasCapacity + TrySubmit must be consistent for a single producer.
     [[nodiscard]] virtual bool HasCapacity() const = 0;
     [[nodiscard]] virtual bool WaitForCapacity(std::chrono::milliseconds timeout) = 0;
+    // Stop must reject new work and eventually release ownership of every previously accepted task.
     virtual void Stop() = 0;
 };
 

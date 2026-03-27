@@ -8,7 +8,7 @@
 #include "iservice_registry.h"
 #include "transport/registry_backend.h"
 #include "transport/ves_control_interface.h"
-#include "virus_protection_service_log.h"
+#include "virus_protection_executor_log.h"
 
 namespace {
 
