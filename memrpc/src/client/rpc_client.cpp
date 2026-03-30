@@ -458,10 +458,13 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             }
             if (!session_.Valid()) {
                 waitHandle.action = SessionWaitHandleUpdate::Action::ClearCurrent;
-                HILOGI("%{public}s clearing stale wait fd: active_session=%{public}llu current_session=%{public}llu",
-                       logContext,
-                       static_cast<unsigned long long>(snapshotSessionId),
-                       static_cast<unsigned long long>(waitHandle.sessionId));
+                if (activeSessionId != 0) {
+                    HILOGI("%{public}s clearing stale wait fd: active_session=%{public}llu "
+                           "current_session=%{public}llu",
+                           logContext,
+                           static_cast<unsigned long long>(activeSessionId),
+                           static_cast<unsigned long long>(waitHandle.sessionId));
+                }
                 return waitHandle;
             }
             const int sourceFd = std::forward<FdSelector>(selectFd)(session_);
@@ -478,7 +481,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             waitHandle.action = SessionWaitHandleUpdate::Action::ReplaceCurrent;
             HILOGI("%{public}s refreshed wait fd: active_session=%{public}llu current_session=%{public}llu",
                    logContext,
-                   static_cast<unsigned long long>(snapshotSessionId),
+                   static_cast<unsigned long long>(activeSessionId),
                    static_cast<unsigned long long>(waitHandle.sessionId));
             return waitHandle;
         }
@@ -658,7 +661,26 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
 
         void NotifyRecoveryStateChanged()
         {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                ++notificationGeneration_;
+            }
             recoveryStateCv_.notify_all();
+        }
+
+        [[nodiscard]] uint64_t NotificationGeneration() const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return notificationGeneration_;
+        }
+
+        void WaitForNotification(uint64_t observedGeneration, const std::atomic<bool>& workersRunning)
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            recoveryStateCv_.wait(lock, [this, observedGeneration, &workersRunning] {
+                return notificationGeneration_ != observedGeneration ||
+                       !workersRunning.load(std::memory_order_acquire);
+            });
         }
 
         // `workersRunning` answers whether background loops should keep waiting.
@@ -878,6 +900,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         RecoveryEventCallback recoveryEventCallback_;
         ClientLifecycleState lifecycleState_ = ClientLifecycleState::Uninitialized;
         uint64_t cooldownUntilMs_ = 0;
+        uint64_t notificationGeneration_ = 0;
     };
 
     class SubmitWorker {
@@ -1088,8 +1111,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
                     continue;
                 }
 
-                if (!PrepareToWaitForResponses(&activePollFd, &activePollSessionId, resetActivePollFd)) {
-                    std::this_thread::sleep_for(20ms);
+                if (!WaitUntilResponsePollReady(&activePollFd, &activePollSessionId, resetActivePollFd)) {
                     continue;
                 }
                 WaitForResponseSignal(activePollFd.Get(), activePollSessionId, resetActivePollFd);
@@ -1126,6 +1148,20 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             // Re-sync the duplicated poll fd before blocking so the wait always tracks the live session.
             SyncActivePollSession(activePollFd, activePollSessionId, resetActivePollFd);
             return activePollFd->Get() >= 0;
+        }
+
+        bool WaitUntilResponsePollReady(UniqueFd* activePollFd,
+                                        uint64_t* activePollSessionId,
+                                        const std::function<void()>& resetActivePollFd)
+        {
+            while (owner_->WorkersShouldRun()) {
+                const uint64_t observedWakeGeneration = owner_->RecoveryNotificationGeneration();
+                if (PrepareToWaitForResponses(activePollFd, activePollSessionId, resetActivePollFd)) {
+                    return true;
+                }
+                owner_->WaitForRecoveryNotification(observedWakeGeneration);
+            }
+            return false;
         }
 
         void WaitForResponseSignal(int activePollFd,
@@ -1528,6 +1564,16 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         recoveryState_.NotifyRecoveryStateChanged();
     }
 
+    [[nodiscard]] uint64_t RecoveryNotificationGeneration() const
+    {
+        return recoveryState_.NotificationGeneration();
+    }
+
+    void WaitForRecoveryNotification(uint64_t observedGeneration)
+    {
+        recoveryState_.WaitForNotification(observedGeneration, workersRunning_);
+    }
+
     // Shared reply resolution and recovery-decision helpers.
     PendingInfo MakePendingInfo(const PendingSubmit& submit) const
     {
@@ -1807,6 +1853,7 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
     void CloseLiveSessionLocked()
     {
         (void)sessionTransport_.CloseLiveSession();
+        NotifyRecoveryStateChanged();
     }
 
     void CloseLiveSessionForTransportFailure()

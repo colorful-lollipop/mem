@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -245,6 +246,50 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
 
     client.Shutdown();
     restartedServer.Stop();
+}
+
+TEST(RpcClientIdleCallbackTest, IdleCloseDoesNotSpamZeroSessionStaleWaitLog)
+{
+    auto raw_bootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(raw_bootstrap->OpenSession(unused_handles), StatusCode::Ok);
+    CloseHandles(unused_handles);
+
+    RpcServer server;
+    StartEchoServer(raw_bootstrap, &server);
+
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
+    RpcClient client(bootstrap);
+    RecoveryPolicy policy;
+    policy.onIdle = [](uint64_t) { return RecoveryDecision{RecoveryAction::IdleClose, 0}; };
+    client.SetRecoveryPolicy(std::move(policy));
+
+    testing::internal::CaptureStderr();
+    ASSERT_EQ(client.Init(), StatusCode::Ok);
+
+    ASSERT_TRUE([&]() {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto snapshot = client.GetRecoveryRuntimeSnapshot();
+            if (bootstrap->closeCount() >= 1 && snapshot.lifecycleState == ClientLifecycleState::IdleClosed &&
+                snapshot.currentSessionId == 0) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return false;
+    }());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    client.Shutdown();
+    server.Stop();
+
+    const std::string logs = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(logs.find("RpcClient::DuplicateResponseWaitHandle clearing stale wait fd: active_session=0 "
+                        "current_session=0"),
+              std::string::npos)
+        << logs;
 }
 
 }  // namespace MemRpc
