@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <future>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -144,6 +145,18 @@ void RegisterScanHandler(MemRpc::RpcServer* server, std::function<ScanFileReply(
                                     reply->payload.clear();
                                 }
                             });
+}
+
+MemRpc::RpcFuture StartAsyncScan(VesClient& client, const std::string& path, uint32_t execTimeoutMs = 30000)
+{
+    ScanTask task;
+    task.path = path;
+
+    MemRpc::RpcCall call;
+    call.opcode = static_cast<MemRpc::Opcode>(VesOpcode::ScanFile);
+    call.execTimeoutMs = execTimeoutMs;
+    EXPECT_TRUE(MemRpc::EncodeMessage(task, &call.payload));
+    return client.client_.InvokeAsync(std::move(call));
 }
 
 class FakeReloadControl final : public VesControlStub {
@@ -720,6 +733,119 @@ TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
     ScanTask task{"/data/after_shutdown.apk"};
     ScanFileReply reply;
     EXPECT_EQ(client->ScanFile(task, &reply), MemRpc::StatusCode::ClientClosed);
+
+    service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesPolicyTest, SecondConnectDuringActiveRequestDoesNotHangAndLeavesNewClientUsable)
+{
+    UnloadControlService();
+    const std::string socketPath = "/tmp/ves_second_connect_lifecycle_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    constexpr int kIterations = 10;
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+        auto firstClient = VesClient::Connect();
+        ASSERT_NE(firstClient, nullptr) << "iteration=" << iteration;
+
+        auto firstFuture = StartAsyncScan(*firstClient,
+                                          "/data/sleep200_second_connect_" + std::to_string(iteration) + ".bin");
+        ASSERT_TRUE(WaitFor(
+            [&]() {
+                VesHeartbeatReply reply{};
+                return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+            },
+            std::chrono::milliseconds(300)))
+            << "iteration=" << iteration;
+
+        auto secondClient = VesClient::Connect();
+        ASSERT_NE(secondClient, nullptr) << "iteration=" << iteration;
+
+        auto waitTask = std::async(std::launch::async, [future = std::move(firstFuture)]() mutable {
+            MemRpc::RpcReply reply;
+            return std::pair<MemRpc::StatusCode, MemRpc::RpcReply>{std::move(future).Wait(&reply), std::move(reply)};
+        });
+
+        ASSERT_EQ(waitTask.wait_for(std::chrono::seconds(2)), std::future_status::ready) << "iteration=" << iteration;
+        const auto [firstStatus, firstReply] = waitTask.get();
+        (void)firstReply;
+        EXPECT_TRUE(firstStatus == MemRpc::StatusCode::Ok || firstStatus == MemRpc::StatusCode::PeerDisconnected ||
+                    firstStatus == MemRpc::StatusCode::ExecTimeout)
+            << "iteration=" << iteration << " status=" << static_cast<int>(firstStatus);
+
+        ScanTask followupTask{"/data/healthy_second_connect.bin"};
+        ScanFileReply followupReply;
+        EXPECT_EQ(secondClient->ScanFile(followupTask, &followupReply), MemRpc::StatusCode::Ok)
+            << "iteration=" << iteration;
+
+        secondClient->Shutdown();
+        firstClient->Shutdown();
+    }
+
+    service->OnStop();
+    UnloadControlService();
+}
+
+TEST(VesPolicyTest, ManualShutdownThenImmediateReconnectDoesNotHang)
+{
+    UnloadControlService();
+    const std::string socketPath = "/tmp/ves_shutdown_reconnect_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
+
+    auto service = std::make_shared<VirusExecutorService>();
+    service->AsObject()->SetServicePath(socketPath);
+    service->OnStart();
+    ASSERT_TRUE(service->Publish(service.get()));
+
+    constexpr int kIterations = 10;
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+        auto client = VesClient::Connect();
+        ASSERT_NE(client, nullptr) << "iteration=" << iteration;
+
+        auto inflightFuture = StartAsyncScan(*client,
+                                             "/data/sleep200_shutdown_reconnect_" + std::to_string(iteration) + ".bin");
+        ASSERT_TRUE(WaitFor(
+            [&]() {
+                VesHeartbeatReply reply{};
+                return service->Heartbeat(reply) == MemRpc::StatusCode::Ok && reply.inFlight >= 1u;
+            },
+            std::chrono::milliseconds(300)))
+            << "iteration=" << iteration;
+
+        std::thread shutdownThread([&]() { client->Shutdown(); });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        auto replacementClient = VesClient::Connect();
+        ASSERT_NE(replacementClient, nullptr) << "iteration=" << iteration;
+
+        auto waitTask = std::async(std::launch::async, [future = std::move(inflightFuture)]() mutable {
+            MemRpc::RpcReply reply;
+            return std::pair<MemRpc::StatusCode, MemRpc::RpcReply>{std::move(future).Wait(&reply), std::move(reply)};
+        });
+
+        ASSERT_EQ(waitTask.wait_for(std::chrono::seconds(2)), std::future_status::ready) << "iteration=" << iteration;
+        const auto [inflightStatus, inflightReply] = waitTask.get();
+        (void)inflightReply;
+        EXPECT_TRUE(inflightStatus == MemRpc::StatusCode::Ok || inflightStatus == MemRpc::StatusCode::PeerDisconnected ||
+                    inflightStatus == MemRpc::StatusCode::ExecTimeout ||
+                    inflightStatus == MemRpc::StatusCode::ClientClosed)
+            << "iteration=" << iteration << " status=" << static_cast<int>(inflightStatus);
+
+        shutdownThread.join();
+
+        ScanTask followupTask{"/data/healthy_shutdown_reconnect.bin"};
+        ScanFileReply followupReply;
+        EXPECT_EQ(replacementClient->ScanFile(followupTask, &followupReply), MemRpc::StatusCode::Ok)
+            << "iteration=" << iteration;
+
+        replacementClient->Shutdown();
+    }
 
     service->OnStop();
     UnloadControlService();

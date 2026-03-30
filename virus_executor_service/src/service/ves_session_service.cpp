@@ -1,7 +1,9 @@
 #include "ves/ves_session_service.h"
 
+#include <cstdlib>
 #include <random>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "memrpc/server/rpc_server.h"
@@ -57,11 +59,51 @@ MemRpc::StatusCode InvokeAnyCallHandler(const std::unordered_map<uint16_t, MemRp
 
 constexpr auto EVENT_PUBLISH_PERIOD_MIN = std::chrono::milliseconds(80);
 constexpr auto EVENT_PUBLISH_PERIOD_MAX = std::chrono::milliseconds(180);
+constexpr uint32_t DEFAULT_CLOSE_SESSION_CHAOS_YIELDS = 8;
+constexpr uint32_t MAX_CLOSE_SESSION_CHAOS_YIELDS = 1024;
+constexpr uint32_t MAX_CLOSE_SESSION_CHAOS_SLEEP_MS = 1000;
+
+bool EnvFlagEnabled(const char* name)
+{
+    const char* value = std::getenv(name);
+    return value != nullptr && value[0] == '1' && value[1] == '\0';
+}
+
+uint32_t ReadEnvUintOrDefault(const char* name, uint32_t defaultValue, uint32_t maxValue)
+{
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return defaultValue;
+    }
+
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (end == value || (end != nullptr && *end != '\0')) {
+        return defaultValue;
+    }
+    return static_cast<uint32_t>(std::min<unsigned long>(parsed, maxValue));
+}
+
+const char* CloseSessionStageName(CloseSessionStage stage)
+{
+    switch (stage) {
+        case CloseSessionStage::AfterMarkClosing:
+            return "after_mark_closing";
+        case CloseSessionStage::BeforeRpcServerStop:
+            return "before_rpc_server_stop";
+        case CloseSessionStage::BeforeSessionHostClose:
+            return "before_session_host_close";
+        default:
+            return "unknown";
+    }
+}
 }  // namespace
 
 EngineSessionService::EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars,
-                                           std::shared_ptr<MemRpc::IServerSessionHost> sessionHost)
+                                           std::shared_ptr<MemRpc::IServerSessionHost> sessionHost,
+                                           EngineSessionServiceOptions options)
     : registrars_(std::move(registrars)),
+      options_(std::move(options)),
       sessionHost_(std::move(sessionHost))
 {
 }
@@ -186,13 +228,16 @@ MemRpc::StatusCode EngineSessionService::CloseSession()
         initialized_ = false;
         sessionId_.store(0, std::memory_order_release);
     }
+    RunCloseSessionChaos(CloseSessionStage::AfterMarkClosing);
     eventPublisherCv_.notify_all();
     if (eventPublisherThread.joinable()) {
         eventPublisherThread.join();
     }
+    RunCloseSessionChaos(CloseSessionStage::BeforeRpcServerStop);
     if (rpcServer) {
         rpcServer->Stop();
     }
+    RunCloseSessionChaos(CloseSessionStage::BeforeSessionHostClose);
     if (sessionHost) {
         (void)sessionHost->CloseSession();
     }
@@ -216,6 +261,32 @@ MemRpc::RpcServerRuntimeStats EngineSessionService::GetRuntimeStats() const
         return {};
     }
     return rpcServer_->GetRuntimeStats();
+}
+
+void EngineSessionService::RunCloseSessionChaos(CloseSessionStage stage)
+{
+    if (options_.closeSessionHook) {
+        options_.closeSessionHook(stage);
+    }
+    if (!EnvFlagEnabled("VES_ENABLE_CLOSE_SESSION_CHAOS")) {
+        return;
+    }
+
+    const uint32_t yieldCount =
+        ReadEnvUintOrDefault("VES_CLOSE_SESSION_CHAOS_YIELDS", DEFAULT_CLOSE_SESSION_CHAOS_YIELDS,
+                             MAX_CLOSE_SESSION_CHAOS_YIELDS);
+    const uint32_t sleepMs =
+        ReadEnvUintOrDefault("VES_CLOSE_SESSION_CHAOS_SLEEP_MS", 0, MAX_CLOSE_SESSION_CHAOS_SLEEP_MS);
+    for (uint32_t i = 0; i < yieldCount; ++i) {
+        std::this_thread::yield();
+    }
+    if (sleepMs > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+    }
+    HILOGW("EngineSessionService close-session chaos stage=%{public}s yields=%{public}u sleep_ms=%{public}u",
+           CloseSessionStageName(stage),
+           yieldCount,
+           sleepMs);
 }
 
 void EngineSessionService::EventPublisherLoop()

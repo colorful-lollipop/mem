@@ -15,6 +15,8 @@
 namespace VirusExecutorService {
 namespace {
 constexpr uint32_t DEFAULT_RESTART_DELAY_MS = 200;
+std::atomic<uint64_t> g_nextVesClientGeneration{1};
+std::atomic<uint64_t> g_activeVesClientGeneration{0};
 
 MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
 {
@@ -184,7 +186,8 @@ MemRpc::StatusCode ExecuteInvokeRoute(VesInvokeRoute route,
 
 VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
     : controlLoader_(std::move(controlLoader)),
-      options_(std::move(options))
+      options_(std::move(options)),
+      instanceGeneration_(g_nextVesClientGeneration.fetch_add(1, std::memory_order_relaxed))
 {
     if (!controlLoader_) {
         AbortForMissingControlLoader();
@@ -208,7 +211,11 @@ std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options, VesClien
 
 MemRpc::StatusCode VesClient::Init()
 {
-    bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(controlLoader_, options_.openSessionRequest);
+    ClaimProcessOwnership();
+    bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
+        controlLoader_,
+        options_.openSessionRequest,
+        [this]() { return IsProcessOwner(); });
     client_.SetBootstrapChannel(bootstrapChannel_);
     client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_));
     const MemRpc::StatusCode status = client_.Init();
@@ -219,6 +226,16 @@ MemRpc::StatusCode VesClient::Init()
         return status;
     }
     return MemRpc::StatusCode::Ok;
+}
+
+void VesClient::ClaimProcessOwnership()
+{
+    g_activeVesClientGeneration.store(instanceGeneration_, std::memory_order_release);
+}
+
+bool VesClient::IsProcessOwner() const
+{
+    return g_activeVesClientGeneration.load(std::memory_order_acquire) == instanceGeneration_;
 }
 
 void VesClient::SetEventCallback(EventCallback callback)

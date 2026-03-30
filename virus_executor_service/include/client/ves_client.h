@@ -2,6 +2,7 @@
 #define INCLUDE_VIRUS_EXECUTOR_SERVICE_CLIENT_VES_CLIENT_H_
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -58,12 +59,15 @@ private:
                                  MemRpc::Priority priority,
                                  uint32_t execTimeoutMs);
 
+    void ClaimProcessOwnership();
+    [[nodiscard]] bool IsProcessOwner() const;
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
     friend class internal::VesClientRecoveryAccess;
     ControlLoader controlLoader_;
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
+    uint64_t instanceGeneration_ = 0;
 };
 
 }  // namespace VirusExecutorService

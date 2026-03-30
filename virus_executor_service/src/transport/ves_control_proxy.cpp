@@ -234,9 +234,13 @@ private:
 class VesBootstrapChannelState : public std::enable_shared_from_this<VesBootstrapChannelState> {
 public:
     using ControlLoader = VesBootstrapChannel::ControlLoader;
+    using AccessPolicy = VesBootstrapChannel::AccessPolicy;
 
-    VesBootstrapChannelState(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
+    VesBootstrapChannelState(ControlLoader controlLoader,
+                             VesOpenSessionRequest openSessionRequest,
+                             AccessPolicy accessPolicy)
         : controlLoader_(std::move(controlLoader)),
+          accessPolicy_(std::move(accessPolicy)),
           openSessionRequest_(std::move(openSessionRequest))
     {
         if (!controlLoader_) {
@@ -272,6 +276,11 @@ public:
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles)
     {
+        if (!AccessAllowed()) {
+            HILOGW("VesBootstrapChannel::OpenSession rejected by access policy");
+            handles = MemRpc::MakeDefaultBootstrapHandles();
+            return MemRpc::StatusCode::PeerDisconnected;
+        }
         VesOpenSessionRequest request;
         bool deadBeforeOpen = false;
         OHOS::sptr<IVirusProtectionExecutor> control = LoadOpenSessionControl(&request, &handles, &deadBeforeOpen);
@@ -302,6 +311,12 @@ public:
 
     MemRpc::StatusCode CloseSession()
     {
+        if (!AccessAllowed()) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            RebindControlLocked(nullptr);
+            sessionId_ = 0;
+            return MemRpc::StatusCode::Ok;
+        }
         OHOS::sptr<IVirusProtectionExecutor> control;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -317,6 +332,11 @@ public:
 
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId)
     {
+        if (!AccessAllowed()) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return {sessionId_ != 0 ? MemRpc::ChannelHealthStatus::Unhealthy : MemRpc::ChannelHealthStatus::Healthy,
+                    sessionId_};
+        }
         OHOS::sptr<IVirusProtectionExecutor> control;
         uint64_t sessionId = 0;
         {
@@ -348,6 +368,11 @@ public:
     OHOS::sptr<IVirusProtectionExecutor> CurrentControl()
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!AccessAllowedLocked()) {
+            RebindControlLocked(nullptr);
+            sessionId_ = 0;
+            return nullptr;
+        }
         return EnsureControlBoundLocked();
     }
 
@@ -424,6 +449,11 @@ private:
 
     OHOS::sptr<IVirusProtectionExecutor> EnsureControlBoundLocked()
     {
+        if (!AccessAllowedLocked()) {
+            RebindControlLocked(nullptr);
+            sessionId_ = 0;
+            return nullptr;
+        }
         if (control_ != nullptr) {
             return control_;
         }
@@ -432,12 +462,26 @@ private:
 
     OHOS::sptr<IVirusProtectionExecutor> RefreshControlLocked()
     {
+        if (!AccessAllowedLocked()) {
+            return nullptr;
+        }
         auto nextControl = controlLoader_();
         if (nextControl != nullptr) {
             RebindControlLocked(nextControl);
             return control_;
         }
         return nullptr;
+    }
+
+    bool AccessAllowed()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return AccessAllowedLocked();
+    }
+
+    bool AccessAllowedLocked() const
+    {
+        return !accessPolicy_ || accessPolicy_();
     }
 
     void RebindControlLocked(const OHOS::sptr<IVirusProtectionExecutor>& nextControl)
@@ -457,6 +501,7 @@ private:
     std::mutex mutex_;
     OHOS::sptr<IVirusProtectionExecutor> control_;
     ControlLoader controlLoader_;
+    AccessPolicy accessPolicy_;
     OHOS::sptr<OHOS::IRemoteObject::DeathRecipient> deathRecipient_;
     MemRpc::EngineDeathCallback deathCallback_;
     uint64_t sessionId_ = 0;
@@ -799,8 +844,12 @@ struct VesBootstrapChannel::State final : public VesBootstrapChannelState {
     using VesBootstrapChannelState::VesBootstrapChannelState;
 };
 
-VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader, VesOpenSessionRequest openSessionRequest)
-    : state_(std::make_shared<State>(std::move(controlLoader), std::move(openSessionRequest)))
+VesBootstrapChannel::VesBootstrapChannel(ControlLoader controlLoader,
+                                         VesOpenSessionRequest openSessionRequest,
+                                         AccessPolicy accessPolicy)
+    : state_(std::make_shared<State>(std::move(controlLoader),
+                                     std::move(openSessionRequest),
+                                     std::move(accessPolicy)))
 {
     state_->InitializeDeathRecipient();
 }

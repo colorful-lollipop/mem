@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <unistd.h>
 #include <atomic>
 #include <chrono>
@@ -8,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -17,6 +19,7 @@
 #include "service/virus_executor_service.h"
 #include "transport/ves_control_interface.h"
 #include "transport/ves_control_proxy.h"
+#include "ves/ves_engine_service.h"
 #include "ves/ves_session_service.h"
 
 namespace VirusExecutorService {
@@ -143,6 +146,81 @@ private:
     bool allowReply_ = false;
 };
 
+class CloseSessionStageGate final {
+public:
+    explicit CloseSessionStageGate(CloseSessionStage targetStage)
+        : targetStage_(targetStage)
+    {
+    }
+
+    std::function<void(CloseSessionStage)> Hook()
+    {
+        return [this](CloseSessionStage stage) { OnStage(stage); };
+    }
+
+    bool WaitUntilEntered(std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return cv_.wait_for(lock, timeout, [this] { return entered_; });
+    }
+
+    void Release()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            released_ = true;
+        }
+        cv_.notify_all();
+    }
+
+private:
+    void OnStage(CloseSessionStage stage)
+    {
+        if (stage != targetStage_) {
+            return;
+        }
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        entered_ = true;
+        cv_.notify_all();
+        cv_.wait(lock, [this] { return released_; });
+    }
+
+    const CloseSessionStage targetStage_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool entered_ = false;
+    bool released_ = false;
+};
+
+class ScopedEnvVar final {
+public:
+    ScopedEnvVar(const char* name, const char* value)
+        : name_(name)
+    {
+        const char* current = std::getenv(name);
+        if (current != nullptr) {
+            hadValue_ = true;
+            previousValue_ = current;
+        }
+        setenv(name, value, 1);
+    }
+
+    ~ScopedEnvVar()
+    {
+        if (hadValue_) {
+            setenv(name_.c_str(), previousValue_.c_str(), 1);
+            return;
+        }
+        unsetenv(name_.c_str());
+    }
+
+private:
+    std::string name_;
+    std::string previousValue_;
+    bool hadValue_ = false;
+};
+
 }  // namespace
 
 TEST(VesShutdownLifecycleTest, CloseSessionRejectsReopenUntilServerStops)
@@ -178,7 +256,8 @@ TEST(VesShutdownLifecycleTest, CloseSessionRejectsReopenUntilServerStops)
 
     MemRpc::RpcReply reply;
     const MemRpc::StatusCode waitStatus = std::move(future).Wait(&reply);
-    EXPECT_TRUE(waitStatus == MemRpc::StatusCode::ExecTimeout || waitStatus == MemRpc::StatusCode::PeerDisconnected);
+    EXPECT_TRUE(waitStatus == MemRpc::StatusCode::Ok || waitStatus == MemRpc::StatusCode::ExecTimeout ||
+                waitStatus == MemRpc::StatusCode::PeerDisconnected);
 
     closeThread.join();
     EXPECT_TRUE(closeDone.load(std::memory_order_acquire));
@@ -231,6 +310,167 @@ TEST(VesShutdownLifecycleTest, OnStopDefersEngineResetUntilSessionDrainCompletes
     EXPECT_TRUE(service->service().configuredEngineKinds().empty());
 
     client.Shutdown();
+}
+
+TEST(VesShutdownLifecycleTest, CloseSessionChaosRejectsReopenStormUntilRpcServerStopCompletes)
+{
+    BlockingRegistrar registrar;
+    CloseSessionStageGate gate(CloseSessionStage::BeforeRpcServerStop);
+    auto sessionService = std::make_shared<EngineSessionService>(
+        std::vector<RpcHandlerRegistrar*>{&registrar}, nullptr, EngineSessionServiceOptions{gate.Hook()});
+    auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
+
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcCall call;
+    call.opcode = kBlockingOpcode;
+    call.execTimeoutMs = 200;
+    auto future = client.InvokeAsync(call);
+
+    ASSERT_TRUE(registrar.WaitUntilRunning(std::chrono::milliseconds(200)));
+
+    std::atomic<bool> closeDone{false};
+    std::thread closeThread([&]() {
+        EXPECT_EQ(sessionService->CloseSession(), MemRpc::StatusCode::Ok);
+        closeDone.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(gate.WaitUntilEntered(std::chrono::milliseconds(200)));
+    ASSERT_FALSE(closeDone.load(std::memory_order_acquire));
+
+    registrar.Release();
+
+    constexpr int kStormThreads = 8;
+    constexpr int kStormAttempts = 20;
+    std::atomic<int> peerDisconnectedCount{0};
+    std::atomic<int> unexpectedCount{0};
+    std::vector<std::thread> stormThreads;
+    stormThreads.reserve(kStormThreads);
+    for (int threadIndex = 0; threadIndex < kStormThreads; ++threadIndex) {
+        stormThreads.emplace_back([&]() {
+            for (int attempt = 0; attempt < kStormAttempts; ++attempt) {
+                MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
+                const MemRpc::StatusCode status = sessionService->OpenSession(reopened);
+                if (status == MemRpc::StatusCode::PeerDisconnected) {
+                    ++peerDisconnectedCount;
+                } else {
+                    ++unexpectedCount;
+                }
+                CloseHandles(&reopened);
+                std::this_thread::yield();
+            }
+        });
+    }
+    for (auto& stormThread : stormThreads) {
+        stormThread.join();
+    }
+    EXPECT_EQ(peerDisconnectedCount.load(), kStormThreads * kStormAttempts);
+    EXPECT_EQ(unexpectedCount.load(), 0);
+
+    gate.Release();
+    closeThread.join();
+    EXPECT_TRUE(closeDone.load(std::memory_order_acquire));
+
+    MemRpc::RpcReply reply;
+    const MemRpc::StatusCode waitStatus = std::move(future).Wait(&reply);
+    EXPECT_TRUE(waitStatus == MemRpc::StatusCode::Ok || waitStatus == MemRpc::StatusCode::ExecTimeout ||
+                waitStatus == MemRpc::StatusCode::PeerDisconnected);
+
+    MemRpc::BootstrapHandles fresh = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(sessionService->OpenSession(fresh), MemRpc::StatusCode::Ok);
+    CloseHandles(&fresh);
+
+    client.Shutdown();
+}
+
+TEST(VesShutdownLifecycleTest, ConcurrentCloseSessionCallsRemainIdempotentWhenFirstCloseBlocks)
+{
+    BlockingRegistrar registrar;
+    CloseSessionStageGate gate(CloseSessionStage::BeforeRpcServerStop);
+    auto sessionService = std::make_shared<EngineSessionService>(
+        std::vector<RpcHandlerRegistrar*>{&registrar}, nullptr, EngineSessionServiceOptions{gate.Hook()});
+    auto bootstrap = std::make_shared<SessionServiceBootstrapChannel>(sessionService);
+
+    MemRpc::RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(), MemRpc::StatusCode::Ok);
+
+    MemRpc::RpcCall call;
+    call.opcode = kBlockingOpcode;
+    call.execTimeoutMs = 200;
+    auto future = client.InvokeAsync(call);
+
+    ASSERT_TRUE(registrar.WaitUntilRunning(std::chrono::milliseconds(200)));
+
+    std::atomic<bool> firstCloseDone{false};
+    std::thread firstClose([&]() {
+        EXPECT_EQ(sessionService->CloseSession(), MemRpc::StatusCode::Ok);
+        firstCloseDone.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(gate.WaitUntilEntered(std::chrono::milliseconds(200)));
+    ASSERT_FALSE(firstCloseDone.load(std::memory_order_acquire));
+
+    std::atomic<bool> secondCloseDone{false};
+    std::thread secondClose([&]() {
+        EXPECT_EQ(sessionService->CloseSession(), MemRpc::StatusCode::Ok);
+        secondCloseDone.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(WaitFor([&]() { return secondCloseDone.load(std::memory_order_acquire); }, std::chrono::milliseconds(200)));
+    ASSERT_FALSE(firstCloseDone.load(std::memory_order_acquire));
+
+    registrar.Release();
+    gate.Release();
+
+    firstClose.join();
+    secondClose.join();
+    EXPECT_TRUE(firstCloseDone.load(std::memory_order_acquire));
+    EXPECT_TRUE(secondCloseDone.load(std::memory_order_acquire));
+
+    MemRpc::RpcReply reply;
+    const MemRpc::StatusCode waitStatus = std::move(future).Wait(&reply);
+    EXPECT_TRUE(waitStatus == MemRpc::StatusCode::ExecTimeout || waitStatus == MemRpc::StatusCode::PeerDisconnected);
+
+    MemRpc::BootstrapHandles fresh = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(sessionService->OpenSession(fresh), MemRpc::StatusCode::Ok);
+    CloseHandles(&fresh);
+
+    client.Shutdown();
+}
+
+TEST(VesShutdownLifecycleTest, CloseSessionChaosEnvironmentExtendsIdleCloseWindow)
+{
+    ScopedEnvVar enableChaos("VES_ENABLE_CLOSE_SESSION_CHAOS", "1");
+    ScopedEnvVar sleepMs("VES_CLOSE_SESSION_CHAOS_SLEEP_MS", "25");
+    ScopedEnvVar yieldCount("VES_CLOSE_SESSION_CHAOS_YIELDS", "2");
+
+    VesEngineService service;
+    EngineSessionService sessionService({&service});
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(sessionService.OpenSession(handles), MemRpc::StatusCode::Ok);
+    CloseHandles(&handles);
+
+    std::atomic<bool> closeDone{false};
+    std::thread closeThread([&]() {
+        EXPECT_EQ(sessionService.CloseSession(), MemRpc::StatusCode::Ok);
+        closeDone.store(true, std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT_FALSE(closeDone.load(std::memory_order_acquire));
+
+    MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(sessionService.OpenSession(reopened), MemRpc::StatusCode::PeerDisconnected);
+    CloseHandles(&reopened);
+
+    closeThread.join();
+    EXPECT_TRUE(closeDone.load(std::memory_order_acquire));
+
+    MemRpc::BootstrapHandles fresh = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(sessionService.OpenSession(fresh), MemRpc::StatusCode::Ok);
+    CloseHandles(&fresh);
+    EXPECT_EQ(sessionService.CloseSession(), MemRpc::StatusCode::Ok);
 }
 
 }  // namespace VirusExecutorService

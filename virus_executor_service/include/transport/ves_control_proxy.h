@@ -51,9 +51,11 @@ private:
 class VesBootstrapChannel : public MemRpc::IBootstrapChannel {
 public:
     using ControlLoader = std::function<OHOS::sptr<IVirusProtectionExecutor>()>;
+    using AccessPolicy = std::function<bool()>;
 
     explicit VesBootstrapChannel(ControlLoader controlLoader,
-                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest());
+                                 VesOpenSessionRequest openSessionRequest = DefaultVesOpenSessionRequest(),
+                                 AccessPolicy accessPolicy = {});
     ~VesBootstrapChannel() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;

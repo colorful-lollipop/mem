@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -30,10 +31,21 @@ public:
     virtual MemRpc::StatusCode PublishEventBlocking(const MemRpc::RpcEvent& event) = 0;
 };
 
+enum class CloseSessionStage {
+    AfterMarkClosing = 0,
+    BeforeRpcServerStop,
+    BeforeSessionHostClose,
+};
+
+struct EngineSessionServiceOptions {
+    std::function<void(CloseSessionStage stage)> closeSessionHook;
+};
+
 class EngineSessionService final : public VesSessionProvider, public VesEventPublisher {
 public:
     explicit EngineSessionService(std::vector<RpcHandlerRegistrar*> registrars = {},
-                                  std::shared_ptr<MemRpc::IServerSessionHost> sessionHost = nullptr);
+                                  std::shared_ptr<MemRpc::IServerSessionHost> sessionHost = nullptr,
+                                  EngineSessionServiceOptions options = {});
     ~EngineSessionService() override;
 
     MemRpc::StatusCode OpenSession(MemRpc::BootstrapHandles& handles) override;
@@ -48,8 +60,10 @@ private:
     MemRpc::StatusCode EnsureInitialized();
     void StartEventPublisherLocked();
     void EventPublisherLoop();
+    void RunCloseSessionChaos(CloseSessionStage stage);
 
     std::vector<RpcHandlerRegistrar*> registrars_;
+    EngineSessionServiceOptions options_;
     std::unordered_map<uint16_t, MemRpc::RpcHandler> anyCallHandlers_;
     std::shared_ptr<MemRpc::IServerSessionHost> sessionHost_;
     std::shared_ptr<MemRpc::RpcServer> rpcServer_;
