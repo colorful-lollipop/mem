@@ -309,9 +309,9 @@ struct ResponseRingEntry {
 +---+----+     +------+-------+     +--------+---------+     +----------+-----------+
 ```
 
-### 3.2 服务端关闭与自动恢复流程
+### 3.2 服务端关闭与自动恢复流程（简述）
 
-当引擎进程崩溃或需要关闭时，客户端通过恢复策略处理：
+当引擎进程崩溃或需要关闭时，客户端通过恢复策略处理。详细流程见第6章[冷却(Cooldown)流程](#6-冷却cooldown流程)和第8章[自启与恢复流程](#8-自启与恢复流程)：
 
 ```
 +--------+     +--------------+     +------------------+     +----------------------+
@@ -452,26 +452,31 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options) {
 ### 4.1 整体流程图
 
 ```
-+--------+     +------------+     +-----------+     +-------------+
-|   App  |     |  VesClient |     |  RpcClient |     | SubmitWorker |
-+---+----+     +------+-----+     +-----+------+     +------+-------+
-    |                 |                 |                   |
-    | ScanFile()      |                 |                   |
-    +---------------->+                 |                   |
-    |                 | InvokeApi()     |                   |
-    |                 | EncodeInvoke    |                   |
-    |                 +---------------->+                   |
-    |                 |                 | RetryUntilRecovery|
-    |                 |                 | Settles()         |
-    |                 |                 |                   |
-    |                 |                 | InvokeAsync()     |
-    |                 |                 +------------------>+
-    |                 |                 |                   |
-    |                 |                 |                   | TryPushRequest()
-    |                 |                 |                   +------------------>
-    |                 |                 |                   |
-    |                 |                 |                   | signal eventfd
-    |                 |                 |                   +------------------>
++--------+     +------------+     +---------------------------------------+     +-------------+
+|   App  |     |  VesClient |     |              RpcClient                  |     | SubmitWorker |
++---+----+     +------+-----+     +------------------+--------------------+     +------+-------+
+    |                 |                 |                  |                    |
+    | ScanFile()      |                 |                  |                    |
+    +---------------->+                 |                  |                    |
+    |                 | InvokeApi()     |                  |                    |
+    |                 | (EncodeInvoke)  |                  |                    |
+    |                 +---------------->+                  |                    |
+    |                 |                 | RetryUntilRecoverySettles()          |
+    |                 |                 | +----------------------------------+   |
+    |                 |                 | | 循环：                           |   |
+    |                 |                 | |   1. 执行InvokeAsync()          |   |
+    |                 |                 | |   2. 检查返回状态               |   |
+    |                 |                 | |   3. 如需要恢复则等待           |   |
+    |                 |                 | |   4. 重试直到成功或超时         |   |
+    |                 |                 | +----------------------------------+   |
+    |                 |                 |                  |                    |
+    |                 |                 |     InvokeAsync()+------------------->+
+    |                 |                 |                  |                    |
+    |                 |                 |                  |                    | TryPushRequest()
+    |                 |                 |                  |                    +------------------>
+    |                 |                 |                  |                    |
+    |                 |                 |                  |                    | signal eventfd
+    |                 |                 |                  |                    +------------------>
 
 
 继续到服务端:
@@ -533,7 +538,37 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options) {
 
 ### 4.1.1 冷却状态与队列满处理（关键流程）
 
-在实际的`ScanFile`调用过程中，需要处理冷却状态和队列满的情况：
+在实际的`ScanFile`调用过程中，需要处理冷却状态和队列满的情况。以下分三层展示：
+
+**第一层：调用层 - RetryUntilRecoverySettles 重试逻辑**
+
+```
++--------+     +------------+     +-----------+
+|   App  |     |  VesClient |     |  RpcClient |
++---+----+     +------+-----+     +-----+------+
+    |                 |                 |
+    | ScanFile()      |                 |
+    +---------------->+                 |
+    |                 | InvokeApi()     |
+    |                 | RetryUntilRecoverySettles()
+    |                 | (外层重试包装器) |
+    |                 +------+          |
+    |                 |      | 调用执行  |
+    |                 |      v          |
+    |                 |  +-----------------------------+
+    |                 |  | 执行invoke，检查结果         |
+    |                 |  | CooldownActive? -> 等待冷却 |
+    |                 |  | PeerDisconnected? -> 等待恢复|
+    |                 |  | 其他状态 -> 直接返回        |
+    |                 |  +-----------------------------+
+    |                 |      |          |
+    |                 |      | 成功/失败 |
+    | 返回结果        |<-----+          |
+    |<----------------+                 |
++---+----+     +------+-----+     +-----+------+
+```
+
+**第二层：提交层 - SubmitWorker 循环处理**
 
 ```
 +--------+     +------------+     +-----------+     +------------------+
@@ -600,11 +635,45 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options) {
 +---+----+     +------+-----+     +-----+------+     +------+-----------+
 ```
 
+**第三层：底层 - 队列满时的背压处理**
+
+```
++-------------+     +------------------+     +-------------+
+| SubmitWorker|     |  Request Ring    |     |  Dispatcher |
++------+------+     +--------+---------+     +------+------+
+       |                     |                      |
+       | TryPushRequest()    |                      |
+       +-------------------->+                      |
+       |                     |                      |
+       | 返回QueueFull       |                      |
+       |<--------------------+                      |
+       |                     |                      |
+       | WaitForRequestCredit|                      |
+       | poll(reqCreditFd)   |                      |
+       | 阻塞等待...          |                      |
+       |                     |                      |
+       |                     |<---------------------+
+       |                     | PopRequest()         |
+       |                     | signal reqCreditFd   |
+       |<--------------------+                      |
+       | poll返回           |                      |
+       |                     |                      |
+       | 重试TryPushRequest  |                      |
+       +-------------------->+                      |
+       | 成功                |                      |
+       |<--------------------+                      |
++------+------+     +--------+---------+     +------+------+
+```
+
 **冷却流程详细说明**：
-1. **RetryUntilRecoverySettles()**：实际调用Invoke后检查结果，如果返回`CooldownActive`或`PeerDisconnected`且处于恢复状态，则等待并重试
-2. **Cooldown状态**：调用返回`CooldownActive`，进入等待（`WaitForCooldownToSettle`），冷却结束后重试Invoke
-3. **Recovering状态**：调用返回`PeerDisconnected`，进入等待（`WaitOneRecoveryRetryTick`），恢复完成后重试Invoke
-4. **底层流程**：SubmitWorker的`WaitUntilSessionReadyForSubmit`在提交前检查状态，确保会话就绪后才尝试PushRequest
+1. **RetryUntilRecoverySettles()**：外层重试包装器，调用Invoke后检查结果，如果返回`CooldownActive`或`PeerDisconnected`且处于恢复状态，则等待并重试
+2. **Cooldown状态**：调用返回`CooldownActive`，进入`WaitForCooldownToSettle`等待，冷却结束后重试Invoke
+3. **Recovering状态**：调用返回`PeerDisconnected`，进入`WaitOneRecoveryRetryTick`等待，恢复完成后重试Invoke
+4. **SubmitWorker层**：`WaitUntilSessionReadyForSubmit`在提交前检查状态，确保会话就绪后才尝试PushRequest
+
+> **RpcFuture 说明**：异步调用返回的 `RpcFuture` 对象表示一个待完成的请求，支持：
+> - `IsReady()`：检查是否就绪（不阻塞）
+> - `Wait(&reply)`：阻塞等待结果（右值引用限定，只能调用一次）
 
 **队列满处理详细说明**：
 1. **TryPushRequest()**：尝试写入共享内存Ring
@@ -739,6 +808,13 @@ ScanFileReply VesEngineService::ScanFile(const ScanTask& request) const {
 > 
 > `crash`、`sleepN`、`virus`等样本规则**仅用于测试**，通过文件名触发特定行为来验证系统的异常处理能力。这些不是真实的安全检测逻辑，而是测试工具。
 
+### 5.2.1 RegistryServer 说明
+
+`RegistryServer` 是 `VesBootstrapChannel` 内部的组件，负责通过 Unix Socket 与 SA (System Ability) 框架通信：
+- 监听引擎进程死亡事件
+- 触发 `OnRemoteDied()` 回调
+- 与第3.1节图中的 `SystemAbility Manager (SAM)` 是同一架构层面的不同表述
+
 
 ### 5.2 样本行为代码
 
@@ -826,11 +902,13 @@ SampleBehavior EvaluateSamplePath(const std::string& path) {
 | `sleepN` | 请求执行超时 | `WatchdogThread`超时检测 | `onFailure`回调→Restart+200ms冷却→重新拉起SA | 返回ExecTimeout错误，触发恢复 |
 | `virus` | 正常返回结果 | 无异常 | 正常处理 | 返回扫描结果 |
 
-**关键异常处理代码**：
+**关键异常处理代码（简化示意）**：
 
 ```cpp
-// RpcClient::Impl::HandleEngineDeathLocked() - 处理引擎崩溃（真实代码）
+// RpcClient::Impl::HandleEngineDeathLocked() - 处理引擎崩溃（简化示意）
 void HandleEngineDeathLocked(uint64_t observedSessionId, uint64_t deadSessionId) {
+    // 实际代码：包含observedSessionId == 0检查、sessionId匹配检查等保护逻辑
+    
     // 1. 确定死亡的sessionId
     const uint64_t resolvedDeadSessionId = deadSessionId != 0 ? deadSessionId : observedSessionId;
     
@@ -861,7 +939,7 @@ void HandleEngineDeathLocked(uint64_t observedSessionId, uint64_t deadSessionId)
                                 PendingRequestRecoveryAction::KeepCurrentState);
 }
 
-// RpcClient::Impl::MaybeRunPendingTimeouts() - 超时检测（真实代码）
+// RpcClient::Impl::MaybeRunPendingTimeouts() - 超时检测（简化示意）
 void MaybeRunPendingTimeouts() {
     const auto now = std::chrono::steady_clock::now();
     // 获取所有超时的请求
@@ -872,7 +950,7 @@ void MaybeRunPendingTimeouts() {
     }
 }
 
-// FailAndResolve -> ApplyFailureRecoveryDecision 调用链
+// FailAndResolve -> ApplyFailureRecoveryDecision 调用链（简化示意）
 void ApplyFailureRecoveryDecision(const PendingInfo& info, StatusCode status) {
     const RecoveryPolicy policy = LoadRecoveryPolicy();
     if (!policy.onFailure) {
@@ -884,6 +962,7 @@ void ApplyFailureRecoveryDecision(const PendingInfo& info, StatusCode status) {
     failure.opcode = info.opcode;
     failure.requestId = info.requestId;
     
+    // 实际代码：使用决策结果触发恢复流程
     const RecoveryDecision decision = policy.onFailure(failure);
     if (decision.action == RecoveryAction::Restart) {
         ScheduleRecovery(decision.delayMs);
@@ -899,6 +978,8 @@ void ApplyFailureRecoveryDecision(const PendingInfo& info, StatusCode status) {
 
 
 ## 6. 冷却(Cooldown)流程
+
+> **本章定位**：本章详细讲解冷却机制的原理和状态机，是第4.1.1节冷却流程的深入展开。
 
 ### 6.1 冷却机制概述
 
@@ -962,7 +1043,7 @@ void ApplyFailureRecoveryDecision(const PendingInfo& info, StatusCode status) {
     |                   | EnsureLiveSession()    |                    |
     |                   +----------------------->|                    |
     |                   |                        |                    |
-    |                   | 检查状态:ColdCooldown  |                    |
+    |                   | 检查状态:Cooldown      |                    |
     |                   |<-----------------------+                    |
     |                   |                        |                    |
     |                   | CooldownActive()?      |                    |
@@ -1039,10 +1120,10 @@ StatusCode RpcClient::Impl::InvokeAsyncInternal(const RpcCall& call, RpcFuture* 
 }
 ```
 
-### 6.3 冷却实现代码
+### 6.3 冷却实现代码（简化示意）
 
 ```cpp
-// ClientRecoveryState 类核心逻辑
+// ClientRecoveryState 类核心逻辑（实际代码更复杂，以下为简化示意）
 
 class ClientRecoveryState {
 public:
@@ -1055,6 +1136,7 @@ public:
             ? ClientLifecycleState::Recovering 
             : ClientLifecycleState::Cooldown;
         
+        // 实际代码：TransitionLifecycle参数顺序和逻辑更复杂
         TransitionLifecycle(nextState, delayMs, currentSessionId, 
                            CooldownWindowChange::Set, cooldownUntilMs);
     }
@@ -1065,7 +1147,7 @@ public:
         return MonotonicNowMs() < cooldownUntilMs_;
     }
     
-    // 等待冷却结束
+    // 等待冷却结束（简化示意）
     StatusCode WaitForCooldownToSettle(...) {
         std::unique_lock<std::mutex> lock(mutex_);
         
@@ -1078,7 +1160,7 @@ public:
                 return StatusCode::Ok;  // 冷却结束
             }
             
-            // 等待条件变量或超时
+            // 实际代码：等待条件变量或超时，处理workersRunning等状态
             recoveryStateCv_.wait_until(lock, wakeAt, [...]);
         }
     }
@@ -1239,6 +1321,8 @@ StatusCode WaitUntilSessionReadyForSubmit() {
 
 ## 8. 自启与恢复流程
 
+> **本章定位**：本章专注于恢复机制的完整流程和策略配置，是第3.2节的深入展开。
+
 ### 8.1 恢复触发条件
 
 ```
@@ -1282,7 +1366,7 @@ StatusCode WaitUntilSessionReadyForSubmit() {
     |                |                | (200ms)        |
     |                |                +--------------->+
     |                |                |                |
-    |                |                | 状态:CdCooldown|
+    |                |                | 状态:Cooldown  |
     |                |                | 计算cooldownUntilMs
     |                |                |<---------------+
     |                |                |                |
@@ -1408,7 +1492,20 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options) {
 | `DEFAULT_RESTART_DELAY_MS` | 200 | 默认恢复冷却时间 |
 | `idleShutdownTimeoutMs` | 60000 | 空闲关闭超时 |
 
-### 9.3 调试与测试
+### 9.3 线程模型说明
+
+| 组件 | 线程数 | 说明 |
+|------|--------|------|
+| **SubmitWorker** | 1 | 客户端提交线程，循环处理submitQueue_ |
+| **ResponseWorker** | 1 | 客户端响应线程，poll响应eventfd |
+| **WatchdogThread** | 1 | 客户端看门狗，检测请求超时 |
+| **DispatcherThread** | 1 | 服务端分发线程，poll请求eventfd |
+| **ResponseWriter** | 1 | 服务端响应写入线程 |
+| **ThreadPoolExecutor** | 8+8 | 服务端高优/普通任务线程池（各默认8线程） |
+
+**RequestId 生成**：单调递增的64位整数，每个请求唯一，用于匹配请求和响应。
+
+### 9.4 调试与测试
 
 项目中提供了多种测试工具：
 
