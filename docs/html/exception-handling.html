@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>异常处理 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item active"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>异常文件处理流程</h1>
+            
+            <div class="info-box warning">
+                <div class="info-box-title">说明</div>
+                <p>以下样本规则<strong>仅用于测试</strong>，通过文件名触发特定行为来验证系统的异常处理能力。这些不是真实的安全检测逻辑，而是测试工具。</p>
+            </div>
+
+            <h2>RegistryServer 说明</h2>
+            <p>RegistryServer 是 VesBootstrapChannel 内部的组件，负责通过 Unix Socket 与 SA (System Ability) 框架通信：</p>
+            <ul>
+                <li>监听引擎进程死亡事件</li>
+                <li>触发 OnRemoteDied() 回调</li>
+                <li>与 SystemAbility Manager (SAM) 是同一架构层面的不同表述</li>
+            </ul>
+
+            <h2>异常统一处理机制</h2>
+            <table>
+                <thead>
+                    <tr><th>样本类型</th><th>触发异常</th><th>客户端检测方式</th><th>处理机制</th><th>结果</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>crash</td>
+                        <td>服务端进程崩溃</td>
+                        <td>DeathRecipient::OnRemoteDied()</td>
+                        <td>onEngineDeath回调 Restart+200ms冷却</td>
+                        <td>自动恢复，调用方无感知（有延迟）</td>
+                    </tr>
+                    <tr>
+                        <td>sleepN</td>
+                        <td>请求执行超时</td>
+                        <td>WatchdogThread超时检测</td>
+                        <td>onFailure回调 Restart+200ms冷却</td>
+                        <td>返回ExecTimeout错误，触发恢复</td>
+                    </tr>
+                    <tr>
+                        <td>virus</td>
+                        <td>正常返回结果</td>
+                        <td>无异常</td>
+                        <td>正常处理</td>
+                        <td>返回扫描结果</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>关键异常处理代码（简化示意）</h2>
+            <p>注：以下代码为简化示意，实际代码包含更多保护逻辑</p>
+            
+            <h3>处理引擎崩溃</h3>
+            <pre data-language="cpp">void HandleEngineDeathLocked(uint64_t observedSessionId, uint64_t deadSessionId) {
+    // 实际代码：包含observedSessionId == 0检查、sessionId匹配检查等保护逻辑
+    
+    // 1. 确定死亡的sessionId
+    const uint64_t resolvedDeadSessionId = 
+        deadSessionId != 0 ? deadSessionId : observedSessionId;
+    
+    // 2. 关闭匹配的会话
+    sessionTransport_.CloseLiveSessionIfSnapshotMatches(observedSessionId);
+    
+    // 3. 标记所有pending请求为CrashedDuringExecution
+    ResolveAllPending(StatusCode::CrashedDuringExecution);
+    
+    // 4. 调用恢复策略（默认Restart+200ms）
+    const RecoveryDecision decision = policy.onEngineDeath(report);
+    ApplyRecoveryDecisionLocked(decision, ...);
+}</pre>
+
+            <h3>超时检测</h3>
+            <pre data-language="cpp">void MaybeRunPendingTimeouts() {
+    const auto now = std::chrono::steady_clock::now();
+    // 获取所有超时的请求
+    std::vector&lt;PendingRequest&gt; expired = requestStore_.TakeExpired(now);
+    for (auto&amp; pending : expired) {
+        // 返回ExecTimeout并触发恢复决策
+        FailAndResolve(pending.info, StatusCode::ExecTimeout, pending.future);
+    }
+}</pre>
+
+            <h3>故障恢复决策</h3>
+            <pre data-language="cpp">void ApplyFailureRecoveryDecision(const PendingInfo&amp; info, StatusCode status) {
+    const RecoveryPolicy policy = LoadRecoveryPolicy();
+    
+    RpcFailure failure;
+    failure.status = status;
+    failure.opcode = info.opcode;
+    failure.requestId = info.requestId;
+    
+    // 实际代码：使用决策结果触发恢复流程
+    const RecoveryDecision decision = policy.onFailure(failure);
+    if (decision.action == RecoveryAction::Restart) {
+        ScheduleRecovery(decision.delayMs);
+    }
+}</pre>
+
+            <h2>对调用方的影响</h2>
+            <ul>
+                <li><strong>崩溃场景</strong>：已发送的pending请求立即返回CrashedDuringExecution错误</li>
+                <li><strong>新请求</strong>：在恢复期间被阻塞，恢复完成后继续执行</li>
+                <li><strong>超时场景</strong>：超时请求返回ExecTimeout错误，同时触发恢复流程</li>
+                <li><strong>连续崩溃</strong>：进入NoSession状态，后续调用快速返回错误</li>
+            </ul>
+        </main>
+    </div>
+</body>
+</html>

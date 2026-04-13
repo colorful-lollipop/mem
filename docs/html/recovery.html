@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自启与恢复 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item active"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>自启与恢复流程</h1>
+            
+            <div class="info-box">
+                <div class="info-box-title">本章定位</div>
+                <p>本章专注于恢复机制的完整流程和策略配置，是第3.2节的深入展开。</p>
+            </div>
+            
+            <h2>恢复触发条件</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart TB
+    subgraph Triggers["恢复触发条件"]
+        F[onFailure 请求执行失败]
+        D[onEngineDeath 引擎崩溃/死亡]
+        I[onIdle 空闲超时]
+    end
+    
+    subgraph Decisions["恢复决策"]
+        FR[Restart + 200ms 执行超时]
+        DR[Restart + 200ms 默认策略]
+        IR[IdleClose 60秒空闲]
+    end
+    
+    subgraph State["ClientRecoveryState"]
+        S[StartRecovery(delayMs)<br/>Cooldown/Recovering to Active]
+    end
+    
+    F --> FR
+    D --> DR
+    I --> IR
+    
+    FR --> S
+    DR --> S
+    IR --> S
+                </div>
+            </div>
+
+            <h2>完整恢复流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant App as App
+    participant VC as VesClient
+    participant RC as RpcClient
+    participant RS as RecoveryState
+    participant SAM as SAM
+    participant VES as VirusExecutorService
+    
+    App->>VC: ScanFile()
+    VC->>RC: InvokeAsync()
+    
+    RC->>RC: 发现会话断开
+    Note over RC: PeerDisconnected
+    
+    RC->>RC: HandleEngineDeath
+    RC->>RC: StartRecovery(200ms)
+    RC->>RS: 进入Cooldown状态
+    
+    Note over RC,RS: 等待200ms冷却
+    
+    RC->>RS: EnsureLiveSession()
+    RS->>RS: 状态变为Recovering
+    
+    RC->>SAM: OpenSession()
+    RC->>SAM: LoadSystemAbility()
+    SAM->>VES: 触发SA加载
+    Note over SAM,VES: fork + exec
+    
+    VES-->>SAM: 新引擎就绪
+    SAM-->>RC: 返回Bootstrap Handles
+    
+    RC->>RC: session_.Attach()
+    Note over RC: 映射共享内存
+    
+    RC->>RS: FinalizeSessionOpen()
+    RS->>RS: 状态变为Active
+    
+    RC-->>VC: 继续ScanFile
+    VC-->>App: 返回结果
+                </div>
+            </div>
+
+            <h2>线程模型说明</h2>
+            <table>
+                <thead>
+                    <tr><th>组件</th><th>线程数</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>SubmitWorker</strong></td><td>1</td><td>客户端提交线程，循环处理submitQueue_</td></tr>
+                    <tr><td><strong>ResponseWorker</strong></td><td>1</td><td>客户端响应线程，poll响应eventfd</td></tr>
+                    <tr><td><strong>WatchdogThread</strong></td><td>1</td><td>客户端看门狗，检测请求超时</td></tr>
+                    <tr><td><strong>DispatcherThread</strong></td><td>1</td><td>服务端分发线程，poll请求eventfd</td></tr>
+                    <tr><td><strong>ResponseWriter</strong></td><td>1</td><td>服务端响应写入线程</td></tr>
+                    <tr><td><strong>ThreadPoolExecutor</strong></td><td>8+8</td><td>服务端高优/普通任务线程池（各默认8线程）</td></tr>
+                </tbody>
+            </table>
+
+            <h2>RequestId 生成</h2>
+            <p>单调递增的64位整数，每个请求唯一，用于匹配请求和响应。</p>
+
+            <h2>核心设计要点总结</h2>
+            <table>
+                <thead>
+                    <tr><th>设计点</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>双优先级队列</td><td>独立的High/Normal请求环，避免普通请求阻塞高优先级请求</td></tr>
+                    <tr><td>零拷贝内联数据</td><td>小数据(8KB)直接内联在Ring Entry中，无需额外内存分配</td></tr>
+                    <tr><td>EventFd通知机制</td><td>基于Linux eventfd的轻量级进程间通知，替代轮询</td></tr>
+                    <tr><td>Robust Mutex</td><td>使用PTHREAD_MUTEX_ROBUST处理客户端崩溃后的锁恢复</td></tr>
+                    <tr><td>Session隔离</td><td>每个会话有唯一的sessionId，防止过时操作影响新会话</td></tr>
+                    <tr><td>背压机制</td><td>队列满时通过eventfd进行流控，避免内存无限增长</td></tr>
+                    <tr><td>细粒度恢复策略</td><td>支持业务自定义的故障恢复决策(onFailure/onIdle/onEngineDeath)</td></tr>
+                </tbody>
+            </table>
+
+            <h2>关键性能参数</h2>
+            <table>
+                <thead>
+                    <tr><th>参数</th><th>值</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>高优队列大小</td><td>8 entries</td><td>高优先级请求环容量</td></tr>
+                    <tr><td>普通队列大小</td><td>8 entries</td><td>普通优先级请求环容量</td></tr>
+                    <tr><td>响应队列大小</td><td>8 entries</td><td>响应/事件环容量</td></tr>
+                    <tr><td>Ring Entry大小</td><td>8192 bytes</td><td>每个队列条目大小</td></tr>
+                    <tr><td>最大内联请求</td><td>8168 bytes</td><td>请求Entry内联数据区</td></tr>
+                    <tr><td>最大内联响应</td><td>8156 bytes</td><td>响应Entry内联数据区</td></tr>
+                    <tr><td>默认重启延迟</td><td>200 ms</td><td>故障后的冷却时间</td></tr>
+                    <tr><td>默认空闲超时</td><td>60 seconds</td><td>空闲后自动关闭</td></tr>
+                </tbody>
+            </table>
+
+            <div class="info-box">
+                <div class="info-box-title">文档结束</div>
+                <p>本文档详细梳理了基于共享内存RPC的病毒扫描服务架构，涵盖了从应用层到基础设施层的完整设计。</p>
+                <p>如需了解更多细节，请参考源代码和单元测试。</p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

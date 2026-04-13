@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>scanFile 调用链 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item active"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>scanFile 完整调用链</h1>
+            
+            <h2>整体流程图（含RetryUntilRecoverySettles循环）</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant App as App
+    participant VC as VesClient
+    participant RC as RpcClient
+    participant SW as SubmitWorker
+    participant SHM as SharedMemory
+    participant DT as Dispatcher
+    participant TPE as ThreadPool
+    participant VES as VesEngineService
+    participant RW as ResponseWriter
+    participant RespW as ResponseWorker
+    
+    App->>VC: ScanFile()
+    VC->>RC: InvokeApi()
+    
+    loop RetryUntilRecoverySettles循环
+        RC->>RC: InvokeAsync()
+        RC->>SW: 提交到submitQueue
+        SW->>SW: SubmitOne()
+        SW->>SHM: TryPushRequest()
+        SW->>SHM: signal eventfd
+        
+        SHM->>DT: poll唤醒
+        DT->>SHM: PopRequest()
+        DT->>TPE: TrySubmit(task)
+        
+        TPE->>VES: ScanFile(request)
+        VES-->>TPE: ScanFileReply
+        
+        TPE->>RW: EnqueueCompletion()
+        RW->>SHM: PushResponse()
+        RW->>SHM: signal respEventFd
+        
+        SHM->>RespW: poll唤醒
+        RespW->>SHM: PopResponse()
+        RespW->>RC: 通知RpcFuture
+        
+        alt CooldownActive或PeerDisconnected
+            RC->>RC: 等待冷却/恢复后重试
+        end
+    end
+    
+    RC-->>VC: 返回结果
+    VC->>App: 返回ScanFileReply
+                </div>
+            </div>
+
+            <h2>冷却状态与队列满处理（三层展示）</h2>
+            
+            <h3>第一层：调用层 - RetryUntilRecoverySettles 重试逻辑</h3>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant App as App
+    participant VC as VesClient
+    participant RC as RpcClient
+    
+    App->>VC: ScanFile()
+    VC->>RC: InvokeApi()
+    Note over RC: RetryUntilRecoverySettles外层重试包装器
+    
+    loop 循环重试直到成功或超时
+        RC->>RC: 执行InvokeAsync()
+        RC->>RC: 检查返回状态
+        
+        alt CooldownActive
+            RC->>RC: 等待冷却
+        else PeerDisconnected且恢复中
+            RC->>RC: 等待恢复完成
+        else 其他状态
+            RC->>RC: 直接返回
+        end
+        
+        RC->>RC: 重试直到成功或超时
+    end
+    
+    RC-->>VC: 返回结果
+    VC-->>App: 返回结果
+                </div>
+            </div>
+
+            <h3>第二层：提交层 - SubmitWorker 循环处理</h3>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart TD
+    A[App调用ScanFile] --> B[VesClient::InvokeApi]
+    B --> C[RetryUntilRecoverySettles]
+    
+    C --> D{检查状态}
+    D -->|Cooldown| E[等待冷却结束]
+    D -->|Recovering| F[等待恢复完成]
+    D -->|NoSession| G[尝试建立会话]
+    D -->|Active| H[继续提交]
+    
+    E --> C
+    F --> C
+    G --> H
+    
+    H --> I[InvokeAsync]
+    I --> J[提交到submitQueue]
+    J --> K[SubmitWorker::SubmitOne]
+    
+    K --> L[TryAdmitSubmit]
+    L --> M[TryPushRequest]
+    
+    M --> N{返回状态}
+    N -->|QueueFull| O[WaitForReqCredit]
+    N -->|Ok| P[提交成功]
+    N -->|PeerDisconnected| Q[关闭会话]
+    
+    O --> R[poll reqCreditFd]
+    R -->|Ready| S[返回QueueFull]
+    S --> L
+    
+    Q --> T[睡眠重试]
+    T --> K
+                </div>
+            </div>
+
+            <h3>第三层：底层 - 队列满时的背压处理</h3>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant SW as SubmitWorker
+    participant RR as Request Ring
+    participant DT as Dispatcher
+    participant EF as reqCreditEventFd
+    
+    SW->>RR: TryPushRequest()
+    RR-->>SW: 返回QueueFull
+    
+    SW->>EF: WaitForRequestCredit()
+    SW->>SW: poll(eventfd)阻塞
+    
+    Note over SW: 阻塞等待...
+    
+    DT->>RR: PopRequest()
+    DT->>DT: 处理完成
+    DT->>EF: Signal reqCreditEventFd
+    
+    EF-->>SW: poll返回，有容量
+    SW->>RR: 重试TryPushRequest()
+    RR-->>SW: 成功
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="info-box-title">冷却流程详细说明</div>
+                <ol>
+                    <li><strong>RetryUntilRecoverySettles()</strong>：外层重试包装器，调用Invoke后检查结果，如果返回CooldownActive或PeerDisconnected且处于恢复状态，则等待并重试</li>
+                    <li><strong>Cooldown状态</strong>：调用返回CooldownActive，进入WaitForCooldownToSettle等待，冷却结束后重试Invoke</li>
+                    <li><strong>Recovering状态</strong>：调用返回PeerDisconnected，进入WaitOneRecoveryRetryTick等待，恢复完成后重试Invoke</li>
+                    <li><strong>SubmitWorker层</strong>：WaitUntilSessionReadyForSubmit在提交前检查状态，确保会话就绪后才尝试PushRequest</li>
+                </ol>
+            </div>
+
+            <div class="info-box warning">
+                <div class="info-box-title">RpcFuture 说明</div>
+                <p>异步调用返回的 RpcFuture 对象表示一个待完成的请求，支持：</p>
+                <ul>
+                    <li><strong>IsReady()</strong>：检查是否就绪（不阻塞）</li>
+                    <li><strong>Wait(&amp;reply)</strong>：阻塞等待结果（右值引用限定，只能调用一次）</li>
+                </ul>
+            </div>
+
+            <h2>服务端Handler注册（简化示意）</h2>
+            <pre data-language="cpp">void VesEngineService::RegisterHandlers(RpcHandlerSink* sink) {
+    RegisterTypedHandler&lt;ScanTask, ScanFileReply&gt;(
+        sink,
+        static_cast&lt;MemRpc::Opcode&gt;(VesOpcode::ScanFile),
+        [this](const ScanTask&amp; request) { return ScanFile(request); }
+    );
+}
+
+ScanFileReply VesEngineService::ScanFile(const ScanTask&amp; request) const {
+    ScanFileReply result;
+    
+    // 1. 检查引擎状态
+    if (!initialized() || !IsScanEngineEnabled()) {
+        result.code = -1;
+        return result;
+    }
+    
+    // 2. 评估样本路径
+    const auto behavior = EvaluateSamplePath(request.path);
+    
+    // 3. 处理特殊样本
+    if (behavior.shouldCrash) {
+        HILOGE(&quot;ScanFile(%s): crash requested&quot;, request.path.c_str());
+        std::abort();  // 模拟崩溃
+    }
+    if (behavior.sleepMs &gt; 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(behavior.sleepMs));
+    }
+    
+    // 4. 返回结果
+    result.code = 0;
+    result.threatLevel = behavior.threatLevel;
+    return result;
+}</pre>
+
+            <div class="info-box">
+                <div class="info-box-title">关键点</div>
+                <ul>
+                    <li>小请求(8KB)直接内联在Ring Entry，无需额外内存分配</li>
+                    <li>大请求自动降级到AnyCall</li>
+                    <li>队列满时通过reqCreditEventFd背压</li>
+                    <li>RetryUntilRecoverySettles自动处理冷却和恢复状态</li>
+                </ul>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

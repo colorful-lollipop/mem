@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整体架构 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default',flowchart:{useMaxWidth:true,htmlLabels:true}});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item active"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>整体架构</h1>
+            <h2>分层架构</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart TB
+    subgraph Layer1["第一层：应用层"]
+        direction TB
+        A1[VesClient API]
+        A2[ScanFile业务接口]
+    end
+    subgraph Layer2["第二层：框架层"]
+        direction TB
+        B1[RpcClient - 生命周期管理]
+        B2[RpcServer - 请求分发]
+    end
+    subgraph Layer3["第三层：传输层"]
+        direction TB
+        C1[Session - 共享内存会话]
+        C2[BootstrapChannel - 引导通道]
+    end
+    subgraph Layer4["第四层：基础设施层"]
+        direction TB
+        D1[共享内存Ring Buffer]
+        D2[EventFd通知机制]
+        D3[SA进程管理]
+    end
+    Layer1 --> Layer2
+    Layer2 --> Layer3
+    Layer3 --> Layer4
+                </div>
+            </div>
+            <h2>RpcClient 线程模型</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart LR
+    subgraph RpcClient["RpcClient"]
+        SW[SubmitWorker<br/>单一提交线程]
+        RW[ResponseWorker<br/>单一响应线程]
+        WT[WatchdogThread<br/>监控线程]
+    end
+    subgraph Queues["内部队列"]
+        SQ[submitQueue_]
+        RQ[responseQueue_]
+    end
+    subgraph SHM["共享内存"]
+        Req[Request Ring]
+        Resp[Response Ring]
+    end
+    App[Application] -->|ScanFile| SQ
+    SQ --> SW
+    SW -->|TryPushRequest| Req
+    Resp -->|PopResponse| RW
+    RW --> RQ
+    RQ --> App
+    WT -.->|超时检测| SQ
+                </div>
+            </div>
+            <h2>RpcServer 线程模型</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart TB
+    subgraph RpcServer["RpcServer"]
+        DT[DispatcherThread<br/>请求分发线程]
+        subgraph Pool["ThreadPoolExecutor"]
+            H[High Priority Pool]
+            N[Normal Priority Pool]
+        end
+        RWT[ResponseWriter<br/>响应写入线程]
+    end
+    Req[Request Ring] -->|PopRequest| DT
+    DT -->|高优任务| H
+    DT -->|普通任务| N
+    H -->|EnqueueCompletion| CQ[Completion Queue]
+    N --> CQ
+    CQ -->|PopCompletion| RWT
+    RWT -->|PushResponse| Resp[Response Ring]
+                </div>
+            </div>
+            <h2>核心模块详细职责</h2>
+            <table>
+                <thead>
+                    <tr><th>模块</th><th>核心职责</th><th>关键文件</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>VesClient</strong></td><td>对外提供ScanFile等API，封装RPC调用，自动处理服务拉起和恢复</td><td>ves_client.h/cpp</td></tr>
+                    <tr><td><strong>RpcClient</strong></td><td>管理共享内存会话、请求生命周期、3个工作线程、服务端生命周期管理</td><td>rpc_client.h/cpp</td></tr>
+                    <tr><td><strong>RpcServer</strong></td><td>处理请求队列、DispatcherThread分发、ThreadPool执行、ResponseWriter响应</td><td>rpc_server.cpp</td></tr>
+                    <tr><td><strong>VesEngineService</strong></td><td>业务逻辑处理，实现ScanFile扫描，评估样本路径规则</td><td>ves_engine_service.cpp</td></tr>
+                </tbody>
+            </table>
+        </main>
+    </div>
+</body>
+</html>

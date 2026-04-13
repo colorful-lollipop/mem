@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通信流程 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item active"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>通信流程</h1>
+            
+            <h2>客户端到服务端请求流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart LR
+    subgraph Client["RpcClient"]
+        SW[SubmitWorker]
+    end
+    
+    subgraph SHM["Shared Memory"]
+        HR[High Ring]
+        NR[Normal Ring]
+    end
+    
+    subgraph Server["RpcServer"]
+        DT[DispatcherThread]
+        TPE[ThreadPoolExecutor]
+    end
+    
+    SW -->|TryPushRequest| HR
+    SW -->|TryPushRequest| NR
+    SW -->|signal eventfd| DT
+    
+    DT -->|poll唤醒| DT
+    DT -->|PopRequest| HR
+    DT -->|PopRequest| NR
+    DT -->|TrySubmit| TPE
+    
+    TPE -->|消费后signal| EFC[reqCreditEventFd]
+    EFC -.->|通知| SW
+                </div>
+            </div>
+
+            <h2>服务端到客户端响应流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart LR
+    subgraph Server["RpcServer"]
+        Handler[业务Handler]
+        CQ[Completion Queue]
+        RW[ResponseWriter]
+    end
+    
+    subgraph SHM["Shared Memory"]
+        RR[Response Ring]
+    end
+    
+    subgraph Client["RpcClient"]
+        RespW[ResponseWorker]
+        Future[RpcFuture]
+    end
+    
+    Handler -->|EnqueueCompletion| CQ
+    CQ -->|PopCompletion| RW
+    RW -->|PushResponse| RR
+    RW -->|signal respEventFd| RespW
+    
+    RespW -->|poll唤醒| RespW
+    RespW -->|PopResponse| RR
+    RespW -->|通知| Future
+    Future -->|WaitAndDecode| App[Application]
+    
+    App -->|消费后signal| EFC[respCreditEventFd]
+    EFC -.->|通知| RW
+                </div>
+            </div>
+
+            <h2>背压(Backpressure)机制</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant SW as SubmitWorker
+    participant RR as Request Ring
+    participant DT as Dispatcher
+    participant EX as Executor
+    participant EF as reqCreditEventFd
+    
+    SW->>RR: TryPushRequest()
+    RR-->>SW: 返回QueueFull
+    
+    SW->>EF: WaitForRequestCredit()
+    SW->>SW: poll(eventfd)阻塞
+    
+    Note over SW: 阻塞等待...
+    
+    DT->>RR: PopRequest()
+    DT->>EX: Submit到Executor
+    EX->>EX: 处理完成
+    EX->>EF: Signal reqCreditEventFd
+    
+    EF-->>SW: poll返回，有容量
+    SW->>RR: 重试PushRequest()
+    RR-->>SW: 成功
+                </div>
+            </div>
+
+            <h2>背压机制说明</h2>
+            <table>
+                <thead>
+                    <tr><th>场景</th><th>触发条件</th><th>处理机制</th><th>恢复条件</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>请求队列满</td>
+                        <td>SubmitWorker TryPushRequest返回QueueFull</td>
+                        <td>WaitForRequestCredit() poll(reqCreditEventFd)阻塞</td>
+                        <td>Dispatcher消费请求后signal</td>
+                    </tr>
+                    <tr>
+                        <td>响应队列满</td>
+                        <td>ResponseWriter PushResponse返回QueueFull</td>
+                        <td>WaitForResponseCredit() poll(respCreditEventFd)阻塞</td>
+                        <td>ResponseWorker消费响应后signal</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="info-box success">
+                <div class="info-box-title">背压机制价值</div>
+                <ul>
+                    <li><strong>防止内存溢出</strong>: 队列满时阻塞写入，避免无限增长</li>
+                    <li><strong>自动流控</strong>: 生产者和消费者速度自动匹配</li>
+                    <li><strong>零CPU空转</strong>: 基于EventFd的阻塞等待，无请求时CPU占用为0</li>
+                    <li><strong>优先级保护</strong>: 高优请求使用独立的Ring和EventFd，不受普通请求影响</li>
+                </ul>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

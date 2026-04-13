@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服务拉起与连接 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item active"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>服务拉起与连接流程</h1>
+            <p>当应用程序调用 VesClient::Connect() 时，完整的拉起和连接流程如下：</p>
+            
+            <h2>VesClient::Connect() 连接流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant App as App
+    participant VC as VesClient
+    participant SAM as SystemAbility Manager
+    participant VES as VirusExecutorService
+    
+    App->>VC: Connect()
+    VC->>VC: Init()
+    VC->>VC: 创建RpcClient
+    VC->>VC: 设置恢复策略
+    
+    VC->>VC: RpcClient::Init()
+    VC->>VC: 检查会话状态
+    Note over VC: 无会话，需要恢复
+    
+    VC->>VC: EnsureLiveSession()
+    VC->>VC: BeginSessionOpen (Recovering)
+    
+    VC->>SAM: OpenSession()
+    SAM->>SAM: CheckSystemAbility()
+    
+    alt SA不存在
+        SAM->>VES: LoadSystemAbility()
+        VES->>VES: OnStart()
+        VES->>VES: 初始化引擎
+        VES->>VES: 创建RpcServer
+        VES->>SAM: Publish()
+    end
+    
+    SAM-->>VC: 返回远程对象引用
+    
+    VC->>VC: 创建共享内存
+    VC->>VC: 初始化BootstrapHandles
+    VC->>VC: FinalizeSessionOpen (Active)
+    
+    VC->>VC: 启动SubmitWorker
+    VC->>VC: 启动ResponseWorker
+    VC->>VC: 启动WatchdogThread
+    
+    VC-->>App: 返回VesClient
+                </div>
+            </div>
+
+            <h2>恢复策略代码</h2>
+            <pre data-language="cpp">MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions&amp; options) {
+    MemRpc::RecoveryPolicy policy = options.recoveryPolicy;
+    
+    // 执行超时后重启服务端
+    if (!policy.onFailure) {
+        policy.onFailure = [](const MemRpc::RpcFailure&amp; failure) {
+            if (failure.status == MemRpc::StatusCode::ExecTimeout) {
+                return MemRpc::RecoveryDecision{
+                    MemRpc::RecoveryAction::Restart, 
+                    DEFAULT_RESTART_DELAY_MS  // 200ms
+                };
+            }
+            return MemRpc::RecoveryDecision{
+                MemRpc::RecoveryAction::Ignore, 0
+            };
+        };
+    }
+    
+    // 引擎死亡后自动拉起新进程
+    if (!policy.onEngineDeath) {
+        policy.onEngineDeath = [](const MemRpc::EngineDeathReport&amp; report) {
+            return MemRpc::RecoveryDecision{
+                MemRpc::RecoveryAction::Restart,
+                DEFAULT_RESTART_DELAY_MS  // 200ms
+            };
+        };
+    }
+    
+    return policy;
+}</pre>
+
+            <div class="info-box success">
+                <div class="info-box-title">关键特性</div>
+                <ul>
+                    <li>通过鸿蒙SAM框架加载SystemAbility</li>
+                    <li>SA不存在时自动触发启动</li>
+                    <li>默认200ms冷却期避免频繁重启</li>
+                    <li>引擎崩溃后自动恢复</li>
+                </ul>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

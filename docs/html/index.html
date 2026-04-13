@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virus Executor Service 代码串讲文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+            sequence: { useMaxWidth: true }
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item active"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>Virus Executor Service 代码串讲文档</h1>
+            <blockquote>
+                <p>本文档详细梳理了基于共享内存RPC的病毒扫描服务架构，以 scanFile 为例讲解核心流程。</p>
+            </blockquote>
+            <div class="info-box">
+                <div class="info-box-title">文档导航</div>
+                <p>本文档采用分层架构视角，从应用层到基础设施层逐层剖析：</p>
+                <ul>
+                    <li><strong>应用层</strong> - VesClient API 和业务接口</li>
+                    <li><strong>框架层</strong> - RpcClient/RpcServer 生命周期管理</li>
+                    <li><strong>传输层</strong> - 共享内存 Session 管理</li>
+                    <li><strong>基础设施层</strong> - EventFd、进程管理</li>
+                </ul>
+            </div>
+            <h2>整体架构图</h2>
+            <div class="diagram-container">
+                <div class="diagram-title">Virus Executor Service 架构总览</div>
+                <div class="mermaid">
+flowchart TB
+    subgraph App["应用层"]
+        VC[VesClient]
+        VS[VirusExecutorService]
+    end
+    subgraph Framework["MemRpc Framework"]
+        subgraph Client["客户端"]
+            SW[SubmitWorker]
+            RW[ResponseWorker]
+            WT[WatchdogThread]
+        end
+        subgraph Server["服务端"]
+            DT[DispatcherThread]
+            TPE[ThreadPoolExecutor]
+            RWT[ResponseWriter]
+        end
+    end
+    subgraph Transport["共享内存"]
+        HR[High Request Ring]
+        NR[Normal Request Ring]
+        RR[Response Ring]
+    end
+    VC --> SW
+    SW --> HR
+    SW --> NR
+    HR --> DT
+    NR --> DT
+    DT --> TPE
+    TPE --> RR
+    RR --> RW
+    RW --> VC
+                </div>
+            </div>
+            <h2>核心模块职责</h2>
+            <table>
+                <thead>
+                    <tr><th>模块</th><th>职责</th><th>关键文件</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>VesClient</strong></td><td>对外提供 ScanFile 等 API，封装 RPC 调用</td><td>ves_client.h/cpp</td></tr>
+                    <tr><td><strong>RpcClient</strong></td><td>memrpc 客户端，管理共享内存会话、请求生命周期</td><td>rpc_client.h/cpp</td></tr>
+                    <tr><td><strong>RpcServer</strong></td><td>memrpc 服务端，处理请求队列并分发到处理器</td><td>rpc_server.cpp</td></tr>
+                    <tr><td><strong>VesEngineService</strong></td><td>业务逻辑处理，实现 ScanFile 扫描</td><td>ves_engine_service.cpp</td></tr>
+                </tbody>
+            </table>
+            <h2>快速导航</h2>
+            <ul>
+                <li><a href="shared-memory.html">共享内存结构</a> - Ring Buffer、EventFd 设计</li>
+                <li><a href="scanfile-flow.html">scanFile 调用链</a> - 端到端请求处理流程</li>
+                <li><a href="exception-handling.html">异常处理</a> - crash、sleep、virus 样本规则</li>
+                <li><a href="cooldown.html">冷却机制</a> - CdCooldown 状态与恢复策略</li>
+                <li><a href="recovery.html">自启与恢复</a> - 故障恢复完整流程</li>
+            </ul>
+        </main>
+    </div>
+</body>
+</html>

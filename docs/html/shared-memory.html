@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>共享内存结构 - VES 文档</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default',flowchart:{useMaxWidth:true}});</script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">VES 文档</div>
+                <div class="sidebar-subtitle">Virus Executor Service</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">概览</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="index.html">项目概述</a></li>
+                    <li class="nav-item"><a href="architecture.html">整体架构</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">核心模块</div>
+                <ul class="nav-list">
+                    <li class="nav-item active"><a href="shared-memory.html">共享内存结构</a></li>
+                    <li class="nav-item"><a href="service-lifecycle.html">服务拉起</a></li>
+                    <li class="nav-item"><a href="scanfile-flow.html">scanFile调用链</a></li>
+                    <li class="nav-item"><a href="exception-handling.html">异常处理</a></li>
+                </ul>
+            </div>
+            <div class="nav-section">
+                <div class="nav-title">高级特性</div>
+                <ul class="nav-list">
+                    <li class="nav-item"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item"><a href="communication.html">通信流程</a></li>
+                    <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
+                </ul>
+            </div>
+        </nav>
+        <main class="main-content">
+            <h1>共享内存结构</h1>
+            <p>共享内存是客户端和服务端通信的核心载体，采用<strong>无锁环形队列</strong>设计。</p>
+            
+            <h2>共享内存布局</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+flowchart TB
+    subgraph Header["SharedMemoryHeader (256+ bytes)"]
+        Magic["Magic: MEMR"]
+        Version["Version: 7"]
+        SessionId["SessionId"]
+        SessionState["SessionState"]
+    end
+    
+    subgraph Config["Ring Config"]
+        RingSize["Ring Size Config"]
+        Cursor["Ring Cursors"]
+        Mutex["clientStateMutex"]
+    end
+    
+    Header --> Config
+    Config --> HighRing
+    
+    HighRing["High Priority Request Ring (8 x 8192B)"]
+    NormalRing["Normal Priority Request Ring (8 x 8192B)"]
+    RespRing["Response/Event Ring (8 x 8192B)"]
+    
+    HighRing --> NormalRing
+    NormalRing --> RespRing
+                </div>
+            </div>
+
+            <h2>Header 结构详解</h2>
+            <table>
+                <thead>
+                    <tr><th>字段</th><th>大小</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Magic</td><td>4B</td><td>0x4d454d52 (MEMR)</td></tr>
+                    <tr><td>Version</td><td>4B</td><td>版本号 = 7</td></tr>
+                    <tr><td>SessionId</td><td>8B</td><td>唯一会话标识</td></tr>
+                    <tr><td>SessionState</td><td>4B</td><td>Alive(0) / Broken(1)</td></tr>
+                    <tr><td>highRingSize</td><td>4B</td><td>高优队列大小 = 8</td></tr>
+                    <tr><td>normalRingSize</td><td>4B</td><td>普通队列大小 = 8</td></tr>
+                    <tr><td>responseRingSize</td><td>4B</td><td>响应队列大小 = 8</td></tr>
+                </tbody>
+            </table>
+
+            <h2>Ring Entry 结构</h2>
+            <h3>RequestRingEntry (8192 bytes)</h3>
+            <pre data-language="cpp">struct RequestRingEntry {
+    // Header: 24 bytes
+    uint64_t requestId;        // 请求唯一ID
+    uint32_t execTimeoutMs;    // 执行超时时间
+    uint16_t opcode;           // 操作码 (ScanFile=102)
+    uint8_t  priority;         // 优先级 (0=Normal, 1=High)
+    uint8_t  reserved0;
+    uint32_t payloadSize;      // 有效载荷大小
+    
+    // Payload: 8168 bytes
+    std::array&lt;uint8_t, 8168&gt; payload;
+};</pre>
+
+            <h3>ResponseRingEntry (8192 bytes)</h3>
+            <pre data-language="cpp">struct ResponseRingEntry {
+    // Header: 36 bytes
+    uint64_t requestId;        // 对应请求ID
+    uint32_t statusCode;       // 状态码
+    uint32_t eventDomain;      // 事件域
+    uint32_t eventType;        // 事件类型
+    uint32_t flags;
+    uint32_t resultSize;
+    ResponseMessageKind messageKind;  // Reply(0) / Event(1)
+    
+    // Payload: 8156 bytes
+    std::array&lt;uint8_t, 8156&gt; payload;
+};</pre>
+
+            <h2>BootstrapHandles (引导句柄)</h2>
+            <p>客户端和服务端建立连接时通过 Unix Socket 传递的句柄集合：</p>
+            <table>
+                <thead>
+                    <tr><th>字段</th><th>说明</th><th>方向</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>shmFd</td><td>共享内存文件描述符</td><td>Client &lt;-&gt; Server</td></tr>
+                    <tr><td>highReqEventFd</td><td>高优先级请求事件通知</td><td>Client -&gt; Server</td></tr>
+                    <tr><td>normalReqEventFd</td><td>普通优先级请求事件通知</td><td>Client -&gt; Server</td></tr>
+                    <tr><td>respEventFd</td><td>响应/事件通知</td><td>Server -&gt; Client</td></tr>
+                    <tr><td>reqCreditEventFd</td><td>请求队列空位通知</td><td>Server -&gt; Client</td></tr>
+                    <tr><td>respCreditEventFd</td><td>响应队列空位通知</td><td>Client -&gt; Server</td></tr>
+                </tbody>
+            </table>
+
+            <h2>EventFd 详细作用</h2>
+            <table>
+                <thead>
+                    <tr><th>EventFd</th><th>触发场景</th><th>监听方</th><th>作用价值</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>highReqEventFd</td><td>Client写入High Ring后signal</td><td>Server DispatcherThread</td><td>减少CPU空转，Server等待通知处理高优请求</td></tr>
+                    <tr><td>normalReqEventFd</td><td>Client写入Normal Ring后signal</td><td>Server DispatcherThread</td><td>优先级隔离，高优不受普通请求影响</td></tr>
+                    <tr><td>respEventFd</td><td>Server写入Response Ring后signal</td><td>Client ResponseWorker</td><td>异步响应，Client收到通知立即读取</td></tr>
+                    <tr><td>reqCreditEventFd</td><td>Server消费请求后signal</td><td>Client SubmitWorker</td><td>背压控制，队列满时Client阻塞等待</td></tr>
+                    <tr><td>respCreditEventFd</td><td>Client消费响应后signal</td><td>Server ResponseWriter</td><td>流控平衡，响应队列满时Server阻塞</td></tr>
+                </tbody>
+            </table>
+
+            <h2>EventFd 工作流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant HR as HighReqEventFd
+    participant S as Server
+    participant RR as RespEventFd
+    participant RC as ReqCreditEventFd
+    
+    C->>C: 1. Write HighReq to SHM
+    C->>HR: 2. Signal
+    HR->>S: poll唤醒
+    S->>S: Read Request
+    S->>S: Process
+    
+    alt 队列满
+        S->>S: QueueFull
+        S->>RC: Wait respCreditEventFd
+        C->>C: 6. Read Response
+        C->>RC: Signal respCreditEventFd
+        RC->>S: 继续写入
+    end
+    
+    S->>S: 3. Write Response
+    S->>RR: 4. Signal respEventFd
+    RR->>C: poll唤醒
+    C->>C: 5. Read Response
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="info-box-title">为什么使用5个EventFd而不是轮询？</div>
+                <ol>
+                    <li><strong>性能</strong>: 轮询需要CPU不断检查共享内存状态，EventFd基于内核通知，无请求时CPU占用为0</li>
+                    <li><strong>实时性</strong>: 事件通知是即时的，轮询有检测延迟</li>
+                    <li><strong>背压</strong>: EventFd天然支持阻塞等待，简化流控实现</li>
+                    <li><strong>优先级</strong>: 独立的High/Normal EventFd实现真正的优先级隔离</li>
+                </ol>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
