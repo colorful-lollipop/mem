@@ -4,7 +4,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <chrono>
+#include <functional>
 #include <memory>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -30,6 +32,18 @@ bool ThreadSanitizerEnabled()
 }
 
 constexpr MemRpc::StatusCode kExpectedEngineDeathStatus = MemRpc::StatusCode::CrashedDuringExecution;
+
+bool WaitForCondition(const std::function<bool()>& condition, int timeoutMs)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (condition()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return condition();
+}
 
 [[noreturn]] void WaitForever()
 {
@@ -159,6 +173,48 @@ TEST(TestkitClientTest, HighPrioritySleepCompletesBeforeNormalBacklog)
 
     SleepReply slowReply;
     EXPECT_EQ(std::move(slowFuture).Wait(&slowReply), MemRpc::StatusCode::Ok);
+
+    asyncClient.Shutdown();
+    server.Stop();
+}
+
+TEST(TestkitClientTest, HighPriorityRequestOvertakesQueuedNormalLoad)
+{
+    auto bootstrap = CreateBootstrap();
+
+    MemRpc::RpcServer server;
+    server.SetBootstrapHandles(bootstrap->serverHandles());
+    MemRpc::ServerOptions options;
+    options.highWorkerThreads = 1;
+    options.normalWorkerThreads = 1;
+    server.SetOptions(options);
+    TestkitService service;
+    RegisterHandlersToServer(&service, &server);
+    ASSERT_EQ(server.Start(), MemRpc::StatusCode::Ok);
+
+    TestkitAsyncClient asyncClient(bootstrap);
+    ASSERT_EQ(asyncClient.Init(), MemRpc::StatusCode::Ok);
+
+    SleepRequest slowRequest;
+    slowRequest.delayMs = 2000;
+    auto normalRunning = asyncClient.SleepAsync(slowRequest, MemRpc::Priority::Normal, 5000);
+    auto normalQueued = asyncClient.SleepAsync(slowRequest, MemRpc::Priority::Normal, 5000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    SleepRequest highRequest;
+    highRequest.delayMs = 10;
+    auto highFuture = asyncClient.SleepAsync(highRequest, MemRpc::Priority::High, 1000);
+
+    ASSERT_TRUE(WaitForCondition([&highFuture] { return highFuture.IsReady(); }, 500));
+    EXPECT_FALSE(normalQueued.IsReady());
+
+    SleepReply highReply;
+    EXPECT_EQ(std::move(highFuture).Wait(&highReply), MemRpc::StatusCode::Ok);
+
+    SleepReply normalRunningReply;
+    EXPECT_EQ(std::move(normalRunning).Wait(&normalRunningReply), MemRpc::StatusCode::Ok);
+    SleepReply normalQueuedReply;
+    EXPECT_EQ(std::move(normalQueued).Wait(&normalQueuedReply), MemRpc::StatusCode::Ok);
 
     asyncClient.Shutdown();
     server.Stop();
