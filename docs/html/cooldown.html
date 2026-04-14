@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>冷却机制 - VES 文档</title>
+    <title>生命周期状态机 - VES 文档</title>
     <link rel="stylesheet" href="./css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
@@ -34,234 +34,260 @@
             <div class="nav-section">
                 <div class="nav-title">高级特性</div>
                 <ul class="nav-list">
-                    <li class="nav-item active"><a href="cooldown.html">冷却机制</a></li>
+                    <li class="nav-item active"><a href="cooldown.html">状态机与冷却</a></li>
                     <li class="nav-item"><a href="communication.html">通信流程</a></li>
                     <li class="nav-item"><a href="recovery.html">自启与恢复</a></li>
                 </ul>
             </div>
         </nav>
         <main class="main-content">
-            <h1>冷却(Cooldown)机制</h1>
+            <h1>客户端生命周期状态机</h1>
             
             <div class="info-box">
                 <div class="info-box-title">本章定位</div>
-                <p>本章详细讲解冷却机制的原理和状态机，是第4.1.1节冷却流程的深入展开。</p>
+                <p>本章详细讲解 RpcClient 的生命周期状态管理，涵盖 7 种状态和完整的转换规则。</p>
             </div>
 
-            <p>冷却机制用于在故障恢复后避免立即重试导致的频繁抖动，给系统留出稳定时间。</p>
-            
-            <h2>完整生命周期状态机</h2>
+            <h2>简化状态机图</h2>
             <div class="diagram-container">
                 <div class="mermaid">
 stateDiagram-v2
     direction TB
     
-    [*] --> Uninitialized : 开始
-    Uninitialized --> Recovering : Init()<br/>BeginSessionOpen()
+    [*] --> Uninitialized
+    Uninitialized --> Recovering : ① 初始化
+    Recovering --> Active : ② 恢复成功
+    Recovering --> NoSession : ③ 恢复失败
     
-    Recovering --> Active : OpenSession()成功<br/>FinalizeSessionOpen()
-    Recovering --> NoSession : OpenSession()失败<br/>HandleSessionOpenFailure()
+    Active --> Cooldown : ④ 异常+延迟恢复
+    Active --> Recovering : ⑤ 异常+立即恢复
+    Active --> NoSession : ⑥ 异常+不恢复
+    Active --> IdleClosed : ⑦ 空闲关闭
     
-    Active --> Cooldown : EngineDeath<br/>onEngineDeath=Restart(delay>0)<br/>• CloseLiveSession()<br/>• ResolveAllPending(Crashed)<br/>• StartRecovery(delayMs)
+    Cooldown --> Recovering : ⑧ 冷却结束
+    NoSession --> Recovering : ⑨ 外部触发
+    IdleClosed --> Recovering : ⑩ 新请求
     
-    Active --> Recovering : EngineDeath<br/>onEngineDeath=Restart(0)<br/>(立即恢复)
-    
-    Active --> NoSession : EngineDeath<br/>onEngineDeath=Ignore<br/>或无策略
-    
-    Active --> Cooldown : ExecTimeout<br/>onFailure=Restart(delayMs)
-    
-    Active --> IdleClosed : idle超时<br/>onIdle=IdleClose
-    
-    Cooldown --> Recovering : CooldownExpired<br/>或新请求触发
-    
-    NoSession --> Recovering : RequestExternalRecovery()<br/>外部触发恢复
-    
-    IdleClosed --> Recovering : 新请求<br/>EnsureLiveSession()
-    
-    Uninitialized --> Closed : Shutdown()
-    Active --> Closed : Shutdown()
-    Recovering --> Closed : Shutdown()
-    Cooldown --> Closed : Shutdown()
-    NoSession --> Closed : Shutdown()
-    IdleClosed --> Closed : Shutdown()
+    Recovering --> Closed : ⑪ 关闭
+    Active --> Closed : ⑪ 关闭
+    NoSession --> Closed : ⑪ 关闭
+    IdleClosed --> Closed : ⑪ 关闭
+    Cooldown --> Closed : ⑪ 关闭
     Closed --> [*]
                 </div>
             </div>
+
+            <h2>状态转换说明</h2>
             
+            <h3>初始化阶段</h3>
             <div class="info-box">
-                <div class="info-box-title">状态颜色说明</div>
-                <ul style="list-style: none; padding: 0;">
-                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #90EE90; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Active - 正常服务状态</li>
-                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FFD700; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Recovering - 恢复中（正在建立会话）</li>
-                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FFA500; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Cooldown - 冷却中（延迟恢复）</li>
-                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FF6B6B; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>NoSession - 无会话（恢复失败）</li>
-                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #87CEEB; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>IdleClosed - 空闲关闭</li>
-                </ul>
+                <div class="info-box-title">① Uninitialized → Recovering</div>
+                <p><strong>触发条件</strong>：调用 <code>Init()</code> 初始化客户端</p>
+                <p><strong>系统行为</strong>：启动后台线程（SubmitWorker、ResponseWorker、Watchdog），开始尝试建立会话</p>
+                <p><strong>用户感知</strong>：初始化是异步的，<code>Init()</code> 会立即返回，后台自动进入恢复流程</p>
             </div>
 
-            <h2>状态详解</h2>
+            <h3>正常恢复阶段</h3>
+            <div class="info-box success">
+                <div class="info-box-title">② Recovering → Active</div>
+                <p><strong>触发条件</strong>：<code>OpenSession()</code> 成功建立连接</p>
+                <p><strong>系统行为</strong>：完成共享内存映射，会话就绪，可以正常收发请求</p>
+                <p><strong>用户感知</strong>：首个请求可能需要等待恢复完成，后续请求正常处理</p>
+            </div>
+
+            <div class="info-box danger">
+                <div class="info-box-title">③ Recovering → NoSession</div>
+                <p><strong>触发条件</strong>：<code>OpenSession()</code> 失败（如 SA 启动失败）</p>
+                <p><strong>系统行为</strong>：放弃恢复，标记为无可用会话</p>
+                <p><strong>用户感知</strong>：新请求会立即返回 <code>PeerDisconnected</code> 错误，不会自动重试</p>
+            </div>
+
+            <h3>异常处理阶段（从 Active 出发）</h3>
+            <div class="info-box warning">
+                <div class="info-box-title">④ Active → Cooldown（延迟恢复）</div>
+                <p><strong>触发条件</strong>：发生异常（引擎崩溃或请求超时），且策略配置为 <code>Restart(delayMs&gt;0)</code></p>
+                <p><strong>典型场景</strong>：默认配置下引擎崩溃后进入 200ms 冷却期</p>
+                <p><strong>系统行为</strong>：</p>
+                <ul>
+                    <li>关闭当前会话，标记所有待处理请求为失败</li>
+                    <li><strong>不立即尝试重连</strong>，而是等待指定的冷却时间</li>
+                    <li>冷却期间新请求会阻塞等待，不会触发新的恢复尝试</li>
+                </ul>
+                <p><strong>设计目的</strong>：防止故障服务被频繁拉起，给系统留出稳定时间</p>
+            </div>
+
+            <div class="info-box success">
+                <div class="info-box-title">⑤ Active → Recovering（立即恢复）</div>
+                <p><strong>触发条件</strong>：发生异常，且策略配置为 <code>Restart(0)</code></p>
+                <p><strong>系统行为</strong>：关闭当前会话后立即开始尝试建立新会话，无延迟</p>
+                <p><strong>用户感知</strong>：新请求会阻塞直到新会话建立完成</p>
+            </div>
+
+            <div class="info-box danger">
+                <div class="info-box-title">⑥ Active → NoSession（不恢复）</div>
+                <p><strong>触发条件</strong>：发生异常，但策略配置为 <code>Ignore</code> 或未配置恢复策略</p>
+                <p><strong>系统行为</strong>：关闭会话后不再尝试恢复</p>
+                <p><strong>用户感知</strong>：后续请求快速失败，需要外部干预才能恢复</p>
+            </div>
+
+            <div class="info-box" style="background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border-color: #38bdf8;">
+                <div class="info-box-title">⑦ Active → IdleClosed（空闲关闭）</div>
+                <p><strong>触发条件</strong>：长时间无请求（默认 60 秒），且策略配置为 <code>IdleClose</code></p>
+                <p><strong>系统行为</strong>：主动关闭会话以节省资源</p>
+                <p><strong>用户感知</strong>：无感知；新请求到达时会自动触发恢复（见转换⑩）</p>
+            </div>
+
+            <h3>恢复触发阶段</h3>
+            <div class="info-box" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-color: #fbbf24;">
+                <div class="info-box-title">⑧ Cooldown → Recovering（冷却结束）</div>
+                <p><strong>触发条件</strong>：冷却时间到达，或有新请求进来</p>
+                <p><strong>系统行为</strong>：开始尝试建立新会话</p>
+                <p><strong>关键特性</strong>：冷却期间的新请求<strong>不会</strong>触发多次恢复尝试，而是统一等待当前冷却完成</p>
+            </div>
+
+            <div class="info-box danger">
+                <div class="info-box-title">⑨ NoSession → Recovering（外部触发）</div>
+                <p><strong>触发条件</strong>：外部调用 <code>RequestExternalRecovery()</code></p>
+                <p><strong>系统行为</strong>：重新开始恢复流程</p>
+                <p><strong>典型场景</strong>：运维人员手动触发或定时任务检测到服务恢复后重试</p>
+            </div>
+
+            <div class="info-box" style="background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border-color: #38bdf8;">
+                <div class="info-box-title">⑩ IdleClosed → Recovering（新请求触发）</div>
+                <p><strong>触发条件</strong>：新请求到达</p>
+                <p><strong>系统行为</strong>：自动开始恢复流程，对用户透明</p>
+                <p><strong>与 NoSession 的区别</strong>：IdleClosed 可以被新请求自动触发恢复，而 NoSession 必须外部触发</p>
+            </div>
+
+            <h3>关闭阶段</h3>
+            <div class="info-box" style="background: #f1f5f9; border-color: #94a3b8;">
+                <div class="info-box-title">⑪ 任意状态 → Closed（关闭）</div>
+                <p><strong>触发条件</strong>：调用 <code>Shutdown()</code></p>
+                <p><strong>系统行为</strong>：</p>
+                <ul>
+                    <li>关闭当前会话</li>
+                    <li>停止所有后台线程</li>
+                    <li>清理所有待处理请求</li>
+                </ul>
+                <p><strong>重要特性</strong>：<strong>Closed 是终态</strong>，一旦进入无法再转移到其他状态</p>
+            </div>
+
+            <h2>核心概念对比</h2>
+            
             <table>
                 <thead>
-                    <tr><th>状态</th><th>值</th><th>含义</th><th>新请求处理</th><th>是否尝试连接</th></tr>
+                    <tr>
+                        <th>对比项</th>
+                        <th style="background: #FFA500; color: white;">Cooldown</th>
+                        <th style="background: #FFD700;">Recovering</th>
+                        <th style="background: #FF6B6B; color: white;">NoSession</th>
+                        <th style="background: #87CEEB;">IdleClosed</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    <tr><td><strong>Uninitialized</strong></td><td>0</td><td>初始状态，未初始化</td><td>Init()后进入Recovering</td><td>否</td></tr>
-                    <tr style="background: #90EE90;"><td><strong>Active</strong></td><td>1</td><td>正常服务状态，有活跃会话</td><td>正常提交到共享内存</td><td>已有连接</td></tr>
-                    <tr style="background: #FF6B6B;"><td><strong>NoSession</strong></td><td>2</td><td>无会话，恢复失败或策略Ignore后进入</td><td>快速返回PeerDisconnected</td><td>否</td></tr>
-                    <tr style="background: #FFA500;"><td><strong>Cooldown</strong></td><td>3</td><td>冷却中，等待delayMs后恢复</td><td>阻塞等待冷却结束</td><td><strong>否</strong>（只等待）</td></tr>
-                    <tr style="background: #87CEEB;"><td><strong>IdleClosed</strong></td><td>4</td><td>空闲关闭，onIdle策略IdleClose后进入</td><td>触发恢复到Active</td><td>新请求触发</td></tr>
-                    <tr style="background: #FFD700;"><td><strong>Recovering</strong></td><td>5</td><td>恢复中，正在尝试建立新会话</td><td>阻塞等待恢复完成</td><td><strong>是</strong>（正在连接）</td></tr>
-                    <tr><td><strong>Closed</strong></td><td>6</td><td>终端关闭，Shutdown后进入</td><td>返回ClientClosed</td><td>否（终态）</td></tr>
+                    <tr>
+                        <td><strong>是否尝试连接</strong></td>
+                        <td>❌ 否（只等待）</td>
+                        <td>✅ 是（正在连接）</td>
+                        <td>❌ 否</td>
+                        <td>❌ 否（等待触发）</td>
+                    </tr>
+                    <tr>
+                        <td><strong>触发条件</strong></td>
+                        <td>Restart(delayMs&gt;0)</td>
+                        <td>Restart(0) 或 Cooldown结束</td>
+                        <td>恢复失败 或 Ignore策略</td>
+                        <td>onIdle=IdleClose</td>
+                    </tr>
+                    <tr>
+                        <td><strong>新请求行为</strong></td>
+                        <td>阻塞等待冷却</td>
+                        <td>阻塞等待恢复</td>
+                        <td>立即返回错误</td>
+                        <td>触发自动恢复</td>
+                    </tr>
+                    <tr>
+                        <td><strong>自动恢复</strong></td>
+                        <td>✅ 冷却结束后</td>
+                        <td>✅ 连接成功后</td>
+                        <td>❌ 需外部触发</td>
+                        <td>✅ 新请求触发</td>
+                    </tr>
                 </tbody>
             </table>
-            
-            <div class="info-box warning">
-                <div class="info-box-title">关键区别：Cooldown vs Recovering</div>
-                <table>
-                    <thead>
-                        <tr><th>特性</th><th>C（Cooldown）</th><th>R（Recovering）</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>是否尝试OpenSession</td><td>❌ 否（只等待）</td><td>✅ 是（正在连接）</td></tr>
-                        <tr><td>触发条件</td><td>Restart策略delayMs>0</td><td>Restart(0)或Cooldown结束</td></tr>
-                        <tr><td>新请求行为</td><td>阻塞等待冷却</td><td>阻塞等待恢复</td></tr>
-                    </tbody>
-                </table>
-            </div>
 
-            <h2>Cooldown 状态详细处理流程</h2>
-            <div class="diagram-container">
-                <div class="mermaid">
-sequenceDiagram
-    participant App as App
-    participant RC as RpcClient
-    participant CRS as ClientRecoveryState
-    participant ST as SessionTransport
-    
-    Note over RC,CRS: 【进入Cooldown】<br/>StartRecovery(delayMs>0)<br/>cooldownUntilMs = now + delayMs
-    
-    App->>RC: ScanFile()
-    RC->>RC: InvokeAsync()
-    RC->>RC: EnsureLiveSession()
-    
-    RC->>RC: CooldownActive()?<br/>(now < cooldownUntilMs)
-    
-    alt 仍在冷却中
-        RC->>CRS: WaitForCooldownToSettle()
-        Note over RC,CRS: 挂起等待...<br/>recoveryStateCv_.wait_until()
-        
-        loop 每20ms检查一次
-            CRS->>CRS: 检查状态
-        end
-        
-        CRS-->>RC: 冷却结束
-    else 冷却已结束
-        Note over RC: 立即继续
-    end
-    
-    RC->>CRS: BeginSessionOpen()
-    CRS->>CRS: 状态变为Recovering
-    
-    RC->>ST: OpenSession()
-    ST-->>RC: 返回Ok
-    
-    RC->>CRS: FinalizeSessionOpen()
-    CRS->>CRS: 状态变为Active
-    
-    RC->>RC: 提交请求到共享内存
-    RC-->>App: 返回结果
-                </div>
-            </div>
+            <h2>三种恢复策略</h2>
             
-            <h2>Recovering 状态详细处理流程</h2>
             <div class="diagram-container">
                 <div class="mermaid">
-sequenceDiagram
-    participant App as App
-    participant RC as RpcClient
-    participant CRS as ClientRecoveryState
-    participant ST as SessionTransport
-    
-    Note over RC,CRS: 【进入Recovering】<br/>StartRecovery(0) 或 Cooldown结束
-    
-    App->>RC: ScanFile()
-    RC->>RC: InvokeAsync()
-    RC->>RC: EnsureLiveSession()
-    
-    RC->>RC: HasLiveSession()?<br/>sessionTransport_.HasLiveSession()
-    
-    alt 无活跃会话
-        RC->>CRS: BeginSessionOpen()
-        CRS->>CRS: 状态变为Recovering
-        
-        RC->>ST: OpenSession()
-        Note over RC,ST: 正在建立新会话...
-        
-        alt OpenSession成功
-            ST-->>RC: 返回Ok
-            RC->>CRS: FinalizeSessionOpen()
-            CRS->>CRS: 状态变为Active
-        else OpenSession失败
-            ST-->>RC: 返回错误
-            RC->>CRS: HandleSessionOpenFailure()
-            CRS->>CRS: 状态变为NoSession
-            RC-->>App: 返回PeerDisconnected
-        end
+flowchart LR
+    subgraph 触发事件
+        E1[引擎崩溃]
+        E2[请求超时]
+        E3[空闲超时]
     end
+    
+    subgraph 策略决策
+        P1[onEngineDeath]
+        P2[onFailure]
+        P3[onIdle]
+    end
+    
+    subgraph 目标状态
+        S1[Colddown<br/>延迟恢复]
+        S2[Recovering<br/>立即恢复]
+        S3[NoSession<br/>不恢复]
+        S4[IdleClosed<br/>空闲关闭]
+    end
+    
+    E1 --> P1
+    E2 --> P2
+    E3 --> P3
+    
+    P1 -->|Restart(delay>0)| S1
+    P1 -->|Restart(0)| S2
+    P1 -->|Ignore| S3
+    
+    P2 -->|Restart(delay>0)| S1
+    P2 -->|Restart(0)| S2
+    P2 -->|Ignore| S2
+    
+    P3 -->|IdleClose| S4
+    P3 -->|Ignore| S2
+    
+    style S1 fill:#FFA500
+    style S2 fill:#FFD700
+    style S3 fill:#FF6B6B
+    style S4 fill:#87CEEB
                 </div>
             </div>
 
-            <h2>关键说明</h2>
             <div class="info-box">
-                <div class="info-box-title">冷却期新任务处理特点</div>
-                <ol>
-                    <li><strong>不触发新的拉起</strong>：在Cooldown状态下，新任务不会触发新的StartRecovery()</li>
-                    <li><strong>任务挂起而非失败</strong>：调用线程会被阻塞在WaitForCooldownToSettle()</li>
-                    <li><strong>自动继续</strong>：冷却结束后自动进入Recovering，恢复完成后继续处理</li>
-                </ol>
+                <div class="info-box-title">默认策略配置</div>
+                <pre data-language="cpp">MemRpc::RecoveryPolicy BuildRecoveryPolicy() {
+    // 执行超时后：延迟200ms恢复
+    policy.onFailure = [](const RpcFailure& failure) {
+        if (failure.status == StatusCode::ExecTimeout) {
+            return RecoveryDecision{RecoveryAction::Restart, 200};
+        }
+        return RecoveryDecision{RecoveryAction::Ignore, 0};
+    };
+    
+    // 引擎死亡后：延迟200ms恢复
+    policy.onEngineDeath = [](const EngineDeathReport& report) {
+        return RecoveryDecision{RecoveryAction::Restart, 200};
+    };
+    
+    // 空闲60秒后：关闭会话
+    policy.onIdle = [](uint64_t idleMs) {
+        if (idleMs >= 60000) {
+            return RecoveryDecision{RecoveryAction::IdleClose, 0};
+        }
+        return RecoveryDecision{RecoveryAction::Ignore, 0};
+    };
+}</pre>
             </div>
 
-            <h2>冷却实现代码（简化示意）</h2>
-            <pre data-language="cpp">class ClientRecoveryState {
-public:
-    // 启动恢复，可能进入Cooldown或Recovering
-    void StartRecovery(uint32_t delayMs, uint64_t currentSessionId) {
-        const uint64_t cooldownUntilMs = MonotonicNowMs() + delayMs;
-        
-        // 如果有延迟，进入Cooldown状态
-        auto nextState = (delayMs == 0) 
-            ? ClientLifecycleState::Recovering 
-            : ClientLifecycleState::Cooldown;
-        
-        // 实际代码：TransitionLifecycle参数顺序和逻辑更复杂
-        TransitionLifecycle(nextState, delayMs, currentSessionId, 
-                           CooldownWindowChange::Set, cooldownUntilMs);
-    }
-    
-    // 检查是否处于冷却期
-    bool CooldownActive() const {
-        std::lock_guard&lt;std::mutex&gt; lock(mutex_);
-        return MonotonicNowMs() &lt; cooldownUntilMs_;
-    }
-    
-    // 等待冷却结束（简化示意）
-    StatusCode WaitForCooldownToSettle(...) {
-        std::unique_lock&lt;std::mutex&gt; lock(mutex_);
-        
-        while (true) {
-            if (lifecycleState_ != ClientLifecycleState::Cooldown) {
-                return RecoveryStateWaitResultLocked();
-            }
-            
-            if (MonotonicNowMs() &gt;= cooldownUntilMs_) {
-                return StatusCode::Ok;  // 冷却结束
-            }
-            
-            // 实际代码：等待条件变量或超时，处理workersRunning等状态
-            recoveryStateCv_.wait_until(lock, wakeAt, [...]);
-        }
-    }
-};</pre>
         </main>
     </div>
 </body>
