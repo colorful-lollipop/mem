@@ -48,79 +48,193 @@
                 <p>本章专注于恢复机制的完整流程和策略配置，是第3.2节的深入展开。</p>
             </div>
             
-            <h2>恢复触发条件</h2>
+            <h2>恢复触发条件与策略决策</h2>
             <div class="diagram-container">
                 <div class="mermaid">
 flowchart TB
-    subgraph Triggers["恢复触发条件"]
-        F[onFailure 请求执行失败]
-        D[onEngineDeath 引擎崩溃/死亡]
-        I[onIdle 空闲超时]
+    subgraph Triggers["触发事件"]
+        F["onFailure<br/>请求执行失败<br/>(ExecTimeout)"]
+        D["onEngineDeath<br/>引擎崩溃/死亡<br/>(abort/exit)"]
+        I["onIdle<br/>空闲超时<br/>(idleMs > timeout)"]
     end
     
-    subgraph Decisions["恢复决策"]
-        FR[Restart + 200ms 执行超时]
-        DR[Restart + 200ms 默认策略]
-        IR[IdleClose 60秒空闲]
+    subgraph Decisions["策略决策"]
+        FR1["Restart(delayMs>0)<br/>→ Cooldown"]
+        FR2["Restart(0)<br/>→ Recovering"]
+        DR1["Restart(delayMs>0)<br/>→ Cooldown"]
+        DR2["Restart(0)<br/>→ Recovering"]
+        DI["Ignore<br/>→ NoSession"]
+        IR["IdleClose<br/>→ IdleClosed"]
+        II["Ignore<br/>→ Active(保持)"]
     end
     
-    subgraph State["ClientRecoveryState"]
-        S[StartRecovery(delayMs)<br/>Cooldown/Recovering to Active]
+    subgraph StateMachine["状态机转换"]
+        S1["StartRecovery(delayMs)<br/>进入Cooldown或Recovering"]
+        S2["OpenSession()成功<br/>→ Active"]
+        S3["OpenSession()失败<br/>→ NoSession"]
+        S4["新请求触发<br/>IdleClosed → Recovering"]
     end
     
-    F --> FR
-    D --> DR
-    I --> IR
+    F -->|有Restart策略| FR1
+    F -->|有Restart(0)策略| FR2
+    F -->|Ignore/无策略| II
     
-    FR --> S
-    DR --> S
-    IR --> S
+    D -->|onEngineDeath=Restart| DR1
+    D -->|onEngineDeath=Restart(0)| DR2
+    D -->|onEngineDeath=Ignore| DI
+    
+    I -->|onIdle=IdleClose| IR
+    I -->|onIdle=Ignore| II
+    
+    FR1 --> S1
+    FR2 --> S1
+    DR1 --> S1
+    DR2 --> S1
+    DI --> S3
+    IR --> StateMachine
+    
+    S1 -->|冷却结束或立即| S2
+    S1 -->|恢复失败| S3
+    S4 --> S2
+    
+    style FR1 fill:#FFA500
+    style FR2 fill:#FFD700
+    style DR1 fill:#FFA500
+    style DR2 fill:#FFD700
+    style DI fill:#FF6B6B
+    style IR fill:#87CEEB
+    style II fill:#90EE90
                 </div>
             </div>
 
-            <h2>完整恢复流程</h2>
+            <h2>完整恢复流程（EngineDeath场景）</h2>
             <div class="diagram-container">
                 <div class="mermaid">
 sequenceDiagram
     participant App as App
     participant VC as VesClient
     participant RC as RpcClient
-    participant RS as RecoveryState
+    participant RS as ClientRecoveryState
     participant SAM as SAM
     participant VES as VirusExecutorService
     
+    Note over RC: 【Active状态】会话正常运行
+    
     App->>VC: ScanFile()
     VC->>RC: InvokeAsync()
+    RC->>RC: TryPushRequest()
     
-    RC->>RC: 发现会话断开
-    Note over RC: PeerDisconnected
+    Note over VES: 引擎进程崩溃<br/>abort() / exit()
     
-    RC->>RC: HandleEngineDeath
-    RC->>RC: StartRecovery(200ms)
-    RC->>RS: 进入Cooldown状态
+    VES--xRC: 连接断开 POLLHUP
+    RC->>RC: DeathRecipient::OnRemoteDied()
     
-    Note over RC,RS: 等待200ms冷却
+    RC->>RC: HandleEngineDeath()
+    Note right of RC: 1. CloseLiveSessionIfSnapshotMatches()<br/>2. ResolveAllPending(CrashedDuringExecution)<br/>3. LoadRecoveryPolicy()
     
-    RC->>RS: EnsureLiveSession()
-    RS->>RS: 状态变为Recovering
+    alt onEngineDeath = Restart(delayMs=200)
+        RC->>RC: ApplyRecoveryDecisionLocked(Restart, 200ms)
+        RC->>RS: StartRecovery(200)
+        RS->>RS: 状态 = Cooldown<br/>cooldownUntilMs = now + 200ms
+        Note over RC,RS: 【Cooldown状态】<br/>等待200ms冷却...
+        
+        App->>VC: 新ScanFile()
+        VC->>RC: InvokeAsync()
+        RC->>RC: EnsureLiveSession()
+        RC->>RC: CooldownActive()? = true
+        RC->>RS: WaitForCooldownToSettle()
+        Note over RC,RS: 阻塞等待...
+        
+        RS-->>RC: 冷却结束
+    else onEngineDeath = Restart(0)
+        RC->>RS: StartRecovery(0)
+        RS->>RS: 状态 = Recovering
+    end
+    
+    RC->>RS: BeginSessionOpen()
+    RS->>RS: 状态 = Recovering
     
     RC->>SAM: OpenSession()
     RC->>SAM: LoadSystemAbility()
-    SAM->>VES: 触发SA加载
-    Note over SAM,VES: fork + exec
+    SAM->>VES: fork() + exec()
+    Note over SAM,VES: 启动新引擎进程
     
-    VES-->>SAM: 新引擎就绪
-    SAM-->>RC: 返回Bootstrap Handles
+    VES->>VES: OnStart()<br/>初始化引擎<br/>创建RpcServer
+    VES->>SAM: Publish()
     
-    RC->>RC: session_.Attach()
-    Note over RC: 映射共享内存
+    SAM-->>RC: 返回Bootstrap Handles<br/>shmFd, eventFd, sessionId
+    
+    RC->>RC: session_.Attach()<br/>映射共享内存
     
     RC->>RS: FinalizeSessionOpen()
-    RS->>RS: 状态变为Active
+    RS->>RS: 状态 = Active
     
-    RC-->>VC: 继续ScanFile
-    VC-->>App: 返回结果
+    Note over RC: 【Active状态】<br/>新会话建立成功
+    
+    RC->>RC: 提交请求到共享内存
+    RC-->>VC: 返回结果
+    VC-->>App: ScanFile返回
                 </div>
+            </div>
+
+            <h2>策略决策矩阵</h2>
+            <table>
+                <thead>
+                    <tr><th>触发事件</th><th>策略决策</th><th>目标状态</th><th>新请求行为</th><th>恢复方式</th></tr>
+                </thead>
+                <tbody>
+                    <tr style="background: #FFA500;">
+                        <td rowspan="2">EngineDeath<br/>引擎崩溃</td>
+                        <td>Restart(delayMs>0)</td>
+                        <td>C<strong>o</strong>oldown</td>
+                        <td>等待冷却结束</td>
+                        <td>自动（冷却结束后）</td>
+                    </tr>
+                    <tr style="background: #FFD700;">
+                        <td>Restart(0)</td>
+                        <td><strong>R</strong>ecovering</td>
+                        <td>等待恢复完成</td>
+                        <td>立即</td>
+                    </tr>
+                    <tr style="background: #FF6B6B;">
+                        <td>EngineDeath</td>
+                        <td>Ignore / 无策略</td>
+                        <td><strong>N</strong>oSession</td>
+                        <td>快速失败</td>
+                        <td>需外部触发</td>
+                    </tr>
+                    <tr style="background: #FFA500;">
+                        <td rowspan="2">ExecTimeout<br/>执行超时</td>
+                        <td>Restart(delayMs)</td>
+                        <td>C<strong>o</strong>oldown</td>
+                        <td>等待冷却结束</td>
+                        <td>自动</td>
+                    </tr>
+                    <tr style="background: #90EE90;">
+                        <td>Ignore</td>
+                        <td><strong>A</strong>ctive(保持)</td>
+                        <td>正常处理</td>
+                        <td>不恢复</td>
+                    </tr>
+                    <tr style="background: #87CEEB;">
+                        <td rowspan="2">IdleTimeout<br/>空闲超时</td>
+                        <td>IdleClose</td>
+                        <td><strong>I</strong>dleClosed</td>
+                        <td>触发恢复</td>
+                        <td>新请求触发</td>
+                    </tr>
+                    <tr style="background: #90EE90;">
+                        <td>Ignore</td>
+                        <td><strong>A</strong>ctive(保持)</td>
+                        <td>正常处理</td>
+                        <td>不恢复</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="info-box">
+                <div class="info-box-title">记忆口诀：CRONIA</div>
+                <p>按状态值排序：<strong>C</strong>ooldown(3) → <strong>R</strong>ecovering(5) → <strong>O</strong>ff(NoSession=2) → <strong>N</strong>ormal(Active=1) → <strong>I</strong>dle(IdleClosed=4) → <strong>A</strong>vailable</p>
             </div>
 
             <h2>线程模型说明</h2>

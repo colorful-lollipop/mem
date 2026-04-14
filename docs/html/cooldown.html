@@ -50,38 +50,86 @@
 
             <p>冷却机制用于在故障恢复后避免立即重试导致的频繁抖动，给系统留出稳定时间。</p>
             
-            <h2>冷却状态机</h2>
+            <h2>完整生命周期状态机</h2>
             <div class="diagram-container">
                 <div class="mermaid">
 stateDiagram-v2
-    [*] --> Uninitialized
-    Uninitialized --> Recovering : Init()
-    Recovering --> Active : 恢复成功
-    Active --> Cooldown : 故障/重启
-    Cooldown --> Recovering : 冷却结束
-    Recovering --> NoSession : 恢复失败
-    NoSession --> [*]
-    Active --> IdleClosed : 空闲超时
-    IdleClosed --> [*]
+    direction TB
+    
+    [*] --> Uninitialized : 开始
+    Uninitialized --> Recovering : Init()<br/>BeginSessionOpen()
+    
+    Recovering --> Active : OpenSession()成功<br/>FinalizeSessionOpen()
+    Recovering --> NoSession : OpenSession()失败<br/>HandleSessionOpenFailure()
+    
+    Active --> Cooldown : EngineDeath<br/>onEngineDeath=Restart(delay>0)<br/>• CloseLiveSession()<br/>• ResolveAllPending(Crashed)<br/>• StartRecovery(delayMs)
+    
+    Active --> Recovering : EngineDeath<br/>onEngineDeath=Restart(0)<br/>(立即恢复)
+    
+    Active --> NoSession : EngineDeath<br/>onEngineDeath=Ignore<br/>或无策略
+    
+    Active --> Cooldown : ExecTimeout<br/>onFailure=Restart(delayMs)
+    
+    Active --> IdleClosed : idle超时<br/>onIdle=IdleClose
+    
+    Cooldown --> Recovering : CooldownExpired<br/>或新请求触发
+    
+    NoSession --> Recovering : RequestExternalRecovery()<br/>外部触发恢复
+    
+    IdleClosed --> Recovering : 新请求<br/>EnsureLiveSession()
+    
+    Uninitialized --> Closed : Shutdown()
     Active --> Closed : Shutdown()
+    Recovering --> Closed : Shutdown()
+    Cooldown --> Closed : Shutdown()
+    NoSession --> Closed : Shutdown()
+    IdleClosed --> Closed : Shutdown()
     Closed --> [*]
                 </div>
             </div>
+            
+            <div class="info-box">
+                <div class="info-box-title">状态颜色说明</div>
+                <ul style="list-style: none; padding: 0;">
+                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #90EE90; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Active - 正常服务状态</li>
+                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FFD700; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Recovering - 恢复中（正在建立会话）</li>
+                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FFA500; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>Cooldown - 冷却中（延迟恢复）</li>
+                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #FF6B6B; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>NoSession - 无会话（恢复失败）</li>
+                    <li><span style="display: inline-block; width: 20px; height: 20px; background: #87CEEB; border-radius: 4px; vertical-align: middle; margin-right: 8px;"></span>IdleClosed - 空闲关闭</li>
+                </ul>
+            </div>
 
-            <h2>状态说明</h2>
+            <h2>状态详解</h2>
             <table>
                 <thead>
-                    <tr><th>状态</th><th>含义</th><th>新请求处理</th></tr>
+                    <tr><th>状态</th><th>值</th><th>含义</th><th>新请求处理</th><th>是否尝试连接</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td>Active</td><td>会话正常</td><td>正常提交</td></tr>
-                    <tr><td>Cooldown</td><td>恢复冷却中（默认200ms）</td><td>阻塞等待冷却结束</td></tr>
-                    <tr><td>Recovering</td><td>正在建立新会话</td><td>阻塞等待恢复完成</td></tr>
-                    <tr><td>NoSession</td><td>恢复失败，无可用会话</td><td>快速返回错误</td></tr>
+                    <tr><td><strong>Uninitialized</strong></td><td>0</td><td>初始状态，未初始化</td><td>Init()后进入Recovering</td><td>否</td></tr>
+                    <tr style="background: #90EE90;"><td><strong>Active</strong></td><td>1</td><td>正常服务状态，有活跃会话</td><td>正常提交到共享内存</td><td>已有连接</td></tr>
+                    <tr style="background: #FF6B6B;"><td><strong>NoSession</strong></td><td>2</td><td>无会话，恢复失败或策略Ignore后进入</td><td>快速返回PeerDisconnected</td><td>否</td></tr>
+                    <tr style="background: #FFA500;"><td><strong>Cooldown</strong></td><td>3</td><td>冷却中，等待delayMs后恢复</td><td>阻塞等待冷却结束</td><td><strong>否</strong>（只等待）</td></tr>
+                    <tr style="background: #87CEEB;"><td><strong>IdleClosed</strong></td><td>4</td><td>空闲关闭，onIdle策略IdleClose后进入</td><td>触发恢复到Active</td><td>新请求触发</td></tr>
+                    <tr style="background: #FFD700;"><td><strong>Recovering</strong></td><td>5</td><td>恢复中，正在尝试建立新会话</td><td>阻塞等待恢复完成</td><td><strong>是</strong>（正在连接）</td></tr>
+                    <tr><td><strong>Closed</strong></td><td>6</td><td>终端关闭，Shutdown后进入</td><td>返回ClientClosed</td><td>否（终态）</td></tr>
                 </tbody>
             </table>
+            
+            <div class="info-box warning">
+                <div class="info-box-title">关键区别：Cooldown vs Recovering</div>
+                <table>
+                    <thead>
+                        <tr><th>特性</th><th>C（Cooldown）</th><th>R（Recovering）</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>是否尝试OpenSession</td><td>❌ 否（只等待）</td><td>✅ 是（正在连接）</td></tr>
+                        <tr><td>触发条件</td><td>Restart策略delayMs>0</td><td>Restart(0)或Cooldown结束</td></tr>
+                        <tr><td>新请求行为</td><td>阻塞等待冷却</td><td>阻塞等待恢复</td></tr>
+                    </tbody>
+                </table>
+            </div>
 
-            <h2>新任务在冷却期的处理逻辑</h2>
+            <h2>Cooldown 状态详细处理流程</h2>
             <div class="diagram-container">
                 <div class="mermaid">
 sequenceDiagram
@@ -90,36 +138,76 @@ sequenceDiagram
     participant CRS as ClientRecoveryState
     participant ST as SessionTransport
     
+    Note over RC,CRS: 【进入Cooldown】<br/>StartRecovery(delayMs>0)<br/>cooldownUntilMs = now + delayMs
+    
     App->>RC: ScanFile()
     RC->>RC: InvokeAsync()
-    RC->>CRS: EnsureLiveSession()
+    RC->>RC: EnsureLiveSession()
     
-    CRS->>CRS: 检查状态:Cooldown
-    CRS-->>RC: 返回CooldownActive
+    RC->>RC: CooldownActive()?<br/>(now < cooldownUntilMs)
     
-    RC->>CRS: CooldownActive()?
-    CRS-->>RC: return true
+    alt 仍在冷却中
+        RC->>CRS: WaitForCooldownToSettle()
+        Note over RC,CRS: 挂起等待...<br/>recoveryStateCv_.wait_until()
+        
+        loop 每20ms检查一次
+            CRS->>CRS: 检查状态
+        end
+        
+        CRS-->>RC: 冷却结束
+    else 冷却已结束
+        Note over RC: 立即继续
+    end
     
-    RC->>RC: 返回CooldownActive<br/>(新任务不触发拉起!)
-    
-    RC->>CRS: WaitForCooldownToSettle()
-    Note over RC,CRS: 挂起等待...(条件变量等待)
-    
-    CRS->>CRS: 冷却时间到/被唤醒
-    CRS-->>RC: 
-    
-    RC->>CRS: 状态变为Recovering
     RC->>CRS: BeginSessionOpen()
+    CRS->>CRS: 状态变为Recovering
     
     RC->>ST: OpenSession()
     ST-->>RC: 返回Ok
     
     RC->>CRS: FinalizeSessionOpen()
-    CRS->>CRS: 状态:Active
+    CRS->>CRS: 状态变为Active
     
-    RC->>RC: 继续InvokeAsync
     RC->>RC: 提交请求到共享内存
     RC-->>App: 返回结果
+                </div>
+            </div>
+            
+            <h2>Recovering 状态详细处理流程</h2>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant App as App
+    participant RC as RpcClient
+    participant CRS as ClientRecoveryState
+    participant ST as SessionTransport
+    
+    Note over RC,CRS: 【进入Recovering】<br/>StartRecovery(0) 或 Cooldown结束
+    
+    App->>RC: ScanFile()
+    RC->>RC: InvokeAsync()
+    RC->>RC: EnsureLiveSession()
+    
+    RC->>RC: HasLiveSession()?<br/>sessionTransport_.HasLiveSession()
+    
+    alt 无活跃会话
+        RC->>CRS: BeginSessionOpen()
+        CRS->>CRS: 状态变为Recovering
+        
+        RC->>ST: OpenSession()
+        Note over RC,ST: 正在建立新会话...
+        
+        alt OpenSession成功
+            ST-->>RC: 返回Ok
+            RC->>CRS: FinalizeSessionOpen()
+            CRS->>CRS: 状态变为Active
+        else OpenSession失败
+            ST-->>RC: 返回错误
+            RC->>CRS: HandleSessionOpenFailure()
+            CRS->>CRS: 状态变为NoSession
+            RC-->>App: 返回PeerDisconnected
+        end
+    end
                 </div>
             </div>
 

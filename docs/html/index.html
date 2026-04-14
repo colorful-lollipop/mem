@@ -67,37 +67,73 @@
                 <div class="diagram-title">Virus Executor Service 架构总览</div>
                 <div class="mermaid">
 flowchart TB
-    subgraph App["应用层"]
-        VC[VesClient]
-        VS[VirusExecutorService]
+    subgraph App["应用层 (Application)"]
+        VC[VesClient<br/>客户端API]
+        VS[VirusExecutorService<br/>引擎服务]
+        SUP[Supervisor<br/>监管进程]
     end
+    
     subgraph Framework["MemRpc Framework"]
-        subgraph Client["客户端"]
-            SW[SubmitWorker]
-            RW[ResponseWorker]
-            WT[WatchdogThread]
+        subgraph Client["RpcClient 客户端"]
+            SW[SubmitWorker<br/>提交线程]
+            RW[ResponseWorker<br/>响应线程]
+            WT[WatchdogThread<br/>看门狗线程]
+            CRS[ClientRecoveryState<br/>恢复状态机]
         end
-        subgraph Server["服务端"]
-            DT[DispatcherThread]
-            TPE[ThreadPoolExecutor]
-            RWT[ResponseWriter]
+        subgraph Server["RpcServer 服务端"]
+            DT[DispatcherThread<br/>分发线程]
+            TPE[ThreadPoolExecutor<br/>高优+普通线程池]
+            RWT[ResponseWriter<br/>响应写入线程]
         end
     end
-    subgraph Transport["共享内存"]
-        HR[High Request Ring]
-        NR[Normal Request Ring]
-        RR[Response Ring]
+    
+    subgraph Transport["共享内存传输"]
+        HR[High Priority Request Ring<br/>8 entries]
+        NR[Normal Priority Request Ring<br/>8 entries]
+        RR[Response/Event Ring<br/>8 entries]
+        SHM[(SharedMemoryHeader<br/>Session状态)]
     end
-    VC --> SW
-    SW --> HR
-    SW --> NR
-    HR --> DT
-    NR --> DT
-    DT --> TPE
-    TPE --> RR
-    RR --> RW
-    RW --> VC
+    
+    subgraph Kernel["内核机制"]
+        EFD[eventfd<br/>通知机制]
+        MUTEX[pthread_mutex_t<br/>Robust Mutex]
+    end
+    
+    VC -->|InvokeAsync| SW
+    SW -->|TryPushRequest| HR
+    SW -->|TryPushRequest| NR
+    SW -.->|状态检查| CRS
+    HR -->|PopRequest| DT
+    NR -->|PopRequest| DT
+    DT -->|TrySubmit| TPE
+    TPE -->|EnqueueCompletion| RWT
+    RWT -->|PushResponse| RR
+    RR -->|PopResponse| RW
+    RW -->|通知结果| VC
+    
+    WT -.->|MaybeRunPendingTimeouts| CRS
+    WT -.->|MaybeRunIdlePolicy| CRS
+    
+    SHM -.->|读取状态| CRS
+    EFD -.->|poll唤醒| DT
+    EFD -.->|poll唤醒| RW
+    MUTEX -.->|进程共享| SHM
+    
+    style CRS fill:#FFD700,stroke:#333,stroke-width:2px
+    style SHM fill:#87CEEB,stroke:#333
+    style EFD fill:#90EE90,stroke:#333
                 </div>
+            </div>
+            
+            <div class="info-box">
+                <div class="info-box-title">核心设计要点</div>
+                <ul>
+                    <li><strong>双优先级队列</strong>：独立的 High/Normal Request Ring，避免普通请求阻塞高优先级请求</li>
+                    <li><strong>EventFd 通知</strong>：基于 Linux eventfd 的轻量级进程间通知，替代轮询</li>
+                    <li><strong>Robust Mutex</strong>：使用 PTHREAD_MUTEX_ROBUST 处理客户端崩溃后的锁恢复</li>
+                    <li><strong>状态机驱动</strong>：ClientRecoveryState 管理 7 种生命周期状态</li>
+                    <li><strong>自动恢复</strong>：支持 3 种恢复策略（onFailure/onIdle/onEngineDeath）</li>
+                </ul>
             </div>
             <h2>核心模块职责</h2>
             <table>
