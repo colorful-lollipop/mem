@@ -209,7 +209,7 @@ MemRpc::StatusCode DecodeAnyCallWire(const std::vector<uint8_t>& payload, uint16
         return MemRpc::StatusCode::ProtocolMismatch;
     }
     reply->status = static_cast<MemRpc::StatusCode>(replyHeader.status);
-    reply->payload.assign(payload.begin() + static_cast<std::ptrdiff_t>(sizeof(replyHeader)), payload.end());
+    reply->payload.assign(reinterpret_cast<const char*>(payload.data() + sizeof(replyHeader)), replyHeader.payloadSize);
     return MemRpc::StatusCode::Ok;
 }
 

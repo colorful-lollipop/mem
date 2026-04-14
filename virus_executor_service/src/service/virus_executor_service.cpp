@@ -167,11 +167,15 @@ MemRpc::StatusCode VirusExecutorService::AnyCall(const VesAnyCallRequest& reques
     MemRpc::RpcServerCall call;
     call.opcode = static_cast<MemRpc::Opcode>(request.opcode);
     call.priority = static_cast<MemRpc::Priority>(request.priority);
-    call.payload = MemRpc::PayloadView(request.payload.data(), request.payload.size());
+    call.payload = MemRpc::PayloadView(reinterpret_cast<const uint8_t*>(request.payload.data()), request.payload.size());
 
     MemRpc::RpcReply reply;
     vesReply.status = sessionService->InvokeAnyCall(call, &reply);
-    vesReply.payload = std::move(reply.payload);
+    if (reply.payload.empty()) {
+        vesReply.payload.clear();
+    } else {
+        vesReply.payload.assign(reinterpret_cast<const char*>(reply.payload.data()), reply.payload.size());
+    }
     return MemRpc::StatusCode::Ok;
 }
 

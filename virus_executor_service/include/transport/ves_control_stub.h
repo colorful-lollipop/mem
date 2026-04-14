@@ -43,7 +43,7 @@ inline bool DecodeAnyCallRequest(const OHOS::MockIpcRequest& request, VesAnyCall
     out->opcode = header.opcode;
     out->priority = header.priority;
     out->timeoutMs = header.timeoutMs;
-    out->payload.assign(request.data.begin() + static_cast<std::ptrdiff_t>(sizeof(header)), request.data.end());
+    out->payload.assign(reinterpret_cast<const char*>(request.data.data() + sizeof(header)), header.payloadSize);
     return true;
 }
 

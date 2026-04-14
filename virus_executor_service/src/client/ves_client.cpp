@@ -88,6 +88,14 @@ struct VesInvokeRequestView {
     const std::vector<uint8_t>* payload = nullptr;
 };
 
+std::string ToBinaryString(const std::vector<uint8_t>& payload)
+{
+    if (payload.empty()) {
+        return {};
+    }
+    return std::string(reinterpret_cast<const char*>(payload.data()), payload.size());
+}
+
 template <typename Reply>
 MemRpc::StatusCode InvokeInlineApi(const VesInvokeExecutionContext& context,
                                    const VesInvokeRequestView& request,
@@ -122,7 +130,7 @@ MemRpc::StatusCode InvokeAnyCallApi(const VesInvokeExecutionContext& context,
     anyRequest.opcode = static_cast<uint16_t>(request.opcode);
     anyRequest.priority = static_cast<uint16_t>(request.priority);
     anyRequest.timeoutMs = request.execTimeoutMs;
-    anyRequest.payload = *request.payload;
+    anyRequest.payload = ToBinaryString(*request.payload);
 
     VesAnyCallReply anyReply;
     const MemRpc::StatusCode status = context.control->AnyCall(anyRequest, anyReply);

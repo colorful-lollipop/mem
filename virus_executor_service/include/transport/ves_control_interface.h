@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "iremote_broker.h"
@@ -58,12 +59,12 @@ struct VesAnyCallRequest {
     uint16_t opcode = 0;
     uint16_t priority = static_cast<uint16_t>(MemRpc::Priority::Normal);
     uint32_t timeoutMs = 0;
-    std::vector<uint8_t> payload;
+    std::string payload;
 };
 
 struct VesAnyCallReply {
     MemRpc::StatusCode status = MemRpc::StatusCode::Ok;
-    std::vector<uint8_t> payload;
+    std::string payload;
 };
 
 struct VesOpenSessionRequest {
