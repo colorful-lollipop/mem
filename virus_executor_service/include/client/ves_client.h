@@ -20,6 +20,7 @@ class VesClientRecoveryAccess;
 
 struct VesClientOptions {
     uint32_t idleShutdownTimeoutMs = 60000;
+    uint32_t maxEngineDeathsBeforePermanentStop = 100;
     MemRpc::RecoveryPolicy recoveryPolicy;
     VesOpenSessionRequest openSessionRequest;
 };
@@ -59,6 +60,7 @@ private:
                                  MemRpc::Priority priority,
                                  uint32_t execTimeoutMs);
 
+    MemRpc::StatusCode InitClient(MemRpc::ClientInitMode mode);
     void ClaimProcessOwnership();
     [[nodiscard]] bool IsProcessOwner() const;
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
@@ -67,6 +69,7 @@ private:
     std::shared_ptr<VesBootstrapChannel> bootstrapChannel_;
     MemRpc::RpcClient client_;
     VesClientOptions options_;
+    std::shared_ptr<std::atomic<uint32_t>> engineDeathCount_;
     uint64_t instanceGeneration_ = 0;
 };
 

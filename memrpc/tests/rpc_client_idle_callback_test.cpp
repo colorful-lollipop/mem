@@ -248,6 +248,39 @@ TEST(RpcClientIdleCallbackTest, CloseSessionPolicyReopensOnDemand)
     restartedServer.Stop();
 }
 
+TEST(RpcClientIdleCallbackTest, LazyInitStartsIdleClosedAndOpensOnDemand)
+{
+    auto raw_bootstrap = std::make_shared<DevBootstrapChannel>();
+    BootstrapHandles unused_handles = MakeDefaultBootstrapHandles();
+    ASSERT_EQ(raw_bootstrap->OpenSession(unused_handles), StatusCode::Ok);
+    CloseHandles(unused_handles);
+
+    RpcServer server;
+    StartEchoServer(raw_bootstrap, &server);
+
+    auto bootstrap = std::make_shared<CountingBootstrapChannel>(raw_bootstrap);
+    RpcClient client(bootstrap);
+    ASSERT_EQ(client.Init(ClientInitMode::LazySession), StatusCode::Ok);
+    EXPECT_EQ(bootstrap->openCount(), 0);
+
+    const auto initialSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(initialSnapshot.lifecycleState, ClientLifecycleState::IdleClosed);
+    EXPECT_EQ(initialSnapshot.currentSessionId, 0u);
+
+    RpcCall call;
+    call.opcode = kTestEchoOpcode;
+    RpcReply reply;
+    EXPECT_EQ(std::move(client.InvokeAsync(call)).Wait(&reply), StatusCode::Ok);
+    EXPECT_EQ(bootstrap->openCount(), 1);
+
+    const auto activeSnapshot = client.GetRecoveryRuntimeSnapshot();
+    EXPECT_EQ(activeSnapshot.lifecycleState, ClientLifecycleState::Active);
+    EXPECT_NE(activeSnapshot.currentSessionId, 0u);
+
+    client.Shutdown();
+    server.Stop();
+}
+
 TEST(RpcClientIdleCallbackTest, IdleCloseDoesNotSpamZeroSessionStaleWaitLog)
 {
     auto raw_bootstrap = std::make_shared<DevBootstrapChannel>();

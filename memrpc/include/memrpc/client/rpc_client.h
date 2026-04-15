@@ -100,6 +100,11 @@ enum class ClientLifecycleState : uint8_t {
     Closed = 6,
 };
 
+enum class ClientInitMode : uint8_t {
+    EagerSession = 0,
+    LazySession = 1,
+};
+
 struct RecoveryRuntimeSnapshot {
     ClientLifecycleState lifecycleState = ClientLifecycleState::Uninitialized;
     bool recoveryPending = false;
@@ -148,8 +153,9 @@ public:
     void SetRecoveryEventCallback(RecoveryEventCallback callback);
     void SetRecoveryPolicy(RecoveryPolicy policy);
     void RequestExternalRecovery(ExternalRecoveryRequest request);
-    // Init 负责建立 session、映射共享内存并启动响应分发线程。
-    StatusCode Init();
+    // Init 负责启动 client 运行时。默认 eager 模式会立即建立 session；
+    // lazy 模式只启动线程与状态机，等首次实际提交时再按需 OpenSession。
+    StatusCode Init(ClientInitMode mode = ClientInitMode::EagerSession);
     // InvokeAsync 是框架层一等接口；失败时返回 ready future。
     RpcFuture InvokeAsync(const RpcCall& call);
     RpcFuture InvokeAsync(RpcCall&& call);

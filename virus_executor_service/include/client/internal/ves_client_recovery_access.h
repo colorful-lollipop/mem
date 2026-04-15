@@ -25,6 +25,13 @@ public:
     {
         return client.client_;
     }
+
+    static void SetRestartBudgetCountForTest(VesClient& client, uint32_t count)
+    {
+        if (client.engineDeathCount_ != nullptr) {
+            client.engineDeathCount_->store(count, std::memory_order_release);
+        }
+    }
 };
 
 }  // namespace VirusExecutorService::internal

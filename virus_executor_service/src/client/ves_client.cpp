@@ -18,19 +18,63 @@ constexpr uint32_t DEFAULT_RESTART_DELAY_MS = 200;
 std::atomic<uint64_t> g_nextVesClientGeneration{1};
 std::atomic<uint64_t> g_activeVesClientGeneration{0};
 
-MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
+bool EngineDeathLimitReached(const std::shared_ptr<std::atomic<uint32_t>>& engineDeathCount, uint32_t limit)
+{
+    return limit > 0 && engineDeathCount != nullptr &&
+           engineDeathCount->load(std::memory_order_acquire) >= limit;
+}
+
+void ResetRestartBudget(const std::shared_ptr<std::atomic<uint32_t>>& engineDeathCount)
+{
+    if (engineDeathCount != nullptr) {
+        engineDeathCount->store(0, std::memory_order_release);
+    }
+}
+
+MemRpc::RecoveryDecision ApplyRestartBudget(const MemRpc::RecoveryDecision& decision,
+                                            const std::shared_ptr<std::atomic<uint32_t>>& engineDeathCount,
+                                            uint32_t maxDeaths,
+                                            const char* reason)
+{
+    if (decision.action != MemRpc::RecoveryAction::Restart) {
+        return decision;
+    }
+
+    uint32_t restartCount = 0;
+    if (engineDeathCount != nullptr) {
+        restartCount = engineDeathCount->fetch_add(1, std::memory_order_acq_rel) + 1;
+    }
+    if (maxDeaths > 0 && restartCount >= maxDeaths) {
+        HILOGE("restart budget exhausted: reason=%{public}s count=%{public}u limit=%{public}u",
+               reason,
+               restartCount,
+               maxDeaths);
+        return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+    }
+    return decision;
+}
+
+MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options,
+                                          const std::shared_ptr<std::atomic<uint32_t>>& engineDeathCount)
 {
     MemRpc::RecoveryPolicy policy = options.recoveryPolicy;
-    if (!policy.onFailure) {
-        policy.onFailure = [](const MemRpc::RpcFailure& failure) {
+    auto onFailure = policy.onFailure;
+    if (!onFailure) {
+        onFailure = [](const MemRpc::RpcFailure& failure) {
             if (failure.status == MemRpc::StatusCode::ExecTimeout) {
                 return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, DEFAULT_RESTART_DELAY_MS};
             }
             return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
         };
     }
-    if (!policy.onEngineDeath) {
-        policy.onEngineDeath = [](const MemRpc::EngineDeathReport& report) {
+    policy.onFailure = [onFailure = std::move(onFailure),
+                        engineDeathCount,
+                        maxDeaths = options.maxEngineDeathsBeforePermanentStop](const MemRpc::RpcFailure& failure) {
+        return ApplyRestartBudget(onFailure(failure), engineDeathCount, maxDeaths, "failure");
+    };
+    auto onEngineDeath = policy.onEngineDeath;
+    if (!onEngineDeath) {
+        onEngineDeath = [](const MemRpc::EngineDeathReport& report) {
             HILOGW("engine death: session=%{public}llu", static_cast<unsigned long long>(report.deadSessionId));
             return MemRpc::RecoveryDecision{
                 MemRpc::RecoveryAction::Restart,
@@ -38,6 +82,12 @@ MemRpc::RecoveryPolicy BuildRecoveryPolicy(const VesClientOptions& options)
             };
         };
     }
+    policy.onEngineDeath = [onEngineDeath = std::move(onEngineDeath),
+                            engineDeathCount,
+                            maxDeaths = options.maxEngineDeathsBeforePermanentStop](
+                               const MemRpc::EngineDeathReport& report) mutable {
+        return ApplyRestartBudget(onEngineDeath(report), engineDeathCount, maxDeaths, "engine_death");
+    };
     if (!policy.onIdle && options.idleShutdownTimeoutMs > 0) {
         policy.onIdle = [timeout = options.idleShutdownTimeoutMs](uint64_t idleMs) {
             if (idleMs < timeout) {
@@ -195,6 +245,7 @@ MemRpc::StatusCode ExecuteInvokeRoute(VesInvokeRoute route,
 VesClient::VesClient(ControlLoader controlLoader, VesClientOptions options)
     : controlLoader_(std::move(controlLoader)),
       options_(std::move(options)),
+      engineDeathCount_(std::make_shared<std::atomic<uint32_t>>(0)),
       instanceGeneration_(g_nextVesClientGeneration.fetch_add(1, std::memory_order_relaxed))
 {
     if (!controlLoader_) {
@@ -210,7 +261,7 @@ VesClient::~VesClient()
 std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options, VesClientConnectOptions connectOptions)
 {
     auto client = std::make_unique<VesClient>(BuildControlLoader(connectOptions), std::move(options));
-    if (client->Init() != MemRpc::StatusCode::Ok) {
+    if (client->InitClient(MemRpc::ClientInitMode::LazySession) != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient init failed");
         return nullptr;
     }
@@ -219,20 +270,30 @@ std::unique_ptr<VesClient> VesClient::Connect(VesClientOptions options, VesClien
 
 MemRpc::StatusCode VesClient::Init()
 {
+    return InitClient(MemRpc::ClientInitMode::EagerSession);
+}
+
+MemRpc::StatusCode VesClient::InitClient(MemRpc::ClientInitMode mode)
+{
     ClaimProcessOwnership();
-    bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
-        controlLoader_,
-        options_.openSessionRequest,
-        [this]() { return IsProcessOwner(); });
+    if (bootstrapChannel_ == nullptr) {
+        bootstrapChannel_ = std::make_shared<VesBootstrapChannel>(
+            controlLoader_,
+            options_.openSessionRequest,
+            [this, engineDeathCount = engineDeathCount_, maxDeaths = options_.maxEngineDeathsBeforePermanentStop]() {
+                return IsProcessOwner() && !EngineDeathLimitReached(engineDeathCount, maxDeaths);
+            });
+    }
     client_.SetBootstrapChannel(bootstrapChannel_);
-    client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_));
-    const MemRpc::StatusCode status = client_.Init();
+    client_.SetRecoveryPolicy(BuildRecoveryPolicy(options_, engineDeathCount_));
+    const MemRpc::StatusCode status = client_.Init(mode);
     if (status != MemRpc::StatusCode::Ok) {
         HILOGE("VesClient::Init failed for saId=%{public}d status=%{public}d",
                VIRUS_PROTECTION_EXECUTOR_SA_ID,
                static_cast<int>(status));
         return status;
     }
+    ResetRestartBudget(engineDeathCount_);
     return MemRpc::StatusCode::Ok;
 }
 
@@ -303,7 +364,11 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
             &client_,
             CurrentControl(),
         };
-        return ExecuteInvokeRoute(route, context, invokeRequest, reply);
+        const MemRpc::StatusCode invokeStatus = ExecuteInvokeRoute(route, context, invokeRequest, reply);
+        if (invokeStatus == MemRpc::StatusCode::Ok) {
+            ResetRestartBudget(engineDeathCount_);
+        }
+        return invokeStatus;
     });
 }
 

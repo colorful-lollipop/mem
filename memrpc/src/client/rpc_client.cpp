@@ -552,11 +552,11 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
             return lifecycleState_;
         }
 
-        void PrepareForInitOpen()
+        void PrepareForInitOpen(ClientLifecycleState initialState)
         {
             std::lock_guard<std::mutex> lock(mutex_);
             cooldownUntilMs_ = 0;
-            lifecycleState_ = ClientLifecycleState::Uninitialized;
+            lifecycleState_ = initialState;
         }
 
         void BeginSessionOpen(ClientLifecycleState lifecycleState, uint64_t currentSessionId)
@@ -1513,9 +1513,9 @@ struct RpcClient::Impl : public std::enable_shared_from_this<RpcClient::Impl> {
         return recoveryState_.LifecycleState();
     }
 
-    void PrepareForInitOpen()
+    void PrepareForInitOpen(ClientLifecycleState initialState)
     {
-        recoveryState_.PrepareForInitOpen();
+        recoveryState_.PrepareForInitOpen(initialState);
     }
 
     void FinalizeSessionOpen()
@@ -2317,7 +2317,7 @@ void RpcClient::RequestExternalRecovery(ExternalRecoveryRequest request)
     impl_->RequestExternalRecovery(request);
 }
 
-StatusCode RpcClient::Init()
+StatusCode RpcClient::Init(ClientInitMode mode)
 {
     // `clientControlState_` gates whether public APIs may still enter the client.
     // `workersRunning_` only tracks whether background loops have been started.
@@ -2327,16 +2327,19 @@ StatusCode RpcClient::Init()
     }
     if (impl_->WorkersShouldRun()) {
         HILOGW("RpcClient::Init called while already running");
-        return impl_->EnsureLiveSession();
+        return mode == ClientInitMode::EagerSession ? impl_->EnsureLiveSession() : StatusCode::Ok;
     }
     impl_->lastActivityMs_.store(MonotonicNowMs(), std::memory_order_release);
-    impl_->PrepareForInitOpen();
+    impl_->PrepareForInitOpen(mode == ClientInitMode::LazySession ? ClientLifecycleState::IdleClosed
+                                                                  : ClientLifecycleState::Uninitialized);
     impl_->StartThreads();
-    const StatusCode status = impl_->EnsureLiveSession();
-    if (status != StatusCode::Ok) {
-        HILOGE("RpcClient::Init failed: EnsureLiveSession status=%{public}d", static_cast<int>(status));
-        impl_->Shutdown();
-        return status;
+    if (mode == ClientInitMode::EagerSession) {
+        const StatusCode status = impl_->EnsureLiveSession();
+        if (status != StatusCode::Ok) {
+            HILOGE("RpcClient::Init failed: EnsureLiveSession status=%{public}d", static_cast<int>(status));
+            impl_->Shutdown();
+            return status;
+        }
     }
     if (!impl_->FinishInit()) {
         HILOGW("RpcClient::Init completed after shutdown started");
