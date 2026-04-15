@@ -92,7 +92,7 @@
 | 触发事件 | 条件 | 目标状态 | 动作 |
 |----------|------|----------|------|
 | Shutdown() | - | Closed | 进入Closed |
-| NewRequest | - | (保持NoSession) | EnsureLiveSession()返回PeerDisconnected，新请求快速失败 |
+| NewRequest | - | Recovering | EnsureLiveSession()触发 BeginSessionOpen() 并尝试 OpenSession()；若再次失败则回到 NoSession |
 | 外部调用RequestExternalRecovery | - | Recovering/Cooldown | HandleExternalRecovery() |
 
 ### 3.6 从 IdleClosed 状态
@@ -271,8 +271,8 @@ HandleEngineDeath(observedSessionId, deadSessionId):
 | 特性 | NoSession | IdleClosed |
 |------|-----------|------------|
 | 触发原因 | 恢复失败或策略Ignore | 空闲超时onIdle=IdleClose |
-| 新请求行为 | 快速失败(PeerDisconnected) | 触发恢复到Active |
-| 是否可自动恢复 | 否（需外部触发） | 是（新请求触发） |
+| 新请求行为 | 触发一次重新 OpenSession；失败则返回失败 | 触发恢复到Active |
+| 是否可自动恢复 | 可以由新请求驱动重试，但失败后仍停留/回到 NoSession | 是（新请求触发） |
 
 ### 7.3 RecoveryPending 的含义
 
