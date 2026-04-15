@@ -448,6 +448,39 @@ TEST(VesHeartbeatTest, OpenSessionRefreshesDeadControlBeforeCallingOpenSession)
     EXPECT_EQ(bootstrap.CurrentControl(), fresh);
 }
 
+TEST(VesHeartbeatTest, NullLoaderResultPermanentlyDisablesFurtherReloadAttempts)
+{
+    auto seed = std::make_shared<FakeReloadControl>(100);
+
+    std::atomic<int> loadCount{0};
+    VesBootstrapChannel bootstrap(
+        [&]() -> OHOS::sptr<IVirusProtectionExecutor> {
+            const int index = loadCount.fetch_add(1);
+            if (index == 0) {
+                return seed;
+            }
+            return nullptr;
+        },
+        DefaultVesOpenSessionRequest());
+
+    MemRpc::BootstrapHandles handles = MemRpc::MakeDefaultBootstrapHandles();
+    ASSERT_EQ(bootstrap.OpenSession(handles), MemRpc::StatusCode::Ok);
+    EXPECT_EQ(loadCount.load(), 1);
+    EXPECT_EQ(bootstrap.CurrentControl(), seed);
+
+    seed->AsObject()->NotifyRemoteDiedForTest();
+
+    EXPECT_EQ(bootstrap.CurrentControl(), nullptr);
+    EXPECT_EQ(loadCount.load(), 2);
+
+    EXPECT_EQ(bootstrap.CurrentControl(), nullptr);
+    EXPECT_EQ(loadCount.load(), 2);
+
+    MemRpc::BootstrapHandles reopened = MemRpc::MakeDefaultBootstrapHandles();
+    EXPECT_EQ(bootstrap.OpenSession(reopened), MemRpc::StatusCode::ClientClosed);
+    EXPECT_EQ(loadCount.load(), 2);
+}
+
 TEST(VesHeartbeatTest, HeartbeatShowsInFlight)
 {
     auto stub = std::make_shared<VirusExecutorService>();

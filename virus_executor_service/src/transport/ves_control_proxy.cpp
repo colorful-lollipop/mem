@@ -285,6 +285,10 @@ public:
         bool deadBeforeOpen = false;
         OHOS::sptr<IVirusProtectionExecutor> control = LoadOpenSessionControl(&request, &handles, &deadBeforeOpen);
         if (control == nullptr) {
+            if (HasFatalControlLoadFailure()) {
+                HILOGE("VesBootstrapChannel::OpenSession failed: control permanently unavailable after shutdown");
+                return MemRpc::StatusCode::ClientClosed;
+            }
             if (deadBeforeOpen) {
                 HILOGE("VesBootstrapChannel::OpenSession failed: control remote is dead before OpenSession");
                 return MemRpc::StatusCode::PeerDisconnected;
@@ -376,6 +380,12 @@ public:
         return EnsureControlBoundLocked();
     }
 
+    bool HasFatalControlLoadFailure()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return fatalControlLoadFailure_;
+    }
+
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -429,6 +439,11 @@ private:
             control = RefreshControlLocked();
         }
         if (control == nullptr) {
+            if (HasFatalControlLoadFailure()) {
+                HILOGE("VesBootstrapChannel::OpenSession rebind failed: control permanently unavailable after shutdown");
+                *handles = MemRpc::MakeDefaultBootstrapHandles();
+                return MemRpc::StatusCode::ClientClosed;
+            }
             HILOGE("VesBootstrapChannel::OpenSession rebind failed: control is null status=%{public}d",
                    static_cast<int>(initialStatus));
             *handles = MemRpc::MakeDefaultBootstrapHandles();
@@ -465,11 +480,16 @@ private:
         if (!AccessAllowedLocked()) {
             return nullptr;
         }
+        if (fatalControlLoadFailure_) {
+            return nullptr;
+        }
         auto nextControl = controlLoader_();
         if (nextControl != nullptr) {
             RebindControlLocked(nextControl);
             return control_;
         }
+        RebindControlLocked(nullptr);
+        fatalControlLoadFailure_ = true;
         return nullptr;
     }
 
@@ -506,6 +526,7 @@ private:
     MemRpc::EngineDeathCallback deathCallback_;
     uint64_t sessionId_ = 0;
     VesOpenSessionRequest openSessionRequest_{};
+    bool fatalControlLoadFailure_ = false;
 };
 
 }  // namespace
@@ -879,6 +900,11 @@ MemRpc::ChannelHealthResult VesBootstrapChannel::CheckHealth(uint64_t expectedSe
 OHOS::sptr<IVirusProtectionExecutor> VesBootstrapChannel::CurrentControl()
 {
     return state_->CurrentControl();
+}
+
+bool VesBootstrapChannel::HasFatalControlLoadFailure()
+{
+    return state_->HasFatalControlLoadFailure();
 }
 
 void VesBootstrapChannel::SetEngineDeathCallback(MemRpc::EngineDeathCallback callback)

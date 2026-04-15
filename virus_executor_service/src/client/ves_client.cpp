@@ -129,6 +129,7 @@ VesClient::ControlLoader BuildControlLoader(VesClientConnectOptions connectOptio
 struct VesInvokeExecutionContext {
     MemRpc::RpcClient* client = nullptr;
     OHOS::sptr<IVirusProtectionExecutor> control;
+    bool shutdownOnMissingControl = false;
 };
 
 struct VesInvokeRequestView {
@@ -169,8 +170,11 @@ MemRpc::StatusCode InvokeAnyCallApi(const VesInvokeExecutionContext& context,
                                     Reply* reply)
 {
     if (context.control == nullptr) {
-        HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u", request.opcode);
-        return MemRpc::StatusCode::PeerDisconnected;
+        HILOGE("VesClient::InvokeApi failed: control is null opcode=%{public}u shutdown=%{public}s",
+               request.opcode,
+               context.shutdownOnMissingControl ? "true" : "false");
+        return context.shutdownOnMissingControl ? MemRpc::StatusCode::ClientClosed
+                                                : MemRpc::StatusCode::PeerDisconnected;
     }
     if (request.payload == nullptr) {
         return MemRpc::StatusCode::InvalidArgument;
@@ -360,9 +364,11 @@ MemRpc::StatusCode VesClient::InvokeApi(MemRpc::Opcode opcode,
         &payload,
     };
     return client_.RetryUntilRecoverySettles([&]() {
+        const auto control = CurrentControl();
         const VesInvokeExecutionContext context{
             &client_,
-            CurrentControl(),
+            control,
+            control == nullptr && bootstrapChannel_ != nullptr && bootstrapChannel_->HasFatalControlLoadFailure(),
         };
         const MemRpc::StatusCode invokeStatus = ExecuteInvokeRoute(route, context, invokeRequest, reply);
         if (invokeStatus == MemRpc::StatusCode::Ok) {

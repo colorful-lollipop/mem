@@ -62,6 +62,7 @@ public:
     MemRpc::StatusCode CloseSession() override;
     MemRpc::ChannelHealthResult CheckHealth(uint64_t expectedSessionId) override;
     [[nodiscard]] OHOS::sptr<IVirusProtectionExecutor> CurrentControl();
+    [[nodiscard]] bool HasFatalControlLoadFailure();
     void SetEngineDeathCallback(MemRpc::EngineDeathCallback callback) override;
 
 private:

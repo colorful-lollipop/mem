@@ -808,6 +808,71 @@ TEST(VesPolicyTest, RestartBudgetStopsFutureSessionOpen)
     UnloadControlService();
 }
 
+TEST(VesPolicyTest, ScanFileReportsClientClosedAfterPermanentLoaderFailure)
+{
+    UnloadControlService();
+    const std::string socketPath = "/tmp/ves_shutdown_reason_" + std::to_string(getpid()) + ".sock";
+    UseInMemorySamBackend();
+
+    auto service = std::make_shared<FakeHealthControlService>();
+    service->SetServicePathForTest(socketPath);
+    ASSERT_TRUE(service->Publish(service.get()));
+    auto startServerForCurrentSession = [&]() {
+        auto nextServer = std::make_unique<MemRpc::RpcServer>(service->serverHandles());
+        RegisterScanHandler(nextServer.get(), [](const ScanTask&) {
+            ScanFileReply reply;
+            reply.code = 0;
+            reply.threatLevel = 0;
+            return reply;
+        });
+        EXPECT_EQ(nextServer->Start(), MemRpc::StatusCode::Ok);
+        return nextServer;
+    };
+
+    VesClientOptions options;
+    options.recoveryPolicy.onFailure = [](const MemRpc::RpcFailure& failure) {
+        switch (failure.status) {
+            case MemRpc::StatusCode::ExecTimeout:
+            case MemRpc::StatusCode::PeerDisconnected:
+            case MemRpc::StatusCode::InvalidArgument:
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Restart, 0};
+            default:
+                return MemRpc::RecoveryDecision{MemRpc::RecoveryAction::Ignore, 0};
+        }
+    };
+
+    auto client = VesClient::Connect(options);
+    ASSERT_NE(client, nullptr);
+    ASSERT_EQ(client->Init(), MemRpc::StatusCode::Ok);
+    auto server = startServerForCurrentSession();
+
+    ScanTask warmupTask{"/data/warmup_shutdown_reason.bin"};
+    ScanFileReply reply;
+    ASSERT_EQ(client->ScanFile(warmupTask, &reply), MemRpc::StatusCode::Ok);
+
+    UnloadControlService();
+    RequestRecoveryForTest(*client, 0);
+
+    ASSERT_TRUE(WaitFor(
+        [&]() {
+            const auto snapshot = internal::VesClientRecoveryAccess::GetRecoveryRuntimeSnapshot(*client);
+            return snapshot.lifecycleState == MemRpc::ClientLifecycleState::NoSession;
+        },
+        std::chrono::milliseconds(200)));
+
+    ScanTask smallTask{"/data/reopen_should_report_closed.bin"};
+    EXPECT_EQ(client->ScanFile(smallTask, &reply), MemRpc::StatusCode::ClientClosed);
+
+    const std::string longPath = "/data/" + std::string(MemRpc::DEFAULT_MAX_REQUEST_BYTES + 64, 'c');
+    ScanTask oversizedTask{longPath};
+    EXPECT_EQ(client->ScanFile(oversizedTask, &reply), MemRpc::StatusCode::ClientClosed);
+
+    client->Shutdown();
+    server->Stop();
+    service->OnStop();
+    UnloadControlService();
+}
+
 TEST(VesPolicyTest, ShutdownKeepsVesClientTerminal)
 {
     UnloadControlService();
